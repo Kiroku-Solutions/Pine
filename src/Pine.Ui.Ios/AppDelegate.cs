@@ -48,6 +48,7 @@ public partial class AppDelegate : AvaloniaAppDelegate<Pine.Ui.Avalonia.App>
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.SetupViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.DashboardViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.TransactionsViewModel>();
+        services.AddTransient<Pine.Ui.Avalonia.ViewModels.AddTransactionViewModel>();
         services.AddSingleton<Pine.Ui.Avalonia.Services.INavigationService>(sp => sp.GetRequiredService<Pine.Ui.Avalonia.ViewModels.MainViewModel>());
         
         services.AddScoped<Pine.Core.Accounts.IAccountRepository, Pine.Infrastructure.Data.SqliteAccountRepository>();

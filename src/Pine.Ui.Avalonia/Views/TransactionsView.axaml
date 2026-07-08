@@ -3,14 +3,73 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:views="using:Pine.Ui.Avalonia.Views"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.TransactionsView"
              x:DataType="vm:TransactionsViewModel">
 
-    <Grid Margin="40">
-        <StackPanel>
-            <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
-            <TextBlock Text="Transactions placeholder view." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
-        </StackPanel>
+    <Grid>
+        <!-- Main Content Area -->
+        <Grid RowDefinitions="Auto, *" Margin="40">
+            
+            <!-- Header -->
+            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Transactions" FontSize="32" FontWeight="SemiBold" />
+                    <TextBlock Text="Review all your income and expenses." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
+                </StackPanel>
+                
+                <Button Grid.Column="1" Content="+ Add Transaction" Command="{Binding ShowAddTransactionDialogCommand}" Classes="accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+            </Grid>
+
+            <!-- Transactions List -->
+            <Border Grid.Row="1" Padding="20" CornerRadius="12" 
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    BoxShadow="0 4 10 0 #10000000">
+                
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Transactions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="10,15">
+                                    <Grid ColumnDefinitions="Auto, *, Auto, Auto">
+                                        
+                                        <!-- Icon / Category -->
+                                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Margin="0,0,15,0">
+                                            <TextBlock Text="Tx" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </Border>
+                                        
+                                        <!-- Details -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="16" />
+                                            <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        
+                                        <!-- Notes -->
+                                        <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                                        
+                                        <!-- Amount -->
+                                        <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+        
+        <!-- Dialog Overlay -->
+        <Border Background="#80000000" IsVisible="{Binding IsAddTransactionDialogVisible}">
+            <ContentControl Content="{Binding AddTransactionVm}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="{x:Type vm:AddTransactionViewModel}">
+                        <views:AddTransactionView />
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+        </Border>
     </Grid>
 </UserControl>

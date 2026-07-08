@@ -32,6 +32,13 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<Transaction>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+            .Include(t => t.Splits)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
         var existing = await _dbContext.Transactions.FindAsync(new object[] { transaction.Id }, cancellationToken);
