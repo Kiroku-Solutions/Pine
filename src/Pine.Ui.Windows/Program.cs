@@ -49,8 +49,10 @@ sealed class Program
         // ViewModels and Navigation
         services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<MainViewModel>());
         services.AddSingleton<MainViewModel>();
+        services.AddSingleton<ShellViewModel>();
         services.AddTransient<SetupViewModel>();
         services.AddTransient<DashboardViewModel>();
+        services.AddTransient<TransactionsViewModel>();
 
         // Logging
         services.AddLogging(builder => builder.AddConsole());
@@ -61,15 +63,24 @@ sealed class Program
         // MediatR
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateAccountCommand).Assembly));
 
-        // Database path setup (no heavy Argon2 at startup — the ViewModel handles that)
+        // Security Session
+        services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
+
+        // Database path setup
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var dbFolder = Path.Combine(appData, "Pine", "Vault");
         Directory.CreateDirectory(dbFolder);
         var dbPath = Path.Combine(dbFolder, "pine.db");
 
-        // Register DbContext with a simple unencrypted connection for now
-        // (encryption will be wired when the user enters their master password in the UI)
-        services.AddScoped<PineDbContext>(_ => new PineDbContext(dbPath, Array.Empty<byte>()));
+        // Register DbContext to use the Key from IVaultSession
+        services.AddScoped<PineDbContext>(sp => 
+        {
+            var session = sp.GetRequiredService<Pine.Application.Security.IVaultSession>();
+            if (!session.IsUnlocked)
+                throw new InvalidOperationException("Cannot access database: Vault is locked.");
+            
+            return new PineDbContext(dbPath, session.Key!);
+        });
 
         // Repositories
         services.AddScoped<IAccountRepository, SqliteAccountRepository>();

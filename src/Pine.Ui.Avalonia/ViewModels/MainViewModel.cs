@@ -19,6 +19,7 @@ public partial class MainViewModel : ObservableObject, INavigationService
 
     public void Initialize()
     {
+        // Start in Setup to initialize the vault key
         NavigateTo<SetupViewModel>();
     }
 

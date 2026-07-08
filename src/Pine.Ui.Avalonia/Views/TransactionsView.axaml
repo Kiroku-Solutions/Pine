@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
+             x:Class="Pine.Ui.Avalonia.Views.TransactionsView"
+             x:DataType="vm:TransactionsViewModel">
+
+    <Grid Margin="40">
+        <StackPanel>
+            <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
+            <TextBlock Text="Transactions placeholder view." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
+        </StackPanel>
+    </Grid>
+</UserControl>

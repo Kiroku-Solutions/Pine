@@ -22,10 +22,28 @@ public partial class DashboardViewModel : ObservableObject
 
     public ObservableCollection<Account> Accounts { get; } = new();
 
+    [ObservableProperty]
+    public partial bool IsCreateAccountDialogVisible { get; set; }
+
+    [ObservableProperty]
+    public partial CreateAccountViewModel? CreateAccountVm { get; set; }
+
     public DashboardViewModel(IMediator mediator)
     {
         _mediator = mediator;
         _ = LoadDataAsync();
+    }
+
+    [RelayCommand]
+    private void ShowCreateAccountDialog()
+    {
+        CreateAccountVm = new CreateAccountViewModel(_mediator, () =>
+        {
+            IsCreateAccountDialogVisible = false;
+            CreateAccountVm = null;
+            _ = LoadDataAsync(); // Refresh accounts after creation
+        });
+        IsCreateAccountDialogVisible = true;
     }
 
     [RelayCommand]

@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="Pine.Ui.Avalonia.Views.ShellView"
+             x:DataType="vm:ShellViewModel">
+
+    <Grid ColumnDefinitions="250, *">
+        <!-- Sidebar Navigation -->
+        <Border Grid.Column="0" Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <StackPanel Spacing="10" Margin="20">
+                <TextBlock Text="Pine Vault" FontSize="24" FontWeight="Bold" Margin="0,0,0,30" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                
+                <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}" Classes.accent="{Binding IsDashboardActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}" Classes.accent="{Binding IsTransactionsActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                <Button Content="Budgets" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                <Button Content="Rules" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                
+                <Border Height="1" Background="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,10" />
+                
+                <Button Content="Settings" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content Area -->
+        <TransitioningContentControl Grid.Column="1" Content="{Binding CurrentPage}">
+            <TransitioningContentControl.PageTransition>
+                <CrossFade Duration="0:0:0.2" />
+            </TransitioningContentControl.PageTransition>
+        </TransitioningContentControl>
+    </Grid>
+</UserControl>

@@ -20,8 +20,14 @@
         <DataTemplate DataType="{x:Type vm:SetupViewModel}">
             <views:SetupView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ShellViewModel}">
+            <views:ShellView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
             <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TransactionsViewModel}">
+            <views:TransactionsView />
         </DataTemplate>
     </Window.DataTemplates>
 
