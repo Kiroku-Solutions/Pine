@@ -7,16 +7,15 @@
              x:Class="Pine.Ui.Avalonia.Views.AddTransactionView"
              x:DataType="vm:AddTransactionViewModel">
 
-    <ExperimentalAcrylicBorder CornerRadius="12"
-                               MaxWidth="450" MaxHeight="700"
-                               HorizontalAlignment="Center" VerticalAlignment="Center">
-        <ExperimentalAcrylicBorder.Material>
-            <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="Black" TintOpacity="1" MaterialOpacity="0.8" />
-        </ExperimentalAcrylicBorder.Material>
-        
-        <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" Padding="30" CornerRadius="12">
+    <Border CornerRadius="12"
+            MaxWidth="450" MaxHeight="700"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="{DynamicResource PineSurface}"
+            BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" 
+            Padding="30"
+            BoxShadow="0 8 24 0 #20000000">
             <StackPanel Spacing="15">
-                <TextBlock Text="New Transaction" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <TextBlock Text="New Transaction" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
             
             <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 
@@ -27,7 +26,7 @@
             </StackPanel>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Account" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
@@ -39,28 +38,28 @@
 
             <Grid ColumnDefinitions="*, 10, *">
                 <StackPanel Grid.Column="0" Spacing="5">
-                    <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Spacing="5">
-                    <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
                 </StackPanel>
             </Grid>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Payee / Merchant" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Payee / Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding Payee}" PlaceholderText="e.g. Walmart, Salary..." IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding Category}" PlaceholderText="e.g. Groceries" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
             
             <StackPanel Spacing="5">
-                <TextBlock Text="Notes" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Notes" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding Notes}" PlaceholderText="Optional notes..." IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
@@ -71,6 +70,5 @@
                 <Button Grid.Column="2" Content="Save" Command="{Binding CreateCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
             </Grid>
             </StackPanel>
-        </Border>
-    </ExperimentalAcrylicBorder>
+    </Border>
 </UserControl>

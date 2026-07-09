@@ -27,6 +27,7 @@ public partial class ShellViewModel : ObservableObject, INavigationService
         
         IsDashboardActive = typeof(TViewModel) == typeof(DashboardViewModel);
         IsTransactionsActive = typeof(TViewModel) == typeof(TransactionsViewModel);
+        IsSettingsActive = typeof(TViewModel) == typeof(SettingsViewModel);
     }
 
     [ObservableProperty]
@@ -34,6 +35,9 @@ public partial class ShellViewModel : ObservableObject, INavigationService
 
     [ObservableProperty]
     public partial bool IsTransactionsActive { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSettingsActive { get; set; }
 
     [RelayCommand]
     private void NavigateToDashboard()
@@ -45,5 +49,11 @@ public partial class ShellViewModel : ObservableObject, INavigationService
     private void NavigateToTransactions()
     {
         NavigateTo<TransactionsViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToSettings()
+    {
+        NavigateTo<SettingsViewModel>();
     }
 }

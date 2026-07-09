@@ -10,7 +10,7 @@
         Title="Pine - Secure Financial Engine"
         Width="900" Height="600"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        Background="{DynamicResource PineBackground}">
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -28,6 +28,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:TransactionsViewModel}">
             <views:TransactionsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:SettingsView />
         </DataTemplate>
     </Window.DataTemplates>
 

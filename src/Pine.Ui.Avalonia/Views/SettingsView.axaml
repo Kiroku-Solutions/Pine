@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
+             x:Class="Pine.Ui.Avalonia.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="24" Margin="40">
+            <!-- Header -->
+            <StackPanel Spacing="4" Margin="0,0,0,8">
+                <TextBlock Text="Settings" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="Manage your preferences and vault security." FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+            </StackPanel>
+
+            <!-- Appearance Section -->
+            <Border Background="{DynamicResource PineSurface}" 
+                    BorderBrush="{DynamicResource PineBorder}" 
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Appearance" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel>
+                            <TextBlock Text="Application Theme" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Choose how Pine looks on your device." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" Width="180" SelectedIndex="{Binding SelectedThemeIndex}" VerticalAlignment="Center">
+                            <ComboBoxItem>Light</ComboBoxItem>
+                            <ComboBoxItem>Dark</ComboBoxItem>
+                            <ComboBoxItem>System Auto</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Language Section -->
+            <Border Background="{DynamicResource PineSurface}" 
+                    BorderBrush="{DynamicResource PineBorder}" 
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Language &amp; Locale" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel>
+                            <TextBlock Text="Display Language" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Select the language for the interface." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" Width="180" SelectedIndex="{Binding SelectedLanguageIndex}" VerticalAlignment="Center">
+                            <ComboBoxItem>English</ComboBoxItem>
+                            <ComboBoxItem>Spanish</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Security Section -->
+            <Border Background="{DynamicResource PineSurface}" 
+                    BorderBrush="{DynamicResource PineBorder}" 
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Security &amp; Vault" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock Text="Manage your vault's encryption and access controls." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"/>
+
+                    <Grid ColumnDefinitions="*, Auto" Margin="0,4">
+                        <StackPanel>
+                            <TextBlock Text="Change Master Password" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Update your vault encryption key." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Change Password" Command="{Binding ChangeMasterPasswordCommand}" Classes="pine-accent" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, Auto" Margin="0,4">
+                        <StackPanel>
+                            <TextBlock Text="Export Vault" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Save a decrypted backup to disk." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Export..." Command="{Binding ExportVaultCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, Auto" Margin="0,4">
+                        <StackPanel>
+                            <TextBlock Text="Lock Vault Now" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Require the master password to continue." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Lock Vault" Command="{Binding LockVaultCommand}" Classes="pine-danger" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,11 +1,12 @@
 <div align="center">
-  <h1>🌲 Pine</h1>
+  <img src="public/PineLogo.svg" alt="Pine Logo" width="128" />
+  <h1>Pine</h1>
   <p><strong>A Privacy-First, Offline-First Personal Finance Engine</strong></p>
 </div>
 
 ---
 
-## 💡 The Vision
+## The Vision
 
 **Pine** is a modern, enterprise-grade personal finance application built for users who refuse to compromise on privacy. 
 Unlike cloud-based budgeting apps that harvest your financial data, Pine is **offline-first** and stores everything in a military-grade encrypted local vault (SQLCipher). 
@@ -20,7 +21,7 @@ Your money. Your data. Your control.
 
 ---
 
-##  Architecture (Enterprise-Grade)
+## Architecture (Enterprise-Grade)
 
 Pine was engineered from the ground up using strict **Clean / Hexagonal Architecture** principles.
 
@@ -28,7 +29,7 @@ Pine was engineered from the ground up using strict **Clean / Hexagonal Architec
 2. **CQRS via MediatR:** Every action in Pine is strictly segregated into `Commands` (state mutations) and `Queries` (data retrieval), ensuring a perfectly scalable and testable logic flow.
 3. **Composition Roots:** The UI layer (`Pine.Ui.Avalonia`) is 100% OS-agnostic. The actual executables (`Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Ui.Ios`, etc.) act as simple composition roots that bootstrap the native OS window and inject dependencies.
 
-##  Getting Started
+## Getting Started
 
 ### Prerequisites
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -49,7 +50,7 @@ dotnet run --project src/Pine.Ui.Macos
 
 ---
 
-##  Project Structure
+## Project Structure
 
 - `src/Pine.Core`: The Domain Layer. Contains entities, value objects, and business rules. No external dependencies.
 - `src/Pine.Application`: The Use Case Layer. Contains CQRS Commands/Queries and interfaces.
@@ -57,5 +58,5 @@ dotnet run --project src/Pine.Ui.Macos
 - `src/Pine.Ui.Avalonia`: The Cross-Platform UI Layer. Contains MVVM views, routing, and Fluent Design styles.
 - `src/Pine.Ui.*`: Platform-specific bootstrappers (Windows, macOS, iOS, Android, Web).
 
-##  Contributing
+## Contributing
 Please see our [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details on how to help out.

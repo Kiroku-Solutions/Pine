@@ -11,13 +11,13 @@
         
         <!-- Header -->
         <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Center">
-            <TextBlock Text="Pine" FontSize="36" FontWeight="SemiBold" HorizontalAlignment="Center" />
-            <TextBlock Text="First-Run Setup" FontSize="18" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+            <TextBlock Text="Pine" FontSize="36" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}" />
+            <TextBlock Text="First-Run Setup" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
         </StackPanel>
 
         <!-- Content -->
         <StackPanel Grid.Row="1" Spacing="20" VerticalAlignment="Center" MaxWidth="400">
-            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" />
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource PineText}" />
             
             <TextBox PlaceholderText="Enter Master Password" 
                      Text="{Binding MasterPassword}" 

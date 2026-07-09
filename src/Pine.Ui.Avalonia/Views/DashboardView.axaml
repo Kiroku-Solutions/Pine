@@ -18,8 +18,8 @@
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" />
-                    <TextBlock Text="Here's your financial overview for today." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
+                    <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="Here's your financial overview for today." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
                 
                 <Button Grid.Column="1" Content="+ New Account" Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
@@ -37,9 +37,9 @@
                         <DataTemplate>
                             <Border Classes="card" Margin="10" Padding="0" CornerRadius="12" 
                                     Background="{DynamicResource PineSurface}"
-                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource PineBorder}"
                                     BorderThickness="1"
-                                    BoxShadow="0 10 30 0 #40000000"
+                                    BoxShadow="0 4 16 0 #18000000"
                                     Width="{Binding Width, Mode=TwoWay}"
                                     Height="{Binding Height, Mode=TwoWay}"
                                     ClipToBounds="True"
@@ -50,13 +50,13 @@
                                 <Grid RowDefinitions="Auto, *, Auto">
                                     
                                     <!-- Header / Drag Handle -->
-                                    <Border Grid.Row="0" Background="#10FFFFFF" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder">
-                                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder">
+                                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Border>
                                     
                                     <!-- Content (Placeholder) -->
                                     <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
-                                        <TextBlock Text="No data yet" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="No data yet" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
                                     </StackPanel>
 
                                     <!-- Resize Handle -->
@@ -66,7 +66,7 @@
                                            ToolTip.Tip="Drag to resize">
                                         <Thumb.Template>
                                             <ControlTemplate>
-                                                <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource PineTextMuted}" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>

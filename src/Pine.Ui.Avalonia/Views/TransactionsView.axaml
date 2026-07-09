@@ -15,8 +15,8 @@
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="Transactions" FontSize="32" FontWeight="SemiBold" />
-                    <TextBlock Text="Review all your income and expenses." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
+                    <TextBlock Text="Transactions" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="Review all your income and expenses." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
                 
                 <Button Grid.Column="1" Content="+ Add Transaction" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
@@ -25,9 +25,9 @@
             <!-- Transactions List -->
             <Border Grid.Row="1" Padding="20" CornerRadius="12" 
                     Background="{DynamicResource PineSurface}"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1"
-                    BoxShadow="0 10 30 0 #40000000">
+                    BoxShadow="0 4 16 0 #18000000">
                 
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Transactions}">
@@ -42,15 +42,15 @@
                                         
                                         <!-- Details -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="16" />
-                                            <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                            <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
                                         </StackPanel>
                                         
                                         <!-- Notes -->
-                                        <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
                                         
                                         <!-- Amount -->
-                                        <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>

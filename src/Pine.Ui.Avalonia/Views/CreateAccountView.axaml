@@ -7,38 +7,38 @@
              x:Class="Pine.Ui.Avalonia.Views.CreateAccountView"
              x:DataType="vm:CreateAccountViewModel">
 
-    <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+    <Border Background="{DynamicResource PineSurface}"
             CornerRadius="12"
-            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            BorderBrush="{DynamicResource PineBorder}"
             BorderThickness="1"
             Padding="30"
-            BoxShadow="0 10 30 0 #40000000"
+            BoxShadow="0 8 24 0 #20000000"
             MaxWidth="400" MaxHeight="550"
             HorizontalAlignment="Center" VerticalAlignment="Center">
             
         <StackPanel Spacing="15">
-            <TextBlock Text="Add Account" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" />
+            <TextBlock Text="Add Account" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
             
             <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Account Name" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Account Name" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding AccountName}" PlaceholderText="e.g. Main Checking" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Account Type" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Account Type" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <ComboBox ItemsSource="{Binding AccountTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <Grid ColumnDefinitions="*, 10, *">
                 <StackPanel Grid.Column="0" Spacing="5">
-                    <TextBlock Text="Currency" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="Currency" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <ComboBox ItemsSource="{Binding Currencies}" SelectedItem="{Binding SelectedCurrency}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Spacing="5">
-                    <TextBlock Text="Initial Balance" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="Initial Balance" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <NumericUpDown Value="{Binding InitialBalance}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
                 </StackPanel>
             </Grid>

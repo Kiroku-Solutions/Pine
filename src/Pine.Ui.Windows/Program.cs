@@ -54,6 +54,7 @@ sealed class Program
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<AddTransactionViewModel>();
+        services.AddTransient<SettingsViewModel>();
 
         // Logging
         services.AddLogging(builder => builder.AddConsole());
