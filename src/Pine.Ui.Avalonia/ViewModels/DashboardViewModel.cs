@@ -22,6 +22,8 @@ public partial class DashboardViewModel : ObservableObject
 
     public ObservableCollection<Account> Accounts { get; } = new();
 
+    public ObservableCollection<Pine.Ui.Avalonia.ViewModels.Widgets.IDashboardWidgetViewModel> Widgets { get; } = new();
+
     [ObservableProperty]
     public partial bool IsCreateAccountDialogVisible { get; set; }
 
@@ -31,7 +33,24 @@ public partial class DashboardViewModel : ObservableObject
     public DashboardViewModel(IMediator mediator)
     {
         _mediator = mediator;
+        InitializeWidgets();
         _ = LoadDataAsync();
+    }
+
+    private void InitializeWidgets()
+    {
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel { OrderIndex = 0 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.NetWorthWidgetViewModel { OrderIndex = 1 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ExpensesWidgetViewModel { OrderIndex = 2 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.IncomeWidgetViewModel { OrderIndex = 3 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BudgetWidgetViewModel { OrderIndex = 4 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.SavingsWidgetViewModel { OrderIndex = 5 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.CalendarWidgetViewModel { OrderIndex = 6 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.GoalsWidgetViewModel { OrderIndex = 7 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.InvestmentsWidgetViewModel { OrderIndex = 8 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ChartsWidgetViewModel { OrderIndex = 9 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.RecentTransactionsWidgetViewModel { OrderIndex = 10 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.AiSuggestionsWidgetViewModel { OrderIndex = 11 });
     }
 
     [RelayCommand]

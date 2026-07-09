@@ -4,9 +4,12 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:views="using:Pine.Ui.Avalonia.Views"
+             xmlns:i="using:Avalonia.Xaml.Interactivity"
+             xmlns:idd="using:Avalonia.Xaml.Interactions.DragAndDrop"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.DashboardView"
-             x:DataType="vm:DashboardViewModel">
+             x:DataType="vm:DashboardViewModel"
+             x:Name="DashboardRoot">
 
     <Grid>
         <!-- Main Content Area (Dashboard only) -->
@@ -23,49 +26,56 @@
             </Grid>
 
             <!-- Content -->
-            <Grid Grid.Row="1" ColumnDefinitions="*, *" RowDefinitions="Auto, *">
-                
-                <!-- Net Worth Card -->
-                <Border Classes="card" Grid.Column="0" Grid.Row="0" Margin="0,0,20,0" Padding="30" CornerRadius="12" 
-                        Background="{DynamicResource PineSurface}"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        BoxShadow="0 10 30 0 #40000000">
-                    <StackPanel>
-                        <TextBlock Text="Total Balance" FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="{Binding TotalBalance}" FontSize="42" FontWeight="Bold" Margin="0,10,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    </StackPanel>
-                </Border>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Widgets}" x:Name="WidgetsItemsControl">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Margin="0" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Classes="card" Margin="10" Padding="0" CornerRadius="12" 
+                                    Background="{DynamicResource PineSurface}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    BoxShadow="0 10 30 0 #40000000"
+                                    Width="{Binding Width, Mode=TwoWay}"
+                                    Height="{Binding Height, Mode=TwoWay}"
+                                    ClipToBounds="True"
+                                    PointerPressed="Widget_PointerPressed"
+                                    PointerMoved="Widget_PointerMoved"
+                                    PointerReleased="Widget_PointerReleased"
+                                    PointerCaptureLost="Widget_PointerCaptureLost">
+                                <Grid RowDefinitions="Auto, *, Auto">
+                                    
+                                    <!-- Header / Drag Handle -->
+                                    <Border Grid.Row="0" Background="#10FFFFFF" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder">
+                                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+                                    </Border>
+                                    
+                                    <!-- Content (Placeholder) -->
+                                    <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
+                                        <TextBlock Text="No data yet" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
 
-                <!-- Accounts List -->
-                <Border Classes="card" Grid.Column="1" Grid.Row="0" Padding="20" CornerRadius="12" 
-                        Background="{DynamicResource PineSurface}"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        BoxShadow="0 10 30 0 #40000000">
-                    <StackPanel>
-                        <TextBlock Text="Your Accounts" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,15" />
-                        <ItemsControl ItemsSource="{Binding Accounts}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid ColumnDefinitions="*, Auto" Margin="0,5">
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
-                                            <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource PinePrimary}">
-                                                <TextBlock Text="{Binding Name[0]}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
-                                            </Border>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" />
-                                                <TextBlock Text="{Binding Type}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                            </StackPanel>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="{Binding Balance}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                                    <!-- Resize Handle -->
+                                    <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" 
+                                           Width="15" Height="15" Cursor="BottomRightCorner"
+                                           DragDelta="ResizeThumb_DragDelta"
+                                           ToolTip.Tip="Drag to resize">
+                                        <Thumb.Template>
+                                            <ControlTemplate>
+                                                <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
         
         <!-- Dialog Overlay -->
@@ -78,5 +88,8 @@
                 </ContentControl.DataTemplates>
             </ContentControl>
         </Border>
+
+        <!-- Drag Overlay -->
+        <Canvas x:Name="DragOverlayCanvas" IsHitTestVisible="False" ZIndex="100" />
     </Grid>
 </UserControl>
