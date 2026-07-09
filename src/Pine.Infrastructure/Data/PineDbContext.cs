@@ -56,10 +56,10 @@ public sealed class PineDbContext : DbContext
             e.Property(a => a.Name).IsRequired();
             e.Property(a => a.Type).HasConversion<string>(); // Store enum as string
             
-            e.OwnsOne(a => a.Balance, b =>
+            e.ComplexProperty(a => a.Balance, b =>
             {
                 b.Property(m => m.Amount).HasColumnName("Balance_Amount");
-                b.OwnsOne(m => m.Currency, c =>
+                b.ComplexProperty(m => m.Currency, c =>
                 {
                     c.Property(code => code.Value).HasColumnName("Balance_Currency").IsRequired();
                 });
@@ -70,10 +70,10 @@ public sealed class PineDbContext : DbContext
         {
             e.HasKey(t => t.Id);
             
-            e.OwnsOne(t => t.TotalAmount, ta =>
+            e.ComplexProperty(t => t.TotalAmount, ta =>
             {
                 ta.Property(m => m.Amount).HasColumnName("TotalAmount_Amount");
-                ta.OwnsOne(m => m.Currency, c =>
+                ta.ComplexProperty(m => m.Currency, c =>
                 {
                     c.Property(code => code.Value).HasColumnName("TotalAmount_Currency").IsRequired();
                 });

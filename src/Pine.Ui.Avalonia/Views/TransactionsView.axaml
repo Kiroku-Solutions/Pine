@@ -19,26 +19,25 @@
                     <TextBlock Text="Review all your income and expenses." FontSize="16" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0" />
                 </StackPanel>
                 
-                <Button Grid.Column="1" Content="+ Add Transaction" Command="{Binding ShowAddTransactionDialogCommand}" Classes="accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+                <Button Grid.Column="1" Content="+ Add Transaction" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
             </Grid>
 
             <!-- Transactions List -->
             <Border Grid.Row="1" Padding="20" CornerRadius="12" 
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    BoxShadow="0 4 10 0 #10000000">
+                    BoxShadow="0 10 30 0 #40000000">
                 
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Transactions}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="10,15">
+                                <Border Classes="card" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
                                     <Grid ColumnDefinitions="Auto, *, Auto, Auto">
                                         
-                                        <!-- Icon / Category -->
-                                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Margin="0,0,15,0">
-                                            <TextBlock Text="Tx" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
+                                            <TextBlock Text="Tx" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
                                         </Border>
                                         
                                         <!-- Details -->

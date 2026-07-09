@@ -7,17 +7,16 @@
              x:Class="Pine.Ui.Avalonia.Views.AddTransactionView"
              x:DataType="vm:AddTransactionViewModel">
 
-    <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
-            CornerRadius="12"
-            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            Padding="30"
-            BoxShadow="0 10 30 0 #40000000"
-            MaxWidth="450" MaxHeight="700"
-            HorizontalAlignment="Center" VerticalAlignment="Center">
-            
-        <StackPanel Spacing="15">
-            <TextBlock Text="New Transaction" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" />
+    <ExperimentalAcrylicBorder CornerRadius="12"
+                               MaxWidth="450" MaxHeight="700"
+                               HorizontalAlignment="Center" VerticalAlignment="Center">
+        <ExperimentalAcrylicBorder.Material>
+            <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="Black" TintOpacity="1" MaterialOpacity="0.8" />
+        </ExperimentalAcrylicBorder.Material>
+        
+        <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" Padding="30" CornerRadius="12">
+            <StackPanel Spacing="15">
+                <TextBlock Text="New Transaction" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" />
             
             <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 
@@ -69,8 +68,9 @@
 
             <Grid ColumnDefinitions="*, 10, *" Margin="0,20,0,0">
                 <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                <Button Grid.Column="2" Content="Save" Command="{Binding CreateCommand}" Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                <Button Grid.Column="2" Content="Save" Command="{Binding CreateCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
             </Grid>
-        </StackPanel>
-    </Border>
+            </StackPanel>
+        </Border>
+    </ExperimentalAcrylicBorder>
 </UserControl>

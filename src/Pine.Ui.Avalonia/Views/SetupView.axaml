@@ -30,7 +30,7 @@
                     Command="{Binding InitializeVaultCommand}" 
                     IsDefault="True"
                     IsEnabled="{Binding !IsBusy}"
-                    Classes="accent"
+                    Classes="pine-accent"
                     HorizontalAlignment="Stretch" 
                     HorizontalContentAlignment="Center"
                     FontSize="16"

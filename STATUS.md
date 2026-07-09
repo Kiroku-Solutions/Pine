@@ -39,7 +39,11 @@ This document tracks the real-time implementation progress based on the master p
 - Welcome/Setup screen in `Pine.Ui.Avalonia`.
 - Form to capture/create the SQLite vault master password.
 - MVVM Navigation Routing (ViewLocator pattern).
-- Dashboard skeleton with Fluent Design Sidebar and Net Worth widgets.
+- **S-Tier UI Overhaul**: 
+  - Implementation of **Glassmorphism** (ExperimentalAcrylicBorder) on sidebars and dialogs.
+  - Complete integration of the **Squirrel Orange Palette** (Dark & Light themes) via CustomAccentColor and dynamic dictionaries.
+  - Premium micro-animations and drop-shadows on Dashboard and Transactions cards.
+- **Infrastructure Fixes**: Resolved EF Core shadow key generation issues for Value Objects (`Money`) utilizing EF 8+ `.ComplexProperty()`.
 
 ---
 *Last updated: July 8, 2026*

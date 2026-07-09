@@ -47,7 +47,7 @@
 
             <Grid ColumnDefinitions="*, 10, *" Margin="0,20,0,0">
                 <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                <Button Grid.Column="2" Content="Create" Command="{Binding CreateCommand}" Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                <Button Grid.Column="2" Content="Create" Command="{Binding CreateCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
             </Grid>
         </StackPanel>
     </Border>

@@ -5,7 +5,91 @@
              RequestedThemeVariant="Dark">
     <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- ☀️ Light Mode -->
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="PinePrimaryColor">#EA580C</Color>
+                    <Color x:Key="PinePrimaryContainerColor">#FFEDD5</Color>
+                    
+                    <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
+                    <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
+                    <SolidColorBrush x:Key="PineBackground" Color="#FAFAFA" />
+                    <SolidColorBrush x:Key="PineSurface" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="PineSurfaceHover" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="PineText" Color="#18181B" />
+                    <SolidColorBrush x:Key="PineTextMuted" Color="#52525B" />
+                    <SolidColorBrush x:Key="PineBorder" Color="#E4E4E7" />
+                    <SolidColorBrush x:Key="PineButtonText" Color="#FFFFFF" />
+                    
+                    <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0" Color="#EA580C" />
+                        <GradientStop Offset="1" Color="#FFEDD5" />
+                    </LinearGradientBrush>
+                </ResourceDictionary>
+                
+                <!-- 🌙 Dark Mode -->
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="PinePrimaryColor">#FB923C</Color>
+                    <Color x:Key="PinePrimaryContainerColor">#7C2D12</Color>
+                    
+                    <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
+                    <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
+                    <SolidColorBrush x:Key="PineBackground" Color="#09090B" />
+                    <SolidColorBrush x:Key="PineSurface" Color="#18181B" />
+                    <SolidColorBrush x:Key="PineSurfaceHover" Color="#27272A" />
+                    <SolidColorBrush x:Key="PineText" Color="#FAFAFA" />
+                    <SolidColorBrush x:Key="PineTextMuted" Color="#A1A1AA" />
+                    <SolidColorBrush x:Key="PineBorder" Color="#27272A" />
+                    <SolidColorBrush x:Key="PineButtonText" Color="#09090B" />
+                    
+                    <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0" Color="#FB923C" />
+                        <GradientStop Offset="1" Color="#7C2D12" />
+                    </LinearGradientBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
-        <sty:FluentAvaloniaTheme />
+        <sty:FluentAvaloniaTheme CustomAccentColor="#FB923C" PreferUserAccentColor="False" />
+        
+        <!-- Global Button Overrides for "pine-accent" class -->
+        <Style Selector="Button.pine-accent">
+            <Setter Property="Background" Value="{DynamicResource PineAccentGradient}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.pine-accent:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.05)" />
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+        <Style Selector="Button.pine-accent:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.95)" />
+        </Style>
+        
+        <!-- Smooth Transitions for Cards -->
+        <Style Selector="Border.card">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.card:pointerover">
+            <Setter Property="RenderTransform" Value="translateY(-2px)" />
+            <Setter Property="Background" Value="{DynamicResource PineSurfaceHover}" />
+        </Style>
     </Application.Styles>
 </Application>

@@ -7,22 +7,31 @@
              x:Class="Pine.Ui.Avalonia.Views.ShellView"
              x:DataType="vm:ShellViewModel">
 
-    <Grid ColumnDefinitions="250, *">
+    <Grid ColumnDefinitions="250, *" Background="{DynamicResource PineBackground}">
         <!-- Sidebar Navigation -->
-        <Border Grid.Column="0" Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
-            <StackPanel Spacing="10" Margin="20">
-                <TextBlock Text="Pine Vault" FontSize="24" FontWeight="Bold" Margin="0,0,0,30" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                
-                <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}" Classes.accent="{Binding IsDashboardActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
-                <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}" Classes.accent="{Binding IsTransactionsActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
-                <Button Content="Budgets" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
-                <Button Content="Rules" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
-                
-                <Border Height="1" Background="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,10" />
-                
-                <Button Content="Settings" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
-            </StackPanel>
-        </Border>
+        <ExperimentalAcrylicBorder Grid.Column="0">
+            <ExperimentalAcrylicBorder.Material>
+                <ExperimentalAcrylicMaterial
+                    BackgroundSource="Digger"
+                    TintColor="Black"
+                    TintOpacity="1"
+                    MaterialOpacity="0.65" />
+            </ExperimentalAcrylicBorder.Material>
+            <Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Spacing="10" Margin="20">
+                    <TextBlock Text="Pine Vault" FontSize="24" FontWeight="Bold" Margin="0,0,0,30" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    
+                    <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}" Classes.pine-accent="{Binding IsDashboardActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                    <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}" Classes.pine-accent="{Binding IsTransactionsActive}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                    <Button Content="Budgets" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                    <Button Content="Rules" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                    
+                    <Border Height="1" Background="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,10" />
+                    
+                    <Button Content="Settings" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" CornerRadius="8" />
+                </StackPanel>
+            </Border>
+        </ExperimentalAcrylicBorder>
 
         <!-- Main Content Area -->
         <TransitioningContentControl Grid.Column="1" Content="{Binding CurrentPage}">
