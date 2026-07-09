@@ -33,6 +33,8 @@
                     
                     <Button Content="Settings" Command="{Binding NavigateToSettingsCommand}" 
                             Classes="pine-nav" Classes.active="{Binding IsSettingsActive}" />
+                    <Button Content="Diagnostics" Command="{Binding NavigateToDiagnosticsCommand}" 
+                            Classes="pine-nav" Classes.active="{Binding IsDiagnosticsActive}" />
                 </StackPanel>
             </DockPanel>
         </Border>
