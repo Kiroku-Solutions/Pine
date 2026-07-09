@@ -45,5 +45,13 @@ This document tracks the real-time implementation progress based on the master p
   - Premium micro-animations and drop-shadows on Dashboard and Transactions cards.
 - **Infrastructure Fixes**: Resolved EF Core shadow key generation issues for Value Objects (`Money`) utilizing EF 8+ `.ComplexProperty()`.
 
+### ✅ Implemented (Vertical Slice 4 - Dashboard & Drag/Drop)
+- Built dynamic `DashboardView` with 12 placeholder widgets (`IDashboardWidgetViewModel`).
+- Responsive Masonry/Grid layout utilizing `WrapPanel` and dynamic resizing via corner `Thumb` grips.
+- Custom **Native Canvas Drag & Drop Overlay**:
+  - Live tracking of dragged cards bypassing OS-level `DoDragDropAsync` limits.
+  - Visual cloning via `VisualBrush` with glassmorphism jiggle/shake animation.
+  - Bulletproof `DispatcherTimer` transforms to avoid Avalonia CSS keyframe crashes.
+
 ---
 *Last updated: July 8, 2026*
