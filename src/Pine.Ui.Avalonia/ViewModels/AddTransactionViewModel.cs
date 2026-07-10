@@ -4,10 +4,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
+using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -104,6 +106,7 @@ public partial class AddTransactionViewModel : ObservableObject
                 Category
             ));
 
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
             _onComplete?.Invoke();
         }
         catch (Exception ex)

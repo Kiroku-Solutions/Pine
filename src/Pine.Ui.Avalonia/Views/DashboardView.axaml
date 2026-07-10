@@ -6,6 +6,8 @@
              xmlns:views="using:Pine.Ui.Avalonia.Views"
              xmlns:i="using:Avalonia.Xaml.Interactivity"
              xmlns:idd="using:Avalonia.Xaml.Interactions.DragAndDrop"
+             xmlns:wvm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:wv="using:Pine.Ui.Avalonia.Views.Widgets"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.DashboardView"
              x:DataType="vm:DashboardViewModel"
@@ -54,10 +56,23 @@
                                         <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Border>
                                     
-                                    <!-- Content (Placeholder) -->
-                                    <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
-                                        <TextBlock Text="No data yet" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
-                                    </StackPanel>
+                                    <!-- Content -->
+                                    <ContentControl Grid.Row="1" Content="{Binding}" Margin="5,0,5,5">
+                                        <ContentControl.DataTemplates>
+                                            <DataTemplate DataType="wvm:BalanceWidgetViewModel">
+                                                <wv:BalanceWidgetView />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="wvm:RecentTransactionsWidgetViewModel">
+                                                <wv:RecentTransactionsWidgetView />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="wvm:IDashboardWidgetViewModel">
+                                                <!-- Fallback for empty widgets -->
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
+                                                    <TextBlock Text="No data yet" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ContentControl.DataTemplates>
+                                    </ContentControl>
 
                                     <!-- Resize Handle -->
                                     <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" 

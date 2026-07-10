@@ -4,13 +4,15 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
+using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class DashboardViewModel : ObservableObject
+public partial class DashboardViewModel : ObservableObject, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
 
@@ -34,12 +36,18 @@ public partial class DashboardViewModel : ObservableObject
     {
         _mediator = mediator;
         InitializeWidgets();
+        WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((DashboardViewModel)r).Receive(m));
+        _ = LoadDataAsync();
+    }
+
+    public void Receive(DataChangedMessage message)
+    {
         _ = LoadDataAsync();
     }
 
     private void InitializeWidgets()
     {
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel { OrderIndex = 0 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel(_mediator) { OrderIndex = 0 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.NetWorthWidgetViewModel { OrderIndex = 1 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ExpensesWidgetViewModel { OrderIndex = 2 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.IncomeWidgetViewModel { OrderIndex = 3 });
@@ -49,7 +57,7 @@ public partial class DashboardViewModel : ObservableObject
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.GoalsWidgetViewModel { OrderIndex = 7 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.InvestmentsWidgetViewModel { OrderIndex = 8 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ChartsWidgetViewModel { OrderIndex = 9 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.RecentTransactionsWidgetViewModel { OrderIndex = 10 });
+        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.RecentTransactionsWidgetViewModel(_mediator) { OrderIndex = 10 });
         Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.AiSuggestionsWidgetViewModel { OrderIndex = 11 });
     }
 

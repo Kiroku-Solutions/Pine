@@ -3,13 +3,15 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Transactions;
+using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class TransactionsViewModel : ObservableObject
+public partial class TransactionsViewModel : ObservableObject, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
 
@@ -24,6 +26,12 @@ public partial class TransactionsViewModel : ObservableObject
     public TransactionsViewModel(IMediator mediator)
     {
         _mediator = mediator;
+        WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((TransactionsViewModel)r).Receive(m));
+        _ = LoadDataAsync();
+    }
+
+    public void Receive(DataChangedMessage message)
+    {
         _ = LoadDataAsync();
     }
 

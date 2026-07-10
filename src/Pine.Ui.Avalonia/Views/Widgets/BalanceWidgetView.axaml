@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:core="using:Pine.Core.Accounts"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.BalanceWidgetView"
+             x:DataType="vm:BalanceWidgetViewModel">
+    
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Accounts}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="core:Account">
+                        <Border Padding="10,8" Margin="0,0,0,5" CornerRadius="6" Background="{DynamicResource PineSurfaceElevated}">
+                            <Grid ColumnDefinitions="Auto, *, Auto">
+                                <!-- Placeholder Icon -->
+                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="{DynamicResource PineAccentHover}" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding Name[0]}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineText}"/>
+                                </Border>
+                                
+                                <!-- Account Info -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                    <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                </StackPanel>
+                                
+                                <!-- Balance -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding Balance.Amount, StringFormat=\{0:N2\}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding Balance.Currency.Value}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+                
+            </ItemsControl>
+        </ScrollViewer>
+            
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding !Accounts.Count}">
+            <TextBlock Text="No accounts yet." Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
+        </StackPanel>
+    </Grid>
+</UserControl>

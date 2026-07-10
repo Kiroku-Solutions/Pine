@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:core="using:Pine.Core.Transactions"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.RecentTransactionsWidgetView"
+             x:DataType="vm:RecentTransactionsWidgetViewModel">
+    
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Transactions}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="core:Transaction">
+                        <Border Padding="10,8" Margin="0,0,0,5" CornerRadius="6" Background="{DynamicResource PineSurfaceElevated}">
+                            <Grid ColumnDefinitions="Auto, *, Auto">
+                                <!-- Transaction Icon based on sign -->
+                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="{DynamicResource PineBorder}" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding Payee[0]}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineTextMuted}"/>
+                                </Border>
+                                
+                                <!-- Tx Info -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Payee}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Date, StringFormat=\{0:MMM dd\, yyyy\}}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                </StackPanel>
+                                
+                                <!-- Amount -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <!-- Use a converter in real app, here we just show it -->
+                                    <TextBlock Text="{Binding TotalAmount.Amount, StringFormat=\{0:N2\}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding TotalAmount.Currency.Value}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+                
+            </ItemsControl>
+        </ScrollViewer>
+            
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding !Transactions.Count}">
+            <TextBlock Text="No transactions yet." Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
+        </StackPanel>
+    </Grid>
+</UserControl>
