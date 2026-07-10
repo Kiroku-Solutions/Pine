@@ -11,15 +11,18 @@
         <!-- Left Side: Branding Banner -->
         <Border Grid.Column="0" Background="{DynamicResource PineAccentGradient}">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15" Margin="40">
+                
+                <Image Source="avares://Pine.Ui.Avalonia/Assets/PineLogo.svg" Width="120" Height="120" HorizontalAlignment="Center" />
+                
                 <TextBlock Text="Pine" FontSize="72" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
                 <TextBlock Text="Secure Financial Engine" FontSize="20" Foreground="White" Opacity="0.85" FontWeight="Medium" HorizontalAlignment="Center" />
-                <Border Background="#33000000" CornerRadius="12" Padding="20" Margin="0,40,0,0">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="✓ Local-First Privacy" Foreground="White" FontWeight="SemiBold"/>
-                        <TextBlock Text="✓ Military-Grade AES-256 Encryption" Foreground="White" FontWeight="SemiBold"/>
-                        <TextBlock Text="✓ On-Device AI Assistance" Foreground="White" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </Border>
+                
+                <StackPanel Spacing="10" Margin="0,30,0,0" HorizontalAlignment="Center">
+                    <TextBlock Text="✓ Local-First Privacy" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
+                    <TextBlock Text="✓ Military-Grade AES-256 Encryption" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
+                    <TextBlock Text="✓ On-Device AI Assistance" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
+                </StackPanel>
+                
             </StackPanel>
         </Border>
 
