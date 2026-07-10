@@ -1,4 +1,4 @@
-﻿# Project Status: Pine (SSoT)
+# Project Status: Pine (SSoT)
 
 This document tracks the real-time implementation progress based on the master plan (docs/56-IMPLEMENTATION-PLAN.md).
 
@@ -6,9 +6,11 @@ This document tracks the real-time implementation progress based on the master p
 
 - **Phase 0 (Foundations):** ✅ 100% Completed
 - **Phase 1 (v0.1 alpha - Core Engine):** ✅ 100% Completed
-- **Phase 2 (v0.2 beta - Sync & CLI):** 🔴 Pending
-- **Phase 3 (v0.3 rc - Plugins & AI):** 🔴 Pending
-- **Phase 4 (v1.0 - Production):** 🔴 Pending
+- **Phase 2 (v0.2 beta - Imports & AI Baseline):** 🟡 In Progress
+- **Phase 3 (v0.3 beta - Budgets, goals, recurring):** 🔴 Pending
+- **Phase 4 (v0.4 beta - Investments):** 🔴 Pending
+- **Phase 5 (v0.5 beta - Sync, plugins, marketplace):** 🔴 Pending
+- **Phases 6-10 (Beta to GA):** 🔴 Pending
 
 ---
 
@@ -72,5 +74,11 @@ This document tracks the real-time implementation progress based on the master p
 - **Settings Panel persistente**: Implementamos la entidad Setting, ISettingRepository, e integramos con SettingsViewModel para guardar y cargar configuraciones desde SQLite.
 - **Entidades de Dominio**: Completamos y verificamos la inclusión de las entidades Category y Attachment en el Core y EF Core para dar soporte a la Fase 2 (IA y Recibos).
 
+## Phase 2 Detail (Imports & AI Baseline)
+
+### 🏃 In Progress (Current Working State)
+- **Imports Engine**: Creación de la arquitectura de importación (`CsvImporter`, `ImportTransactionsCommand`) y vistas relacionadas en UI.
+- **AI Receipts Pipeline**: Bases para el escaneo de recibos y procesamiento on-device (Core y e Infraestructura para `Ai`, `ScanReceiptCommand`).
+
 ---
-*Last updated: July 9, 2026*
+*Last updated: July 10, 2026*

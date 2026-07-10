@@ -32,6 +32,12 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
     [ObservableProperty]
     public partial CreateAccountViewModel? CreateAccountVm { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsImportWizardVisible { get; set; }
+
+    [ObservableProperty]
+    public partial Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel? ImportWizardVm { get; set; }
+
     public DashboardViewModel(IMediator mediator)
     {
         _mediator = mediator;
@@ -71,6 +77,18 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
             _ = LoadDataAsync(); // Refresh accounts after creation
         });
         IsCreateAccountDialogVisible = true;
+    }
+
+    [RelayCommand]
+    private void ShowImportWizard()
+    {
+        ImportWizardVm = new Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel(() => 
+        {
+            IsImportWizardVisible = false;
+            ImportWizardVm = null;
+            _ = LoadDataAsync();
+        });
+        IsImportWizardVisible = true;
     }
 
     [RelayCommand]

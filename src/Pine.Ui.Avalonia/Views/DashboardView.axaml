@@ -4,6 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:views="using:Pine.Ui.Avalonia.Views"
+             xmlns:views_imports="using:Pine.Ui.Avalonia.Views.Importing"
+             xmlns:vm_importing="using:Pine.Ui.Avalonia.ViewModels.Importing"
              xmlns:i="using:Avalonia.Xaml.Interactivity"
              xmlns:idd="using:Avalonia.Xaml.Interactions.DragAndDrop"
              xmlns:wvm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
@@ -24,7 +26,11 @@
                     <TextBlock Text="Here's your financial overview for today." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
                 
-                <Button Grid.Column="1" Content="+ New Account" Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Button Content="Scan Receipt" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="Import Data" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="+ New Account" Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14" />
+                </StackPanel>
             </Grid>
 
             <!-- Content -->
@@ -99,6 +105,17 @@
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm:CreateAccountViewModel}">
                         <views:CreateAccountView />
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+        </Border>
+
+        <!-- Dialog Overlay (Import Wizard) -->
+        <Border Background="#80000000" IsVisible="{Binding IsImportWizardVisible}" ZIndex="90">
+            <ContentControl Content="{Binding ImportWizardVm}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="{x:Type vm_importing:ImportWizardViewModel}">
+                        <views_imports:ImportWizardView />
                     </DataTemplate>
                 </ContentControl.DataTemplates>
             </ContentControl>
