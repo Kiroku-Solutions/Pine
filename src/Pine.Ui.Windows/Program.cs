@@ -20,6 +20,9 @@ sealed class Program
     {
         try
         {
+            // 0. Initialize SQLCipher native provider BEFORE any SQLite usage
+            SQLitePCL.Batteries_V2.Init();
+
             // 1. Build Dependency Injection Container
             var services = new ServiceCollection();
             ConfigureServices(services);
@@ -49,8 +52,9 @@ sealed class Program
         // ViewModels and Navigation
         services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<MainViewModel>());
         services.AddSingleton<MainViewModel>();
-        services.AddSingleton<ShellViewModel>();
+        services.AddTransient<ShellViewModel>();
         services.AddTransient<SetupViewModel>();
+        services.AddTransient<UnlockViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<AddTransactionViewModel>();
@@ -76,7 +80,7 @@ sealed class Program
         var dbPath = Path.Combine(dbFolder, "pine.db");
 
         // Register DbContext to use the Key from IVaultSession
-        services.AddScoped<PineDbContext>(sp => 
+        services.AddTransient<PineDbContext>(sp => 
         {
             var session = sp.GetRequiredService<Pine.Application.Security.IVaultSession>();
             if (!session.IsUnlocked)
@@ -86,8 +90,8 @@ sealed class Program
         });
 
         // Repositories
-        services.AddScoped<IAccountRepository, SqliteAccountRepository>();
-        services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
+        services.AddTransient<IAccountRepository, SqliteAccountRepository>();
+        services.AddTransient<ITransactionRepository, SqliteTransactionRepository>();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

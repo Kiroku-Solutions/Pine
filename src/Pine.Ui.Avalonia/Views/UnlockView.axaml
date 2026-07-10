@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.UnlockView"
+             x:DataType="vm:UnlockViewModel">
+    
+    <Grid>
+        <!-- Background uses the global PineBackground token -->
+        <Border Background="{DynamicResource PineBackground}" />
+
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
+            
+            <!-- Logo / Brand Header -->
+            <StackPanel Spacing="10" HorizontalAlignment="Center">
+                <TextBlock Text="Pine" FontSize="48" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="Local Vault is Locked" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Unlock Card -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    Padding="40"
+                    BoxShadow="0 8 32 0 #30000000"
+                    Width="400">
+                <StackPanel Spacing="24">
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Master Password" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                        <!-- PasswordBox with masking -->
+                        <TextBox PasswordChar="●" 
+                                 Text="{Binding MasterPassword}" 
+                                 IsEnabled="{Binding !IsBusy}"
+                                 Watermark="Enter your password..."
+                                 FontSize="16"
+                                 Padding="12" />
+                    </StackPanel>
+
+                    <!-- Error/Status Message -->
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               Foreground="{DynamicResource PineDanger}" 
+                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" 
+                               TextWrapping="Wrap" 
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+
+                    <!-- Unlock Button -->
+                    <Button Content="Unlock Vault" 
+                            Command="{Binding UnlockVaultCommand}" 
+                            Classes="pine-accent" 
+                            HorizontalAlignment="Stretch" 
+                            HorizontalContentAlignment="Center" 
+                            Padding="0,12" 
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            IsEnabled="{Binding !IsBusy}" />
+
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

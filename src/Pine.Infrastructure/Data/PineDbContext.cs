@@ -34,18 +34,16 @@ public sealed class PineDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
+        var hexKey = Convert.ToHexString(_encryptionKey);
+
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = _databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Password = hexKey
         }.ToString();
 
-        var connection = new SqliteConnection(connectionString);
-        
-        // Pass the raw key to SQLCipher (requires hex formatting if string, but PRAGMA key takes blob directly if supported)
-        // With SQLitePCLRaw, we can run PRAGMA key manually after opening, or pass Password in the builder if the provider supports it.
-        // For SQLCipher with sqlite-net/EF Core, the standard way is:
-        optionsBuilder.UseSqlite(connection);
+        optionsBuilder.UseSqlite(connectionString);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

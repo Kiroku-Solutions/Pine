@@ -59,16 +59,13 @@ public partial class SetupViewModel : ObservableObject
                 
                 var saltPath = Path.Combine(vaultDir, "pine.salt");
                 
-                byte[] salt;
                 if (File.Exists(saltPath))
                 {
-                    salt = File.ReadAllBytes(saltPath);
+                    throw new InvalidOperationException("A vault already exists. Please login instead.");
                 }
-                else
-                {
-                    salt = Argon2KeyDerivation.GenerateSalt();
-                    File.WriteAllBytes(saltPath, salt);
-                }
+
+                var salt = Argon2KeyDerivation.GenerateSalt();
+                File.WriteAllBytes(saltPath, salt);
 
                 // Derive key
                 var key = Argon2KeyDerivation.DeriveKey(MasterPassword, salt);

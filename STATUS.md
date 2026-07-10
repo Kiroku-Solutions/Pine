@@ -109,6 +109,7 @@ This document tracks the real-time implementation progress based on the master p
   - Overhauled the global UI aesthetic, shifting from default Fluent Avalonia colors to a highly polished **S-Tier custom palette**. 
   - Implemented deep umbers for Dark Mode ("Midnight Pine") and subtle warm tones for Light Mode ("Morning Wood"), rooting the entire application's aesthetic in the core Pine orange logo identity.
   - Diagnostics Panel utilizes a custom "hacker terminal" aesthetic for logs while maintaining Pine UI compliance for metrics cards.
+  - **Security Unlock Flow**: Implemented `UnlockViewModel` and dynamic startup routing in `MainViewModel`. Fixed critical SQLCipher integration bugs by enforcing `SQLitePCL.Batteries_V2.Init()` and migrating `PineDbContext` DI scoping to `Transient` to guarantee proper connection lifecycles and robust AES-256 decryption validation on every unlock attempt.
 
 ---
 *Last updated: July 8, 2026*
