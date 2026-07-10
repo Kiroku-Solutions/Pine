@@ -54,7 +54,7 @@ This document tracks the real-time implementation progress based on the master p
 ## Overall Progress
 
 - **Phase 0 (Foundations):** ✅ 100% Completed
-- **Phase 1 (v0.1 alpha - Core Engine):** 🟡 In Progress (85%)
+- **Phase 1 (v0.1 alpha - Core Engine):** ✅ 100% Completed
 - **Phase 2 (v0.2 beta - Sync & CLI):** 🔴 Pending
 - **Phase 3 (v0.3 rc - Plugins & AI):** 🔴 Pending
 - **Phase 4 (v1.0 - Production):** 🔴 Pending
@@ -116,10 +116,10 @@ This document tracks the real-time implementation progress based on the master p
 - **Pub/Sub Reactivity**: Integración de `WeakReferenceMessenger` y `DataChangedMessage`.
 - **UI Subscribers**: Widgets (`BalanceWidgetViewModel`, `RecentTransactionsWidgetViewModel`) y Views principales se recargan silenciosamente en background al detectar cambios en los datos, permitiendo interacción en tiempo real sin recargar la aplicación.
 
-### 🔴 Pending (Pilar 4 - Cierre de Fase 1 SSoT Compliance)
-- UX de Primer Uso (First-Run): Selección de Storage Mode (Local Only / Cloud Sync) y Telemetría.
-- Settings Panel persistente: Guardar y aplicar configuración (locale, theme) desde SQLite.
-- Entidades del Dominio faltantes para Phase 1: `Category` real conectada al Rule Engine y `Attachment` (cifrado) para transacciones.
+### ✅ Implemented (Pilar 4 - Cierre de Fase 1 SSoT Compliance)
+- **First-Run UX**: Reestructuramos `SetupViewModel` y la vista con selección paso a paso: Modo de almacenamiento (Local/Cloud) y Opt-In de Telemetría (UC-01).
+- **Settings Panel persistente**: Implementamos la entidad `Setting`, `ISettingRepository`, e integramos con `SettingsViewModel` para guardar y cargar configuraciones (Tema, Idioma) desde la bóveda SQLite.
+- **Entidades de Dominio**: Completamos y verificamos la inclusión de las entidades `Category` y `Attachment` en el Core y EF Core para dar soporte a la Fase 2 (IA y Recibos).
 
 ---
 *Last updated: July 9, 2026*

@@ -35,7 +35,7 @@
                         <TextBox PasswordChar="●" 
                                  Text="{Binding MasterPassword}" 
                                  IsEnabled="{Binding !IsBusy}"
-                                 Watermark="Enter your password..."
+                                 PlaceholderText="Enter your password..."
                                  FontSize="16"
                                  Padding="12" />
                     </StackPanel>

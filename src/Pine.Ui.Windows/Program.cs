@@ -92,6 +92,7 @@ sealed class Program
         // Repositories
         services.AddTransient<IAccountRepository, SqliteAccountRepository>();
         services.AddTransient<ITransactionRepository, SqliteTransactionRepository>();
+        services.AddTransient<Pine.Core.Configuration.ISettingRepository, SqliteSettingRepository>();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

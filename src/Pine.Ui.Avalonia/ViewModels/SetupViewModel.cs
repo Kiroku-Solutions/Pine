@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Security;
 using Pine.Core.Accounts;
+using Pine.Core.Configuration;
+using Pine.Core.Settings;
 using Pine.Infrastructure.Data;
 using Pine.Infrastructure.Security;
 using Pine.Ui.Avalonia.Services;
@@ -21,10 +23,31 @@ public partial class SetupViewModel : ObservableObject
     private readonly INavigationService _navigationService;
 
     [ObservableProperty]
+    public partial int CurrentStep { get; set; } = 1;
+    
+    public bool IsStep1 => CurrentStep == 1;
+    public bool IsStep2 => CurrentStep == 2;
+
+    partial void OnCurrentStepChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsStep1));
+        OnPropertyChanged(nameof(IsStep2));
+    }
+
+    [ObservableProperty]
+    public partial bool IsLocalOnly { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsCloudSync { get; set; }
+
+    [ObservableProperty]
+    public partial bool TelemetryOptIn { get; set; }
+
+    [ObservableProperty]
     public partial string MasterPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Welcome to Pine. Enter a strong master password to encrypt your vault.";
+    public partial string StatusMessage { get; set; } = "Enter a strong master password to encrypt your vault.";
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -34,6 +57,18 @@ public partial class SetupViewModel : ObservableObject
         _serviceProvider = serviceProvider;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
+    }
+
+    [RelayCommand]
+    private void NextStep()
+    {
+        CurrentStep = 2;
+    }
+
+    [RelayCommand]
+    private void BackStep()
+    {
+        CurrentStep = 1;
     }
 
     [RelayCommand]
@@ -52,39 +87,33 @@ public partial class SetupViewModel : ObservableObject
         {
             await Task.Run(() => 
             {
-                // Generate a salt and save it next to the database
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var vaultDir = Path.Combine(appData, "Pine", "Vault");
                 if (!Directory.Exists(vaultDir)) Directory.CreateDirectory(vaultDir);
                 
                 var saltPath = Path.Combine(vaultDir, "pine.salt");
-                
                 if (File.Exists(saltPath))
-                {
                     throw new InvalidOperationException("A vault already exists. Please login instead.");
-                }
 
                 var salt = Argon2KeyDerivation.GenerateSalt();
                 File.WriteAllBytes(saltPath, salt);
 
-                // Derive key
                 var key = Argon2KeyDerivation.DeriveKey(MasterPassword, salt);
-                
-                // Unlock session
                 _vaultSession.Unlock(key);
 
-                // Now that it's unlocked, we can safely request PineDbContext and ensure created
                 var dbContext = _serviceProvider.GetRequiredService<PineDbContext>();
                 dbContext.Database.EnsureCreated();
             });
 
-            StatusMessage = "Vault initialized! Creating default account...";
+            StatusMessage = "Vault initialized! Saving settings...";
 
-            // Send CQRS Command
+            var settingRepo = _serviceProvider.GetRequiredService<ISettingRepository>();
+            await settingRepo.SaveAsync(Setting.Create("System.StorageMode", IsCloudSync ? "CloudSync" : "LocalOnly"));
+            await settingRepo.SaveAsync(Setting.Create("System.Telemetry", TelemetryOptIn.ToString()));
+
             var mediator = _serviceProvider.GetRequiredService<IMediator>();
             await mediator.Send(new CreateAccountCommand("My First Bank", "USD", AccountType.Bank, 1000m));
 
-            // Setup is complete! Transition to the Dashboard.
             _navigationService.NavigateTo<ShellViewModel>();
         }
         catch (Exception ex)

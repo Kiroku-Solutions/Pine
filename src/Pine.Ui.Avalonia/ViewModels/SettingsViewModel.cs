@@ -1,7 +1,10 @@
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Avalonia;
 using Avalonia.Styling;
+using Pine.Core.Configuration;
+using Pine.Core.Settings;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -13,28 +16,34 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int SelectedLanguageIndex { get; set; }
 
+    private readonly ISettingRepository _settingRepository;
     private bool _isInitializing = true;
 
-    public SettingsViewModel()
+    public SettingsViewModel(ISettingRepository settingRepository)
     {
-        // Read the actual current theme instead of resetting it
-        if (global::Avalonia.Application.Current != null)
-        {
-            var currentTheme = global::Avalonia.Application.Current.RequestedThemeVariant;
-            if (currentTheme == ThemeVariant.Light)
-                SelectedThemeIndex = 0;
-            else if (currentTheme == ThemeVariant.Dark)
-                SelectedThemeIndex = 1;
-            else
-                SelectedThemeIndex = 2;
-        }
-        else
-        {
-            SelectedThemeIndex = 2; // Default to System
-        }
+        _settingRepository = settingRepository;
         
-        // 0: English, 1: Spanish
-        SelectedLanguageIndex = 0;
+        // Default values
+        SelectedThemeIndex = 2; // System
+        SelectedLanguageIndex = 0; // English
+        
+        _ = LoadSettingsAsync();
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        var themeSetting = await _settingRepository.GetAsync("Appearance.Theme");
+        if (themeSetting != null && int.TryParse(themeSetting.Value, out int themeIndex))
+        {
+            SelectedThemeIndex = themeIndex;
+            ApplyTheme(themeIndex);
+        }
+
+        var langSetting = await _settingRepository.GetAsync("Appearance.Language");
+        if (langSetting != null && int.TryParse(langSetting.Value, out int langIndex))
+        {
+            SelectedLanguageIndex = langIndex;
+        }
 
         _isInitializing = false;
     }
@@ -42,6 +51,18 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSelectedThemeIndexChanged(int value)
     {
         if (_isInitializing) return;
+        ApplyTheme(value);
+        _ = SaveSettingAsync("Appearance.Theme", value.ToString());
+    }
+
+    partial void OnSelectedLanguageIndexChanged(int value)
+    {
+        if (_isInitializing) return;
+        _ = SaveSettingAsync("Appearance.Language", value.ToString());
+    }
+
+    private static void ApplyTheme(int value)
+    {
         if (global::Avalonia.Application.Current == null) return;
         
         switch(value)
@@ -56,6 +77,12 @@ public partial class SettingsViewModel : ObservableObject
                 global::Avalonia.Application.Current.RequestedThemeVariant = ThemeVariant.Default;
                 break;
         }
+    }
+
+    private async Task SaveSettingAsync(string key, string value)
+    {
+        var setting = Setting.Create(key, value);
+        await _settingRepository.SaveAsync(setting);
     }
 
 #pragma warning disable CA1822

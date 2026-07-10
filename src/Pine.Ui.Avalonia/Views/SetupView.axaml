@@ -3,40 +3,80 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.SetupView"
              x:DataType="vm:SetupViewModel">
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="40">
-        
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Center">
-            <TextBlock Text="Pine" FontSize="36" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}" />
-            <TextBlock Text="First-Run Setup" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
-        </StackPanel>
+    <Grid ColumnDefinitions="4*,6*">
+        <!-- Left Side: Branding Banner -->
+        <Border Grid.Column="0" Background="{DynamicResource PineAccentGradient}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15" Margin="40">
+                <TextBlock Text="Pine" FontSize="72" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
+                <TextBlock Text="Secure Financial Engine" FontSize="20" Foreground="White" Opacity="0.85" FontWeight="Medium" HorizontalAlignment="Center" />
+                <Border Background="#33000000" CornerRadius="12" Padding="20" Margin="0,40,0,0">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="✓ Local-First Privacy" Foreground="White" FontWeight="SemiBold"/>
+                        <TextBlock Text="✓ Military-Grade AES-256 Encryption" Foreground="White" FontWeight="SemiBold"/>
+                        <TextBlock Text="✓ On-Device AI Assistance" Foreground="White" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
 
-        <!-- Content -->
-        <StackPanel Grid.Row="1" Spacing="20" VerticalAlignment="Center" MaxWidth="400">
-            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource PineText}" />
-            
-            <TextBox PlaceholderText="Enter Master Password" 
-                     Text="{Binding MasterPassword}" 
-                     PasswordChar="●" 
-                     IsEnabled="{Binding !IsBusy}"
-                     Classes="revealPasswordButton"
-                     FontSize="16" />
-            
-            <Button Content="Initialize Vault" 
-                    Command="{Binding InitializeVaultCommand}" 
-                    IsDefault="True"
-                    IsEnabled="{Binding !IsBusy}"
-                    Classes="pine-accent"
-                    HorizontalAlignment="Stretch" 
-                    HorizontalContentAlignment="Center"
-                    FontSize="16"
-                    Padding="10"/>
+        <!-- Right Side: Interactive Setup -->
+        <Border Grid.Column="1" Background="{DynamicResource PineBackground}" Padding="60,40">
+            <Grid>
+                <!-- Step 1: Storage Mode -->
+                <StackPanel Spacing="25" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep1}">
+                    <TextBlock Text="Choose Your Storage Mode" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="Pine respects your data sovereignty. Choose how your vault will be stored." TextWrapping="Wrap" FontSize="16" Foreground="{DynamicResource PineTextMuted}" />
                     
-            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
-        </StackPanel>
+                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PinePrimary}" BorderThickness="2" BoxShadow="0 4 20 0 #10000000">
+                        <StackPanel Spacing="8">
+                            <RadioButton Content="Local Only (Recommended)" GroupName="StorageMode" IsChecked="{Binding IsLocalOnly}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Your data never leaves this device. Max privacy." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" Opacity="0.6">
+                        <StackPanel Spacing="8">
+                            <RadioButton Content="Local + Cloud Sync (Coming Soon)" GroupName="StorageMode" IsChecked="{Binding IsCloudSync}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" IsEnabled="False" />
+                            <TextBlock Text="Sync to your own cloud provider via plugin." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <CheckBox Content="Help improve Pine by sending anonymous usage telemetry" IsChecked="{Binding TelemetryOptIn}" Foreground="{DynamicResource PineTextMuted}" Margin="0,15,0,0" />
+                    
+                    <Button Content="Continue to Security" Command="{Binding NextStepCommand}" Classes="pine-accent" HorizontalAlignment="Right" HorizontalContentAlignment="Center" FontSize="16" Padding="25,12" Margin="0,20,0,0"/>
+                </StackPanel>
+
+                <!-- Step 2: Master Password -->
+                <StackPanel Spacing="25" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep2}">
+                    <TextBlock Text="Secure Your Vault" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="Your vault will be encrypted using Argon2id and AES-256-GCM. Do not forget this password, there is no recovery mechanism." TextWrapping="Wrap" FontSize="16" Foreground="{DynamicResource PineTextMuted}" />
+                    
+                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" BoxShadow="0 4 20 0 #10000000">
+                        <StackPanel Spacing="15">
+                            <TextBlock Text="Master Password" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                            <TextBox PlaceholderText="Enter a strong password" 
+                                     Text="{Binding MasterPassword}" 
+                                     PasswordChar="●" 
+                                     IsEnabled="{Binding !IsBusy}"
+                                     Classes="revealPasswordButton"
+                                     FontSize="16"
+                                     Padding="15" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource PinePrimary}" FontWeight="Medium" />
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" Foreground="{DynamicResource PinePrimary}" />
+                    
+                    <Grid ColumnDefinitions="*,20,Auto" Margin="0,20,0,0">
+                        <Button Grid.Column="0" Content="Back" Command="{Binding BackStepCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="16" Padding="15" Background="{DynamicResource PineSurfaceHover}" Foreground="{DynamicResource PineText}" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}" CornerRadius="10"/>
+                        <Button Grid.Column="2" Content="Initialize &amp; Create Vault" Command="{Binding InitializeVaultCommand}" IsDefault="True" IsEnabled="{Binding !IsBusy}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="16" Padding="25,15"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>
