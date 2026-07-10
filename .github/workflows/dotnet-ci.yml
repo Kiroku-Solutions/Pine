@@ -1,0 +1,37 @@
+name: .NET Core CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore Workloads
+      run: dotnet workload restore
+
+    - name: Restore dependencies
+      run: dotnet restore Pine.slnx
+
+    - name: Build Solution
+      run: dotnet build Pine.slnx --configuration Release --no-restore
+
+    - name: Run Tests
+      run: |
+        dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-build --verbosity normal
+        dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-build --verbosity normal
+        dotnet test tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj --configuration Release --no-build --verbosity normal
+        dotnet test tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj --configuration Release --no-build --verbosity normal
+        dotnet test tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj --configuration Release --no-build --verbosity normal
