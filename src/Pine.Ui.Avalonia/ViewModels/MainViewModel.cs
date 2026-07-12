@@ -18,19 +18,17 @@ public partial class MainViewModel : ObservableObject, INavigationService
         _serviceProvider = serviceProvider;
     }
 
-    public void Initialize()
+    public async void Initialize()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var saltPath = Path.Combine(appData, "Pine", "Vault", "pine.salt");
+        var vaultManager = _serviceProvider.GetRequiredService<Pine.Application.Security.VaultManager>();
+        var vaults = await vaultManager.GetVaultsAsync();
 
-        if (System.IO.File.Exists(saltPath))
+        if (vaults.Count > 0)
         {
-            // Vault exists, user needs to unlock it
-            NavigateTo<UnlockViewModel>();
+            NavigateTo<VaultSelectionViewModel>();
         }
         else
         {
-            // First run, setup vault
             NavigateTo<SetupViewModel>();
         }
     }
@@ -38,5 +36,12 @@ public partial class MainViewModel : ObservableObject, INavigationService
     public void NavigateTo<TViewModel>() where TViewModel : ObservableObject
     {
         CurrentPage = _serviceProvider.GetRequiredService<TViewModel>();
+    }
+
+    public void NavigateTo<TViewModel>(Action<TViewModel> initialize) where TViewModel : ObservableObject
+    {
+        var vm = _serviceProvider.GetRequiredService<TViewModel>();
+        initialize?.Invoke(vm);
+        CurrentPage = vm;
     }
 }

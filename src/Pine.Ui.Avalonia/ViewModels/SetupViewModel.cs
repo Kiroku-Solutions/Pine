@@ -44,6 +44,9 @@ public partial class SetupViewModel : ObservableObject
     public partial bool TelemetryOptIn { get; set; }
 
     [ObservableProperty]
+    public partial string VaultName { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial string MasterPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -80,26 +83,34 @@ public partial class SetupViewModel : ObservableObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(VaultName))
+        {
+            StatusMessage = "Vault name cannot be empty.";
+            return;
+        }
+
         IsBusy = true;
         StatusMessage = "Encrypting vault... (this takes a moment)";
 
         try
         {
+            var vaultManager = _serviceProvider.GetRequiredService<VaultManager>();
+            var profile = await vaultManager.CreateVaultAsync(VaultName);
+            
             await Task.Run(() => 
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var vaultDir = Path.Combine(appData, "Pine", "Vault");
+                var vaultDir = profile.Path;
                 if (!Directory.Exists(vaultDir)) Directory.CreateDirectory(vaultDir);
                 
                 var saltPath = Path.Combine(vaultDir, "pine.salt");
                 if (File.Exists(saltPath))
-                    throw new InvalidOperationException("A vault already exists. Please login instead.");
+                    throw new InvalidOperationException("A vault already exists at this path.");
 
                 var salt = Argon2KeyDerivation.GenerateSalt();
                 File.WriteAllBytes(saltPath, salt);
 
                 var key = Argon2KeyDerivation.DeriveKey(MasterPassword, salt);
-                _vaultSession.Unlock(key);
+                _vaultSession.Unlock(vaultDir, key);
 
                 var dbContext = _serviceProvider.GetRequiredService<PineDbContext>();
                 dbContext.Database.EnsureCreated();

@@ -18,21 +18,25 @@ internal sealed partial class Program
         // Security Session
         services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
 
+        // Vault Manager
+        services.AddSingleton<Pine.Application.Security.VaultManager>();
+
         // For Browser (WebAssembly), SQLite might not have native binaries available out-of-the-box,
         // so we use an InMemory database for demonstration purposes.
         services.AddScoped<Pine.Infrastructure.Data.PineDbContext>(sp => 
         {
             var session = sp.GetRequiredService<Pine.Application.Security.IVaultSession>();
-            if (!session.IsUnlocked)
+            if (!session.IsUnlocked || string.IsNullOrEmpty(session.DbPath))
                 throw new System.InvalidOperationException("Cannot access database: Vault is locked.");
             
-            // In-memory fallback
+            // In-memory fallback but could use EF Core IndexedDB provider in future
             return new Pine.Infrastructure.Data.PineDbContext(":memory:", session.Key!);
         });
         
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Pine.Application.DependencyInjection).Assembly));
         services.AddSingleton<Pine.Ui.Avalonia.ViewModels.MainViewModel>();
         services.AddSingleton<Pine.Ui.Avalonia.ViewModels.ShellViewModel>();
+        services.AddTransient<Pine.Ui.Avalonia.ViewModels.VaultSelectionViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.SetupViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.DashboardViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.TransactionsViewModel>();

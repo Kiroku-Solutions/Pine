@@ -194,7 +194,7 @@ public partial class ImportWizardViewModel : ObservableObject
             var importer = new CsvImporter(_timeProvider);
             using var stream = File.OpenRead(SelectedFilePath);
             
-            var transactions = await importer.ImportAsync(SelectedAccount.Id, stream, profile);
+            var transactions = await importer.ImportAsync(SelectedAccount, stream, profile);
 
             foreach (var tx in transactions.Take(50)) // Preview up to 50
             {

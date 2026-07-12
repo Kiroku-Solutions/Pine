@@ -22,22 +22,24 @@ namespace Pine.Ui.Android
             // Security Session
             services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
 
-            var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-            var dbPath = System.IO.Path.Combine(appData, "pine.db");
+            // Vault Manager
+            services.AddSingleton<Pine.Application.Security.VaultManager>();
 
             // Register DbContext
             services.AddScoped<Pine.Infrastructure.Data.PineDbContext>(sp => 
             {
                 var session = sp.GetRequiredService<Pine.Application.Security.IVaultSession>();
-                if (!session.IsUnlocked)
+                if (!session.IsUnlocked || string.IsNullOrEmpty(session.DbPath))
                     throw new System.InvalidOperationException("Cannot access database: Vault is locked.");
                 
-                return new Pine.Infrastructure.Data.PineDbContext(dbPath, session.Key!);
+                var dbFilePath = System.IO.Path.Combine(session.DbPath, "pine.db");
+                return new Pine.Infrastructure.Data.PineDbContext(dbFilePath, session.Key!);
             });
             
             services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Pine.Application.DependencyInjection).Assembly));
             services.AddSingleton<Pine.Ui.Avalonia.ViewModels.MainViewModel>();
             services.AddSingleton<Pine.Ui.Avalonia.ViewModels.ShellViewModel>();
+            services.AddTransient<Pine.Ui.Avalonia.ViewModels.VaultSelectionViewModel>();
             services.AddTransient<Pine.Ui.Avalonia.ViewModels.SetupViewModel>();
             services.AddTransient<Pine.Ui.Avalonia.ViewModels.DashboardViewModel>();
             services.AddTransient<Pine.Ui.Avalonia.ViewModels.TransactionsViewModel>();

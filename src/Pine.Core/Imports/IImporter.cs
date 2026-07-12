@@ -14,5 +14,5 @@ public interface IImporter
     /// <summary>
     /// Parses a file stream into a list of transactions based on the provided profile.
     /// </summary>
-    Task<IReadOnlyList<Transaction>> ImportAsync(Guid targetAccountId, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Transaction>> ImportAsync(Pine.Core.Accounts.Account targetAccount, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default);
 }

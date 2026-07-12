@@ -7,6 +7,9 @@ using Pine.Core.Tags;
 using Pine.Core.Attachments;
 using Pine.Core.Rules;
 using Pine.Core.Settings;
+using Pine.Core.Importing;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace Pine.Infrastructure.Data;
 
@@ -25,6 +28,7 @@ public sealed class PineDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<Setting> Settings => Set<Setting>();
+    public DbSet<ImportProfile> ImportProfiles => Set<ImportProfile>();
 
     public PineDbContext(string databasePath, byte[] encryptionKey)
     {
@@ -127,6 +131,16 @@ public sealed class PineDbContext : DbContext
             e.Property(s => s.Key).IsRequired();
             e.Property(s => s.Value).IsRequired();
             e.HasIndex(s => s.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<ImportProfile>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.Property(p => p.Name).IsRequired();
+            e.Property(p => p.ColumnMappings)
+             .HasConversion(
+                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                 v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, string>());
         });
     }
 }

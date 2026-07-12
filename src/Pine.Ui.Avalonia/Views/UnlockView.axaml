@@ -16,7 +16,7 @@
             <!-- Logo / Brand Header -->
             <StackPanel Spacing="10" HorizontalAlignment="Center">
                 <TextBlock Text="Pine" FontSize="48" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="Local Vault is Locked" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding VaultName}" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
             </StackPanel>
 
             <!-- Unlock Card -->

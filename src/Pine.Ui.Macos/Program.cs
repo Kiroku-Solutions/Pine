@@ -50,6 +50,7 @@ sealed class Program
         services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<MainViewModel>());
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<ShellViewModel>();
+        services.AddTransient<Pine.Ui.Avalonia.ViewModels.VaultSelectionViewModel>();
         services.AddTransient<SetupViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
@@ -67,20 +68,18 @@ sealed class Program
         // Security Session
         services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
 
-        // Database path setup
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var dbFolder = Path.Combine(appData, "Pine", "Vault");
-        Directory.CreateDirectory(dbFolder);
-        var dbPath = Path.Combine(dbFolder, "pine.db");
+        // Vault Manager
+        services.AddSingleton<Pine.Application.Security.VaultManager>();
 
-        // Register DbContext to use the Key from IVaultSession
+        // Register DbContext to use the Key and Path from IVaultSession
         services.AddScoped<PineDbContext>(sp => 
         {
             var session = sp.GetRequiredService<Pine.Application.Security.IVaultSession>();
-            if (!session.IsUnlocked)
+            if (!session.IsUnlocked || string.IsNullOrEmpty(session.DbPath))
                 throw new InvalidOperationException("Cannot access database: Vault is locked.");
             
-            return new PineDbContext(dbPath, session.Key!);
+            var dbFilePath = System.IO.Path.Combine(session.DbPath, "pine.db");
+            return new PineDbContext(dbFilePath, session.Key!);
         });
 
         // Repositories

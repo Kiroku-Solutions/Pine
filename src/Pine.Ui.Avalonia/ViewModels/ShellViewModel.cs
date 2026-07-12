@@ -25,6 +25,20 @@ public partial class ShellViewModel : ObservableObject, INavigationService
     {
         CurrentPage = _serviceProvider.GetRequiredService<TViewModel>();
         
+        UpdateActiveStates<TViewModel>();
+    }
+
+    public void NavigateTo<TViewModel>(Action<TViewModel> initialize) where TViewModel : ObservableObject
+    {
+        var vm = _serviceProvider.GetRequiredService<TViewModel>();
+        initialize?.Invoke(vm);
+        CurrentPage = vm;
+        
+        UpdateActiveStates<TViewModel>();
+    }
+
+    private void UpdateActiveStates<TViewModel>()
+    {
         IsDashboardActive = typeof(TViewModel) == typeof(DashboardViewModel);
         IsTransactionsActive = typeof(TViewModel) == typeof(TransactionsViewModel);
         IsDiagnosticsActive = typeof(TViewModel) == typeof(DiagnosticsViewModel);

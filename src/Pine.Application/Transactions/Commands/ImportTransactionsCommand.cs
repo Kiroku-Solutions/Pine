@@ -38,7 +38,7 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
             throw new ArgumentException("Target account not found.");
 
         // 2. Parse transactions from file
-        var transactions = await request.Importer.ImportAsync(request.TargetAccountId, request.FileStream, request.Profile, cancellationToken);
+        var transactions = await request.Importer.ImportAsync(account, request.FileStream, request.Profile, cancellationToken);
         
         // 3. Save each transaction and update account balance
         // Note: For large imports, a bulk insert or unit of work would be more efficient, 

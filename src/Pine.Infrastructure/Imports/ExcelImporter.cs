@@ -20,7 +20,7 @@ public sealed class ExcelImporter : IImporter
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
     }
 
-    public Task<IReadOnlyList<Transaction>> ImportAsync(Guid targetAccountId, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Transaction>> ImportAsync(Pine.Core.Accounts.Account targetAccount, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
     {
         var transactions = new List<Transaction>();
 

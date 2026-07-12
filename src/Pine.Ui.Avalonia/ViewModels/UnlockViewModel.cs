@@ -17,8 +17,13 @@ public partial class UnlockViewModel : ObservableObject
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
 
+    private VaultProfile? _profile;
+
     [ObservableProperty]
     public partial string MasterPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string VaultName { get; set; } = "Unlock Vault";
 
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = string.Empty;
@@ -33,6 +38,12 @@ public partial class UnlockViewModel : ObservableObject
         _navigationService = navigationService;
     }
 
+    public void Initialize(VaultProfile profile)
+    {
+        _profile = profile;
+        VaultName = $"Unlock {profile.Name}";
+    }
+
     [RelayCommand]
     private async Task UnlockVaultAsync()
     {
@@ -45,12 +56,17 @@ public partial class UnlockViewModel : ObservableObject
         IsBusy = true;
         StatusMessage = "Decrypting vault...";
 
+        if (_profile == null)
+        {
+            StatusMessage = "No vault profile selected.";
+            return;
+        }
+
         try
         {
             await Task.Run(() =>
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var vaultDir = Path.Combine(appData, "Pine", "Vault");
+                var vaultDir = _profile.Path;
                 var saltPath = Path.Combine(vaultDir, "pine.salt");
 
                 if (!File.Exists(saltPath))
@@ -64,7 +80,7 @@ public partial class UnlockViewModel : ObservableObject
                 var key = Argon2KeyDerivation.DeriveKey(MasterPassword, salt);
 
                 // Unlock session
-                _vaultSession.Unlock(key);
+                _vaultSession.Unlock(vaultDir, key);
 
                 // Verify db access to ensure password was correct
                 var dbContext = _serviceProvider.GetRequiredService<PineDbContext>();

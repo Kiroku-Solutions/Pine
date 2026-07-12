@@ -5,4 +5,5 @@ namespace Pine.Ui.Avalonia.Services;
 public interface INavigationService
 {
     void NavigateTo<TViewModel>() where TViewModel : ObservableObject;
+    void NavigateTo<TViewModel>(System.Action<TViewModel> initialize) where TViewModel : ObservableObject;
 }

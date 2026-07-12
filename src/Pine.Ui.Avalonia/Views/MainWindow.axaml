@@ -23,6 +23,9 @@
         <DataTemplate DataType="{x:Type vm:UnlockViewModel}">
             <views:UnlockView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:VaultSelectionViewModel}">
+            <views:VaultSelectionView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ShellViewModel}">
             <views:ShellView />
         </DataTemplate>

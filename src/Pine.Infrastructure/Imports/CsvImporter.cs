@@ -22,7 +22,7 @@ public sealed class CsvImporter : IImporter
         _timeProvider = timeProvider;
     }
 
-    public async Task<IReadOnlyList<Transaction>> ImportAsync(Guid targetAccountId, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Transaction>> ImportAsync(Pine.Core.Accounts.Account targetAccount, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
     {
         var transactions = new List<Transaction>();
 
@@ -104,12 +104,10 @@ public sealed class CsvImporter : IImporter
                 continue; // Skip invalid or empty row
             }
 
-            // Currently assuming USD for all imports. 
-            // In a fully featured version, we'd retrieve the Account's currency from the DB.
-            var currency = new CurrencyCode("USD");
+            var currency = targetAccount.Balance.Currency;
             var amount = new Money(rawAmount, currency);
 
-            var transaction = Transaction.Create(targetAccountId, date, payee, amount, _timeProvider, notes);
+            var transaction = Transaction.Create(targetAccount.Id, date, payee, amount, _timeProvider, notes);
 
             // Optional: Set category. For now, since Transaction domain entity doesn't have a mutable category,
             // we'd either add a single split or handle it in the application layer.
