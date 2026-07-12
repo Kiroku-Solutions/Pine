@@ -28,6 +28,8 @@ public partial class ShellViewModel : ObservableObject, INavigationService
         IsDashboardActive = typeof(TViewModel) == typeof(DashboardViewModel);
         IsTransactionsActive = typeof(TViewModel) == typeof(TransactionsViewModel);
         IsDiagnosticsActive = typeof(TViewModel) == typeof(DiagnosticsViewModel);
+        IsScanReceiptActive = typeof(TViewModel) == typeof(ScanReceiptViewModel);
+        IsLiveScannerActive = typeof(TViewModel) == typeof(LiveScannerViewModel);
         IsSettingsActive = typeof(TViewModel) == typeof(SettingsViewModel);
     }
 
@@ -39,6 +41,12 @@ public partial class ShellViewModel : ObservableObject, INavigationService
 
     [ObservableProperty]
     public partial bool IsDiagnosticsActive { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsScanReceiptActive { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLiveScannerActive { get; set; }
 
     [ObservableProperty]
     public partial bool IsSettingsActive { get; set; }
@@ -65,5 +73,17 @@ public partial class ShellViewModel : ObservableObject, INavigationService
     private void NavigateToDiagnostics()
     {
         NavigateTo<DiagnosticsViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToScanReceipt()
+    {
+        NavigateTo<ScanReceiptViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToLiveScanner()
+    {
+        NavigateTo<LiveScannerViewModel>();
     }
 }

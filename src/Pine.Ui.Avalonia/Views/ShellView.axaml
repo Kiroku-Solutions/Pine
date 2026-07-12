@@ -26,6 +26,10 @@
                             Classes="pine-nav" Classes.active="{Binding IsDashboardActive}" />
                     <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}" 
                             Classes="pine-nav" Classes.active="{Binding IsTransactionsActive}" />
+                    <Button Content="Scan Receipt" Command="{Binding NavigateToScanReceiptCommand}" 
+                            Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
+                    <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}" 
+                            Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
                     <Button Content="Budgets" Classes="pine-nav" />
                     <Button Content="Rules" Classes="pine-nav" />
                     

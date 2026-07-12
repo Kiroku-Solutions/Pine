@@ -3,22 +3,88 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Importing"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.Importing.ImportWizardView"
              x:DataType="vm:ImportWizardViewModel">
     
     <Border Classes="card" Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="24" BoxShadow="0 10 30 0 #40000000">
         <Grid RowDefinitions="Auto, *, Auto">
-            <TextBlock Grid.Row="0" Text="Import Wizard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,0,0,20"/>
             
-            <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="{Binding WizardStep}" FontSize="18" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
-                <Button Content="Select File..." Click="SelectFile_Click" Classes="pine-accent" Padding="15,10" CornerRadius="8" />
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                <TextBlock Text="Import Wizard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="{DynamicResource PineAccent}" Margin="0,5,0,0" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            
+            <!-- Step 0: Select File & Account -->
+            <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        IsVisible="{Binding IsStep0}">
+                
+                <TextBlock Text="1. Choose Destination Account" FontSize="16" Foreground="{DynamicResource PineText}" />
+                <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" Width="300" DisplayMemberBinding="{Binding Name}" />
+                
+                <TextBlock Text="2. Choose CSV File" FontSize="16" Foreground="{DynamicResource PineText}" Margin="0,20,0,0"/>
+                <Button Content="Select File..." Click="SelectFile_Click" Classes="pine-accent" Padding="15,10" CornerRadius="8" Width="300" HorizontalContentAlignment="Center"/>
+                <TextBlock Text="{Binding SelectedFileName}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
             </StackPanel>
 
+            <!-- Step 1: Mapping -->
+            <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        IsVisible="{Binding IsStep1}">
+                
+                <TextBlock Text="Map CSV Columns" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="We tried to guess the correct columns. Please verify." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,10"/>
+                
+                <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Date:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding DateColumn}" Margin="0,5" Width="200"/>
+                    
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Payee:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding PayeeColumn}" Margin="0,5" Width="200"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Amount:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding AmountColumn}" Margin="0,5" Width="200"/>
+                    
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Category (Opt):" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding CategoryColumn}" Margin="0,5" Width="200"/>
+                    
+                    <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Content="File has header row" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
+                    <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Content="Invert amounts (e.g. expenses are positive in CSV)" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- Step 2: Preview -->
+            <Grid Grid.Row="1" RowDefinitions="Auto,*" 
+                  IsVisible="{Binding IsStep2}">
+                
+                <TextBlock Grid.Row="0" Text="Preview Transactions" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,0,0,15" />
+                
+                <DataGrid Grid.Row="1" ItemsSource="{Binding PreviewTransactions}" AutoGenerateColumns="False" 
+                          IsReadOnly="True" Background="Transparent" Foreground="{DynamicResource PineText}"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}" />
+                        <DataGridTextColumn Header="Payee" Binding="{Binding Payee}" Width="*"/>
+                        <DataGridTextColumn Header="Amount" Binding="{Binding TotalAmount}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <!-- Footer Buttons -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
-                <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" />
-                <Button Content="Finish" Classes="pine-accent" Padding="15,8" CornerRadius="8" IsEnabled="False" />
+                <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" IsEnabled="{Binding !IsExecuting}"/>
+                
+                <Button Content="Back" Command="{Binding PreviousStepCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" 
+                        IsVisible="{Binding !IsStep0}"
+                        IsEnabled="{Binding !IsExecuting}"/>
+                
+                <Button Content="Next" Command="{Binding NextStepCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8" 
+                        IsVisible="{Binding !IsStep2}"
+                        IsEnabled="{Binding !IsExecuting}"/>
+
+                <Button Content="Import" Command="{Binding ExecuteImportCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8" 
+                        IsVisible="{Binding IsStep2}"
+                        IsEnabled="{Binding !IsExecuting}"/>
             </StackPanel>
         </Grid>
     </Border>

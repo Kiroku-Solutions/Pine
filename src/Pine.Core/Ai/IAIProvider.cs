@@ -24,6 +24,17 @@ public record CategorisationResult(
 );
 
 /// <summary>
+/// Result of analyzing and optionally cropping a receipt.
+/// </summary>
+public record ReceiptAnalysisResult(
+    float Confidence,
+    bool PassedFilters,
+    string? StatusMessage,
+    Stream? CroppedImageStream,
+    Stream? OcrImageStream = null
+);
+
+/// <summary>
 /// Port for the AI Subsystem defining the receipt scanning pipeline and categorisation.
 /// To be implemented via Microsoft.ML.OnnxRuntime.
 /// </summary>
@@ -33,6 +44,12 @@ public interface IAIProvider
     /// Detects if an image contains a receipt.
     /// </summary>
     Task<bool> DetectReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default);
+    Task<float> DetectReceiptConfidenceAsync(Stream imageStream, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Analyzes the receipt for geometry filters and returns the cropped image if valid.
+    /// </summary>
+    Task<ReceiptAnalysisResult> AnalyzeAndCropReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Extracts structured data from a receipt image (runs OCR, Layout, and Field Extraction).

@@ -76,9 +76,23 @@ This document tracks the real-time implementation progress based on the master p
 
 ## Phase 2 Detail (Imports & AI Baseline)
 
-### 🏃 In Progress (Current Working State)
-- **Imports Engine**: Creación de la arquitectura de importación (`CsvImporter`, `ImportTransactionsCommand`) y vistas relacionadas en UI.
-- **AI Receipts Pipeline**: Bases para el escaneo de recibos y procesamiento on-device (Core y e Infraestructura para `Ai`, `ScanReceiptCommand`).
+### ✅ Implemented (AI Baseline Engine)
+- **On-Device OCR**: Integrated PaddleOCR via ONNX Runtime (`PaddleOcrEngine`) for DBNet and CRNN models.
+- **Receipt Detection**: YOLOv8-nano integration via ONNX Runtime (`ReceiptDetector`) with fast tensor extraction.
+- **Layout & Field Extraction**: Spatial heuristic grouping (Y-axis logic) and advanced `[GeneratedRegex]` for multi-currency amounts and dates (`HeuristicFieldExtractor`).
+- **Categorisation**: Fully offline, deterministic ML.NET pipeline using `SdcaMaximumEntropy` (`MlNetCategorizer`).
+- **Orchestration**: Wired up all components under `DefaultLocalAiProvider` respecting the `IAIProvider` interface in `Pine.Core`.
+
+### ✅ Implemented (Receipt Scanning & Vision Enhancements)
+- **Live Camera Scanner**: Implemented Avalonia UI for real-time camera feed capture (`LiveScannerViewModel`) with camera selection via COM DirectShow.
+- **YOLOv8 Segmentation**: Added custom ONNX tensor multiplication and `Cv2.ApproxPolyDP` for perfect quadrilateral receipt extraction.
+- **Image Enhancement Pipeline**:
+  - UI Stream: Applies `Cv2.Filter2D` Sharpening kernel for a crisp, vibrant visual feedback.
+  - OCR Stream: Applies `Cv2.GaussianBlur` and `Cv2.AdaptiveThreshold` for perfect B&W Binarization (CamScanner style) maximizing OCR accuracy.
+- **Memory Safety**: Solved high-frequency GC race conditions in Avalonia's `WriteableBitmap` via explicit unmanaged heap `.Lock()` deep copying.
+
+### 🏃 In Progress (Imports Engine)
+- **Imports Engine**: CsvImporter logic and Avalonia Import Wizard UX (column-mapping preview, dedupe).
 
 ---
-*Last updated: July 10, 2026*
+*Last updated: July 12, 2026*

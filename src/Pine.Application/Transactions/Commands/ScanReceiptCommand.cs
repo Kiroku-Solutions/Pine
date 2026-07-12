@@ -28,6 +28,9 @@ public sealed class ScanReceiptCommandHandler : IRequestHandler<ScanReceiptComma
             throw new InvalidOperationException("The provided image does not appear to be a receipt.");
         }
 
+        // Reset stream position before passing it to the OCR
+        request.ImageStream.Position = 0;
+
         // 2. Extract Data (OCR -> Layout -> Fields)
         var result = await _aiProvider.ExtractReceiptDataAsync(request.ImageStream, cancellationToken);
         

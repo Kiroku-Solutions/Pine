@@ -11,8 +11,14 @@ public sealed class ImportProfile : Entity
 {
     public string Name { get; private set; }
     
-    // Additional mapping properties will go here (e.g. column mappings, date formats)
-    // For now, this is a skeleton for the Phase 2 foundation.
+    public string DateFormat { get; private set; } = "yyyy-MM-dd";
+    public char Delimiter { get; private set; } = ',';
+    public bool HasHeaderRecord { get; private set; } = true;
+    public bool InvertAmounts { get; private set; }
+
+    // Keys will be domain fields (e.g., "Date", "Payee", "Amount", "Category", "Notes")
+    // Values will be CSV header names or indices.
+    public Dictionary<string, string> ColumnMappings { get; private set; } = new();
     
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -35,5 +41,15 @@ public sealed class ImportProfile : Entity
             throw new ArgumentException("Import profile name cannot be empty", nameof(name));
         
         return new ImportProfile(Guid.NewGuid(), name, timeProvider);
+    }
+
+    public void UpdateSettings(string dateFormat, char delimiter, bool hasHeader, bool invertAmounts, Dictionary<string, string> mappings, TimeProvider timeProvider)
+    {
+        DateFormat = dateFormat;
+        Delimiter = delimiter;
+        HasHeaderRecord = hasHeader;
+        InvertAmounts = invertAmounts;
+        ColumnMappings = mappings ?? new();
+        UpdatedAt = timeProvider.GetUtcNow();
     }
 }

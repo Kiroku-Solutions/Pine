@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="Pine.Ui.Avalonia.Views.ScanReceiptView"
+             x:DataType="vm:ScanReceiptViewModel">
+
+    <Border CornerRadius="12"
+            MaxWidth="850" MaxHeight="650"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="{DynamicResource PineSurface}"
+            BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" 
+            Padding="30"
+            BoxShadow="0 8 24 0 #20000000">
+        
+        <Grid ColumnDefinitions="*, 30, 400">
+            <!-- Left Side: Image Preview & Actions -->
+            <StackPanel Grid.Column="0" Spacing="15">
+                <TextBlock Text="Receipt Scanner" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="Upload a photo or document to automatically extract transaction details." 
+                           TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+                
+                <Border CornerRadius="8" Background="#10000000" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                        Height="400" VerticalAlignment="Stretch" ClipToBounds="True">
+                    <Grid>
+                        <!-- Empty State -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" 
+                                    IsVisible="{Binding ReceiptImage, Converter={x:Static ObjectConverters.IsNull}}">
+                            <PathIcon Data="{StaticResource image_regular}" Width="48" Height="48" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="No Image Selected" Foreground="{DynamicResource PineTextMuted}" />
+                        </StackPanel>
+                        
+                        <!-- Image Preview -->
+                        <Image Source="{Binding ReceiptImage}" Stretch="Uniform" />
+                    </Grid>
+                </Border>
+                
+                <Grid ColumnDefinitions="*, 10, *">
+                    <Button Grid.Column="0" Content="Select Image..." x:Name="SelectImageButton" Click="OnSelectImageClicked"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                    <Button Grid.Column="2" Content="Retake Photo" Command="{Binding RetakeCommand}" 
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                </Grid>
+            </StackPanel>
+
+            <!-- Right Side: Extracted Fields -->
+            <StackPanel Grid.Column="2" Spacing="15" VerticalAlignment="Center">
+                <TextBlock Text="Extracted Details" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
+
+                <StackPanel Spacing="5">
+                    <TextBlock Text="Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                    <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Text="Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                    <TextBox Text="{Binding Merchant}" PlaceholderText="Extracted merchant..." IsEnabled="{Binding !IsBusy}" />
+                </StackPanel>
+                
+                <Grid ColumnDefinitions="*, 10, *">
+                    <StackPanel Grid.Column="0" Spacing="5">
+                        <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                        <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="2" Spacing="5">
+                        <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                        <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                    <TextBox Text="{Binding Category}" PlaceholderText="Optional category..." IsEnabled="{Binding !IsBusy}" />
+                </StackPanel>
+
+                <!-- Confidence Badge -->
+                <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding ConfidenceScore, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="AI Confidence:" Foreground="{DynamicResource PineTextMuted}" FontSize="12" />
+                    <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P1}}" FontSize="12" FontWeight="SemiBold">
+                        <!-- We could add triggers here for colors, but keeping it simple -->
+                    </TextBlock>
+                </StackPanel>
+
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
+
+                <Grid ColumnDefinitions="*, 10, *" Margin="0,20,0,0">
+                    <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                    <Button Grid.Column="2" Content="Save Transaction" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

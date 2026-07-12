@@ -18,7 +18,7 @@ public sealed class PdfImporter : IImporter
         _timeProvider = timeProvider;
     }
 
-    public Task<IReadOnlyList<Transaction>> ImportAsync(Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Transaction>> ImportAsync(Guid targetAccountId, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
     {
         var transactions = new List<Transaction>();
 

@@ -19,5 +19,10 @@
     <ProjectReference Include="..\Pine.Application\Pine.Application.csproj" />
     <ProjectReference Include="..\Pine.Core\Pine.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\Ai\*.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
 </Project>

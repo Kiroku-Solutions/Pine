@@ -82,7 +82,7 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
     [RelayCommand]
     private void ShowImportWizard()
     {
-        ImportWizardVm = new Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel(() => 
+        ImportWizardVm = new Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel(_mediator, TimeProvider.System, () => 
         {
             IsImportWizardVisible = false;
             ImportWizardVm = null;

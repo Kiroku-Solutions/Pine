@@ -10,6 +10,8 @@ using Pine.Core.Transactions;
 using Pine.Ui.Avalonia;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Services;
+using Pine.Core.Ai;
+using Pine.Infrastructure.Ai;
 
 namespace Pine.Ui.Windows;
 
@@ -60,6 +62,11 @@ sealed class Program
         services.AddTransient<AddTransactionViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
+        services.AddTransient<ScanReceiptViewModel>();
+        services.AddTransient<LiveScannerViewModel>();
+
+        // AI Subsystem
+        services.AddSingleton<IAIProvider, DefaultLocalAiProvider>();
 
         // Logging
         services.AddLogging(builder => builder.AddConsole());
