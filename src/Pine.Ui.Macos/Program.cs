@@ -85,6 +85,9 @@ sealed class Program
         // Repositories
         services.AddScoped<IAccountRepository, SqliteAccountRepository>();
         services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
+        services.AddScoped<Pine.Core.Categories.ICategoryRepository, SqliteCategoryRepository>();
+        services.AddScoped<Pine.Core.Budgets.IBudgetRepository, SqliteBudgetRepository>();
+        services.AddScoped<Pine.Core.Configuration.ISettingRepository, SqliteSettingRepository>();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

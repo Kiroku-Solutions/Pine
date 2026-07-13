@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.BudgetsView"
+             x:DataType="vm:BudgetsViewModel">
+
+    <Design.DataContext>
+        <vm:BudgetsViewModel/>
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*">
+        
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Budgets" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <TextBlock Text="Keep your spending in check" FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+
+        <!-- Loading state -->
+        <ProgressBar Grid.Row="1" IsIndeterminate="True" 
+                     IsVisible="{Binding IsLoading}" 
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <ScrollViewer Grid.Row="1" IsVisible="{Binding !IsLoading}">
+            <ItemsControl ItemsSource="{Binding Budgets}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BudgetProgressViewModel">
+                        <Border Background="{DynamicResource SurfaceBrush}" 
+                                CornerRadius="12" 
+                                Padding="16" 
+                                Margin="0,0,0,12"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1">
+                            
+                            <!-- Over budget warning visual state -->
+                            <Border.Styles>
+                                <Style Selector="Border.exceeded">
+                                    <Setter Property="BorderBrush" Value="#FF4C4C"/> <!-- Red Warning Border -->
+                                    <Setter Property="Background" Value="#1AFFF4C4C"/> <!-- Light Red Tint -->
+                                </Style>
+                            </Border.Styles>
+                            
+                            <Classes.exceeded>
+                                <Binding Path="IsExceeded"/>
+                            </Classes.exceeded>
+
+                            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+                                
+                                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                    <Ellipse Width="16" Height="16" Fill="{Binding CategoryColorHex}"/>
+                                    <TextBlock Text="{Binding CategoryName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="{Binding SpentAmount, StringFormat='{}{0:N2}'}" FontWeight="Bold"/>
+                                    <TextBlock Text="of" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding LimitAmount, StringFormat='{}{0:N2}'}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding CurrencyCode}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </StackPanel>
+
+                                <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
+                                             Margin="0,12,0,4"
+                                             Value="{Binding ProgressPercentage}" 
+                                             Maximum="100" 
+                                             Height="8"
+                                             CornerRadius="4">
+                                    <ProgressBar.Styles>
+                                        <Style Selector="ProgressBar.overBudget:not(:indeterminate)">
+                                            <Setter Property="Foreground" Value="#FF4C4C"/>
+                                        </Style>
+                                    </ProgressBar.Styles>
+                                    <Classes.overBudget>
+                                        <Binding Path="IsExceeded"/>
+                                    </Classes.overBudget>
+                                </ProgressBar>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                           Text="⚠️ Has superado tu límite mensual para esta categoría. Esto reduce tu balance real disponible."
+                                           Foreground="#FF4C4C"
+                                           FontSize="12"
+                                           Margin="0,4,0,0"
+                                           IsVisible="{Binding IsExceeded}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -40,11 +40,15 @@ internal sealed partial class Program
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.SetupViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.DashboardViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.TransactionsViewModel>();
+        services.AddTransient<Pine.Ui.Avalonia.ViewModels.BudgetsViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.AddTransactionViewModel>();
         services.AddSingleton<Pine.Ui.Avalonia.Services.INavigationService>(sp => sp.GetRequiredService<Pine.Ui.Avalonia.ViewModels.MainViewModel>());
         
         services.AddScoped<Pine.Core.Accounts.IAccountRepository, Pine.Infrastructure.Data.SqliteAccountRepository>();
         services.AddScoped<Pine.Core.Transactions.ITransactionRepository, Pine.Infrastructure.Data.SqliteTransactionRepository>();
+        services.AddScoped<Pine.Core.Categories.ICategoryRepository, Pine.Infrastructure.Data.SqliteCategoryRepository>();
+        services.AddScoped<Pine.Core.Budgets.IBudgetRepository, Pine.Infrastructure.Data.SqliteBudgetRepository>();
+        services.AddScoped<Pine.Core.Configuration.ISettingRepository, Pine.Infrastructure.Data.SqliteSettingRepository>();
         
         Pine.Ui.Avalonia.App.InitializeServices(services.BuildServiceProvider());
 

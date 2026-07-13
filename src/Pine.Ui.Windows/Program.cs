@@ -60,6 +60,7 @@ sealed class Program
         services.AddTransient<UnlockViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
+        services.AddTransient<BudgetsViewModel>();
         services.AddTransient<AddTransactionViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
@@ -99,6 +100,7 @@ sealed class Program
         services.AddTransient<IAccountRepository, SqliteAccountRepository>();
         services.AddTransient<ITransactionRepository, SqliteTransactionRepository>();
         services.AddTransient<Pine.Core.Categories.ICategoryRepository, SqliteCategoryRepository>();
+        services.AddTransient<Pine.Core.Budgets.IBudgetRepository, SqliteBudgetRepository>();
         services.AddTransient<Pine.Core.Configuration.ISettingRepository, SqliteSettingRepository>();
     }
 

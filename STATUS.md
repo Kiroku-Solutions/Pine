@@ -7,7 +7,10 @@ This document tracks the real-time implementation progress based on the master p
 - **Phase 0 (Foundations):** ✅ 100% Completed
 - **Phase 1 (v0.1 alpha - Core Engine):** ✅ 100% Completed
 - **Phase 2 (v0.2 beta - Imports & AI Baseline):** ✅ 100% Completed
-- **Phase 3 (v0.3 beta - Budgets, goals, recurring):** 🔴 Pending
+- **Phase 3 (v0.3 beta - Budgets, goals, recurring):** 🟡 In Progress
+  - **Pillar 1 (Budgets MVP):** ✅ Completed (Core, Infra, App, UI connected)
+  - **Pillar 2 (Savings Goals):** 🔴 Not Started
+  - **Pillar 3 (Recurring):** 🔴 Not Started
 - **Phase 4 (v0.4 beta - Investments):** 🔴 Pending
 - **Phase 5 (v0.5 beta - Sync, plugins, marketplace):** 🔴 Pending
 - **Phases 6-10 (Beta to GA):** 🔴 Pending

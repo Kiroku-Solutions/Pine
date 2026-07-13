@@ -50,6 +50,9 @@ public partial class AppDelegate : AvaloniaAppDelegate<Pine.Ui.Avalonia.App>
         
         services.AddScoped<Pine.Core.Accounts.IAccountRepository, Pine.Infrastructure.Data.SqliteAccountRepository>();
         services.AddScoped<Pine.Core.Transactions.ITransactionRepository, Pine.Infrastructure.Data.SqliteTransactionRepository>();
+        services.AddScoped<Pine.Core.Categories.ICategoryRepository, Pine.Infrastructure.Data.SqliteCategoryRepository>();
+        services.AddScoped<Pine.Core.Budgets.IBudgetRepository, Pine.Infrastructure.Data.SqliteBudgetRepository>();
+        services.AddScoped<Pine.Core.Configuration.ISettingRepository, Pine.Infrastructure.Data.SqliteSettingRepository>();
         
         Pine.Ui.Avalonia.App.InitializeServices(services.BuildServiceProvider());
 

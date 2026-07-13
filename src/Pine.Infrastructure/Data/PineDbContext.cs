@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pine.Core.Accounts;
 using Pine.Core.Transactions;
 using Pine.Core.Categories;
+using Pine.Core.Budgets;
 using Pine.Core.Tags;
 using Pine.Core.Attachments;
 using Pine.Core.Rules;
@@ -24,6 +25,7 @@ public sealed class PineDbContext : DbContext
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
@@ -103,6 +105,26 @@ public sealed class PineDbContext : DbContext
             e.HasKey(c => c.Id);
             e.Property(c => c.Name).IsRequired();
             e.Property(c => c.ColorHex).IsRequired();
+        });
+
+        modelBuilder.Entity<Budget>(e =>
+        {
+            e.HasKey(b => b.Id);
+            e.Property(b => b.Period).HasConversion<string>();
+            e.ComplexProperty(b => b.Limit, limit => 
+            {
+                limit.Property(m => m.Amount).HasColumnName("LimitAmount");
+                limit.Property(m => m.Currency).HasColumnName("LimitCurrency")
+                    .HasConversion(
+                        c => c.Value,
+                        c => new Pine.Core.Common.ValueObjects.CurrencyCode(c)
+                    );
+            });
+            // Category mapping
+            e.HasOne<Category>()
+             .WithMany()
+             .HasForeignKey(b => b.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Tag>(e =>

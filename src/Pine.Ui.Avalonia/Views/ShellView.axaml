@@ -30,7 +30,8 @@
                             Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
                     <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}" 
                             Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
-                    <Button Content="Budgets" Classes="pine-nav" />
+                    <Button Content="Budgets" Command="{Binding NavigateToBudgetsCommand}"
+                            Classes="pine-nav" Classes.active="{Binding IsBudgetsActive}" />
                     <Button Content="Rules" Classes="pine-nav" />
                     
                     <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
