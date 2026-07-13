@@ -113,4 +113,10 @@ public partial class UnlockViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    [RelayCommand]
+    private void GoBack()
+    {
+        _navigationService.NavigateTo<VaultSelectionViewModel>();
+    }
 }

@@ -6,7 +6,7 @@ This document tracks the real-time implementation progress based on the master p
 
 - **Phase 0 (Foundations):** ✅ 100% Completed
 - **Phase 1 (v0.1 alpha - Core Engine):** ✅ 100% Completed
-- **Phase 2 (v0.2 beta - Imports & AI Baseline):** 🟡 In Progress
+- **Phase 2 (v0.2 beta - Imports & AI Baseline):** ✅ 100% Completed
 - **Phase 3 (v0.3 beta - Budgets, goals, recurring):** 🔴 Pending
 - **Phase 4 (v0.4 beta - Investments):** 🔴 Pending
 - **Phase 5 (v0.5 beta - Sync, plugins, marketplace):** 🔴 Pending
@@ -96,8 +96,10 @@ This document tracks the real-time implementation progress based on the master p
 - **Cross-Platform DI**: Dynamic database path resolution in all OS entry points (`Windows`, `Macos`, `Android`, `Ios`, `Web`).
 - **VaultSelection UX**: Premium glassmorphic UI (`VaultSelectionView.axaml`) for choosing or creating separate personal/business finance vaults.
 
-### 🏃 In Progress (Imports Engine)
-- **Imports Engine**: CsvImporter logic and Avalonia Import Wizard UX (column-mapping preview, dedupe).
+### ✅ Implemented (Imports Engine)
+- **Imports Engine UX**: Developed `ImportWizardViewModel` and its wizard interface for parsing files and mapping CSV columns intuitively.
+- **AI Integration**: Connected `MlNetCategorizer` to the CQRS layer via `CategorizeTransactionQuery`, providing fully automated category prediction in the Wizard's visual preview and final import handler.
+- **Deduplication Filter**: Implemented exact-match (Account, Date, Amount) SQLite transaction filtering in `ImportTransactionsCommandHandler` to prevent accidental finance duplication.
 
 ---
 *Last updated: July 12, 2026*

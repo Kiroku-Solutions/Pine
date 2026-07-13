@@ -198,6 +198,18 @@ public partial class ImportWizardViewModel : ObservableObject
 
             foreach (var tx in transactions.Take(50)) // Preview up to 50
             {
+                // Let AI categorize if the CSV didn't provide a category
+                if (tx.Splits.Count == 0)
+                {
+                    string transactionText = $"{tx.Payee} {tx.Notes}".Trim();
+                    var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(transactionText, tx.TotalAmount.Amount));
+                    
+                    if (!string.IsNullOrEmpty(categoryName))
+                    {
+                        tx.AddSplit(tx.TotalAmount, categoryName, "AI");
+                    }
+                }
+
                 PreviewTransactions.Add(tx);
             }
             

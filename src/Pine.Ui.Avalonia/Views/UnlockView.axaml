@@ -59,6 +59,17 @@
                             FontWeight="SemiBold"
                             IsEnabled="{Binding !IsBusy}" />
 
+                    <!-- Go Back Button -->
+                    <Button Content="Go Back" 
+                            Command="{Binding GoBackCommand}" 
+                            Background="Transparent"
+                            Foreground="{DynamicResource PineTextMuted}"
+                            HorizontalAlignment="Stretch" 
+                            HorizontalContentAlignment="Center" 
+                            Padding="0,12" 
+                            FontSize="14"
+                            IsEnabled="{Binding !IsBusy}" />
+
                     <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
                 </StackPanel>
             </Border>

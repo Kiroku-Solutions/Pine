@@ -98,6 +98,7 @@ sealed class Program
         // Repositories
         services.AddTransient<IAccountRepository, SqliteAccountRepository>();
         services.AddTransient<ITransactionRepository, SqliteTransactionRepository>();
+        services.AddTransient<Pine.Core.Categories.ICategoryRepository, SqliteCategoryRepository>();
         services.AddTransient<Pine.Core.Configuration.ISettingRepository, SqliteSettingRepository>();
     }
 
