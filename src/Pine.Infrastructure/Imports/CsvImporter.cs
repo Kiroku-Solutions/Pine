@@ -107,7 +107,8 @@ public sealed class CsvImporter : IImporter
             var currency = targetAccount.Balance.Currency;
             var amount = new Money(rawAmount, currency);
 
-            var transaction = Transaction.Create(targetAccount.Id, date, payee, amount, _timeProvider, notes);
+            var type = amount.Amount >= 0 ? Pine.Core.Transactions.TransactionType.Income : Pine.Core.Transactions.TransactionType.Expense;
+            var transaction = Transaction.Create(targetAccount.Id, date, payee, amount, type, _timeProvider, notes);
 
             // Optional: Set category. For now, since Transaction domain entity doesn't have a mutable category,
             // we'd either add a single split or handle it in the application layer.

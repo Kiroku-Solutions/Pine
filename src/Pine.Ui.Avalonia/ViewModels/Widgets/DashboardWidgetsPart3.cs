@@ -65,9 +65,9 @@ public partial class RecentTransactionsWidgetViewModel : DashboardWidgetViewMode
         
         try
         {
-            var transactions = await _mediator.Send(new GetTransactionsQuery());
+            var pagedResult = await _mediator.Send(new GetTransactionsQuery(1, 10));
             Transactions.Clear();
-            foreach (var tx in transactions.Take(10))
+            foreach (var tx in pagedResult.Items)
             {
                 Transactions.Add(tx);
             }

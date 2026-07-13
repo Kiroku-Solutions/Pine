@@ -41,11 +41,13 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
         // We'll trust the UI/command passes the signed decimal.
         var moneyAmount = new Money(request.Amount, new CurrencyCode(request.Currency));
         
+        var type = moneyAmount.Amount >= 0 ? Pine.Core.Transactions.TransactionType.Income : Pine.Core.Transactions.TransactionType.Expense;
         var transaction = Transaction.Create(
             request.AccountId, 
             request.Date, 
             request.Payee, 
             moneyAmount, 
+            type,
             _timeProvider, 
             request.Notes);
 

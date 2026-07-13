@@ -21,13 +21,25 @@
 
             <!-- Type Toggle -->
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,0,0,10">
-                <RadioButton Content="Expense" IsChecked="{Binding !IsIncome}" GroupName="TxType" />
+                <RadioButton Content="Expense" IsChecked="{Binding IsExpense}" GroupName="TxType" />
                 <RadioButton Content="Income" IsChecked="{Binding IsIncome}" GroupName="TxType" />
+                <RadioButton Content="Transfer" IsChecked="{Binding IsTransfer}" GroupName="TxType" />
             </StackPanel>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="{Binding IsTransfer, StringFormat='From Account', TargetNullValue='Account', FallbackValue='Account'}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="5" IsVisible="{Binding IsTransfer}">
+                <TextBlock Text="To Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedDestinationAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Name}" />
@@ -48,12 +60,12 @@
                 </StackPanel>
             </Grid>
 
-            <StackPanel Spacing="5">
+            <StackPanel Spacing="5" IsVisible="{Binding !IsTransfer}">
                 <TextBlock Text="Payee / Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding Payee}" PlaceholderText="e.g. Walmart, Salary..." IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
-            <StackPanel Spacing="5">
+            <StackPanel Spacing="5" IsVisible="{Binding !IsTransfer}">
                 <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <TextBox Text="{Binding Category}" PlaceholderText="e.g. Groceries" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>

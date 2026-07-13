@@ -33,7 +33,8 @@ public class RecordTransactionCommandHandler : IRequestHandler<RecordTransaction
         var currency = new CurrencyCode(request.CurrencyCode);
         var transactionAmount = new Money(request.TotalAmount, currency);
 
-        var transaction = Transaction.Create(request.AccountId, request.Date, request.Payee, transactionAmount, _timeProvider, request.Notes);
+        var type = transactionAmount.Amount >= 0 ? Pine.Core.Transactions.TransactionType.Income : Pine.Core.Transactions.TransactionType.Expense;
+        var transaction = Transaction.Create(request.AccountId, request.Date, request.Payee, transactionAmount, type, _timeProvider, request.Notes);
         
         // Update account balance
         var absoluteAmount = new Money(Math.Abs(request.TotalAmount), currency);

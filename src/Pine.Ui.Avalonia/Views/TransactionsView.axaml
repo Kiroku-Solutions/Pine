@@ -30,32 +30,40 @@
                     BoxShadow="0 4 16 0 #18000000">
                 
                 <ScrollViewer>
-                    <ItemsControl ItemsSource="{Binding Transactions}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Classes="card" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
-                                    <Grid ColumnDefinitions="Auto, *, Auto, Auto">
-                                        
-                                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
-                                            <TextBlock Text="Tx" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
-                                        </Border>
-                                        
-                                        <!-- Details -->
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" />
-                                            <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
-                                        </StackPanel>
-                                        
-                                        <!-- Notes -->
-                                        <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
-                                        
-                                        <!-- Amount -->
-                                        <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding Transactions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
+                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto">
+                                            
+                                            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
+                                                <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
+                                            </Border>
+                                            
+                                            <!-- Details -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                                <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                                            </StackPanel>
+                                            
+                                            <!-- Notes -->
+                                            <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                                            
+                                            <!-- Amount -->
+                                            <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Infinite Scroll / Load More Placeholder -->
+                        <Button Content="Load More" Command="{Binding LoadNextPageCommand}" 
+                                IsVisible="{Binding HasMorePages}" 
+                                HorizontalAlignment="Center" Margin="0,20,0,10" Classes="pine-nav" />
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Center" Margin="0,10,0,10" />
+                    </StackPanel>
                 </ScrollViewer>
             </Border>
         </Grid>

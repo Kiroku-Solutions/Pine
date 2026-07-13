@@ -23,6 +23,15 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
 
     public ObservableCollection<Transaction> Transactions { get; } = new();
 
+    private int _currentPage = 1;
+    private const int PageSize = 30;
+
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMorePages { get; set; } = true;
+
     public TransactionsViewModel(IMediator mediator)
     {
         _mediator = mediator;
@@ -38,18 +47,43 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [RelayCommand]
     private async Task LoadDataAsync()
     {
+        _currentPage = 1;
+        Transactions.Clear();
+        HasMorePages = true;
+        await LoadNextPageAsync();
+    }
+
+    [RelayCommand]
+    private async Task LoadNextPageAsync()
+    {
+        if (IsLoading || !HasMorePages) return;
+
+        IsLoading = true;
         try
         {
-            var txs = await _mediator.Send(new GetTransactionsQuery());
-            Transactions.Clear();
-            foreach (var t in txs)
+            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, PageSize));
+            
+            foreach (var t in pagedResult.Items)
             {
                 Transactions.Add(t);
+            }
+
+            if (_currentPage * PageSize >= pagedResult.TotalCount)
+            {
+                HasMorePages = false;
+            }
+            else
+            {
+                _currentPage++;
             }
         }
         catch
         {
             // Handle error silently or via status message
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

@@ -16,6 +16,8 @@ public sealed class Transaction : AggregateRoot
     public DateTimeOffset Date { get; private set; }
     public string Payee { get; private set; }
     public Money TotalAmount { get; private set; }
+    public TransactionType Type { get; private set; }
+    public Guid? LinkedTransactionId { get; private set; }
     public string Notes { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -26,25 +28,40 @@ public sealed class Transaction : AggregateRoot
     private Transaction() { }
 #pragma warning restore CS8618
 
-    private Transaction(Guid id, Guid accountId, DateTimeOffset date, string payee, Money totalAmount, string notes, TimeProvider timeProvider)
+    private Transaction(Guid id, Guid accountId, DateTimeOffset date, string payee, Money totalAmount, TransactionType type, Guid? linkedTransactionId, string notes, TimeProvider timeProvider)
         : base(id)
     {
         AccountId = accountId;
+        
+        // Security & Domain validation: Date cannot be more than 1 day in the future (allowing for timezone mismatches)
+        var now = timeProvider.GetUtcNow();
+        if (date > now.AddDays(1))
+            throw new ArgumentException("Transaction date cannot be in the future.", nameof(date));
+        
         Date = date;
         Payee = payee;
+        
+        // Validate Amount vs Type
+        if (type == TransactionType.Expense && totalAmount.Amount > 0)
+            throw new ArgumentException("Expense transactions must have a negative or zero amount.", nameof(totalAmount));
+        if (type == TransactionType.Income && totalAmount.Amount < 0)
+            throw new ArgumentException("Income transactions must have a positive or zero amount.", nameof(totalAmount));
+
         TotalAmount = totalAmount;
+        Type = type;
+        LinkedTransactionId = linkedTransactionId;
         Notes = notes;
-        CreatedAt = timeProvider.GetUtcNow();
+        CreatedAt = now;
 
         AddDomainEvent(new TransactionRegisteredEvent(Id, AccountId, TotalAmount, CreatedAt));
     }
 
-    public static Transaction Create(Guid accountId, DateTimeOffset date, string payee, Money totalAmount, TimeProvider timeProvider, string notes = "")
+    public static Transaction Create(Guid accountId, DateTimeOffset date, string payee, Money totalAmount, TransactionType type, TimeProvider timeProvider, string notes = "", Guid? linkedTransactionId = null)
     {
         if (accountId == Guid.Empty)
             throw new ArgumentException("Account ID is required", nameof(accountId));
 
-        return new Transaction(Guid.NewGuid(), accountId, date, payee, totalAmount, notes, timeProvider);
+        return new Transaction(Guid.NewGuid(), accountId, date, payee, totalAmount, type, linkedTransactionId, notes, timeProvider);
     }
 
     public void AddSplit(Money amount, string category, string notes = "")

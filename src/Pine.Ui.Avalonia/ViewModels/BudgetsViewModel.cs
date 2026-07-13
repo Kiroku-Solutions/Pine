@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Budgets.Commands;
 using Pine.Application.Budgets.Queries;
@@ -13,6 +14,8 @@ using Pine.Core.Categories;
 using Pine.Core.Common;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.ViewModels.Messages;
+using Pine.Ui.Avalonia.ViewModels.Widgets;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -41,10 +44,17 @@ public partial class BudgetProgressViewModel : ObservableObject
     public bool IsExceeded => SpentAmount > LimitAmount;
 }
 
-public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewModel
+public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
     private readonly INavigationService _navigationService;
+
+    public string Title { get; set; } = "Budgets";
+    public int ColumnSpan { get; set; } = 2;
+    public int RowSpan { get; set; } = 1;
+    public int OrderIndex { get; set; } = 3;
+    public double Width { get; set; } = 400;
+    public double Height { get; set; } = 300;
 
     [ObservableProperty]
     public partial ObservableCollection<BudgetProgressViewModel> Budgets { get; set; } = new();
@@ -52,14 +62,15 @@ public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewMo
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
-    public int RowSpan => 2;
-    public int ColumnSpan => 2;
-    public int Order => 3;
-
     public BudgetsViewModel(IMediator mediator, INavigationService navigationService)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+    }
+
+    public void Receive(DataChangedMessage message)
+    {
+        _ = LoadBudgetsAsync();
     }
 
     public async Task InitializeAsync()
@@ -86,7 +97,7 @@ public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewMo
                 Budgets.Add(new BudgetProgressViewModel
                 {
                     BudgetId = b.Id,
-                    CategoryName = "Category " + b.CategoryId.ToString().Substring(0, 4), // Requires Category lookup
+                    CategoryName = "Category " + b.CategoryId.ToString()[..4], // Requires Category lookup
                     CategoryColorHex = "#FF8C00", // Pine Orange
                     LimitAmount = b.Limit.Amount,
                     SpentAmount = 0m, // Will be calculated from transactions

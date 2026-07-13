@@ -7,9 +7,9 @@ using Pine.Core.Transactions;
 
 namespace Pine.Application.Transactions.Queries;
 
-public record GetTransactionsQuery() : IRequest<IReadOnlyList<Transaction>>;
+public record GetTransactionsQuery(int Page = 1, int PageSize = 50) : IRequest<Pine.Core.Common.PagedResult<Transaction>>;
 
-public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery, IReadOnlyList<Transaction>>
+public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery, Pine.Core.Common.PagedResult<Transaction>>
 {
     private readonly ITransactionRepository _transactionRepository;
 
@@ -18,11 +18,8 @@ public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery,
         _transactionRepository = transactionRepository;
     }
 
-    public async Task<IReadOnlyList<Transaction>> Handle(GetTransactionsQuery request, CancellationToken cancellationToken)
+    public async Task<Pine.Core.Common.PagedResult<Transaction>> Handle(GetTransactionsQuery request, CancellationToken cancellationToken)
     {
-        // For now, we return all transactions. In the future we will add pagination.
-        var all = await _transactionRepository.GetAllAsync(cancellationToken);
-        
-        return all.OrderByDescending(t => t.Date).ToList().AsReadOnly();
+        return await _transactionRepository.GetPagedAsync(request.Page, request.PageSize, cancellationToken);
     }
 }

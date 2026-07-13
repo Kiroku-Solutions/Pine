@@ -22,6 +22,9 @@ public partial class AddTransactionViewModel : ObservableObject
     public partial Account? SelectedAccount { get; set; }
 
     [ObservableProperty]
+    public partial Account? SelectedDestinationAccount { get; set; }
+
+    [ObservableProperty]
     public partial DateTimeOffset Date { get; set; } = DateTimeOffset.Now;
 
     [ObservableProperty]
@@ -31,8 +34,47 @@ public partial class AddTransactionViewModel : ObservableObject
     [ObservableProperty]
     public partial decimal Amount { get; set; } = 0m;
 
-    [ObservableProperty]
-    public partial bool IsIncome { get; set; } = false;
+    private bool _isIncome;
+    public bool IsIncome 
+    { 
+        get => _isIncome; 
+        set 
+        { 
+            if (SetProperty(ref _isIncome, value) && value) 
+            { 
+                IsTransfer = false; 
+                IsExpense = false; 
+            } 
+        } 
+    }
+
+    private bool _isTransfer;
+    public bool IsTransfer 
+    { 
+        get => _isTransfer; 
+        set 
+        { 
+            if (SetProperty(ref _isTransfer, value) && value) 
+            { 
+                IsIncome = false; 
+                IsExpense = false; 
+            } 
+        } 
+    }
+
+    private bool _isExpense = true;
+    public bool IsExpense 
+    { 
+        get => _isExpense; 
+        set 
+        { 
+            if (SetProperty(ref _isExpense, value) && value) 
+            { 
+                IsIncome = false; 
+                IsTransfer = false; 
+            } 
+        } 
+    }
 
     [ObservableProperty]
     public partial string Notes { get; set; } = string.Empty;
@@ -93,18 +135,40 @@ public partial class AddTransactionViewModel : ObservableObject
 
         try
         {
-            decimal signedAmount = IsIncome ? Amount : -Amount;
             var currency = SelectedAccount.Balance.Currency.Value;
 
-            await _mediator.Send(new AddTransactionCommand(
-                SelectedAccount.Id,
-                Date,
-                Payee,
-                signedAmount,
-                currency,
-                Notes,
-                Category
-            ));
+            if (IsTransfer)
+            {
+                if (SelectedDestinationAccount == null)
+                {
+                    ErrorMessage = "Please select a destination account.";
+                    IsBusy = false;
+                    return;
+                }
+                
+                await _mediator.Send(new TransferFundsCommand(
+                    SelectedAccount.Id,
+                    SelectedDestinationAccount.Id,
+                    Amount,
+                    currency,
+                    Date,
+                    Notes
+                ));
+            }
+            else
+            {
+                decimal signedAmount = IsIncome ? Amount : -Amount;
+
+                await _mediator.Send(new AddTransactionCommand(
+                    SelectedAccount.Id,
+                    Date,
+                    Payee,
+                    signedAmount,
+                    currency,
+                    Notes,
+                    Category
+                ));
+            }
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
             _onComplete?.Invoke();

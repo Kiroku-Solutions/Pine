@@ -59,13 +59,13 @@ public class ImportTransactionsCommandTests
         // Arrange
         var accountId = Guid.NewGuid();
         var date = DateTimeOffset.UtcNow;
-        var amount = new Money(100, new CurrencyCode("USD"));
+        var amount = new Money(-100, new CurrencyCode("USD"));
         
         var mockImporter = Substitute.For<IImporter>();
         
         // Imported contains 2 transactions (one duplicate, one new)
-        var newTx = Transaction.Create(accountId, date.AddDays(1), "New Payee", amount, TimeProvider.System);
-        var dupTx = Transaction.Create(accountId, date, "Old Payee", amount, TimeProvider.System);
+        var newTx = Transaction.Create(accountId, date.AddDays(1), "New Payee", amount, Pine.Core.Transactions.TransactionType.Expense, TimeProvider.System);
+        var dupTx = Transaction.Create(accountId, date, "Old Payee", amount, Pine.Core.Transactions.TransactionType.Expense, TimeProvider.System);
         
         mockImporter.ImportAsync(Arg.Any<Account>(), Arg.Any<Stream>(), Arg.Any<ImportProfile>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult((IReadOnlyList<Transaction>)new List<Transaction> { newTx, dupTx }));

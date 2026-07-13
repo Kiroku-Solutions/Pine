@@ -84,7 +84,7 @@ public partial class ShellViewModel : ObservableObject, INavigationService
     [RelayCommand]
     private void NavigateToBudgets()
     {
-        NavigateTo<BudgetsViewModel>(vm => vm.InitializeAsync());
+        NavigateTo<BudgetsViewModel>(vm => _ = vm.InitializeAsync());
     }
 
     [RelayCommand]

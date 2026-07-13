@@ -35,8 +35,22 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
     public async Task<IEnumerable<Transaction>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Transactions
-            .Include(t => t.Splits)
+            .AsNoTracking()
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Transactions.AsNoTracking();
+        var totalCount = await query.CountAsync(cancellationToken);
+        
+        var items = await query
+            .OrderByDescending(t => t.Date)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+            
+        return new Pine.Core.Common.PagedResult<Transaction>(items.AsReadOnly(), totalCount, page, pageSize);
     }
 
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
