@@ -11,9 +11,9 @@ namespace Pine.Infrastructure.Security;
 public static class Argon2KeyDerivation
 {
     // High cost parameters for Argon2id as recommended for master password hashing
-    private const int DegreeOfParallelism = 8;
-    private const int MemorySizeKb = 1024 * 128; // 128 MB
-    private const int Iterations = 4;
+    private const int DegreeOfParallelism = 4;
+    private const int MemorySizeKb = 1024 * 64; // 64 MB
+    private const int Iterations = 3;
     private const int KeyLengthBytes = 32; // 256 bits for AES-256
 
     public static byte[] DeriveKey(string password, byte[] salt)
@@ -23,7 +23,7 @@ public static class Argon2KeyDerivation
         
         if (salt == null || salt.Length == 0)
             throw new ArgumentException("Salt cannot be empty.", nameof(salt));
-
+        
         using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
         {
             Salt = salt,
@@ -31,8 +31,8 @@ public static class Argon2KeyDerivation
             MemorySize = MemorySizeKb,
             Iterations = Iterations
         };
-
-        return argon2.GetBytes(KeyLengthBytes);
+        var key= argon2.GetBytes(KeyLengthBytes);
+        return key;
     }
 
     public static byte[] GenerateSalt(int size = 16)

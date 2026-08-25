@@ -15,8 +15,10 @@
                 <TextBlock Text="Diagnostics &amp; System" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
                 <TextBlock Text="Local runtime observability and diagnostic tools." FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
             </StackPanel>
-
-            <Button Grid.Column="1" Content="Export DIB" Command="{Binding ExportDibCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Export Diagnostic Information Bundle" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <Button Content="Seed Demo Data / Test Features" Command="{Binding TestFeaturesCommand}" Classes="pine-nav" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Creates accounts, transactions, transfers and budgets for testing" />
+                <Button Content="Export DIB" Command="{Binding ExportDibCommand}" Classes="pine-accent" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Export Diagnostic Information Bundle" />
+            </StackPanel>
         </Grid>
 
         <!-- System Metrics Cards -->
@@ -68,7 +70,10 @@
                             <TextBlock Text="pine-engine-stdout.log" FontSize="12" Foreground="#827168" Margin="16,0,0,0" VerticalAlignment="Center" FontFamily="Consolas, Courier New, monospace" />
                         </StackPanel>
 
-                        <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLogsCommand}" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Content="Copy" Click="CopyLogs_Click" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" />
+                            <Button Content="Clear" Command="{Binding ClearLogsCommand}" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" />
+                        </StackPanel>
                     </Grid>
                 </Border>
 

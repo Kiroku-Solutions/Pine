@@ -12,6 +12,7 @@ using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Services;
 using Pine.Core.Ai;
 using Pine.Infrastructure.Ai;
+using Pine.Infrastructure.Ai.Vision;
 
 namespace Pine.Ui.Windows;
 
@@ -66,9 +67,11 @@ sealed class Program
         services.AddTransient<DiagnosticsViewModel>();
         services.AddTransient<ScanReceiptViewModel>();
         services.AddTransient<LiveScannerViewModel>();
+        services.AddTransient<CropReceiptViewModel>();
 
         // AI Subsystem
         services.AddSingleton<IAIProvider, DefaultLocalAiProvider>();
+        services.AddSingleton<IImageProcessor, OpenCvImageProcessor>();
 
         // Logging
         services.AddLogging(builder => builder.AddConsole());

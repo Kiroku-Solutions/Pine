@@ -86,6 +86,7 @@
 
     <Application.Styles>
         <sty:FluentAvaloniaTheme CustomAccentColor="#F57104" PreferUserAccentColor="False" />
+        <StyleInclude Source="avares://Pine.Ui.Avalonia/Controls/ImageCropperControl.axaml" />
         
         <!-- ═══ Global Button: "pine-accent" class ═══ -->
         <Style Selector="Button.pine-accent">

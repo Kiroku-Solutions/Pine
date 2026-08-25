@@ -322,7 +322,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         PostToUI(() =>
         {
             StopScanning();
-            _navigationService.NavigateTo<ScanReceiptViewModel>();
+            _navigationService.NavigateTo<CropReceiptViewModel>();
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(imageStream));
         });
 
@@ -355,10 +355,10 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         {
             StopScanning();
 
-            // Navigate first so ScanReceiptViewModel is created and registers the message handler
-            _navigationService.NavigateTo<ScanReceiptViewModel>();
+            // Navigate first so CropReceiptViewModel is created and registers the message handler
+            _navigationService.NavigateTo<CropReceiptViewModel>();
 
-            // Deliver the already cropped image
+            // Deliver the already cropped image (user can adjust further if needed)
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(memStream, ocrMemStream));
         });
 

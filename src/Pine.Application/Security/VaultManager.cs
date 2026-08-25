@@ -26,7 +26,31 @@ public sealed class VaultManager
         }
 
         var json = await File.ReadAllTextAsync(_vaultsJsonPath);
-        return JsonSerializer.Deserialize<List<VaultProfile>>(json) ?? new List<VaultProfile>();
+        var vaults = JsonSerializer.Deserialize<List<VaultProfile>>(json) ?? new List<VaultProfile>();
+
+        // Filter out vaults whose directories have been deleted
+        var validVaults = new List<VaultProfile>();
+        bool needsSave = false;
+
+        foreach (var vault in vaults)
+        {
+            if (Directory.Exists(vault.Path))
+            {
+                validVaults.Add(vault);
+            }
+            else
+            {
+                needsSave = true;
+            }
+        }
+
+        if (needsSave)
+        {
+            // Auto-clean up vaults.json if folders are missing
+            await SaveVaultsAsync(validVaults);
+        }
+
+        return validVaults;
     }
 
     public async Task SaveVaultsAsync(List<VaultProfile> vaults)

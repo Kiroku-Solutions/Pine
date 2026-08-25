@@ -41,11 +41,17 @@
         <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
             <views:DiagnosticsView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BudgetsViewModel}">
+            <views:BudgetsView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScanReceiptViewModel}">
             <views:ScanReceiptView />
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LiveScannerViewModel}">
             <views:LiveScannerView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CropReceiptViewModel}">
+            <views:CropReceiptView />
         </DataTemplate>
     </Window.DataTemplates>
 

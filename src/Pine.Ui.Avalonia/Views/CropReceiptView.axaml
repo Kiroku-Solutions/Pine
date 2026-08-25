@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:controls="using:Pine.Ui.Avalonia.Controls"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="700"
+             x:Class="Pine.Ui.Avalonia.Views.CropReceiptView"
+             x:DataType="vm:CropReceiptViewModel">
+  
+  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource PineBackground}">
+    
+    <!-- Header -->
+    <Border Grid.Row="0" Padding="20,15" Background="{DynamicResource PineSurface}">
+      <TextBlock Text="Adjust Receipt" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+    </Border>
+
+    <!-- Cropper Area -->
+    <Grid Grid.Row="1" Background="#111111">
+      <controls:ImageCropperControl x:Name="Cropper" 
+                                    Source="{Binding PreviewImage}" 
+                                    Margin="20" />
+
+      <!-- Loading Overlay -->
+      <Border Background="#88000000" IsVisible="{Binding IsProcessing}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+          <ProgressBar IsIndeterminate="True" Width="200" Foreground="{DynamicResource PinePrimary}"/>
+          <TextBlock Text="Processing Image..." Foreground="White" HorizontalAlignment="Center"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Footer Actions -->
+    <Border Grid.Row="2" Padding="20" Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,10,*">
+        <Button Grid.Column="0" Content="Retake" Command="{Binding CancelCommand}" 
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" 
+                Classes="pine-nav" Height="45"/>
+        <Button Grid.Column="2" Content="Confirm" Click="OnConfirmClicked" 
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" 
+                Classes="pine-accent" Height="45"/>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>
