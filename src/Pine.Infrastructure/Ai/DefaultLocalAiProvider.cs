@@ -10,8 +10,8 @@ using Pine.Infrastructure.Ai.Categorisation;
 namespace Pine.Infrastructure.Ai;
 
 /// <summary>
-/// Skeleton implementation for the on-device AI provider.
-/// Orchestrates the OCR, YOLO, ML.NET and Heuristics components.
+/// On-device AI provider that orchestrates the full receipt scanning pipeline:
+/// YOLO Detection → Image Preprocessing → PaddleOCR → Heuristic Field Extraction.
 /// </summary>
 public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 {
@@ -22,11 +22,10 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
     public DefaultLocalAiProvider()
     {
-        // In a real architecture, this would be injected via DI (Dependency Injection).
-        // Instantiating here temporarily to not break compilation until dependencies are registered.
         _detector = new ReceiptDetector();
         _ocr = new PaddleOcrEngine();
         _extractor = new HeuristicFieldExtractor();
+        _extractor.LoadModel();
         _categorizer = new MlNetCategorizer();
     }
 
@@ -47,13 +46,37 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
     public async Task<ReceiptExtractionResult> ExtractReceiptDataAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
-        // 1. (Optional) Use detector to crop image before OCR
-        // var isReceipt = await _detector.DetectReceiptAsync(imageStream, cancellationToken);
-        
-        // 2. Execute OCR on the document to get the blocks
-        var textBlocks = await _ocr.ExtractTextAsync(imageStream, cancellationToken);
-        
-        // 3. Extract fields using Heuristics (Regex/Geometry)
+        // P0 FIX: Preprocess image before OCR using the ReceiptDetector's
+        // adaptive threshold pipeline when possible.
+        Stream ocrStream = imageStream;
+        try
+        {
+            imageStream.Position = 0;
+            var analysis = await _detector.AnalyzeAndCropReceiptAsync(imageStream, cancellationToken);
+            if (analysis.PassedFilters && analysis.OcrImageStream != null)
+            {
+                // Use the binarized, perspective-corrected image for OCR
+                ocrStream = analysis.OcrImageStream;
+            }
+            else
+            {
+                // Fallback: use the original image
+                imageStream.Position = 0;
+                ocrStream = imageStream;
+            }
+        }
+        catch
+        {
+            // If preprocessing fails, use original
+            imageStream.Position = 0;
+            ocrStream = imageStream;
+        }
+
+        // Execute OCR on the (potentially preprocessed) image
+        ocrStream.Position = 0;
+        var textBlocks = await _ocr.ExtractTextAsync(ocrStream, cancellationToken);
+
+        // Extract fields using layout-aware heuristics
         return _extractor.ExtractFields(textBlocks);
     }
 
@@ -67,5 +90,6 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         _detector?.Dispose();
         _ocr?.Dispose();
         _categorizer?.Dispose();
+        _extractor?.Dispose();
     }
 }

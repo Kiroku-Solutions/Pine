@@ -13,6 +13,9 @@ using Pine.Ui.Avalonia.Services;
 using Pine.Core.Ai;
 using Pine.Infrastructure.Ai;
 using Pine.Infrastructure.Ai.Vision;
+using Pine.Infrastructure.Ai.Categorisation;
+using Pine.Application.Services;
+using Microsoft.Extensions.Hosting;
 
 namespace Pine.Ui.Windows;
 
@@ -33,6 +36,13 @@ sealed class Program
 
             // 2. Initialize App Services
             App.InitializeServices(serviceProvider);
+
+            // 2.5 Start Background Services
+            var hostedServices = serviceProvider.GetServices<IHostedService>();
+            foreach (var hostedService in hostedServices)
+            {
+                hostedService.StartAsync(default).GetAwaiter().GetResult();
+            }
 
             // 3. Start Avalonia
             BuildAvaloniaApp()
@@ -71,7 +81,9 @@ sealed class Program
 
         // AI Subsystem
         services.AddSingleton<IAIProvider, DefaultLocalAiProvider>();
+        services.AddSingleton<ICategorizationTrainer, MlNetCategorizer>();
         services.AddSingleton<IImageProcessor, OpenCvImageProcessor>();
+        services.AddSingleton<IHostedService, CategorizationTrainingBackgroundService>();
 
         // Logging
         services.AddLogging(builder => builder.AddConsole());

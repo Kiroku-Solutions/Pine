@@ -5,6 +5,16 @@ using System.Threading.Tasks;
 namespace Pine.Core.Ai;
 
 /// <summary>
+/// Represents a single extracted line item from a receipt.
+/// </summary>
+public record ReceiptLineItem(
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal TotalPrice
+);
+
+/// <summary>
 /// Contains the extracted data and confidence scores from a receipt.
 /// </summary>
 public record ReceiptExtractionResult(
@@ -12,7 +22,8 @@ public record ReceiptExtractionResult(
     decimal? TotalAmount,
     string? CurrencyCode,
     System.DateTimeOffset? Date,
-    double ConfidenceScore
+    double ConfidenceScore,
+    System.Collections.Generic.IReadOnlyList<ReceiptLineItem>? LineItems = null
 );
 
 /// <summary>

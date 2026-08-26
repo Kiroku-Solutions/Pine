@@ -54,6 +54,8 @@ public partial class ScanReceiptViewModel : ObservableObject
     public partial double ConfidenceScore { get; set; }
 
     public ObservableCollection<Account> Accounts { get; } = new();
+    
+    public ObservableCollection<ReceiptLineItemViewModel> LineItems { get; } = new();
 
     public ScanReceiptViewModel(IMediator mediator, INavigationService navigationService)
     {
@@ -101,8 +103,30 @@ public partial class ScanReceiptViewModel : ObservableObject
             Date = result.Date ?? DateTimeOffset.Now;
             ConfidenceScore = result.ConfidenceScore;
             
-            // Suggest category if merchant is known, or keep it empty for now
-            // We could also call CategorizeTransactionCommand here
+            LineItems.Clear();
+            if (result.LineItems != null)
+            {
+                foreach (var li in result.LineItems)
+                {
+                    LineItems.Add(new ReceiptLineItemViewModel
+                    {
+                        Description = li.Description,
+                        Quantity = li.Quantity,
+                        UnitPrice = li.UnitPrice,
+                        TotalPrice = li.TotalPrice
+                    });
+                }
+            }
+
+            // Suggest category if merchant is known
+            if (!string.IsNullOrWhiteSpace(Merchant))
+            {
+                var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Merchant, Amount));
+                if (!string.IsNullOrWhiteSpace(categoryName))
+                {
+                    Category = categoryName;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -144,6 +168,13 @@ public partial class ScanReceiptViewModel : ObservableObject
             decimal finalAmount = -Amount;
             var currency = SelectedAccount.Balance.Currency.Value;
 
+            var lineItemsCommands = LineItems.Select(li => new AddTransactionLineItemCommand(
+                li.Description,
+                li.Quantity,
+                li.UnitPrice,
+                li.TotalPrice
+            )).ToList();
+
             await _mediator.Send(new AddTransactionCommand(
                 SelectedAccount.Id,
                 Date,
@@ -151,7 +182,8 @@ public partial class ScanReceiptViewModel : ObservableObject
                 finalAmount,
                 currency,
                 Notes,
-                Category
+                Category,
+                lineItemsCommands
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
@@ -178,5 +210,20 @@ public partial class ScanReceiptViewModel : ObservableObject
     {
         _navigationService.NavigateTo<LiveScannerViewModel>();
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
+    }
+
+    [RelayCommand]
+    private void AddLineItem()
+    {
+        LineItems.Add(new ReceiptLineItemViewModel { Quantity = 1, UnitPrice = 0, TotalPrice = 0 });
+    }
+
+    [RelayCommand]
+    private void RemoveLineItem(ReceiptLineItemViewModel item)
+    {
+        if (item != null)
+        {
+            LineItems.Remove(item);
+        }
     }
 }

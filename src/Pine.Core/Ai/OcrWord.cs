@@ -1,4 +1,4 @@
-namespace Pine.Infrastructure.Ai.Vision;
+namespace Pine.Core.Ai;
 
 public struct BoundingBox
 {

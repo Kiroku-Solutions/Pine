@@ -100,6 +100,31 @@ public sealed class PineDbContext : DbContext
                     });
                 });
             });
+
+            e.OwnsMany(t => t.LineItems, lineItem =>
+            {
+                lineItem.WithOwner().HasForeignKey(li => li.TransactionId);
+                lineItem.HasKey(li => li.Id);
+                lineItem.ToTable("TransactionLineItems");
+                
+                lineItem.OwnsOne(li => li.UnitPrice, a =>
+                {
+                    a.Property(m => m.Amount).HasColumnName("UnitPrice_Amount");
+                    a.OwnsOne(m => m.Currency, c =>
+                    {
+                        c.Property(code => code.Value).HasColumnName("UnitPrice_Currency").IsRequired();
+                    });
+                });
+
+                lineItem.OwnsOne(li => li.TotalPrice, a =>
+                {
+                    a.Property(m => m.Amount).HasColumnName("TotalPrice_Amount");
+                    a.OwnsOne(m => m.Currency, c =>
+                    {
+                        c.Property(code => code.Value).HasColumnName("TotalPrice_Currency").IsRequired();
+                    });
+                });
+            });
         });
 
         modelBuilder.Entity<Category>(e =>

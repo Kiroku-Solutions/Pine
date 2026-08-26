@@ -13,7 +13,6 @@ namespace Pine.Infrastructure.Ai.Categorisation;
 public interface IMlNetCategorizer
 {
     Task<CategorisationResult> PredictCategoryAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default);
-    Task TrainModelAsync(IEnumerable<(string Text, decimal Amount, Guid CategoryId)> history, CancellationToken cancellationToken = default);
 }
 
 // ML.NET Data Structures
@@ -30,7 +29,7 @@ public class TransactionPrediction
     [ColumnName("Score")] public float[] Scores { get; set; } = Array.Empty<float>();
 }
 
-public sealed class MlNetCategorizer : IMlNetCategorizer, IDisposable
+public sealed class MlNetCategorizer : IMlNetCategorizer, ICategorizationTrainer, IDisposable
 {
     private const string ModelPath = "Assets/Ai/categorizer_model.zip";
     private readonly MLContext _mlContext;

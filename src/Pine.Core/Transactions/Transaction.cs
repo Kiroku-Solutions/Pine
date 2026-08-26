@@ -24,6 +24,9 @@ public sealed class Transaction : AggregateRoot
     private readonly List<TransactionSplit> _splits = new();
     public IReadOnlyCollection<TransactionSplit> Splits => _splits.AsReadOnly();
 
+    private readonly List<TransactionLineItem> _lineItems = new();
+    public IReadOnlyCollection<TransactionLineItem> LineItems => _lineItems.AsReadOnly();
+
 #pragma warning disable CS8618 // Required by Entity Framework Core
     private Transaction() { }
 #pragma warning restore CS8618
@@ -71,6 +74,14 @@ public sealed class Transaction : AggregateRoot
 
         _splits.Add(new TransactionSplit(Id, amount, category, notes));
         ValidateSplits();
+    }
+
+    public void AddLineItem(string description, decimal quantity, Money unitPrice, Money totalPrice)
+    {
+        if (unitPrice.Currency != TotalAmount.Currency || totalPrice.Currency != TotalAmount.Currency)
+            throw new ArgumentException("Line item currency must match transaction currency.");
+
+        _lineItems.Add(new TransactionLineItem(Id, description, quantity, unitPrice, totalPrice));
     }
 
     public void ValidateSplits()

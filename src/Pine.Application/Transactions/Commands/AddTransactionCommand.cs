@@ -8,6 +8,13 @@ using Pine.Core.Transactions;
 
 namespace Pine.Application.Transactions.Commands;
 
+public record AddTransactionLineItemCommand(
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal TotalPrice
+);
+
 public record AddTransactionCommand(
     Guid AccountId,
     DateTimeOffset Date,
@@ -15,7 +22,8 @@ public record AddTransactionCommand(
     decimal Amount,
     string Currency,
     string Notes,
-    string Category
+    string Category,
+    System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null
 ) : IRequest<Guid>;
 
 public class AddTransactionCommandHandler : IRequestHandler<AddTransactionCommand, Guid>
@@ -53,6 +61,21 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
 
         // Add a single split for the whole amount to the specified category
         transaction.AddSplit(moneyAmount, request.Category, request.Notes);
+
+        if (request.LineItems != null && request.LineItems.Count > 0)
+        {
+            foreach (var li in request.LineItems)
+            {
+                // In receipts, the line item prices are usually positive.
+                // If the transaction is an expense, should the line item totals be negative? 
+                // Line items are usually just recorded as positive values.
+                transaction.AddLineItem(
+                    li.Description, 
+                    li.Quantity, 
+                    new Money(li.UnitPrice, moneyAmount.Currency), 
+                    new Money(li.TotalPrice, moneyAmount.Currency));
+            }
+        }
 
         await _transactionRepository.SaveAsync(transaction, cancellationToken);
         

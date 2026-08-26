@@ -24,34 +24,32 @@ public sealed class PaddleOcrEngine : IDisposable
     {
         try
         {
-            InitializeEngineAsync().Wait();
+            Initialize();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"OCR INIT CRASH: {ex.Message}");
+            try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "ocr_init_error.log"), $"OCR INIT CRASH: {ex}\n"); } catch {}
             _engine = null;
         }
     }
 
-    private Task InitializeEngineAsync()
+    private void Initialize()
     {
         try
         {
             // Initialize PaddleOcrAll with the built-in PP-OCRv5 Latin models (perfect for Spanish)
             _engine = new PaddleOcrAll(LocalFullModels.LatinV5, PaddleDevice.Mkldnn())
             {
-                AllowRotateDetection = true, 
+                AllowRotateDetection = false, 
                 Enable180Classification = false
             };
             _initialized = true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Sdcb.PaddleOCR init failed: {ex.Message}");
+            try { File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "ocr_init_error.log"), $"OCR INIT FAIL: {ex}\n"); } catch {}
             _engine = null;
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>
