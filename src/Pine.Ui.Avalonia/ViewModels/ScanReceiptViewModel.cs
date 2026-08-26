@@ -51,7 +51,11 @@ public partial class ScanReceiptViewModel : ObservableObject
     public partial string ErrorMessage { get; set; } = string.Empty;
     
     [ObservableProperty]
-    public partial double ConfidenceScore { get; set; }
+    public partial double? ConfidenceScore { get; set; }
+
+    /// <summary>True while the full-size receipt lightbox is open.</summary>
+    [ObservableProperty]
+    public partial bool IsImagePreviewOpen { get; set; }
 
     public ObservableCollection<Account> Accounts { get; } = new();
     
@@ -85,6 +89,7 @@ public partial class ScanReceiptViewModel : ObservableObject
     {
         IsBusy = true;
         ErrorMessage = string.Empty;
+        ConfidenceScore = null;
 
         try
         {
@@ -211,6 +216,16 @@ public partial class ScanReceiptViewModel : ObservableObject
         _navigationService.NavigateTo<LiveScannerViewModel>();
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
     }
+
+    [RelayCommand]
+    private void ShowImagePreview()
+    {
+        if (ReceiptImage != null)
+            IsImagePreviewOpen = true;
+    }
+
+    [RelayCommand]
+    private void CloseImagePreview() => IsImagePreviewOpen = false;
 
     [RelayCommand]
     private void AddLineItem()

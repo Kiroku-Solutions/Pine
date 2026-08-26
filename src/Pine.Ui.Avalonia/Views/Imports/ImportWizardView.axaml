@@ -13,7 +13,7 @@
             <!-- Header -->
             <StackPanel Grid.Row="0" Margin="0,0,0,20">
                 <TextBlock Text="Import Wizard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
-                <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="{DynamicResource PineAccent}" Margin="0,5,0,0" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="{DynamicResource PinePrimary}" Margin="0,5,0,0" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
             
             <!-- Step 0: Select File & Account -->

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:core="using:Pine.Core.Accounts"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              x:Class="Pine.Ui.Avalonia.Views.Widgets.BalanceWidgetView"
              x:DataType="vm:BalanceWidgetViewModel">
     
@@ -14,7 +15,7 @@
                             <Grid ColumnDefinitions="Auto, *, Auto">
                                 <!-- Placeholder Icon -->
                                 <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="{DynamicResource PineAccentHover}" Margin="0,0,10,0">
-                                    <TextBlock Text="{Binding Name[0]}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineText}"/>
+                                    <TextBlock Text="{Binding Name, Converter={x:Static conv:Converters.InitialLetter}}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineText}"/>
                                 </Border>
                                 
                                 <!-- Account Info -->

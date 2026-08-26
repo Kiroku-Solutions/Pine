@@ -49,12 +49,13 @@
                                TextAlignment="Center" />
 
                     <!-- Unlock Button -->
-                    <Button Content="Unlock Vault" 
-                            Command="{Binding UnlockVaultCommand}" 
-                            Classes="pine-accent" 
-                            HorizontalAlignment="Stretch" 
-                            HorizontalContentAlignment="Center" 
-                            Padding="0,12" 
+                    <Button Content="Unlock Vault"
+                            Command="{Binding UnlockVaultCommand}"
+                            Classes="pine-accent"
+                            IsDefault="True"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="0,12"
                             FontSize="16"
                             FontWeight="SemiBold"
                             IsEnabled="{Binding !IsBusy}" />

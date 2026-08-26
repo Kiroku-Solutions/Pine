@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ══════════════════════════════════════════════════════════
+         Pine accent palette · "Ocean" (blue)
+         ══════════════════════════════════════════════════════════ -->
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="PinePrimaryColor">#2563EB</Color>
+            <Color x:Key="PinePrimaryContainerColor">#E6EEFF</Color>
+            <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
+            <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
+            <SolidColorBrush x:Key="PineAccentHover" Color="#D6E4FF" />
+            <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#2563EB" />
+                <GradientStop Offset="1" Color="#3B82F6" />
+            </LinearGradientBrush>
+
+            <Color x:Key="SystemAccentColor">#2563EB</Color>
+            <Color x:Key="SystemAccentColorLight1">#3B78F0</Color>
+            <Color x:Key="SystemAccentColorLight2">#5C90F3</Color>
+            <Color x:Key="SystemAccentColorLight3">#7EA8F6</Color>
+            <Color x:Key="SystemAccentColorDark1">#1E54CE</Color>
+            <Color x:Key="SystemAccentColorDark2">#1945AB</Color>
+            <Color x:Key="SystemAccentColorDark3">#143788</Color>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+            <Color x:Key="PinePrimaryColor">#60A5FA</Color>
+            <Color x:Key="PinePrimaryContainerColor">#10233F</Color>
+            <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
+            <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
+            <SolidColorBrush x:Key="PineAccentHover" Color="#13294A" />
+            <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#60A5FA" />
+                <GradientStop Offset="1" Color="#2563EB" />
+            </LinearGradientBrush>
+
+            <Color x:Key="SystemAccentColor">#60A5FA</Color>
+            <Color x:Key="SystemAccentColorLight1">#7EA8F6</Color>
+            <Color x:Key="SystemAccentColorLight2">#9CBEF9</Color>
+            <Color x:Key="SystemAccentColorLight3">#BAD3FB</Color>
+            <Color x:Key="SystemAccentColorDark1">#2563EB</Color>
+            <Color x:Key="SystemAccentColorDark2">#1E54CE</Color>
+            <Color x:Key="SystemAccentColorDark3">#1945AB</Color>
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

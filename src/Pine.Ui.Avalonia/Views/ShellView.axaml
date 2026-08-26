@@ -21,26 +21,28 @@
                 </StackPanel>
 
                 <!-- Navigation Buttons -->
-                <StackPanel Spacing="4" Margin="16,28,16,16">
-                    <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsDashboardActive}" />
-                    <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsTransactionsActive}" />
-                    <Button Content="Scan Receipt" Command="{Binding NavigateToScanReceiptCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
-                    <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
-                    <Button Content="Budgets" Command="{Binding NavigateToBudgetsCommand}"
-                            Classes="pine-nav" Classes.active="{Binding IsBudgetsActive}" />
-                    <Button Content="Rules" Classes="pine-nav" />
-                    
-                    <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
-                    
-                    <Button Content="Settings" Command="{Binding NavigateToSettingsCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsSettingsActive}" />
-                    <Button Content="Diagnostics" Command="{Binding NavigateToDiagnosticsCommand}" 
-                            Classes="pine-nav" Classes.active="{Binding IsDiagnosticsActive}" />
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="4" Margin="16,28,16,16">
+                        <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsDashboardActive}" />
+                        <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsTransactionsActive}" />
+                        <Button Content="Scan Receipt" Command="{Binding NavigateToScanReceiptCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
+                        <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
+                        <Button Content="Budgets" Command="{Binding NavigateToBudgetsCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsBudgetsActive}" />
+                        <Button Content="Rules" Classes="pine-nav" IsEnabled="False" Opacity="0.5" ToolTip.Tip="Coming soon" />
+
+                        <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
+
+                        <Button Content="Settings" Command="{Binding NavigateToSettingsCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsSettingsActive}" />
+                        <Button Content="Diagnostics" Command="{Binding NavigateToDiagnosticsCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsDiagnosticsActive}" />
+                    </StackPanel>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 

@@ -28,6 +28,7 @@
 
         <!-- Right Side: Interactive Setup -->
         <Border Grid.Column="1" Background="{DynamicResource PineBackground}" Padding="60,40">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <Grid>
                 <!-- Step 1: Storage Mode -->
                 <StackPanel Spacing="25" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep1}">
@@ -68,11 +69,10 @@
                                      Padding="15" />
                                      
                             <TextBlock Text="Master Password" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,10,0,0" />
-                            <TextBox PlaceholderText="Enter a strong password" 
-                                     Text="{Binding MasterPassword}" 
-                                     PasswordChar="●" 
+                            <TextBox PlaceholderText="Enter a strong password"
+                                     Text="{Binding MasterPassword}"
+                                     PasswordChar="●"
                                      IsEnabled="{Binding !IsBusy}"
-                                     Classes="revealPasswordButton"
                                      FontSize="16"
                                      Padding="15" />
                         </StackPanel>
@@ -87,6 +87,7 @@
                     </Grid>
                 </StackPanel>
             </Grid>
+          </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>
