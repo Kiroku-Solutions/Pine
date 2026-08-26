@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -33,6 +34,64 @@
                             <ComboBoxItem>Dark</ComboBoxItem>
                             <ComboBoxItem>System Auto</ComboBoxItem>
                         </ComboBox>
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+
+                    <!-- Accent Palette Picker -->
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Accent Color" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Tint the entire app with your favourite hue." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <ListBox Grid.Column="1"
+                                 ItemsSource="{Binding Palettes}"
+                                 SelectedIndex="{Binding SelectedPaletteIndex}"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="Accent color palette">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="12" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerTheme>
+                                <ControlTheme TargetType="ListBoxItem">
+                                    <Setter Property="Cursor" Value="Hand" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="Template">
+                                        <ControlTemplate>
+                                            <Border x:Name="ring" CornerRadius="20" Padding="3"
+                                                    BorderThickness="2" BorderBrush="Transparent"
+                                                    Background="Transparent">
+                                                <Border.Transitions>
+                                                    <Transitions>
+                                                        <BrushTransition Property="BorderBrush" Duration="0:0:0.15" />
+                                                    </Transitions>
+                                                </Border.Transitions>
+                                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                                  ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter>
+                                    <Style Selector="^:pointerover /template/ Border#ring">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource PineTextMuted}" />
+                                    </Style>
+                                    <Style Selector="^:selected /template/ Border#ring">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource PineText}" />
+                                    </Style>
+                                </ControlTheme>
+                            </ListBox.ItemContainerTheme>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="conv:ThemePalette">
+                                    <Border Width="30" Height="30" CornerRadius="15"
+                                            Background="{Binding Brush}"
+                                            ToolTip.Tip="{Binding Name}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </Grid>
                 </StackPanel>
             </Border>

@@ -37,8 +37,8 @@
                             <!-- Over budget warning visual state -->
                             <Border.Styles>
                                 <Style Selector="Border.exceeded">
-                                    <Setter Property="BorderBrush" Value="#FF4C4C"/> <!-- Red Warning Border -->
-                                    <Setter Property="Background" Value="#1AFF4C4C"/> <!-- Light Red Tint -->
+                                    <Setter Property="BorderBrush" Value="{DynamicResource PineDanger}"/>
+                                    <Setter Property="Background" Value="{DynamicResource PineDangerContainer}"/>
                                 </Style>
                             </Border.Styles>
                             
@@ -68,7 +68,7 @@
                                              CornerRadius="4">
                                     <ProgressBar.Styles>
                                         <Style Selector="ProgressBar.overBudget:not(:indeterminate)">
-                                            <Setter Property="Foreground" Value="#FF4C4C"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource PineDanger}"/>
                                         </Style>
                                     </ProgressBar.Styles>
                                     <Classes.overBudget>
@@ -77,8 +77,9 @@
                                 </ProgressBar>
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                                           Text="⚠️ Has superado tu límite mensual para esta categoría. Esto reduce tu balance real disponible."
-                                           Foreground="#FF4C4C"
+                                           Text="You've exceeded your monthly limit for this category, reducing your real available balance."
+                                           Foreground="{DynamicResource PineDanger}"
+                                           TextWrapping="Wrap"
                                            FontSize="12"
                                            Margin="0,4,0,0"
                                            IsVisible="{Binding IsExceeded}"/>

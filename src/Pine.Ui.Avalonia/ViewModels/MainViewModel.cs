@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Pine.Ui.Avalonia.Services;
@@ -18,17 +19,31 @@ public partial class MainViewModel : ObservableObject, INavigationService
         _serviceProvider = serviceProvider;
     }
 
-    public async void Initialize()
-    {
-        var vaultManager = _serviceProvider.GetRequiredService<Pine.Application.Security.VaultManager>();
-        var vaults = await vaultManager.GetVaultsAsync();
+    /// <summary>
+    /// Synchronous entry point for the app lifetime. Kicks off the async
+    /// bootstrap without an <c>async void</c> so exceptions stay observable.
+    /// </summary>
+    public void Initialize() => _ = InitializeAsync();
 
-        if (vaults.Count > 0)
+    private async Task InitializeAsync()
+    {
+        try
         {
-            NavigateTo<VaultSelectionViewModel>();
+            var vaultManager = _serviceProvider.GetRequiredService<Pine.Application.Security.VaultManager>();
+            var vaults = await vaultManager.GetVaultsAsync();
+
+            if (vaults.Count > 0)
+            {
+                NavigateTo<VaultSelectionViewModel>();
+            }
+            else
+            {
+                NavigateTo<SetupViewModel>();
+            }
         }
-        else
+        catch (Exception)
         {
+            // Fail safe: fall back to first-run setup rather than crashing startup.
             NavigateTo<SetupViewModel>();
         }
     }

@@ -43,13 +43,14 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Classes="card" Margin="10" Padding="0" CornerRadius="12" 
+                            <Border Classes="card" Margin="10" Padding="0" CornerRadius="12"
                                     Background="{DynamicResource PineSurface}"
                                     BorderBrush="{DynamicResource PineBorder}"
                                     BorderThickness="1"
                                     BoxShadow="0 4 16 0 #18000000"
                                     Width="{Binding Width, Mode=TwoWay}"
                                     Height="{Binding Height, Mode=TwoWay}"
+                                    MinWidth="240" MinHeight="180" MaxWidth="720"
                                     ClipToBounds="True"
                                     PointerPressed="Widget_PointerPressed"
                                     PointerMoved="Widget_PointerMoved"
@@ -58,7 +59,8 @@
                                 <Grid RowDefinitions="Auto, *, Auto">
                                     
                                     <!-- Header / Drag Handle -->
-                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder">
+                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder"
+                                            AutomationProperties.Name="Widget drag handle">
                                         <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Border>
                                     
@@ -81,10 +83,11 @@
                                     </ContentControl>
 
                                     <!-- Resize Handle -->
-                                    <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" 
+                                    <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                            Width="15" Height="15" Cursor="BottomRightCorner"
                                            DragDelta="ResizeThumb_DragDelta"
-                                           ToolTip.Tip="Drag to resize">
+                                           ToolTip.Tip="Drag to resize"
+                                           AutomationProperties.Name="Resize widget">
                                         <Thumb.Template>
                                             <ControlTemplate>
                                                 <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource PineTextMuted}" />
@@ -100,7 +103,7 @@
         </Grid>
         
         <!-- Dialog Overlay -->
-        <Border Background="#80000000" IsVisible="{Binding IsCreateAccountDialogVisible}">
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsCreateAccountDialogVisible}">
             <ContentControl Content="{Binding CreateAccountVm}">
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm:CreateAccountViewModel}">
@@ -111,7 +114,7 @@
         </Border>
 
         <!-- Dialog Overlay (Import Wizard) -->
-        <Border Background="#80000000" IsVisible="{Binding IsImportWizardVisible}" ZIndex="90">
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsImportWizardVisible}" ZIndex="90">
             <ContentControl Content="{Binding ImportWizardVm}">
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm_importing:ImportWizardViewModel}">

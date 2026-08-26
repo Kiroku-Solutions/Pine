@@ -1,0 +1,45 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:Pine.Ui.Avalonia.Controls">
+
+  <Style Selector="controls|ImageLightbox">
+    <Setter Property="ZIndex" Value="100" />
+    <Setter Property="Focusable" Value="True" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <!-- Root visibility is driven by IsOpen; collapsed => no hit-testing. -->
+        <Border IsVisible="{TemplateBinding IsOpen}"
+                Background="{DynamicResource PineScrim}">
+          <Grid RowDefinitions="Auto, *" Margin="24">
+
+            <!-- Toolbar -->
+            <Border Grid.Row="0" Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                    CornerRadius="10" Padding="8" Margin="0,0,0,12"
+                    HorizontalAlignment="Center" BoxShadow="0 6 20 0 #50000000">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Name="PART_ZoomOut" Content="&#x2212;" Classes="pine-outline" Width="42"
+                        HorizontalContentAlignment="Center" ToolTip.Tip="Zoom out"
+                        AutomationProperties.Name="Zoom out" />
+                <Button Name="PART_Reset" Content="Reset" Classes="pine-outline"
+                        ToolTip.Tip="Fit to screen" />
+                <Button Name="PART_ZoomIn" Content="+" Classes="pine-outline" Width="42"
+                        HorizontalContentAlignment="Center" ToolTip.Tip="Zoom in"
+                        AutomationProperties.Name="Zoom in" />
+                <Border Width="1" Background="{DynamicResource PineBorder}" Margin="4,2" />
+                <Button Name="PART_Close" Content="Close" Classes="pine-accent"
+                        ToolTip.Tip="Close (Esc)" />
+              </StackPanel>
+            </Border>
+
+            <!-- Zoomable / pannable viewport -->
+            <Border Grid.Row="1" Name="PART_Viewport" ClipToBounds="True" Background="Transparent">
+              <Image Name="PART_Image" Source="{TemplateBinding Source}" Stretch="Uniform"
+                     RenderTransformOrigin="0.5,0.5" />
+            </Border>
+          </Grid>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+</Styles>

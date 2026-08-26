@@ -95,7 +95,15 @@ public partial class UnlockViewModel : ObservableObject
 
                 // Force actual read to trigger SQLCipher decryption failure if password is wrong
                 _ = System.Linq.Queryable.Any(dbContext.Accounts);
+
+                // Apply any pending migrations now that the vault is open (no-op if up to date).
+                PineDbInitializer.Migrate(dbContext);
             });
+
+            // Vault is open: apply this vault's persisted accent theme before showing the shell.
+            var settingRepository = _serviceProvider.GetService<Pine.Core.Configuration.ISettingRepository>();
+            if (settingRepository != null)
+                await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(settingRepository);
 
             // Transition to Dashboard
             _navigationService.NavigateTo<ShellViewModel>();

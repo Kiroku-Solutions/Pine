@@ -113,7 +113,10 @@ public partial class SetupViewModel : ObservableObject
                 _vaultSession.Unlock(vaultDir, key);
 
                 var dbContext = _serviceProvider.GetRequiredService<PineDbContext>();
-                dbContext.Database.EnsureCreated();
+                // Use migrations (not EnsureCreated) so the vault is migration-managed:
+                // this creates the full schema AND records __EFMigrationsHistory, allowing
+                // future schema changes to be applied incrementally on unlock.
+                PineDbInitializer.Migrate(dbContext);
             });
 
             StatusMessage = "Vault initialized! Saving settings...";

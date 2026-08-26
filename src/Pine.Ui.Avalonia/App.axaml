@@ -6,15 +6,13 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Default accent palette. Swapped at runtime by ThemeManager. -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Pine.Ui.Avalonia/Themes/AmberTheme.axaml" />
+            </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
-                <!-- Light Mode: "Morning Wood" -->
+                <!-- Light Mode: neutral base. Accent tokens come from the active palette (Themes/*.axaml). -->
                 <ResourceDictionary x:Key="Light">
-                    <!-- Pine Brand Tokens -->
-                    <Color x:Key="PinePrimaryColor">#F57104</Color>
-                    <Color x:Key="PinePrimaryContainerColor">#FFF5EB</Color>
-                    
-                    <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
-                    <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
                     <SolidColorBrush x:Key="PineBackground" Color="#FCFBF9" />
                     <SolidColorBrush x:Key="PineSurface" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="PineSurfaceHover" Color="#FFF8F2" />
@@ -26,11 +24,12 @@
                     <SolidColorBrush x:Key="PineSidebarBorder" Color="#E5DDD6" />
                     <SolidColorBrush x:Key="PineDanger" Color="#DC3545" />
                     <SolidColorBrush x:Key="PineDangerHover" Color="#C82333" />
-                    
-                    <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Offset="0" Color="#F57104" />
-                        <GradientStop Offset="1" Color="#D86E20" />
-                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="PineError" Color="#DC3545" />
+                    <SolidColorBrush x:Key="PineDangerContainer" Color="#FDECEC" />
+                    <SolidColorBrush x:Key="PineWarning" Color="#E8940C" />
+                    <SolidColorBrush x:Key="PineSuccess" Color="#2E9E5B" />
+                    <SolidColorBrush x:Key="PineSurfaceElevated" Color="#F7F2EC" />
+                    <SolidColorBrush x:Key="PineScrim" Color="#66000000" />
 
                     <!-- FluentAvalonia Overrides — harmonize with warm tones -->
                     <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#FCFBF9" />
@@ -44,14 +43,8 @@
                     <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#9A8B80" />
                 </ResourceDictionary>
                 
-                <!-- Dark Mode: "Midnight Pine" -->
+                <!-- Dark Mode: neutral base. Accent tokens come from the active palette (Themes/*.axaml). -->
                 <ResourceDictionary x:Key="Dark">
-                    <!-- Pine Brand Tokens -->
-                    <Color x:Key="PinePrimaryColor">#F78526</Color>
-                    <Color x:Key="PinePrimaryContainerColor">#3D2010</Color>
-                    
-                    <SolidColorBrush x:Key="PinePrimary" Color="{StaticResource PinePrimaryColor}" />
-                    <SolidColorBrush x:Key="PinePrimaryContainer" Color="{StaticResource PinePrimaryContainerColor}" />
                     <SolidColorBrush x:Key="PineBackground" Color="#0F0B09" />
                     <SolidColorBrush x:Key="PineSurface" Color="#1A1412" />
                     <SolidColorBrush x:Key="PineSurfaceHover" Color="#241C18" />
@@ -63,11 +56,12 @@
                     <SolidColorBrush x:Key="PineSidebarBorder" Color="#2E241E" />
                     <SolidColorBrush x:Key="PineDanger" Color="#E54B5A" />
                     <SolidColorBrush x:Key="PineDangerHover" Color="#D43A49" />
-                    
-                    <LinearGradientBrush x:Key="PineAccentGradient" StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Offset="0" Color="#F78526" />
-                        <GradientStop Offset="1" Color="#C64A02" />
-                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="PineError" Color="#E54B5A" />
+                    <SolidColorBrush x:Key="PineDangerContainer" Color="#3A1C1F" />
+                    <SolidColorBrush x:Key="PineWarning" Color="#F5A623" />
+                    <SolidColorBrush x:Key="PineSuccess" Color="#7ED321" />
+                    <SolidColorBrush x:Key="PineSurfaceElevated" Color="#241C18" />
+                    <SolidColorBrush x:Key="PineScrim" Color="#99000000" />
 
                     <!-- FluentAvalonia Overrides — harmonize with warm umber tones -->
                     <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#0F0B09" />
@@ -87,6 +81,7 @@
     <Application.Styles>
         <sty:FluentAvaloniaTheme CustomAccentColor="#F57104" PreferUserAccentColor="False" />
         <StyleInclude Source="avares://Pine.Ui.Avalonia/Controls/ImageCropperControl.axaml" />
+        <StyleInclude Source="avares://Pine.Ui.Avalonia/Controls/ImageLightbox.axaml" />
         
         <!-- ═══ Global Button: "pine-accent" class ═══ -->
         <Style Selector="Button.pine-accent">
@@ -95,6 +90,8 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform" Value="scale(1)" />
             <Setter Property="Transitions">
                 <Transitions>
                     <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
@@ -117,9 +114,12 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform" Value="scale(1)" />
             <Setter Property="Transitions">
                 <Transitions>
                     <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
                 </Transitions>
             </Setter>
         </Style>
@@ -161,16 +161,73 @@
 
         <!-- ═══ Smooth Transitions for Cards ═══ -->
         <Style Selector="Border.card">
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
             <Setter Property="Transitions">
                 <Transitions>
                     <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
                     <BrushTransition Property="Background" Duration="0:0:0.2" />
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2" />
                 </Transitions>
             </Setter>
         </Style>
         <Style Selector="Border.card:pointerover">
-            <Setter Property="RenderTransform" Value="translateY(-2px)" />
+            <Setter Property="RenderTransform" Value="translateY(-3px)" />
             <Setter Property="Background" Value="{DynamicResource PineSurfaceHover}" />
+        </Style>
+
+        <!-- ═══ Secondary / Outline Button: "pine-outline" class ═══ -->
+        <Style Selector="Button.pine-outline">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PineBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform" Value="scale(1)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.pine-outline:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PineSurfaceHover}" />
+        </Style>
+        <Style Selector="Button.pine-outline:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.02)" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PinePrimary}" />
+        </Style>
+        <Style Selector="Button.pine-outline:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.98)" />
+        </Style>
+
+        <!-- ═══ Input focus feedback ═══ -->
+        <Style Selector="TextBox, NumericUpDown, ComboBox, DatePicker">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- ═══ Reusable entrance: fade + rise. Apply Classes="reveal" ═══ -->
+        <Style Selector=":is(Control).reveal">
+            <Style.Animations>
+                <Animation Duration="0:0:0.35" Easing="CubicEaseOut" FillMode="Forward">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0" />
+                        <Setter Property="TranslateTransform.Y" Value="12" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="1" />
+                        <Setter Property="TranslateTransform.Y" Value="0" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
         </Style>
     </Application.Styles>
 </Application>

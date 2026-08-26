@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:sec="using:Pine.Application.Security"
              x:DataType="vm:VaultSelectionViewModel"
              x:Class="Pine.Ui.Avalonia.Views.VaultSelectionView">
 
@@ -18,23 +19,24 @@
              ItemsSource="{Binding Vaults}" 
              Background="Transparent">
       <ListBox.ItemTemplate>
-        <DataTemplate>
-          <Border BorderBrush="#33FFFFFF" 
-                  BorderThickness="1" 
-                  CornerRadius="8" 
-                  Padding="20" 
+        <DataTemplate x:DataType="sec:VaultProfile">
+          <Border BorderBrush="{DynamicResource PineBorder}"
+                  BorderThickness="1"
+                  CornerRadius="8"
+                  Padding="20"
                   Margin="0,0,0,10"
-                  Background="#11FFFFFF">
+                  Background="{DynamicResource PineSurface}">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel>
                 <TextBlock Text="{Binding Name}" FontSize="20" FontWeight="Medium"/>
                 <TextBlock Text="{Binding Path}" FontSize="12" Opacity="0.5" Margin="0,5,0,0"/>
               </StackPanel>
-              <Button Grid.Column="1" 
-                      Content="Open" 
+              <Button Grid.Column="1"
+                      Content="Open"
                       Command="{Binding $parent[UserControl].((vm:VaultSelectionViewModel)DataContext).SelectVaultCommand}"
                       CommandParameter="{Binding}"
-                      Classes="accent"
+                      Classes="pine-accent"
+                      Padding="20,10"
                       VerticalAlignment="Center"/>
             </Grid>
           </Border>

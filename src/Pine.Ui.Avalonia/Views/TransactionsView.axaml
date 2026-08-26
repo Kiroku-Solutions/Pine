@@ -69,7 +69,7 @@
         </Grid>
         
         <!-- Dialog Overlay -->
-        <Border Background="#80000000" IsVisible="{Binding IsAddTransactionDialogVisible}">
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsAddTransactionDialogVisible}">
             <ContentControl Content="{Binding AddTransactionVm}">
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm:AddTransactionViewModel}">
