@@ -4,11 +4,8 @@ name: CI
 # The previous version only restored/built/tested tests/**, which is why three
 # broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
 
+# CI automatizado deshabilitado temporalmente para ahorrar minutos de cómputo (solo se puede ejecutar manualmente)
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
