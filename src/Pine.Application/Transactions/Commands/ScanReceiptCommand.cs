@@ -8,6 +8,16 @@ using Pine.Core.Transactions;
 
 namespace Pine.Application.Transactions.Commands;
 
+/// <summary>
+/// Runs receipt detection and OCR extraction over an image and returns the extracted fields for
+/// the user to confirm. Nothing is persisted: the confirmed result is submitted separately as an
+/// <see cref="AddTransactionCommand"/>.
+/// </summary>
+/// <remarks>
+/// DELIBERATELY NOT <c>ITransactionalRequest</c> (TD-01): the handler depends only on
+/// <c>IAIProvider</c> and performs no repository writes, so there is nothing to commit. Wrapping
+/// it would hold a database transaction open for the whole (slow) inference run for no benefit.
+/// </remarks>
 public record ScanReceiptCommand(Stream ImageStream) : IRequest<ReceiptExtractionResult>;
 
 public sealed class ScanReceiptCommandHandler : IRequestHandler<ScanReceiptCommand, ReceiptExtractionResult>

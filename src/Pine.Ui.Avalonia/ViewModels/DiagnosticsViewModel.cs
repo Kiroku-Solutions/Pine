@@ -8,11 +8,22 @@ using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Budgets.Commands;
+using Pine.Application.Categories.Commands;
 using Pine.Core.Budgets;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
+/// <summary>
+/// Developer diagnostics page, including the "test features" smoke run.
+/// </summary>
+/// <remarks>
+/// Holds no repository (TD-01). It used to inject the Scoped <c>ICategoryRepository</c> and call
+/// <c>SaveAsync</c> directly; once repositories stopped flushing, that write was staged on a
+/// root-scoped <c>PineDbContext</c> and never committed, so the <c>CreateBudgetCommand</c> sent
+/// straight afterwards pointed at a category that did not exist. Every write here now goes through
+/// the mediator, which is a singleton and commits each command in its own transaction.
+/// </remarks>
 public partial class DiagnosticsViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -31,13 +42,14 @@ public partial class DiagnosticsViewModel : ObservableObject
 
     private readonly IMediator _mediator;
     private readonly TimeProvider _timeProvider;
-    private readonly Pine.Core.Categories.ICategoryRepository _categoryRepository;
 
-    public DiagnosticsViewModel(IMediator mediator, TimeProvider timeProvider, Pine.Core.Categories.ICategoryRepository categoryRepository)
+    public DiagnosticsViewModel(IMediator mediator, TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(mediator);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
         _mediator = mediator;
         _timeProvider = timeProvider;
-        _categoryRepository = categoryRepository;
         // Mock system stats
         long memoryBytes = GC.GetTotalMemory(false);
         MemoryUsage = $"{memoryBytes / 1024 / 1024} MB";
@@ -90,10 +102,9 @@ public partial class DiagnosticsViewModel : ObservableObject
             // 4. Budgets
             Logs.Add($"[{DateTime.Now:HH:mm:ss}] [INFO] Testing Budgets...");
             
-            var category = Pine.Core.Categories.Category.Create("Groceries", "#00FF00", null);
-            await _categoryRepository.SaveAsync(category, default);
-            
-            await _mediator.Send(new CreateBudgetCommand(category.Id, 500m, "USD", BudgetPeriod.Monthly));
+            var categoryId = await _mediator.Send(new CreateCategoryCommand("Groceries", "#00FF00"));
+
+            await _mediator.Send(new CreateBudgetCommand(categoryId, 500m, "USD", BudgetPeriod.Monthly));
 
             Logs.Add($"[{DateTime.Now:HH:mm:ss}] [SUCCESS] All features tested successfully!");
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());

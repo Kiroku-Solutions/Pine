@@ -4,7 +4,7 @@ using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pine.Infrastructure.Data;
-using Pine.Application.Accounts.Commands;
+using Pine.Application.Common;
 using Pine.Core.Accounts;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia;
@@ -23,7 +23,19 @@ sealed class Program
             // 1. Build Dependency Injection Container
             var services = new ServiceCollection();
             ConfigureServices(services);
-            var serviceProvider = services.BuildServiceProvider();
+            // ValidateScopes (TD-01): PineDbContext, the repositories, IUnitOfWork, IVaultMigrator and
+            // IVaultBackupService are all Scoped. Without this flag, resolving any of them from the
+            // ROOT provider silently succeeds and produces a root-scoped instance that lives for the
+            // whole process - a DbContext still holding the first vault's path and key after the user
+            // locks it and opens another. With it, that mistake throws immediately and loudly.
+            //
+            // ValidateOnBuild is deliberately NOT enabled: AddTransactionViewModel and
+            // CreateAccountViewModel are registered as transients but take an unregistered
+            // `Action onComplete` constructor parameter (they are only ever new-ed up by hand), so
+            // build-time validation would abort startup on a pre-existing wiring issue outside the
+            // scope of TD-01.
+            var serviceProvider = services.BuildServiceProvider(
+                new ServiceProviderOptions { ValidateScopes = true });
 
             // 2. Initialize App Services
             App.InitializeServices(serviceProvider);
@@ -62,8 +74,8 @@ sealed class Program
         // TimeProvider
         services.AddSingleton(TimeProvider.System);
 
-        // MediatR
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateAccountCommand).Assembly));
+        // MediatR + per-request DI scoping + transactional pipeline behaviour (TD-01).
+        services.AddPineApplication();
 
         // Security Session
         services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
@@ -82,12 +94,27 @@ sealed class Program
             return new PineDbContext(dbFilePath, session.Key!);
         });
 
+
+        // Vault header + key derivation (TD-05). Stateless, so singletons are safe.
+        services.AddSingleton<Pine.Core.Security.IVaultHeaderStore, Pine.Infrastructure.Security.FileVaultHeaderStore>();
+        services.AddSingleton<Pine.Core.Security.IKeyDerivationService, Pine.Infrastructure.Security.Argon2idKeyDerivationService>();
+
+        // Vault backup + migration (TD-10). These depend on PineDbContext, so they must share its
+        // lifetime and must only be resolved once the vault session is unlocked.
+        services.AddScoped<Pine.Core.Security.IVaultBackupService, Pine.Infrastructure.Data.VaultBackupService>();
+        services.AddScoped<Pine.Core.Security.IVaultMigrator, Pine.Infrastructure.Data.EfCoreVaultMigrator>();
+
+        // Unit of work (TD-01). Scoped so it shares the request's PineDbContext with every
+        // repository resolved in the same scope, giving one transactional boundary per request.
+        services.AddScoped<Pine.Core.Common.IUnitOfWork, Pine.Infrastructure.Data.EfCoreUnitOfWork>();
+
         // Repositories
         services.AddScoped<IAccountRepository, SqliteAccountRepository>();
         services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
         services.AddScoped<Pine.Core.Categories.ICategoryRepository, SqliteCategoryRepository>();
         services.AddScoped<Pine.Core.Budgets.IBudgetRepository, SqliteBudgetRepository>();
         services.AddScoped<Pine.Core.Configuration.ISettingRepository, SqliteSettingRepository>();
+        services.AddScoped<Pine.Core.Importing.IImportProfileRepository, Pine.Infrastructure.Importing.SqliteImportProfileRepository>();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

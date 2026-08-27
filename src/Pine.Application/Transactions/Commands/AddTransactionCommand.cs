@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
@@ -24,7 +25,7 @@ public record AddTransactionCommand(
     string Notes,
     string Category,
     System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null
-) : IRequest<Guid>;
+) : IRequest<Guid>, ITransactionalRequest;
 
 public class AddTransactionCommandHandler : IRequestHandler<AddTransactionCommand, Guid>
 {

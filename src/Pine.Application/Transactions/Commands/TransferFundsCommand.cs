@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Accounts;
 using Pine.Core.Transactions;
 
@@ -13,7 +14,7 @@ public record TransferFundsCommand(
     decimal Amount,
     string CurrencyCode,
     DateTimeOffset Date,
-    string Notes) : IRequest;
+    string Notes) : IRequest, ITransactionalRequest;
 
 public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
 {
@@ -94,7 +95,9 @@ public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
         sourceAccount.Withdraw(new Pine.Core.Common.ValueObjects.Money(request.Amount, currency), _timeProvider);
         destAccount.Deposit(new Pine.Core.Common.ValueObjects.Money(request.Amount, currency), _timeProvider);
 
-        // 4. Save everything (in a real DB, these should be in a unit of work or transaction scope)
+        // 4. Stage both legs and both balances. All four writes land in the single transaction
+        //    opened by TransactionBehavior for this command, so a half-finished transfer -- money
+        //    withdrawn but never deposited -- cannot be committed (TD-01).
         await _transactionRepository.SaveAsync(sourceTx, cancellationToken);
         await _transactionRepository.SaveAsync(destTx, cancellationToken);
         

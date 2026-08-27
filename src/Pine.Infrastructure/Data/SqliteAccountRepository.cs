@@ -7,6 +7,15 @@ using Pine.Core.Accounts;
 
 namespace Pine.Infrastructure.Data;
 
+/// <remarks>
+/// PERSISTENCE IS NOT COMMITTED HERE (TD-01). This repository only stages changes on the scoped
+/// <see cref="PineDbContext"/>; the write is flushed and committed by
+/// <c>Pine.Core.Common.IUnitOfWork</c>, driven by the application layer's
+/// <c>TransactionBehavior</c>. A repository that called <c>SaveChangesAsync</c> itself would make
+/// every write its own implicit transaction, which is exactly the defect this class no longer has.
+/// Any write path that does not go through a MediatR request marked <c>ITransactionalRequest</c>
+/// will therefore never be persisted.
+/// </remarks>
 public sealed class SqliteAccountRepository : IAccountRepository
 {
     private readonly PineDbContext _dbContext;
@@ -37,9 +46,6 @@ public sealed class SqliteAccountRepository : IAccountRepository
         {
             _dbContext.Entry(existing).CurrentValues.SetValues(account);
         }
-
-        // Using BEGIN IMMEDIATE logic (implicit in EF Core SaveChanges if transaction used, but we'll just save here)
-        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -48,7 +54,6 @@ public sealed class SqliteAccountRepository : IAccountRepository
         if (account != null)
         {
             _dbContext.Accounts.Remove(account);
-            await _dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 }

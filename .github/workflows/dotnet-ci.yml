@@ -1,45 +1,258 @@
-name: .NET Core CI
+name: CI
+
+# TD-07: this workflow builds the PRODUCT, not just the test projects.
+# The previous version only restored/built/tested tests/**, which is why three
+# broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  # Force the NuGet global-packages folder into the workspace so a single
+  # actions/cache path works identically on ubuntu, windows and macos runners
+  # (~/.nuget/packages vs %USERPROFILE%\.nuget\packages would otherwise differ).
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget-packages
+  # Directory.Build.props sets TreatWarningsAsErrors=true. Nothing in this file
+  # is allowed to weaken that: a warning must remain a build failure.
+  DOTNET_CONFIGURATION: Release
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-
+  # ---------------------------------------------------------------------------
+  # Desktop / shared surface: every project whose TFM is plain `net10.0`.
+  # Verified TFM-by-TFM against each .csproj on 2026-08-26 (11 projects).
+  # Built on BOTH ubuntu and windows: the code contains no Windows-only P/Invoke
+  # and the Windows-only NuGet packages in Pine.Infrastructure
+  # (OpenCvSharp4.runtime.win, Sdcb.PaddleInference.runtime.win64.mkl) are
+  # runtime-asset packages that contribute no compile-time reference.
+  # ---------------------------------------------------------------------------
+  desktop:
+    name: Build desktop/shared (net10.0) - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
+      - name: Setup .NET SDK (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
 
-    - name: Restore dependencies
-      run: |
-        dotnet restore tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
-        dotnet restore tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
-        dotnet restore tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj
-        dotnet restore tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj
-        dotnet restore tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj
+      # There are no packages.lock.json files in this repo, so the cache key is
+      # hashed over every .csproj plus the shared MSBuild/SDK inputs. That is a
+      # coarse key (it changes on any csproj edit) but it is never stale.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.nuget-packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
-    - name: Build Test Projects
-      run: |
-        dotnet build tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-restore
-        dotnet build tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-restore
-        dotnet build tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj --configuration Release --no-restore
-        dotnet build tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj --configuration Release --no-restore
-        dotnet build tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj --configuration Release --no-restore
+      - name: Restore desktop/shared projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in \
+            src/Pine.Core/Pine.Core.csproj \
+            src/Pine.Application/Pine.Application.csproj \
+            src/Pine.Infrastructure/Pine.Infrastructure.csproj \
+            src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
+            src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
+            src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
+            src/Pine.Cli/Pine.Cli.csproj \
+            src/Pine.Ai.Default/Pine.Ai.Default.csproj \
+            src/Pine.Ai.Explainer/Pine.Ai.Explainer.csproj \
+            src/Pine.Plugins.Host/Pine.Plugins.Host.csproj \
+            src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj
+          do
+            echo "::group::restore $p"
+            dotnet restore "$p"
+            echo "::endgroup::"
+          done
 
-    - name: Run Tests
-      run: |
-        dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-build --verbosity normal
-        dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-build --verbosity normal
-        dotnet test tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj --configuration Release --no-build --verbosity normal
-        dotnet test tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj --configuration Release --no-build --verbosity normal
-        dotnet test tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj --configuration Release --no-build --verbosity normal
+      - name: Build desktop/shared projects (Release, warnings are errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in \
+            src/Pine.Core/Pine.Core.csproj \
+            src/Pine.Application/Pine.Application.csproj \
+            src/Pine.Infrastructure/Pine.Infrastructure.csproj \
+            src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
+            src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
+            src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
+            src/Pine.Cli/Pine.Cli.csproj \
+            src/Pine.Ai.Default/Pine.Ai.Default.csproj \
+            src/Pine.Ai.Explainer/Pine.Ai.Explainer.csproj \
+            src/Pine.Plugins.Host/Pine.Plugins.Host.csproj \
+            src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj
+          do
+            echo "::group::build $p"
+            dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
+            echo "::endgroup::"
+          done
 
+  # ---------------------------------------------------------------------------
+  # Platform heads that require a .NET workload. These are NOT skipped: they are
+  # real gating jobs. Each leg installs exactly the workload its head needs,
+  # because a bare GitHub runner has no android/ios/wasm-tools workload
+  # installed and `dotnet restore` fails with NETSDK1147 without them.
+  #   - android: needs the `android` workload plus a JDK (pinned to Temurin 17).
+  #   - ios:     needs the `ios` workload and can only build on macOS.
+  #   - wasm:    Pine.Ui.Web (net10.0-browser) restores without wasm-tools, but
+  #              wasm-tools is required for the WebAssembly build/publish path,
+  #              so it is installed rather than gambled on.
+  # ---------------------------------------------------------------------------
+  platform-heads:
+    name: Build ${{ matrix.head }} head - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - head: android
+            os: ubuntu-latest
+            workload: android
+            project: src/Pine.Ui.Android/Pine.Ui.Android.csproj
+          - head: browser-wasm
+            os: ubuntu-latest
+            workload: wasm-tools
+            project: src/Pine.Ui.Web/Pine.Ui.Web.csproj
+          - head: ios
+            os: macos-latest
+            workload: ios
+            project: src/Pine.Ui.Ios/Pine.Ui.Ios.csproj
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup JDK 17 (Android build requirement)
+        if: matrix.head == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.nuget-packages
+          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ matrix.head }}-
+            nuget-${{ runner.os }}-
+
+      - name: Install ${{ matrix.workload }} workload
+        run: dotnet workload install ${{ matrix.workload }} --skip-manifest-update
+
+      - name: Restore ${{ matrix.project }}
+        run: dotnet restore ${{ matrix.project }}
+
+      - name: Build ${{ matrix.project }} (Release, warnings are errors)
+        run: dotnet build ${{ matrix.project }} --configuration Release --no-restore
+
+  # ---------------------------------------------------------------------------
+  # Tests. Only Pine.Tests.Unit and Pine.Tests.Integration contain real tests
+  # (23 and 5 respectively as of 2026-08-26).
+  # Pine.Tests.Accessibility, Pine.Tests.Performance and Pine.Tests.Mutation
+  # contain a single empty `UnitTest1.Test1()` template each and assert nothing.
+  # They are COMPILED here so they cannot rot, but they are deliberately NOT run
+  # and NOT described as accessibility/performance/mutation coverage - that
+  # would be a green light over an empty file. See audit TD-38.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (unit + integration) - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.nuget-packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore test projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in \
+            tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj \
+            tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj \
+            tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj \
+            tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj \
+            tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj
+          do
+            dotnet restore "$p"
+          done
+
+      - name: Build test projects that contain real tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-restore
+          dotnet build tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-restore
+
+      - name: Compile-only check of empty placeholder projects (Accessibility/Performance/Mutation contain no assertions - TD-38)
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj --configuration Release --no-restore
+          dotnet build tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj --configuration Release --no-restore
+          dotnet build tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj --configuration Release --no-restore
+
+      - name: Run unit tests
+        shell: bash
+        run: >
+          dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
+          --configuration Release --no-build
+          --logger "trx;LogFileName=unit-${{ matrix.os }}.trx"
+          --results-directory TestResults
+
+      - name: Run integration tests
+        shell: bash
+        run: >
+          dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
+          --configuration Release --no-build
+          --logger "trx;LogFileName=integration-${{ matrix.os }}.trx"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/*.trx
+          if-no-files-found: error

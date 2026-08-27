@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using MediatR;
+using Pine.Application.Settings.Commands;
 using Pine.Core.Transactions;
 using Pine.Core.Ai;
 using Pine.Core.Configuration;
@@ -57,13 +59,24 @@ public class CategorizationTrainingBackgroundService : BackgroundService
 
     private async Task ProcessBatchAsync(CancellationToken cancellationToken)
     {
+        // An explicit scope, because this service is a singleton and the repositories below are
+        // Scoped: resolving them from the root provider would pin one PineDbContext (and therefore
+        // one vault's key) for the entire process lifetime.
         using var scope = _serviceProvider.CreateScope();
-        
-        // Wait, we need ITransactionRepository to count categorized transactions.
-        // I will assume ITransactionRepository exists and has GetAllAsync(). Let's resolve it.
+
+        // Reads only. The counting pass needs every transaction with a categorised split, and the
+        // last-trained watermark, both of which are plain queries.
         var transactionRepository = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
         var settingRepository = scope.ServiceProvider.GetRequiredService<ISettingRepository>();
         var trainer = scope.ServiceProvider.GetRequiredService<ICategorizationTrainer>();
+
+        // The WRITE goes through MediatR, never through settingRepository. Repositories no longer
+        // call SaveChangesAsync (TD-01), so a direct SaveAsync here would stage the new watermark
+        // on this scope's context and then throw it away when the scope is disposed - the service
+        // would retrain the model on every single poll, forever. ISender is a singleton decorator
+        // that opens its own scope per Send, so the command below gets its own context and its own
+        // committed transaction.
+        var sender = scope.ServiceProvider.GetRequiredService<ISender>();
 
         var allTransactions = await transactionRepository.GetAllAsync(cancellationToken);
         
@@ -103,16 +116,13 @@ public class CategorizationTrainingBackgroundService : BackgroundService
             {
                 await trainer.TrainModelAsync(trainingData, cancellationToken);
                 
-                // Update the setting
-                if (lastTrainedCountSetting == null)
-                {
-                    lastTrainedCountSetting = Pine.Core.Settings.Setting.Create(LastTrainedCountSettingKey, currentCategorizedCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-                else
-                {
-                    lastTrainedCountSetting.UpdateValue(currentCategorizedCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-                await settingRepository.SaveAsync(lastTrainedCountSetting, cancellationToken);
+                // Persist the new watermark. SaveSettingCommand is transactional, so if this
+                // throws nothing is committed and the next poll simply retrains.
+                await sender.Send(
+                    new SaveSettingCommand(
+                        LastTrainedCountSettingKey,
+                        currentCategorizedCount.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    cancellationToken);
                 
 #pragma warning disable CA1848
                 _logger.LogInformation("AI model training completed and state saved.");

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
 using Pine.Application.Security;
+using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
@@ -14,10 +15,12 @@ public class SetupViewModelTests
     private readonly IServiceProvider _serviceProvider = Substitute.For<IServiceProvider>();
     private readonly IVaultSession _vaultSession = Substitute.For<IVaultSession>();
     private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
+    private readonly IVaultHeaderStore _vaultHeaderStore = Substitute.For<IVaultHeaderStore>();
+    private readonly IKeyDerivationService _keyDerivationService = Substitute.For<IKeyDerivationService>();
 
     private SetupViewModel CreateViewModel()
     {
-        return new SetupViewModel(_serviceProvider, _vaultSession, _navigationService);
+        return new SetupViewModel(_serviceProvider, _vaultSession, _navigationService, _vaultHeaderStore, _keyDerivationService);
     }
 
     [Fact]

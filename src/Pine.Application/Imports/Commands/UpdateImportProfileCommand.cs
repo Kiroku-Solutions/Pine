@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Importing;
 
 namespace Pine.Application.Importing.Commands;
@@ -14,7 +15,7 @@ public record UpdateImportProfileCommand(
     bool HasHeaderRecord,
     bool InvertAmounts,
     Dictionary<string, string> ColumnMappings
-) : IRequest<ImportProfile>;
+) : IRequest<ImportProfile>, ITransactionalRequest;
 
 public sealed class UpdateImportProfileCommandHandler : IRequestHandler<UpdateImportProfileCommand, ImportProfile>
 {
