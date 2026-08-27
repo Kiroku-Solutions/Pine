@@ -267,6 +267,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("Date")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ImportKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("LinkedTransactionId")
                         .HasColumnType("TEXT");
 
@@ -304,6 +308,8 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LinkedTransactionId");
+
+                    b.HasIndex("AccountId", "ImportKey");
 
                     b.ToTable("Transactions");
                 });

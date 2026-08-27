@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -179,6 +180,54 @@ internal sealed class AtomicityHost : IAsyncDisposable
     /// <returns>The number of persisted transaction rows.</returns>
     public Task<int> CountTransactionsAsync(Guid accountId)
         => QueryAsync(context => context.Transactions.AsNoTracking().CountAsync(t => t.AccountId == accountId));
+
+    /// <summary>
+    /// Counts the rows of a table over a RAW SQLCipher connection, bypassing EF Core entirely.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="QueryAsync{T}"/> already avoids the change tracker, but it still trusts EF's
+    /// model, its query translation and its <see cref="Guid"/> encoding. For the strongest form of
+    /// "nothing was written", the audit asks for a count that no part of EF can explain away, so
+    /// this issues <c>SELECT COUNT(*)</c> straight at the encrypted file — the same mechanism
+    /// <c>TransactionOwnedCollectionRoundTripTests</c> uses.
+    /// </remarks>
+    /// <param name="table">The table to count.</param>
+    /// <returns>The number of rows currently in the table.</returns>
+    public int CountRowsRaw(string table)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"SELECT COUNT(*) FROM ""{table}"";";
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Reads the <c>ImportKey</c> column of every transaction row over a RAW SQLCipher connection,
+    /// in insertion order, with a database NULL coming back as a null element.
+    /// </summary>
+    /// <remarks>
+    /// Import de-duplication turns entirely on this one column, so an assertion about it must not be
+    /// something EF could explain away. A key read back through <see cref="QueryAsync{T}"/> still
+    /// travels through EF's model and its NULL handling; read here it is the bytes in the encrypted
+    /// file. The distinction matters most for the legacy case, where "the row has no key" and "EF
+    /// materialised an empty string" are different facts with the same shape.
+    /// </remarks>
+    /// <returns>One entry per row of <c>Transactions</c>, null where the column is NULL.</returns>
+    public IReadOnlyList<string?> ReadImportKeysRaw()
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = @"SELECT ""ImportKey"" FROM ""Transactions"" ORDER BY rowid;";
+
+        var keys = new List<string?>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            keys.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
+        }
+
+        return keys;
+    }
 
     /// <summary>
     /// Seeds an account through the real <c>CreateAccountCommand</c> pipeline, then clears the

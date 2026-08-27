@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -54,5 +55,91 @@ public class RecordTransactionCommandHandler : IRequestHandler<RecordTransaction
         await _accountRepository.SaveAsync(account, cancellationToken);
         
         return transaction.Id;
+    }
+}
+
+/// <summary>
+/// Rejects a <see cref="RecordTransactionCommand"/> whose currency can never be applied to the target
+/// account, before the pipeline opens a database transaction and before a single row is written.
+/// </summary>
+/// <remarks>
+/// <para>
+/// SAME DEFECT, SAME SHAPE AS TD-12. This handler orders its writes more carefully than
+/// <c>AddTransactionCommandHandler</c> -- it moves the balance before saving -- but the failure mode
+/// is identical: a currency the account does not use is discovered inside <c>Money.Add</c>, and the
+/// domain invariant's own wording ("Cannot add money of different currencies: USD and EUR") is what
+/// reaches the user. Nothing is persisted, because <c>TransactionBehavior</c> rolls the command back;
+/// what is wrong is the layer, the wording, and the fact that a database transaction was opened at
+/// all for a command that could have been rejected on inspection.
+/// </para>
+/// <para>
+/// The rules and their order match <see cref="AddTransactionCommandValidator"/> deliberately. Two
+/// commands that fail for the same reason should fail with the same message, and one idiom that
+/// appears twice is cheaper to keep correct than two idioms that agree by accident. See that type's
+/// remarks for why the ISO 4217 shape check is hand-rolled and why normalising before comparing is
+/// load-bearing.
+/// </para>
+/// </remarks>
+public sealed class RecordTransactionCommandValidator : IRequestValidator<RecordTransactionCommand>
+{
+    private readonly IAccountRepository _accountRepository;
+
+    /// <summary>
+    /// Initialises the validator with the account repository used to resolve the target account.
+    /// </summary>
+    /// <param name="accountRepository">Repository used to look up the account being posted to.</param>
+    public RecordTransactionCommandValidator(IAccountRepository accountRepository)
+    {
+        _accountRepository = accountRepository;
+    }
+
+    /// <summary>
+    /// Checks that the target account exists and that the requested currency is both well formed and
+    /// the account's own currency.
+    /// </summary>
+    /// <param name="request">The command about to be handled.</param>
+    /// <param name="cancellationToken">Token observed while loading the account.</param>
+    /// <returns>
+    /// An empty list when the command may proceed, otherwise the errors that stop it. The rules
+    /// short-circuit: a missing account leaves nothing to compare a currency against, and a malformed
+    /// currency leaves nothing meaningful to compare.
+    /// </returns>
+    public async Task<IReadOnlyList<ValidationError>> ValidateAsync(
+        RecordTransactionCommand request,
+        CancellationToken cancellationToken = default)
+    {
+        var account = await _accountRepository.GetByIdAsync(request.AccountId, cancellationToken);
+        if (account == null)
+        {
+            return new[]
+            {
+                new ValidationError(
+                    nameof(RecordTransactionCommand.AccountId),
+                    $"Account {request.AccountId} was not found."),
+            };
+        }
+
+        if (!CurrencyCodeText.TryNormalise(request.CurrencyCode, out var normalised))
+        {
+            return new[]
+            {
+                new ValidationError(
+                    nameof(RecordTransactionCommand.CurrencyCode),
+                    $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code."),
+            };
+        }
+
+        var accountCurrency = account.Balance.Currency.Value;
+        if (!string.Equals(normalised, accountCurrency, StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new ValidationError(
+                    nameof(RecordTransactionCommand.CurrencyCode),
+                    $"Transaction currency {normalised} does not match account currency {accountCurrency}."),
+            };
+        }
+
+        return Array.Empty<ValidationError>();
     }
 }

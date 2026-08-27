@@ -22,7 +22,16 @@ public sealed class TransactionLineItem : Entity
         TransactionId = transactionId;
         Description = description ?? string.Empty;
         Quantity = quantity;
-        UnitPrice = unitPrice;
-        TotalPrice = totalPrice;
+        UnitPrice = CopyOf(unitPrice);
+        TotalPrice = CopyOf(totalPrice);
     }
+
+    /// <summary>
+    /// Deep copy of the incoming value object. Line items are persisted as owned entities, so two
+    /// children sharing one <see cref="Money"/> (or its nested <see cref="CurrencyCode"/>) instance
+    /// would be tracked as a single owner and corrupt the write. Note that a single line item's own
+    /// unit price and total price are equally at risk when the caller passes the same instance twice.
+    /// </summary>
+    private static Money CopyOf(Money price) =>
+        new Money(price.Amount, new CurrencyCode(price.Currency.Value));
 }

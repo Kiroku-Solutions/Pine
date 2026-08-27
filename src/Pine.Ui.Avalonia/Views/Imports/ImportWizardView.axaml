@@ -6,23 +6,23 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.Importing.ImportWizardView"
              x:DataType="vm:ImportWizardViewModel">
-    
+
     <Border Classes="card" Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="24" BoxShadow="0 10 30 0 #40000000">
         <Grid RowDefinitions="Auto, *, Auto">
-            
+
             <!-- Header -->
             <StackPanel Grid.Row="0" Margin="0,0,0,20">
                 <TextBlock Text="Import Wizard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
                 <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="{DynamicResource PinePrimary}" Margin="0,5,0,0" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
-            
+
             <!-- Step 0: Select File & Account -->
             <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
                         IsVisible="{Binding IsStep0}">
-                
+
                 <TextBlock Text="1. Choose Destination Account" FontSize="16" Foreground="{DynamicResource PineText}" />
                 <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" Width="300" DisplayMemberBinding="{Binding Name}" />
-                
+
                 <TextBlock Text="2. Choose CSV File" FontSize="16" Foreground="{DynamicResource PineText}" Margin="0,20,0,0"/>
                 <Button Content="Select File..." Click="SelectFile_Click" Classes="pine-accent" Padding="15,10" CornerRadius="8" Width="300" HorizontalContentAlignment="Center"/>
                 <TextBlock Text="{Binding SelectedFileName}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
@@ -31,35 +31,35 @@
             <!-- Step 1: Mapping -->
             <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
                         IsVisible="{Binding IsStep1}">
-                
+
                 <TextBlock Text="Map CSV Columns" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                 <TextBlock Text="We tried to guess the correct columns. Please verify." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,10"/>
-                
+
                 <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Date:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding DateColumn}" Margin="0,5" Width="200"/>
-                    
+
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Payee:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding PayeeColumn}" Margin="0,5" Width="200"/>
 
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Amount:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding AmountColumn}" Margin="0,5" Width="200"/>
-                    
+
                     <TextBlock Grid.Row="3" Grid.Column="0" Text="Category (Opt):" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding CategoryColumn}" Margin="0,5" Width="200"/>
-                    
+
                     <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Content="File has header row" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
                     <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Content="Invert amounts (e.g. expenses are positive in CSV)" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
                 </Grid>
             </StackPanel>
 
             <!-- Step 2: Preview -->
-            <Grid Grid.Row="1" RowDefinitions="Auto,*" 
+            <Grid Grid.Row="1" RowDefinitions="Auto,*"
                   IsVisible="{Binding IsStep2}">
-                
+
                 <TextBlock Grid.Row="0" Text="Preview Transactions" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,0,0,15" />
-                
-                <DataGrid Grid.Row="1" ItemsSource="{Binding PreviewTransactions}" AutoGenerateColumns="False" 
+
+                <DataGrid Grid.Row="1" ItemsSource="{Binding PreviewTransactions}" AutoGenerateColumns="False"
                           IsReadOnly="True" Background="Transparent" Foreground="{DynamicResource PineText}"
                           HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}">
                     <DataGrid.Columns>
@@ -70,22 +70,147 @@
                 </DataGrid>
             </Grid>
 
-            <!-- Footer Buttons -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
-                <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" IsEnabled="{Binding !IsExecuting}"/>
-                
-                <Button Content="Back" Command="{Binding PreviousStepCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" 
-                        IsVisible="{Binding !IsStep0}"
-                        IsEnabled="{Binding !IsExecuting}"/>
-                
-                <Button Content="Next" Command="{Binding NextStepCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8" 
-                        IsVisible="{Binding !IsStep2}"
-                        IsEnabled="{Binding !IsExecuting}"/>
+            <!-- Step 3: Review — every parsed row, imported or not, with the reason the import gave.
+                 Reached only after the import has actually been written. -->
+            <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*"
+                  IsVisible="{Binding IsStep3}">
 
-                <Button Content="Import" Command="{Binding ExecuteImportCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8" 
-                        IsVisible="{Binding IsStep2}"
-                        IsEnabled="{Binding !IsExecuting}"/>
-            </StackPanel>
+                <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+                    <TextBlock Text="Import Review" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{Binding ReviewHeadline}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- Outcome tiles. Counts only: the per-row explanations live in the list below. -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16">
+
+                    <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                            CornerRadius="12" Padding="16" MinWidth="150">
+                        <StackPanel>
+                            <TextBlock Text="Imported" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{Binding ImportedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                            CornerRadius="12" Padding="16" MinWidth="220">
+                        <StackPanel>
+                            <TextBlock Text="Not imported" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{Binding SkippedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
+                            <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding HasSkippedRows}">
+                                <TextBlock Text="{Binding SkippedAlreadyInAccountCount, StringFormat='{}{0} already in this account'}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                <TextBlock Text="{Binding SkippedDuplicateInFileCount, StringFormat='{}{0} repeated inside this file'}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Rows that WERE saved but could not be checked. Kept out of the "Imported" tile on
+                         purpose: an unverified row must not be presented as a verified one. -->
+                    <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1"
+                            CornerRadius="12" Padding="16" MinWidth="220" IsVisible="{Binding HasUncheckedRows}">
+                        <StackPanel>
+                            <TextBlock Text="Imported, not duplicate-checked" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding UncheckedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding ReviewRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImportReviewRowViewModel">
+                                <Border Background="{DynamicResource PineSurface}"
+                                        BorderBrush="{DynamicResource PineBorder}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="15,10"
+                                        Margin="0,0,0,8">
+
+                                    <!-- Only a NOT-imported row gets the set-aside card treatment. A row that
+                                         was saved without a duplicate check did reach the vault, so it keeps
+                                         the normal card and is flagged by its chip instead. -->
+                                    <Border.Styles>
+                                        <Style Selector="Border.skipped">
+                                            <Setter Property="Background" Value="{DynamicResource PineSurfaceElevated}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource PineWarning}"/>
+                                        </Style>
+                                    </Border.Styles>
+
+                                    <Classes.skipped>
+                                        <Binding Path="WasSkipped"/>
+                                    </Classes.skipped>
+
+                                    <Grid ColumnDefinitions="100,*,Auto" RowDefinitions="Auto,Auto">
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0"
+                                                   Text="{Binding Transaction.Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                                   FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
+
+                                        <TextBlock Grid.Row="0" Grid.Column="1"
+                                                   Text="{Binding Transaction.Payee}"
+                                                   FontSize="15" FontWeight="Medium" Foreground="{DynamicResource PineText}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,15,0" />
+
+                                        <TextBlock Grid.Row="0" Grid.Column="2"
+                                                   Text="{Binding Transaction.TotalAmount}"
+                                                   FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" />
+
+                                        <!-- Outcome chip + the import's own explanation, verbatim. -->
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                                    Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineSuccess}" IsVisible="{Binding WasImportedAndChecked}">
+                                                <TextBlock Text="Imported" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
+                                            </Border>
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding WasImportedWithoutKeyCheck}">
+                                                <TextBlock Text="Imported, not checked" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                            </Border>
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding WasSkipped}">
+                                                <TextBlock Text="Not imported" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                            </Border>
+
+                                            <TextBlock Text="{Binding Reason}" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Footer Buttons -->
+            <Grid Grid.Row="2" Margin="0,20,0,0">
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"
+                            IsVisible="{Binding !IsStep3}">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" IsEnabled="{Binding !IsExecuting}"/>
+
+                    <Button Content="Back" Command="{Binding PreviousStepCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8"
+                            IsVisible="{Binding !IsStep0}"
+                            IsEnabled="{Binding !IsExecuting}"/>
+
+                    <Button Content="Next" Command="{Binding NextStepCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
+                            IsVisible="{Binding !IsStep2}"
+                            IsEnabled="{Binding !IsExecuting}"/>
+
+                    <Button Content="Import" Command="{Binding ExecuteImportCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
+                            IsVisible="{Binding IsStep2}"
+                            IsEnabled="{Binding !IsExecuting}"/>
+                </StackPanel>
+
+                <!-- The import is already written by the time the review shows, so there is nothing left
+                     to cancel or go back to — only to read, and then to finish. -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"
+                            IsVisible="{Binding IsStep3}">
+                    <Button Content="Done" Command="{Binding FinishCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"/>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

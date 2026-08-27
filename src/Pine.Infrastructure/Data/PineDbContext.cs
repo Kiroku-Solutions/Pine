@@ -75,7 +75,29 @@ public sealed class PineDbContext : DbContext
             e.HasKey(t => t.Id);
             e.Property(t => t.Type).HasConversion<string>(); // Store enum as string
             e.HasIndex(t => t.LinkedTransactionId); // Index for fast transfer lookups
-            
+
+            // Nullable: every transaction created before import keys existed, and every transaction
+            // the user enters by hand, legitimately has no key. The width matches
+            // Transaction.MaxImportKeyLength so the domain rejects an over-long key before the store
+            // would silently truncate it into a key that matches a different row.
+            e.Property(t => t.ImportKey).HasMaxLength(128);
+
+            // Serves the import de-duplication probe: "which of these candidate keys does this
+            // account already have?". Pushing that comparison into SQL is safe here precisely because
+            // ImportKey is a string — SQLite keeps decimals as TEXT (TD-31), so a numeric key would
+            // have compared lexicographically and matched the wrong rows.
+            //
+            // DELIBERATELY NOT UNIQUE, and this is a trade-off worth knowing about. A unique
+            // constraint would read as the stronger guarantee, but it would (a) make a future
+            // "I know it looks like a duplicate, import it anyway" gesture impossible without a
+            // schema change, and (b) turn two concurrent imports of the same file into a raw
+            // DbUpdateException surfaced to the user instead of a handled duplicate. The handler
+            // checks before inserting, so the index exists to make that check fast, not to enforce
+            // the rule. The residual risk — a race between check and insert writing a duplicate
+            // key — is accepted and tracked as debt.
+            e.HasIndex(t => new { t.AccountId, t.ImportKey });
+
+
             e.ComplexProperty(t => t.TotalAmount, ta =>
             {
                 ta.Property(m => m.Amount).HasColumnName("TotalAmount_Amount");

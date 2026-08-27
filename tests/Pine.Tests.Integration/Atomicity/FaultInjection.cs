@@ -218,6 +218,13 @@ internal sealed class FaultInjectingTransactionRepository : ITransactionReposito
         => _inner.GetPagedAsync(page, pageSize, cancellationToken);
 
     /// <inheritdoc />
+    public Task<IReadOnlyCollection<string>> GetExistingImportKeysAsync(
+        Guid accountId,
+        IReadOnlyCollection<string> candidateKeys,
+        CancellationToken cancellationToken = default)
+        => _inner.GetExistingImportKeysAsync(accountId, candidateKeys, cancellationToken);
+
+    /// <inheritdoc />
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
         await _inner.SaveAsync(transaction, cancellationToken);

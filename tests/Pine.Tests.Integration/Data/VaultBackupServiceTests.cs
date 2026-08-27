@@ -75,7 +75,7 @@ public class VaultBackupServiceTests : IDisposable
 
         // Assert
         backup.Reason.Should().Be(VaultBackupReason.PreMigration);
-        backup.SchemaVersionBefore.Should().Be("20260825151122_AddTransactionLineItems");
+        backup.SchemaVersionBefore.Should().Be("20260827141109_AddTransactionImportKey");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

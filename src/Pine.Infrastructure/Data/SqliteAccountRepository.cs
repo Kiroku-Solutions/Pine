@@ -37,15 +37,32 @@ public sealed class SqliteAccountRepository : IAccountRepository
 
     public async Task SaveAsync(Account account, CancellationToken cancellationToken = default)
     {
-        var existing = await _dbContext.Accounts.FindAsync(new object[] { account.Id }, cancellationToken);
-        if (existing == null)
+        ArgumentNullException.ThrowIfNull(account);
+
+        var existing = await _dbContext.Accounts
+            .FindAsync(new object[] { account.Id }, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
         {
             _dbContext.Accounts.Add(account);
+            return;
         }
-        else
+
+        if (ReferenceEquals(existing, account))
         {
-            _dbContext.Entry(existing).CurrentValues.SetValues(account);
+            // The caller mutated the very instance this context already tracks. Every change is
+            // already staged on the change tracker; copying the entity onto itself does nothing.
+            return;
         }
+
+        // CurrentValues.SetValues copies scalars and complex properties only; it ignores navigations
+        // entirely, so an owned collection would be dropped silently (TD-13). It is sufficient here
+        // *because* this aggregate has none. If an OwnsMany navigation is ever added to it, this call
+        // must be replaced by an explicit reconciliation of the tracked graph, the way
+        // SqliteTransactionRepository.SaveAsync reconciles Transaction.Splits.
+        // Account.Balance is a complex property, so it is covered.
+        _dbContext.Entry(existing).CurrentValues.SetValues(account);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

@@ -62,17 +62,131 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         return new Pine.Core.Common.PagedResult<Transaction>(items.AsReadOnly(), totalCount, page, pageSize);
     }
 
+    /// <summary>
+    /// Stages an insert or an update for the whole <see cref="Transaction"/> aggregate, owned
+    /// collections included. Nothing is flushed here; see the remarks on this class.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The aggregate violates its split-sum invariant.</exception>
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
-        var existing = await _dbContext.Transactions.FindAsync(new object[] { transaction.Id }, cancellationToken);
-        if (existing == null)
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        // Aggregate boundary. AddSplit no longer validates the split sum eagerly (a multi-split set
+        // is built up incrementally and is only meaningful once complete), so this is the last point
+        // at which an inconsistent aggregate can be stopped before it reaches the database.
+        transaction.EnsureValid();
+
+        // FindAsync returns the tracked instance when one is already in the change tracker, and
+        // otherwise queries. Either way the owned collections come back populated: EF Core always
+        // loads owned navigations with their owner, so no Include is needed to see Splits/LineItems.
+        var existing = await _dbContext.Transactions
+            .FindAsync(new object[] { transaction.Id }, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
         {
             _dbContext.Transactions.Add(transaction);
+            return;
         }
-        else
+
+        if (!ReferenceEquals(existing, transaction))
         {
+            // A detached aggregate over an existing row. CurrentValues.SetValues copies the scalars
+            // and the TotalAmount complex property but never touches owned collections (TD-13), so
+            // both collections are replaced explicitly, through the domain, on the tracked instance.
             _dbContext.Entry(existing).CurrentValues.SetValues(transaction);
+            existing.ReplaceSplits(transaction.Splits
+                .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes)));
+            existing.ReplaceLineItems(transaction.LineItems
+                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice)));
         }
+
+        // Runs for the already-tracked case too: the caller mutated the very instance this context
+        // tracks, and its new owned children still need their state corrected.
+        ReconcileOwnedChildren(existing);
+    }
+
+    /// <summary>
+    /// Corrects the state EF Core assigns to owned children that were added to a tracked owner.
+    /// </summary>
+    /// <remarks>
+    /// EF Core infers the state of an owned child it discovers on an already-tracked owner from
+    /// whether that child's key is set. <see cref="TransactionSplit"/> and
+    /// <see cref="TransactionLineItem"/> carry a client-assigned <see cref="Guid"/> key, which is
+    /// never the default, so EF always guesses <see cref="EntityState.Modified"/> and emits an
+    /// UPDATE against a row that does not exist yet — the flush then fails with a zero-rows-affected
+    /// concurrency error. Neither type exposes a mutator, so a child that came from the database can
+    /// never legitimately be modified: every Modified child here is a new one EF mis-classified, and
+    /// promoting it to <see cref="EntityState.Added"/> is the only correct reading. Removed children
+    /// are orphaned owned dependents and are deleted by EF without help.
+    /// </remarks>
+    private void ReconcileOwnedChildren(Transaction transaction)
+    {
+        // Attach the children the caller added to the navigation collections before inspecting them.
+        _dbContext.ChangeTracker.DetectChanges();
+
+        foreach (var split in transaction.Splits)
+        {
+            var entry = _dbContext.Entry(split);
+            if (entry.State == EntityState.Modified)
+            {
+                entry.State = EntityState.Added;
+            }
+        }
+
+        foreach (var lineItem in transaction.LineItems)
+        {
+            var entry = _dbContext.Entry(lineItem);
+            if (entry.State == EntityState.Modified)
+            {
+                entry.State = EntityState.Added;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the subset of <paramref name="candidateKeys"/> already used by transactions on the
+    /// given account. Read-only; nothing is staged or flushed.
+    /// </summary>
+    /// <remarks>
+    /// The comparison runs IN SQL, against the <c>(AccountId, ImportKey)</c> index, and only the
+    /// matching keys are materialised. This is deliberate: the defect being fixed loaded every
+    /// existing transaction for the account into memory to de-duplicate against it, so replacing
+    /// that with a second full load would miss the point entirely. Pushing the predicate down is
+    /// safe here because <see cref="Transaction.ImportKey"/> is a string — SQLite stores decimals as
+    /// TEXT (TD-31), so a numeric key would have been compared lexicographically by the database and
+    /// matched rows that do not match in memory.
+    /// </remarks>
+    /// <param name="accountId">The account being imported into.</param>
+    /// <param name="candidateKeys">The keys of the rows about to be imported.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An ordinal-comparison set of the keys already present on that account.</returns>
+    public async Task<IReadOnlyCollection<string>> GetExistingImportKeysAsync(
+        Guid accountId,
+        IReadOnlyCollection<string> candidateKeys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidateKeys);
+
+        // An empty candidate set has an empty answer by definition; issuing a query with an empty
+        // IN list would cost a round trip to learn that.
+        if (candidateKeys.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var matches = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId
+                        && t.ImportKey != null
+                        && candidateKeys.Contains(t.ImportKey))
+            .Select(t => t.ImportKey!)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Ordinal, so the caller's lookups cannot be re-interpreted by the machine's culture; an
+        // import key is an opaque token, never a word to be compared linguistically.
+        return new HashSet<string>(matches, StringComparer.Ordinal);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

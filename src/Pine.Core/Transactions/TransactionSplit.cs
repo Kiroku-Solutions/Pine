@@ -19,8 +19,16 @@ public sealed class TransactionSplit : Entity
         : base(Guid.NewGuid())
     {
         TransactionId = transactionId;
-        Amount = amount;
+        Amount = CopyOf(amount);
         Category = category;
         Notes = notes;
     }
+
+    /// <summary>
+    /// Deep copy of the incoming value object. Splits are persisted as owned entities, so two
+    /// splits sharing one <see cref="Money"/> (or its nested <see cref="CurrencyCode"/>) instance
+    /// would be tracked as a single owner and corrupt the write. Copying keeps every child distinct.
+    /// </summary>
+    private static Money CopyOf(Money amount) =>
+        new Money(amount.Amount, new CurrencyCode(amount.Currency.Value));
 }

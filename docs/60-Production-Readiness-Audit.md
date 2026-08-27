@@ -10,8 +10,8 @@
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–2 closed Phase 0 items 1–4. Test suite 28 → **124**. See **§12**. |
-| Last updated | 2026-08-26 |
+| Remediation | Iterations 1–5 closed Phase 0 items 1–7. Test suite 28 → **170** (90 unit + 80 integration). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims. |
+| Last updated | 2026-08-27 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
 > **Purpose of this document.** This is the working backlog for a dedicated
@@ -247,7 +247,7 @@ largest VM (`LiveScannerViewModel`, 384 lines) is doing camera work that belongs
 - 🔴 **P0** No edit/delete/recompute (TD-02) — see §4.2.
 - 🔴 **P0** `AddSplit` eager validation (TD-04) — see §4.8.
 - 🔴 **P0** Import dedup discards real transactions (TD-03) — see §4.3.
-- 🟠 **P0** Transaction currency never checked against account currency (TD-12). `AddTransactionCommandHandler` builds `Money` from the request, **saves the transaction**, then calls `account.Deposit(...)` which throws on mismatch inside `Money.Add`. Result: an orphaned ledger entry with no matching balance movement. `TransferFundsCommandHandler` is the only handler that validates currency up front.
+- ✅ **P0 — CLOSED in iteration 4, and reclassified on the way; see §12.9.** Transaction currency never checked against account currency (TD-12). `AddTransactionCommandHandler` builds `Money` from the request, **saves the transaction**, then calls `account.Deposit(...)` which throws on mismatch inside `Money.Add`. Result: an orphaned ledger entry with no matching balance movement. `TransferFundsCommandHandler` is the only handler that validates currency up front. **[Correction, iteration 4: the orphaned-entry claim in the preceding sentence was tested against a real vault and could NOT be reproduced — closing TD-01 had already made it impossible. The residual defect was a wrong-layer throw with a leaky message. Baseline text left intact per this document’s convention; see §12.9.]**
 - 🟠 **P1** No currency scale or rounding policy on `Money` (TD-18). No normalisation to minor units, no `MidpointRounding`, no `Multiply`, no `Allocate`. `CurrencyCode` validates the ISO-4217 *shape* (`^[A-Z]{3}$`) but not membership — `"ZZZ"` is accepted — and carries no minor-unit metadata. A total of `10.005` is storable.
 - 🟠 **P1** Line items not reconciled against the total (TD-19). `AddLineItem` checks currency only. Nothing compares `Σ TotalPrice` to `TotalAmount` in the domain or in `ScanReceiptViewModel.SaveTransactionAsync` — even though the extractor already computes that ratio, and uses it only to nudge a confidence score.
 - 🟡 **P2** Categories modelled twice (TD-32). `Category` is a full aggregate with `Id` and `ParentCategoryId`; `TransactionSplit.Category` is a `string`, and `CategorizeTransactionQueryHandler` resolves the predicted `CategoryId` back to `category.Name` to store as text. `ParentCategoryId` has no FK configured — no referential integrity, cycles possible.
@@ -478,32 +478,32 @@ any other single change.
 > genuinely closed and the rest is named explicitly in §12.3; never used to mean
 > "mostly done". 🔴 **Open** — not started. A ticket is never marked ✅ on the strength
 > of code existing; it is marked ✅ only when it has been exercised.
-> Rows **TD-52 … TD-58** were discovered *during* remediation and were not in the
+> Rows **TD-52 … TD-67** were discovered *during* remediation and were not in the
 > original audit.
 
 | ID | Debt | Sev | Impact | Action | Pri | Status |
 |---|---|---|---|---|---|:---:|
 | TD-01 | No unit of work; transient DbContext per repository | 🔴 | Non-atomic financial writes | Scope-per-request + `IUnitOfWork` | P0 | ✅ **Done** |
 | TD-02 | No update/delete/void for transactions | 🔴 | Errors permanent; balances unrepairable | Add mutation + recalculation commands | P0 | 🔴 **Open** |
-| TD-03 | Dedup on (date, amount) only, silent | 🔴 | Legitimate transactions lost | Stable import key + review list | P0 | 🔴 **Open** |
-| TD-04 | `AddSplit` validates eagerly | 🔴 | Multi-split throws | Validate at aggregate boundary | P0 | 🔴 **Open** |
+| TD-03 | Dedup on (date, amount) only, silent | 🔴 | Legitimate transactions lost | Stable import key + review list | P0 | ✅ **Done** |
+| TD-04 | `AddSplit` validates eagerly | 🔴 | Multi-split throws | Validate at aggregate boundary | P0 | ✅ **Done** |
 | TD-05 | No KDF version marker beside the salt | 🔴 | Parameter change bricks all vaults | Versioned vault header | P0 | ✅ **Done** |
 | TD-06 | Key = password-derived key; no envelope | 🔴 | No password change, no biometric | Wrapped data key | P0 | 🔴 **Open** |
-| TD-07 | CI builds only test projects | 🔴 | Broken heads ship undetected | Full-solution build matrix | P0 | 🟡 **Partial** |
+| TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`); the `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364` | 🔴 | Broken heads ship undetected — the regression net exists but is never armed | Restore the triggers, or state plainly that CI is opt-in | P0 | 🔴 **Open** — regressed after iteration 1; see §12.12 |
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
-| TD-09 | No financial-invariant tests | 🔴 | No regression net on money | Money-path test suite | P0 | 🔴 **Open** |
+| TD-09 | Money-path tests exist for atomicity, split-sum, owned-collection round trip, currency match and (iteration 5) import dedup; absent for rounding/allocation (TD-18), line-item reconciliation (TD-19) and balance recalculation (TD-02) | 🔴 | Regression net covers the closed P0s, not the open ones | Extend as each remaining P0 closes | P0 | 🟡 **Partial** — was 🔴 "no financial-invariant tests"; false since iteration 2, see §12.12 |
 | TD-10 | No backup before migration | 🟠 | Unrecoverable data loss | Pre-migration copy + export | P0 | 🟡 **Partial** |
 | TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🔴 **Open** |
-| TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry | Validation behaviour | P0 | 🔴 **Open** |
-| TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | 🔴 **Open** |
-| TD-14 | No `ILogger`; `AddConsole` in a WinExe | 🟠 | No incident evidence | Structured file logging + redaction | P1 | 🔴 **Open** |
+| TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
+| TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | ✅ **Done** |
+| TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | 🔴 **Open** |
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | 🔴 **Open** |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🔴 **Open** |
 | TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
 | TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | 🔴 **Open** |
 | TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | Reconcile in confirmation UI | P1 | 🔴 **Open** |
 | TD-20 | No receipt duplicate detection | 🟠 | Double-counted expenses | Content-hash check | P1 | 🔴 **Open** |
-| TD-21 | Ambiguous dd/MM vs MM/dd parsing | 🟠 | Silently misdated transactions | Locale-driven order; flag ambiguity | P1 | 🔴 **Open** |
+| TD-21 | Ambiguous dd/MM vs MM/dd parsing — and the OCR "multi-culture cascade" tries `InvariantCulture` (MM/dd) **first**, so its `es-EC` leg is unreachable for any ambiguous date while its comment claims dd/MM is tried first | 🟠 | Silently misdated transactions, now behind code that reads as if it handled them | Locale-driven order; flag ambiguity | P1 | 🔴 **Open** — severity understated, see §12.12 |
 | TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | 🔴 **Open** |
 | TD-23 | Migration failure reported as wrong password | 🟠 | Undiagnosable support cases | Split auth and schema phases | P1 | ✅ **Done** |
 | TD-24 | Raw `ex.Message` surfaced in UI | 🟡 | Path/internals leakage | Map to user-facing messages | P2 | 🔴 **Open** |
@@ -512,9 +512,9 @@ any other single change.
 | TD-27 | No configuration system | 🟠 | Nothing tunable; no env separation | `IOptions` + appsettings | P1 | 🔴 **Open** |
 | TD-28 | Service locator in view models | 🟠 | Hidden deps; UI touches EF | Typed VM factories | P1 | 🔴 **Open** |
 | TD-29 | Five duplicated composition roots | 🟠 | Divergent lifetimes per platform | `AddPine*()` extensions | P1 | 🔴 **Open** |
-| TD-30 | Missing indexes on `Date` / `AccountId`; no FK | 🟠 | Scans at scale; orphan risk | Add indexes + FK | P2 | 🔴 **Open** |
+| TD-30 | No index on `Date`; no FK transaction→account. `AccountId` gained a leading-column index in iteration 5's `(AccountId, ImportKey)`; a Budget→Category FK **already exists** | 🟠 | Scans at scale; orphan risk | Add the `Date` index + the transaction FK | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-31 | Decimal stored as TEXT in SQLite | 🟠 | Wrong results when comparison reaches SQL | Scaled-integer converter | P1 | 🔴 **Open** |
-| TD-32 | Category as free string, not FK | 🟡 | Rename orphans history | Store `CategoryId` | P2 | 🔴 **Open** |
+| TD-32 | `TransactionSplit.Category` is a free string, not a FK (`Budget` already uses a real `CategoryId` FK) | 🟡 | Rename orphans history | Store `CategoryId` on the split | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-33 | Domain events raised, never dispatched | 🟡 | Misleading scaffolding | Dispatch or remove | P2 | 🔴 **Open** |
 | TD-34 | Messenger subscriptions never unregistered | 🟡 | Stale VMs act on messages | `IDisposable` view models | P2 | 🔴 **Open** |
 | TD-35 | Fire-and-forget async in ctor / messenger | 🟡 | Unobserved exceptions; init races | Awaited `InitializeAsync` | P1 | 🔴 **Open** |
@@ -525,22 +525,31 @@ any other single change.
 | TD-40 | Code cites ADR-0013/0012; only ADR-0001 exists | 🟡 | Dangling decision references | Write them or drop the citations | P2 | 🔴 **Open** |
 | TD-41 | Four PaddleOCR model packages referenced | 🟡 | Large duplicated payload | Keep one | P2 | 🔴 **Open** |
 | TD-42 | No central package management; version drift | 🟡 | Silent unification; EF mismatch | `Directory.Packages.props` | P2 | 🔴 **Open** |
-| TD-43 | ONNX binaries tracked in git without LFS | 🔵 | Permanent clone cost | Git LFS or fetch-on-build | P3 | 🔴 **Open** |
+| TD-43 | ONNX binaries are LFS-tracked since `bec0887` (all three blobs are ~133-byte pointers at HEAD); the residual is history predating the conversion, which LFS does not rewrite | 🔵 | Residual clone cost only | Rewrite history, or accept it | P3 | 🟡 **Partial** — was 🔴, see §12.12 |
 | TD-44 | Windows-only native runtimes | 🟡 | Scanning impossible off Windows | Per-RID runtimes; state support | P2 | 🔴 **Open** |
 | TD-45 | Hardcoded English UI; no localisation | 🟡 | Costly retrofit across 26 views | `.resx` + `IStringLocalizer` | P2 | 🔴 **Open** |
-| TD-46 | Relative model paths (CWD-dependent) | 🟡 | Feature silently off; stray files | Anchor to BaseDirectory / vault | P2 | 🔴 **Open** |
+| TD-46 | Relative model paths in `MlNetCategorizer` and `OnnxNlpFieldExtractor`; `ReceiptDetector` already anchors to `AppContext.BaseDirectory` | 🟡 | Feature silently off; stray files | Anchor the remaining two | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-47 | Seeded fictional $1,000 account | 🔵 | Fabricated data in a finance app | Real onboarding step | P1 | 🔴 **Open** |
 | TD-48 | `CloudSync` setting read by nothing | 🔵 | Onboarding promises absent feature | Remove until sync exists | P2 | 🔴 **Open** |
 | TD-49 | No packaging, signing or update channel | 🟠 | No way to ship or patch | Installer + signing + updater | P1 | 🔴 **Open** |
 | TD-50 | No file-type or size validation on imports | 🔵 | Parser DoS / hang | Magic-byte + size cap | P2 | 🔴 **Open** |
 | TD-51 | Draft comments and `<!-- asdasda` in source | 🔵 | Signals unreviewed code | Clean up; enforce in review | P2 | 🟡 **Partial** |
 | TD-52 | Web/Android/iOS roots omit `TimeProvider.System` + 9 other registrations Windows has | 🔴 | Heads compile, then throw on the first command dispatched | Shared `AddPine*()` roots (TD-29) | P1 | 🔴 **Open** |
-| TD-53 | `Pine.Ui.Web` builds a real SQLCipher context whose WASM native lib is not linked | 🔴 | Web head fails at first DB access; its own comment claims in-memory | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** |
+| TD-53 | `Pine.Ui.Web` now passes `":memory:"`, but `PineDbContext` unconditionally builds a **keyed SQLCipher** connection, whose native lib WASM does not link | 🔴 | Web head still fails at first DB access — an in-memory *SQLCipher* database needs the same native library | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** — wording corrected, see §12.12 |
 | TD-54 | CI enumerates projects instead of building `Pine.slnx` | 🟠 | A newly added project is silently outside CI — the TD-07 drift class again | Build the solution, or assert slnx coverage in CI | P1 | 🔴 **Open** |
 | TD-55 | `TreatWarningsAsErrors` promotes NuGet audit warnings (NU19xx) to build errors | 🟡 | A new CVE advisory turns CI red with no code change | Set `NuGetAuditMode`; triage advisories separately | P2 | 🔴 **Open** |
 | TD-56 | No restore-from-backup path; `ExportVaultBackupCommand` has no UI entry point | 🟠 | Recovery requires the user to copy files by hand | Restore command + UI affordance | P1 | 🔴 **Open** |
 | TD-57 | `IVaultMigrator` lives in `Pine.Core` because Infrastructure cannot see Application | 🟡 | A persistence-orchestration port sits in the domain project | Add the ProjectReference, then move the port | P2 | 🔴 **Open** |
 | TD-58 | `AddTransactionViewModel` / `CreateAccountViewModel` take an unregistered `Action onComplete` ctor parameter | 🟡 | Blocks `ValidateOnBuild`; the container cannot self-check at startup | Typed VM factories (TD-28) or a registered callback | P2 | 🔴 **Open** |
+| TD-59 | `ReconcileOwnedChildren` infers owned-child state from EF's Modified/Added guess | 🟡 | A client-keyed owned child is promoted Modified→Added; if either owned type ever gains a public setter, a real update is silently rewritten as an insert | Set owned-child state explicitly, or key them server-side | P2 | 🟡 **Partial** — assumption pinned by `OwnedTransactionChildren_ShouldNot_ExposePublicSetters` |
+| TD-61 | `CurrencyCodeText.TryNormalise` restates `CurrencyCode`'s shape rule outside the domain | 🟡 | Two copies of one rule can drift — most concretely when `CurrencyCode` gains ISO 4217 *membership* validation (TD-18), after which the validator would still wave `"ZZZ"` through | Expose a non-throwing `CurrencyCode.TryCreate` and delete the copy | P2 | 🔴 **Open** |
+| TD-62 | Validators cover currency only; other pre-conditions still fail inside the domain | 🟡 | `AddTransactionCommand` with `Amount == 0` still reaches `account.Deposit(...)` and surfaces "Deposit amount must be strictly positive."; `ImportTransactionsCommandHandler` still throws a bare `ArgumentException` for a missing account. Same wrong-layer class TD-12 fixed, different fields | Extend the existing validators; the seam is already in place | P2 | 🔴 **Open** |
+| TD-63 | `CreateBudgetCommand` carries a currency anchored to nothing | 🟡 | A budget's `CurrencyCode` is validated for shape only — it has no account to be checked against, so a EUR budget can sit against a USD-only vault and no total is comparable | Decide whether a budget is per-account or per-vault, then anchor it | P2 | 🔴 **Open** |
+| TD-60 | `ReplaceSplits` / `ReplaceLineItems` mint fresh `Guid` ids on every detached save | 🔵 | Owned children are deleted and re-inserted with new ids on each update; any future reference to a split id (rules, attachments, audit trail) would dangle | Diff by identity instead of replacing wholesale | P2 | 🔴 **Open** |
+| TD-64 | The import currency guard inspects only the rows it is about to save | 🟡 | A skipped duplicate in the wrong currency is never reported, so a bad file looks clean on re-import while its first import was rejected | Validate parsed rows before the dedup split, or report currency per review row | P2 | 🔴 **Open** |
+| TD-65 | Import de-duplication has a check-then-insert race; the `(AccountId, ImportKey)` index is deliberately non-unique | 🟡 | Two concurrent imports of one file can both pass the existence probe before either inserts, and both write | Unique index + conflict handling, or serialise imports per account | P2 | 🔴 **Open** |
+| TD-66 | The derived import key's `source` field is `ImportProfile.Name`, the only source identifier reachable inside `ImportAsync` | 🟡 | Renaming or duplicating a profile changes every derived key, so the next import of an already-imported file reports every row as new | Key the source to something stable (profile id, or the file's own identity) | P2 | 🔴 **Open** |
+| TD-67 | `ExcelImporter` and `PdfImporter` parse nothing — both open the file, loop, and return an empty list | 🟡 | Two of three advertised import formats are stubs; neither is reachable from the wizard, which hardcodes `CsvImporter` | Implement or delete; they are documented as stubs as of iteration 5 | P2 | 🔴 **Open** |
 
 ---
 
@@ -552,14 +561,14 @@ a concrete failure mode.
 
 1. ✅ **TD-01** — ~~No transactional boundary.~~ **Closed.** Scope-per-request DI, `IUnitOfWork`, and an opt-in `TransactionBehavior`; repositories no longer self-commit. Rollback proven by tests that flush real rows inside the transaction and assert the database comes back empty.
 2. 🔴 **TD-02** — No correction mechanism. Any bad record, from any cause, is permanent.
-3. 🔴 **TD-03** — Silent import data loss. Real transactions vanish without notice.
-4. 🔴 **TD-04** — `AddSplit` throws. A shipped feature is broken on its intended use.
+3. ✅ **TD-03** — ~~Silent import data loss.~~ **Closed.** De-duplication keys on a stable per-row import key (`ImportKeyFactory`, `r1:`/`h1:` schemes) looked up through an indexed `(AccountId, ImportKey)` probe, never again on `(date, amount)`. Two same-day same-amount rows both survive. The command now returns every parsed row with its disposition and a reason, and the wizard shows them on a review step — so a row is never discarded without the user being told which and why. Proven from a fresh context and raw SQLCipher `SELECT`s, and by three falsification mutations (see §12.11).
+4. ✅ **TD-04** — ~~`AddSplit` throws.~~ **Closed.** `AddSplit` no longer validates the sum eagerly, `ReplaceSplits`/`ReplaceLineItems` validate a whole set atomically, and the invariant is enforced at the persistence boundary by `Transaction.EnsureValid()` in `SqliteTransactionRepository.SaveAsync`. A two-way €50/€50 split on a €100 transaction now persists; the boundary check is proven by falsification (removing it turns the test red).
 5. 🟡 **TD-05 ✅ / TD-06 🔴** — ~~Unversioned KDF~~ and no envelope key. The versioned header now records the KDF id and every parameter, so the irreversible half of this blocker is closed; envelope encryption (TD-06) is not built, so password change and biometric unlock remain impossible.
-6. 🟡 **TD-07 / TD-08** — CI now builds the product and the three heads no longer reference a non-existent namespace, but **the workflow has never executed** and **Android/iOS were never compiled** (workloads absent locally). Regression protection is written, not yet demonstrated.
-7. 🔴 **TD-09** — No financial-invariant tests. Every fix above would ship unverified.
+6. 🔴 **TD-07 / TD-08** — CI builds the product and the three heads no longer reference a non-existent namespace, but the workflow has never executed, **and as of `79c5364` it can no longer execute on its own**: the `push` and `pull_request` triggers were deleted, leaving `workflow_dispatch:` alone. Android/iOS were never compiled (workloads absent locally). Regression protection is written, disarmed, and still not demonstrated. Iterations 3 and 4 both restated "never executed" without noticing the triggers had gone — see §12.12.
+7. 🟡 **TD-09** — ~~No financial-invariant tests. Every fix above would ship unverified.~~ **That is no longer true and has not been since iteration 2.** Atomicity, split-sum, owned-collection round trip, currency match and now import dedup are all covered and several are falsification-proven. What is genuinely missing is coverage for the P0s still open: rounding/allocation (TD-18), line-item reconciliation (TD-19) and balance recalculation (TD-02). See §12.12.
 8. 🟡 **TD-10** — Encrypted pre-migration backup is implemented and verified, so a failed upgrade no longer destroys the only copy. **Recovery is still manual**: no restore path and no UI entry point for the export command.
 9. 🔴 **TD-11** — No password policy, no auto-lock. The encryption is defeatable by the setup screen.
-10. 🔴 **TD-12 / TD-13** — Currency unvalidated; owned collections dropped on update. Two concrete corruption paths reachable from the UI.
+10. ✅ **TD-12 ✅ / TD-13 ✅** — ~~Owned collections dropped on update~~ and ~~currency never validated against the account~~. **Blocker closed.** TD-13: `Transaction.Splits` and `LineItems` round-trip through the tracked graph, proven from a fresh context and a raw `SELECT COUNT(*)` across grow/shrink/empty. TD-12: a validation pipeline behaviour rejects a currency mismatch before any write, proven by falsification. **The honest correction this blocker needs:** it claimed *two* corruption paths. Iteration 4 measured the second one and found it was no longer a corruption path — closing TD-01 had already contained it (a mismatch rolled back cleanly: zero rows, balance untouched, `Begin, Rollback`). What remained was a domain exception (`"Cannot add money of different currencies: USD and EUR"`) leaking verbatim to the user from the wrong layer. That is a real defect and it is now fixed, but it was not data corruption, and this blocker overstated it from iteration 2 onward. See §12.9.
 11. 🔴 **TD-49** — No packaging, signing or update channel. No mechanism to deliver any of the above fixes to a user who already installed.
 
 **Not blockers, but ship with eyes open:** TD-15 (mock diagnostics — remove the
@@ -582,11 +591,11 @@ a day of work now and an impossible migration later.
 
 - [x] ✅ **1.** Versioned vault header recording KDF id + parameters (TD-05) — **DONE.** `pine.vault.json`, legacy `pine.salt` adoption, known-answer regression vector proving existing vaults still open.
 - [x] 🟡 **2.** Pre-migration database backup + encrypted export command (TD-10) — **BACKUP DONE, EXPORT UNREACHABLE.** `VACUUM INTO` on the keyed connection, encryption proven by test. `ExportVaultBackupCommand` exists but no UI invokes it; there is no restore path.
-- [x] 🟡 **3.** CI: build the whole solution; restore `/tests/` to `Pine.slnx`; fix or delete the broken heads (TD-07, TD-08) — **CODE DONE, NOT DEMONSTRATED.** `Pine.slnx` clean, heads fixed, three-job workflow written. Workflow never run; Android/iOS never compiled.
+- [x] 🔴 **3.** CI: build the whole solution; restore `/tests/` to `Pine.slnx`; fix or delete the broken heads (TD-07, TD-08) — **CODE DONE, THEN DISARMED.** `Pine.slnx` clean, heads fixed, three-job workflow written — but `79c5364` removed the `push`/`pull_request` triggers, so the workflow now runs only when someone dispatches it by hand. Never run; Android/iOS never compiled. **This item regressed after it was ticked.**
 - [x] ✅ **4.** Scope-per-request DI + `IUnitOfWork`; strip `SaveChangesAsync` from repositories; one DB transaction per command (TD-01 — also fixes the transient-disposable leak) — **DONE.** All 11 repository `SaveChangesAsync` calls removed, 4 MediatR-bypassing write paths converted, `ValidateScopes` on in all five roots.
-- [ ] 🔴 **5.** Fix `AddSplit`; fix `CurrentValues.SetValues` to update tracked graphs (TD-04, TD-13)
-- [ ] 🔴 **6.** MediatR validation behaviour; validate currency against account (TD-12)
-- [ ] 🔴 **7.** Rewrite import dedup on a stable key with a user-facing review list (TD-03)
+- [x] ✅ **5.** Fix `AddSplit`; fix `CurrentValues.SetValues` to update tracked graphs (TD-04, TD-13) — **DONE.** Deferred split validation with an atomic `ReplaceSplits`/`ReplaceLineItems`, the invariant enforced at the persistence boundary, and owned collections reconciled on the tracked graph. Round-trip proven from a fresh context; 124 → 138 tests.
+- [x] ✅ **6.** MediatR validation behaviour; validate currency against account (TD-12) — **DONE.** Hand-rolled `IRequestValidator<T>` seam + `ValidationBehavior` registered *before* `TransactionBehavior`, so a rejected command never opens a transaction. Four validators; `TransferFundsCommandHandler`'s up-front checks folded in so there is one idiom. Proven by four falsification mutations; 138 → 152 tests.
+- [x] ✅ **7.** Rewrite import dedup on a stable key with a user-facing review list (TD-03) — **DONE.** `ImportKeyFactory` (BCL-only, invariant-culture, versioned `r1:`/`h1:` prefixes), a nullable `ImportKey` column with an `(AccountId, ImportKey)` index, an indexed existence probe replacing the full-account load, in-batch duplicate detection, and an `ImportTransactionsResult` carrying every row's disposition + reason, surfaced on a new wizard review step. 152 → 170 tests.
 - [ ] 🔴 **8.** Update / void transaction commands + balance recalculation (TD-02)
 - [ ] 🔴 **9.** Password entropy floor and idle auto-lock (TD-11)
 - [ ] 🔴 **10.** Money-path test suite covering all of the above — written *alongside*, not after (TD-09)
@@ -971,9 +980,697 @@ written" would pass even if the transaction boundary did not exist.
    scope — this iteration stayed on the transaction boundary.
 4. **Nothing was committed or pushed.**
 
-### 12.6 Next
+### 12.6 Next (after iteration 2) — superseded
 
-Phase 0 item **5 — TD-04 + TD-13**: fix `AddSplit`, and fix `CurrentValues.SetValues` so updates
-write the tracked graph instead of silently dropping the `OwnsMany` `Splits` and `LineItems`
-collections. TD-13 is latent only because no update path exists yet; item 8 (TD-02, update/void
-commands) is what makes it reachable, so TD-13 must be fixed before it.
+Phase 0 item **5 — TD-04 + TD-13**. Closed by iteration 3; see §12.7.
+
+### 12.7 Iteration 3 — Phase 0, item 5 (TD-04 + TD-13)
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-27 |
+| Scope | Phase 0 item **5** → TD-04 (eager split validation) and TD-13 (owned collections dropped on update) |
+| Outcome | **TD-04 ✅ closed · TD-13 ✅ closed** · 1 pre-existing latent corruption fixed incidentally · 2 new debts opened (TD-59, TD-60) |
+| State | Working tree only — **not committed, not pushed** |
+
+#### Verification actually executed
+
+| Check | Result |
+|---|---|
+| `dotnet build src/Pine.Ui.Windows -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Macos -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Web -c Release` | ✅ 0 errors (1 pre-existing SDK `.targets` warning, unchanged from iteration 2) |
+| `dotnet build src/Pine.Cli -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build Pine.slnx -c Release` | ✅ 0 warnings; only 2 × `NETSDK1147` (Android/iOS workloads absent) |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **73 passed, 0 failed, 0 skipped** |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **65 passed, 0 failed, 0 skipped** |
+| Falsification: comment out `EnsureValid()` in `SaveAsync` | ✅ boundary test turns **red**, green again on restore |
+| `SaveChangesAsync` remaining in any repository | ✅ zero (TD-01 not regressed) |
+| `Pine.Core.csproj` package + project references | ✅ zero |
+| `CurrentValues.SetValues` remaining in repositories | ⚠️ **4 remain — deliberate, see below** |
+
+**Test suite: 124 → 138 passing** (28 at the audit baseline).
+
+#### What was built
+
+- **`SplitDefinition`** and **`LineItemDefinition`** (`Pine.Core/Transactions/`) — public `readonly record
+  struct` transports. They exist because `TransactionSplit`/`TransactionLineItem` have `internal`
+  constructors, so Application and UI could not otherwise hand a set of children to the aggregate.
+- **`AddSplit` no longer calls `ValidateSplits()`.** Signature unchanged; the currency check stays. This is
+  the whole of TD-04: the invariant was correct, enforcing it after every single append was the bug.
+- **`ReplaceSplits(IEnumerable<SplitDefinition>)`** and **`ReplaceLineItems(IEnumerable<LineItemDefinition>)`**
+  — build a staging list, validate it whole, and swap in **only on success**, so a rejected call leaves the
+  aggregate byte-identical. An empty set clears the collection, which `ValidateSplits` already treats as
+  valid. `ReplaceLineItems` deliberately carries **no** sum check: reconciling line items against the total
+  is TD-19 and stays out of scope.
+- **`Transaction.EnsureValid()`** — the aggregate-boundary entry point, called as the first statement of
+  `SqliteTransactionRepository.SaveAsync` on both the insert and the update path.
+- **`SqliteTransactionRepository.SaveAsync` rewritten** — handles three cases: insert; already-tracked
+  same-reference (the common path under scope-per-request DI, where `SetValues` is not merely incomplete but
+  a no-op with side effects); and detached, where scalars go through `CurrentValues.SetValues` and the two
+  owned collections are merged **through the domain** via `ReplaceSplits`/`ReplaceLineItems`.
+- **`ReconcileOwnedChildren`** — EF Core infers an owned child's state from whether its key is set. Both
+  owned types assign a `Guid` in their constructor, so EF always guesses `Modified` and emits an `UPDATE`
+  against a row that does not exist, failing the flush with a zero-rows-affected concurrency error. This was
+  the true root cause of the update path being unusable, and it is **not** what the audit predicted.
+
+#### The trap that made this ticket dangerous — removing the throw is the easy half
+
+Deleting the eager `ValidateSplits()` call takes one line and immediately trades a false throw for silent
+corruption: after that change, **nothing in the codebase called `ValidateSplits()` at all**, and every write
+path — `AddTransactionCommand`, `CsvImporter`, any future split editor — would have happily persisted a €100
+transaction allocated €50. The invariant had to be re-homed *before* the eager check was removed, not after.
+It now lives at the persistence boundary, the only choke point every write actually passes through.
+
+Two call sites were also **already latently wrong**: `ImportTransactionsCommand` and `ImportWizardViewModel`
+apply an AI category and were guarded only by `if (tx.Splits.Count == 0)`. Weaken or remove that guard under
+the old code and each would append a *second* full-amount split, doubling the sum. Both now use
+`ReplaceSplits` and are idempotent regardless of the guard.
+
+#### How the fix is *proven*, not asserted
+
+- **Falsification.** `SaveAsync_RefusesATransactionWhoseSplitsDoNotSumToTheTotal` was run with
+  `EnsureValid()` commented out and **failed**, then passed again on restore. A test that cannot fail proves
+  nothing; this one demonstrably can.
+- **Round-trip from a different connection.** `TransactionOwnedCollectionRoundTripTests` drives splits
+  **2 → 3 → 1 → 0** and line items **2 → 3**, asserting after each step from a brand-new `PineDbContext`
+  *and* from a raw SQLCipher `SELECT COUNT(*)` that bypasses EF entirely. Asserting through the writing
+  context would pass even for a repository that dropped the collections, because EF's identity map returns
+  the in-memory graph regardless of what SQL ran. The shrink direction is the one a naive clear-and-re-add
+  gets wrong, which is why 3 → 1 → 0 is tested and not merely growth.
+- **A real file vault, not `":memory:"`** — an in-memory database dies with its connection, so a second
+  connection would see an empty database and every assertion would pass for the wrong reason.
+- **Production-shaped writes** — through the repository plus `EfCoreUnitOfWork` (begin / flush / commit),
+  never `SaveChangesAsync` behind the repository's back, which would exercise a path that does not exist.
+- **Atomicity of rejection** is asserted positively: a rejected `ReplaceSplits` leaves count, amounts,
+  categories, notes *and* split ids unchanged.
+
+#### Pre-existing defects fixed incidentally
+
+- **Owned-entity instance aliasing — a live, reachable corruption path.** `Money` and `CurrencyCode` are both
+  sealed *reference* types. Two splits built from the same `Money` instance were one owned entity to EF,
+  which wrote the currency column for a single owner and `NULL` for the rest, tripping the `NOT NULL`
+  constraint. This was reachable today: `ImportTransactionsCommand` and `ImportWizardViewModel` both pass
+  `tx.TotalAmount` straight in as the split amount. Fixed at the correct layer — `TransactionSplit` and
+  `TransactionLineItem` now deep-copy incoming `Money` (including its nested `CurrencyCode`) in their
+  constructors, so no two owned children can share an instance. A regression test pins the aliased shape.
+- **A `PineDbContext` mapping change was made and then reverted.** Mid-iteration the split/line-item currency
+  was remapped from a nested `OwnsOne` to a `HasConversion` value converter to tolerate the aliasing above.
+  Once the defensive copy landed, that mapping change became redundant, and it was **reverted after testing
+  showed the full integration suite passes without it**. This was deliberate: the converter left
+  `PineDbContextModelSnapshot.cs` describing a model the context no longer built, and
+  `EfCoreVaultMigrator.MigrateAsync` calls `Database.Migrate()` — snapshot drift there is a vault-open risk
+  for every existing user. Reverting removed that risk class entirely rather than mitigating it, and required
+  no migration. **`PineDbContext.cs` is unmodified in the final tree.** The counter-argument on record: the
+  copy only protects children created *through* the aggregate, and EF's load path bypasses constructors. That
+  was judged not to apply — EF materialises each owned child per row, so loaded children are already distinct
+  instances, and the 2 → 3 → 1 → 0 round-trips exercise exactly that load-mutate-save path.
+
+#### New debt opened
+
+- **TD-59** — `ReconcileOwnedChildren` promotes owned children from `Modified` to `Added` on the reasoning
+  that neither owned type exposes a mutator, so a `Modified` child can only be a mis-classified insert. That
+  reasoning is **load-bearing**: the day either type gains a public setter, a genuine update becomes a silent
+  insert. It was found **unpinned** and is now pinned by
+  `OwnedTransactionChildren_ShouldNot_ExposePublicSetters`, so such a change breaks a test instead of the
+  database. The underlying reliance on EF's state inference remains debt.
+- **TD-60** — `ReplaceSplits`/`ReplaceLineItems` mint fresh `Guid` ids, so a detached save deletes and
+  re-inserts every owned child with new ids. Harmless today because nothing references a split id; it becomes
+  a real problem the moment rules, attachments or an audit trail do.
+
+#### Why `CurrentValues.SetValues` is still present in four places
+
+The literal checklist item "zero `CurrentValues.SetValues` in repositories" **does not hold**, and saying
+otherwise would be false. It remains in the account, budget and category repositories, and on the detached
+branch of the transaction repository. The defect it names is nonetheless closed:
+`EfModel_DeclaresOwnedCollectionsOnTransactionOnly` asserts against the live EF model that
+`Transaction.Splits` and `Transaction.LineItems` are the **only** owned collections in the entire model, so
+on the other three aggregates `SetValues` is provably dropping nothing — `Account.Balance` and `Budget.Limit`
+are `ComplexProperty`, and `Category`/`Setting` have neither. On the transaction path it now copies only
+scalars and the `TotalAmount` complex property, with the owned collections merged explicitly alongside it.
+The call was left in place rather than hand-rolled per property because that is precisely what it is correct
+for; the model-metadata test is what stops the day someone adds a fourth owned collection from being silent.
+No fix was invented for repositories that did not have the defect.
+
+#### INCOMPLETE / NOT DONE
+
+1. **Android and iOS still cannot be compiled locally** (`NETSDK1147`, workloads absent). Unchanged from
+   iterations 1 and 2. Nothing in this iteration touched their code, but they remain **not compiler-proven**.
+2. **Line-item shrink/clear is covered only for growth in the committed suite** (2 → 3). `ReplaceLineItems`
+   supports clearing and was exercised shrinking in a scratchpad harness, but **a scratchpad harness is not
+   the committed test suite and does not count toward a ✅**. Committed coverage for the shrink direction is
+   on `Splits` only.
+3. **TD-19 remains untouched** — nothing reconciles `Σ LineItem.TotalPrice` against `TotalAmount`. A
+   transaction can still hold internally contradictory line items; only the *split* sum is enforced.
+4. **The invariant is enforced at the persistence boundary, not at every mutation.** An aggregate mutated and
+   never saved is never validated, and a caller that interleaves `AddSplit` calls relies entirely on the
+   repository check. This is the deliberate trade of TD-04, and it is sound only while `SaveAsync` calls
+   `EnsureValid()` — now falsification-tested, but a single point of enforcement.
+5. Still untouched and still P0: TD-02 (no correction path), TD-03 (silent import dedup), TD-12 (currency not
+   validated against account). Deliberately out of scope.
+6. **Nothing was committed or pushed.**
+
+### 12.8 Next (after iteration 3) — superseded
+
+> Closed by iteration 4; see §12.9.
+
+
+Phase 0 item **6 — TD-12**: a MediatR validation behaviour, and validating transaction currency against the
+account's currency. `AddTransactionCommandHandler` today builds a `Money` from the request, **saves the
+transaction**, and only then calls `account.Deposit(...)`, which throws on mismatch inside `Money.Add` —
+leaving an orphaned ledger entry with no matching balance movement. `TransferFundsCommandHandler` is the only
+handler that validates currency up front. With TD-01 closed the write is now rolled back rather than
+half-committed, so the damage is contained, but the command still fails at the wrong layer and reports the
+wrong thing to the user. TD-12 is the last of the two corruption paths named in blocker 10; TD-13, the other,
+was closed in this iteration.
+
+---
+
+### 12.9 Iteration 4 — Phase 0, item 6 (TD-12)
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-27 |
+| Scope | Phase 0 item **6** → TD-12 (transaction currency never validated against the account) |
+| Outcome | **TD-12 ✅ closed — and reclassified: it was no longer a corruption path.** Blocker 10 closes entirely · 1 duplication removed incidentally · 3 new debts opened (TD-61, TD-62, TD-63) |
+| State | Working tree only — **not committed, not pushed** |
+
+#### Verification actually executed
+
+| Check | Result |
+|---|---|
+| Characterisation of the PRE-fix defect on a real vault | ✅ measured — see "the trap" below |
+| `dotnet build src/Pine.Ui.Windows -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Macos -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Web -c Release` | ✅ 0 errors (1 pre-existing SDK `.targets` warning, unchanged from iterations 2–3) |
+| `dotnet build src/Pine.Cli -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build Pine.slnx -c Release` | ✅ 0 warnings; only 2 × `NETSDK1147` (Android/iOS workloads absent) |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **81 passed, 0 failed, 0 skipped** |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **71 passed, 0 failed, 0 skipped** |
+| Falsification M1 — neuter the currency comparison | ✅ `AddTransaction_WithAMismatchedCurrency_…` turns **red**, with the pre-fix `InvalidOperationException` verbatim |
+| Falsification M2 — swap the two `AddOpenBehavior` calls | ✅ **5 tests red** (1 architecture + 4 integration, all on `Calls.Should().BeEmpty()`) |
+| Falsification M3a — drop normalisation in the validator | ✅ `AddTransaction_WithALowercaseCurrency_…` turns **red** |
+| Falsification M3b — drop normalisation in `CurrencyCode` | ✅ same test **red**, with `ArgumentException` from the constructor |
+| Falsification M4 — hide one validator from the DI scan | ✅ `EveryValidator_…ShouldBeRegisteredAsScoped` **red**, plus 2 integration tests |
+| Green restored after every mutation | ✅ 81 + 71 re-run clean |
+| `SaveChangesAsync` outside `EfCoreUnitOfWork` | ✅ zero (TD-01 not regressed) |
+| `Pine.Core.csproj` package + project references | ✅ zero |
+| Android / iOS compiled | ❌ **impossible locally** — workloads absent, unchanged since iteration 1 |
+
+**Test suite: 138 → 152 passing.**
+
+#### What was built
+
+- **The validator seam** (`Pine.Application/Common/`) — `IRequestValidator<TRequest>`,
+  `ValidationError(PropertyName, Message)`, `RequestValidationException` carrying the structured `Errors`,
+  and the shared `CurrencyCodeText.TryNormalise`.
+- **`ValidationBehavior<TRequest, TResponse>`** (`Common/Behaviors/`, beside `TransactionBehavior`) —
+  resolves `IEnumerable<IRequestValidator<TRequest>>`, runs every validator **sequentially** (they share one
+  scoped `PineDbContext`, which is not thread-safe, so `Task.WhenAll` here would be a latent concurrency
+  bug), aggregates all errors into one exception, and calls the handler only when there are none. A request
+  with no registered validator sees an empty enumerable and passes through.
+- **Opt-in with no second source of truth.** Unlike `ITransactionalRequest`, validation has **no marker
+  interface**: the opt-in signal *is* the registered validator. A marker would allow a request to be labelled
+  "validated" with nothing behind it — silently unvalidated, which is precisely the failure this seam exists
+  to prevent.
+- **Four validators**, each in the same file as its command, matching the existing one-file convention:
+  `AddTransactionCommandValidator`, `RecordTransactionCommandValidator`, `TransferFundsCommandValidator`,
+  `ImportTransactionsCommandValidator`.
+- **Reflection registration** in `AddPineApplication` — every `IRequestValidator<>` in the assembly is
+  registered Scoped via `TryAddEnumerable`, once, in the single extension all five composition roots call.
+- **`TransferFundsCommandHandler`'s up-front checks folded into its validator**, removing the second idiom.
+
+#### Why the seam is hand-rolled and not FluentValidation
+
+Decided explicitly, not by default. FluentValidation's value is *declarative input rules* — `NotEmpty`,
+`Length`, `Matches`. The rule this ticket needed is none of those: "the currency must equal the account's
+currency" is a **database read**, and the only part of the library that would have been used is its
+`IValidator<T>` abstraction plus assembly scanning — roughly forty lines, which is what was written. Against
+that: TD-42 records that this solution has **no central package management**, so a new dependency means
+hand-pinning a version across nineteen project files, and `TreatWarningsAsErrors` makes any new analyzer
+surface a build-breaking risk. Every comparable seam here — `ITransactionalRequest`, `ScopedMediator`,
+`EfCoreUnitOfWork` — is hand-rolled and documented in prose, and this audit repeatedly penalises *two idioms
+for one job*. The counter-argument on record: once validation grows past a handful of rules, re-implementing
+rule composition, conditional rules and message templating would be a bad trade, and the seam should be
+replaced rather than extended. `IRequestValidator<T>` is deliberately narrow enough that a FluentValidation
+adapter is a drop-in later.
+
+#### Pipeline ordering, and what it costs
+
+`AddOpenBehavior` order is execution order. `ValidationBehavior` is registered **first**, so it wraps
+`TransactionBehavior` and every validator's read happens **outside** the write transaction.
+
+The consequence is observable and asserted: a rejected command's unit-of-work log is **empty**, not
+`Begin, Rollback`. That is the difference between a refusal and a failure, and M2 shows nothing else would
+catch the reversal — the exception type and message are identical either way.
+
+The price is a time-of-check/time-of-use window, and it is provably empty *for this rule*. The only fact read
+outside the transaction is an account's **currency**, and an account's currency cannot change after
+`Account.Create`: `Balance` has a private setter and the only mutators, `Deposit` and `Withdraw`, route
+through `Money.Add`/`Money.Subtract`, which throw on any currency but the one already held. That assumption
+is not left to prose — `Account_ShouldNot_ExposeAnyPublicMeansOfChangingItsCurrency` pins `Account`'s public
+surface to exactly `{Create, Deposit, Withdraw}` with no public setters, so the day an account gains a
+re-denomination path, this ordering decision breaks a test instead of the ledger. **That test is a tripwire
+on an assumption, not a proof there is no window**, and it is recorded as such rather than sold as more.
+
+#### Failure mode: a typed exception, and its precise relationship to TD-24
+
+Validation failures throw `RequestValidationException`, not a result type. A `Result<T>` is the better shape
+in the abstract and is not available at an honest price: Pine's requests return `Guid`,
+`IReadOnlyList<Transaction>`, `ImportProfile`, `string?` and `void`, and threading an envelope through them
+would rewrite every handler, every `Send` call site and every view model. That is TD-24, and it is **not**
+done here.
+
+What *did* change is what the existing indiscriminate `catch (Exception ex) { ErrorMessage = $"Error: {ex.Message}"; }`
+now catches. Before: `Cannot add money of different currencies: USD and EUR` — a domain internal, thrown from
+inside `Money.Add`, shown verbatim to a user. After: `Transaction currency EUR does not match account currency USD.`
+TD-24's blast radius narrows on the covered paths; TD-24 itself stays open, and no view model was touched.
+
+#### The trap in this ticket — the defect was not what the audit said it was
+
+§6.4 and blocker 10 both described TD-12 as a live corruption path: transaction saved, then
+`account.Deposit(...)` throws, leaving *an orphaned ledger entry with no matching balance movement*. The
+first thing iteration 4 did was try to reproduce that, on a real SQLCipher file vault through the real
+container and the real pipeline. **It does not happen.** Measured, pre-fix:
+
+```
+EXCEPTION = System.InvalidOperationException: Cannot add money of different currencies: USD and EUR
+TXROWS    = 0
+BALANCE   = 1000  (unchanged)
+UOW       = Begin, Rollback
+```
+
+Closing TD-01 in iteration 2 had already contained it. No repository calls `SaveChangesAsync`, so the
+"saved" transaction was only staged on the scoped `DbContext`, and `TransactionBehavior` rolled the whole
+command back. **TD-12 had silently degraded from data corruption to a wrong-layer throw with a leaky message
+— and the audit went on asserting the corruption for two more iterations.** Writing the ✅ without saying
+that would have been the convenient thing rather than the true one.
+
+Two further things the ticket's framing got wrong, both found by enumerating rather than trusting the list:
+
+- **The mismatch is not reachable from the shipped UI at all.** `AddTransactionViewModel` and
+  `ScanReceiptViewModel` both derive the currency from `SelectedAccount.Balance.Currency.Value`;
+  `DiagnosticsViewModel` hardcodes `"USD"`; `CsvImporter` builds every `Money` from
+  `targetAccount.Balance.Currency`. There is today no user gesture that produces a mismatched
+  `AddTransactionCommand`. The validators are therefore a **boundary guard against future and pluggable
+  callers**, not a fix for a bug a user can hit — the honest severity is 🟡, not 🟠.
+- **`ImportTransactionsCommand` cannot be validated up front, and pretending otherwise would be worse.**
+  The imported transactions do not exist until `Importer.ImportAsync` runs *inside* the handler, and reading
+  the stream in a validator would consume a forward-only stream the handler needs. So the import validator
+  checks only that the account exists, and the currency check sits in the one window that does exist: after
+  the import and dedup, **strictly before the first `SaveAsync`**. It throws the same
+  `RequestValidationException` so callers see one failure shape. `IImporter` is a port and the command
+  carries the importer *instance* as a payload field, so a plugin can supply any currency it likes — that
+  guard is the boundary check on the port, and it is the one place TD-12's fix is genuinely load-bearing
+  today.
+
+#### How the fix is *proven*, not asserted
+
+- **Four falsification mutations, all executed, all restored.** M1 (neuter the comparison) makes the pre-fix
+  `InvalidOperationException` reappear verbatim — the same string the test asserts is *absent*, so the
+  mutation is caught twice. M2 (swap the behaviour order) reddens five tests. M3a/M3b (drop the
+  normalisation, in the validator and in the domain) redden the lowercase test. M4 (hide a validator from the
+  reflection scan) reddens the architecture test plus two integration tests — the nastiest production
+  analogue, a validator that exists, reads correctly and is never called.
+- **Rejection asserted from outside EF entirely.** `AtomicityHost.CountRowsRaw` issues
+  `SELECT COUNT(*)` over a raw keyed SQLCipher connection, so "zero transactions, one untouched account" is a
+  claim no part of EF's model, translation or identity map can explain away.
+- **The empty unit-of-work log** is the assertion that distinguishes *refused* from *rolled back*. Without it
+  M2 would be invisible.
+- **Normalisation was previously unpinned.** Before this iteration no test anywhere passed a lowercase
+  currency code, so `CurrencyCode`'s `Trim().ToUpperInvariant()` could have been deleted against the 138-test
+  baseline with nothing going red. It is now pinned.
+- **Every money write goes through the pipeline.** No view model or service touches
+  `ITransactionRepository`/`IAccountRepository` directly; the only non-handler consumer,
+  `CategorizationTrainingBackgroundService`, reads. So validation has no bypass.
+
+#### Pre-existing defects fixed incidentally
+
+- **`TransferFundsCommandHandler` compared raw strings.** Its old check was
+  `sourceAccount.Balance.Currency.Value != request.CurrencyCode`, which rejected `"usd"` outright even though
+  `CurrencyCode` trims and upper-cases and the domain accepts it. Folding the check into the validator
+  normalises first, so a legitimate input stopped being rejected. This is a **behavioural widening**, not a
+  relocation, and is called out rather than buried.
+- **A shape check triplicated across three validators** was promoted to the single
+  `CurrencyCodeText.TryNormalise`. Filed as TD-61, because one shared copy of a domain rule living outside the
+  domain is still a copy.
+
+#### On modifying `AtomicityHost`, the harness that proves TD-01
+
+`AtomicityHost` exists to prove a closed P0 blocker, so changing it deserves scrutiny. The change is
+**purely additive**: one new method, `CountRowsRaw(string table)`, which opens a raw keyed SQLCipher
+connection via the pre-existing `TempVault.OpenRaw` and runs `SELECT COUNT(*)`. No existing member was
+altered or removed, no registration in the container changed, and **no existing test file under
+`tests/Pine.Tests.Integration/Atomicity/` was touched** — `TransferFundsAtomicityTests`,
+`RecordTransactionAtomicityTests`, `ImportAtomicityTests`, `RequestScopeAndRepositoryBoundaryTests` and
+`VaultBackupIsNotTransactionalTests` are byte-identical to iteration 3 and all 65 of their assertions still
+pass unchanged inside the new 71.
+
+#### New debt opened
+
+- **TD-61** — `CurrencyCodeText.TryNormalise` restates `CurrencyCode`'s `^[A-Z]{3}$` outside the domain,
+  because the constructor reports failure by throwing and a validator cannot use it. They drift the moment
+  `CurrencyCode` gains ISO 4217 *membership* validation (TD-18). The real fix is a non-throwing
+  `CurrencyCode.TryCreate`.
+- **TD-62** — the validators cover **currency and nothing else**. `AddTransactionCommand` with `Amount == 0`
+  still reaches `account.Deposit(...)` and surfaces "Deposit amount must be strictly positive."; the import
+  handler still throws a bare `ArgumentException` for a missing account. Same wrong-layer class this ticket
+  fixed, different fields. Deliberately out of scope; the seam now exists to fix it cheaply.
+- **TD-63** — `CreateBudgetCommand` carries a currency with no account to check it against. Nothing anchors a
+  budget's currency to anything.
+
+#### INCOMPLETE / NOT DONE
+
+1. **Android and iOS still cannot be compiled locally** (`NETSDK1147`, workloads absent). Unchanged from
+   iterations 1–3. Nothing here touched their code; they remain **not compiler-proven**.
+2. **TD-12's severity in §8 was overstated for two iterations and is only now corrected.** The register row
+   and blocker 10 both said "orphaned ledger entry" long after TD-01 made that impossible. The row is fixed;
+   the lesson — that closing one debt silently changes another's severity, and nothing re-checks — is not
+   fixed by anything in this iteration.
+3. **`CreateAccountCommand` has no validator.** It *defines* an account's currency, so there is nothing to
+   validate it against, but it also means a vault can be seeded with `"ZZZ"` — `CurrencyCode` validates shape,
+   not membership. That is TD-18 and stays open.
+4. **The TOCTOU argument rests on a tripwire, not a proof.** Reading account currency outside the transaction
+   is sound only while an account's currency is immutable. The architecture test detects a change to
+   `Account`'s public surface; it cannot detect one made through EF, reflection or a raw SQL update.
+5. **The transfer cross-currency message is not pinned.** That test asserts the exception type and a non-empty
+   `Errors`, not the message text.
+6. **TD-24 is not fixed.** View models still catch `Exception` and render `ex.Message` raw. The message they
+   render on the covered paths is now deliberate; the mechanism is still wrong.
+7. Still untouched and still P0: TD-02 (no correction path), TD-03 (silent import dedup), TD-09
+   (money-path suite), TD-06/TD-11 (key envelope, password policy). Deliberately out of scope.
+8. **Nothing was committed or pushed.**
+
+### 12.10 Next (after iteration 4) — superseded
+
+Phase 0 item **7 — TD-03**: rewrite import deduplication on a stable key, with a user-facing review list.
+`ImportTransactionsCommandHandler` currently discards any parsed transaction matching an existing one on
+`(Date.Date, TotalAmount.Amount)` alone, silently and with no record. Two genuine £4.50 coffees on the same
+day are one transaction as far as Pine is concerned, and the user is never told. This is the last of the
+original P0 data-loss findings still open — TD-01, TD-04 and TD-13 are closed, and TD-12 closed and was
+reclassified — and unlike TD-12 it is **reachable from the shipped UI today**, through
+`ImportWizardViewModel`. It needs a stable import key (source row identity, not a value tuple), a
+quarantine/review path for suspected duplicates rather than a silent drop, and the dedup decision surfaced
+in the wizard. Note that the currency guard added in iteration 4 sits immediately after the dedup loop in
+that same handler, so both changes land in the same method and the guard must not be displaced ahead of the
+new key logic.
+
+### 12.11 Iteration 5 — Phase 0, item 7 (TD-03)
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-27 |
+| Scope | Phase 0 item **7** → TD-03 (import de-duplication silently discards legitimate transactions) |
+| Outcome | **TD-03 ✅ closed.** Blocker 3 closes entirely · a test-coverage hole found and closed during integration · 4 new debts opened (TD-64 … TD-67) |
+| State | Working tree only — **not committed, not pushed** |
+
+#### Verification actually executed
+
+| Check | Result |
+|---|---|
+| `dotnet build src/Pine.Core -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Application -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Infrastructure -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Avalonia -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Windows -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Macos -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build src/Pine.Ui.Web -c Release` | ✅ 0 errors (1 pre-existing SDK `.targets` warning, unchanged since iteration 2) |
+| `dotnet build src/Pine.Cli -c Release` | ✅ 0 warnings, 0 errors |
+| `dotnet build tests/Pine.Tests.Unit` + `tests/Pine.Tests.Integration` | ✅ 0 warnings, 0 errors |
+| `dotnet build Pine.slnx -c Release` | ❌ **2 errors, restore aborts** — see the correction below; this command has never proven anything about the code |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **90 passed, 0 failed, 0 skipped** |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **80 passed, 0 failed, 0 skipped** |
+| Falsification M1 — key lookup returns nothing | ✅ 2 unit + 3 integration tests **red** |
+| Falsification M2 — neuter the in-batch `HashSet` guard | ✅ 1 unit + 1 integration test **red** |
+| Falsification M3 — drop `t.AccountId == accountId` from the repository probe | ⚠️ **survived 79 tests**; gap closed, then **red**, then restored — see the trap |
+| Falsification M4 — constant import key in `CsvImporter` | ✅ 2 importer tests **red** |
+| Green restored after every mutation | ✅ 90 + 80 re-run clean; mutated files SHA-256-identical to their pre-mutation copies |
+| `SaveChangesAsync` outside `EfCoreUnitOfWork` | ✅ zero (TD-01 not regressed) |
+| `Pine.Core.csproj` package + project references | ✅ zero |
+| Currency guard still ahead of the first `SaveAsync` | ✅ verified by line order after the rewrite (dedup → guard → save) |
+| Android / iOS compiled | ❌ **impossible locally** — workloads absent, unchanged since iteration 1 |
+| The wizard review screen rendered | ❌ **not observed** — no GUI was launched; see INCOMPLETE |
+
+**Test suite: 152 → 170 passing.**
+
+#### A correction to the previous iterations' verification tables
+
+§12.9 recorded `dotnet build Pine.slnx -c Release` as "✅ 0 warnings; only 2 × `NETSDK1147`". That
+reading is wrong, and it was re-measured here: `NETSDK1147` is an **error**, not a warning, and it
+aborts *restore*, so the solution build terminates in under a second having compiled **nothing**. Every
+solution-wide "clean build" claim from iterations 1–4 rests on a command that never built the product.
+The per-project builds above are what actually carry the evidence, and they are listed individually for
+that reason. Nothing about the code changes; what changes is which command is allowed to be cited.
+
+#### What was built
+
+- **`ImportKeyFactory`** (`Pine.Core/Imports/`, BCL-only so `Pine.Core` keeps zero references) —
+  `FromReference(source, reference)` → `r1:` + SHA-256, for sources carrying their own stable identifier;
+  `Derive(date, amount, currency, payee, source, rowIndex)` → `h1:` + SHA-256, for those that do not.
+  Invariant-culture throughout, no `GetHashCode`, no randomness. **Versioned prefixes**: if the
+  derivation ever changes it takes a new prefix, so old rows fail to match the new keys rather than
+  matching them by accident — a silent re-match would re-create exactly the data loss being removed.
+- **`Transaction.ImportKey`** (nullable) + `AssignImportKey` + `MaxImportKeyLength = 128`, a nullable
+  `TEXT(128)` column and an `(AccountId, ImportKey)` index (migration `20260827141109`, reversible `Down`).
+- **`ITransactionRepository.GetExistingImportKeysAsync`** — answers only "which of these keys do you
+  already have?", `AsNoTracking`, `IN` push-down, empty-set short circuit. This **replaces a full
+  `GetByAccountIdAsync` load on every import**, which grew linearly with the account's history.
+- **The handler's step 3, rewritten.** Three outcomes, all reported: key already on the account, key
+  already seen earlier in this batch, and no key at all. The last is the one worth stating plainly — a
+  keyless row is **still imported**, because refusing it would be new data loss, but it is reported as
+  `ImportedWithoutKeyCheck` rather than quietly treated as if it had passed a check it never took.
+- **`ImportTransactionsResult`** replaces `IReadOnlyList<Transaction>`. The old contract could only
+  express what survived; a dropped row left no trace in the return value, in a log, or on screen. The
+  new one carries every parsed row in file order with its disposition and a finished user-facing reason.
+- **`CsvImporter` assigns a key to every row it produces**, preferring `FromReference` when the profile
+  maps an optional `"Reference"` column (a plain extra entry in the existing free-form `ColumnMappings`,
+  so no schema change and no migration) and falling back to `Derive`. The row index counts the row's
+  position **in the file**, incremented for every record the reader yields including ones later
+  rejected — an index into the output list would shift whenever a row ahead of it was rejected,
+  renumbering every later row and breaking the match against already-stored keys.
+- **A wizard review step** (`IsStep3`, matching the existing `IsStepN` idiom) listing every row with its
+  outcome and the handler's reason **passed through verbatim** — the UI derives no prose of its own, so
+  there is one source of truth for what happened to a row. It reuses existing design-system resources
+  (`PineSurface`, `PineSurfaceElevated`, `PineBorder`, `PineText`, `PineTextMuted`, `PineSuccess`,
+  `PineWarning`) and adds none. The wizard auto-closes only when nothing was skipped **and** nothing was
+  imported unchecked; anything else stops on the review step and waits for the user.
+
+#### The trap in this ticket — a passing suite that did not test what it appeared to
+
+Two things the ticket's framing assumed turned out not to hold, and both were found by checking rather
+than by trusting.
+
+**1. The de-duplication lookup's account scoping was untested, and nothing noticed.** After the four
+child workstreams integrated and all 169 tests passed, one further mutation was run that no workstream
+had tried: deleting `t.AccountId == accountId` from
+`SqliteTransactionRepository.GetExistingImportKeysAsync`. **All 79 integration tests stayed green.**
+That mutation is silent cross-account data loss of precisely the TD-03 kind, reached through a
+different door — importing a joint statement into a second account would skip every row on the strength
+of the *first* account's history, and the new review list would confidently explain why each one was
+"already imported". A suite that proves de-duplication works while permitting it to work against the
+wrong account is not proving what it claims.
+`Import_OfTheSameStatementIntoASecondAccount_IsNotBlockedByTheFirstAccountsKeys` was added, the mutation
+re-run (**red**, as it now must be), and the file restored byte-for-byte. That test is test 170.
+
+**2. "The importers must assign the keys" presumed importers that exist.** `CsvImporter` does the real
+work. `ExcelImporter` and `PdfImporter` **parse nothing at all** — each opens the file, walks it, and
+returns an empty list without ever constructing a `Transaction`. There was no key to assign because
+there is no row to key, and no Excel or PDF parser was invented to manufacture the appearance of one.
+Both are now documented as stubs, with what a future implementation must do and what happens meanwhile
+to any keyless row that escaped. Neither is reachable from the wizard, which hardcodes `CsvImporter`.
+Filed as **TD-67** rather than left as an implied capability.
+
+#### How the fix is *proven*, not asserted
+
+- **Four falsification mutations executed and restored**, each verified byte-identical afterwards by
+  SHA-256 and `cmp`. M1 (key lookup returns nothing) reddens 5 tests; M2 (in-batch guard) reddens 2;
+  M4 (constant key in `CsvImporter`) reddens 2; M3 (account scoping) reddened **nothing until a test was
+  written for it**, which is the finding above.
+- **Row counts and persisted keys are read from outside EF.** `AtomicityHost.CountRowsRaw` and the new
+  additive `ReadImportKeysRaw` issue raw SQL over a keyed SQLCipher connection, so "two rows survived"
+  and "the legacy key is NULL" are claims no identity map or change tracker can explain away.
+- **The headline regression is asserted the other way round.** Two same-day, same-amount, same-payee
+  rows from one file both reach the file — the exact pair the old rule destroyed.
+- **Legacy rows are proven inert**, not assumed: a populated pre-`ImportKey` vault migrates, reopens,
+  keeps its rows, and their keys read raw-NULL; those NULLs then match no candidate and block nothing.
+- **The old test that encoded the bug was deleted deliberately, not quietly.**
+  `Handle_WithDuplicates_SkipsDuplicates` asserted that a same-date same-amount row *is* discarded.
+  Keeping it green would have meant keeping the defect; it is removed with a header comment recording
+  exactly what it used to assert.
+
+#### Fixes made by the coordinator, not by a child workstream
+
+Two breaks left by the previous tree's mid-integration crash were repaired directly, and are recorded
+here so the log does not credit them to the workstreams: the `FaultInjectingTransactionRepository`
+pass-through for the new repository member (`tests/Pine.Tests.Integration/Atomicity/FaultInjection.cs`),
+and the head-migration tripwire in `VaultBackupServiceTests`, retargeted to
+`20260827141109_AddTransactionImportKey`. The account-scoping test above was also written at
+integration, not by a workstream.
+
+#### Pre-existing defects fixed incidentally
+
+- **`ImportAtomicityTests`' stub importer carried a stale comment** describing "date+amount
+  de-duplication" as the behaviour under test. Corrected; the test itself was only updated for the new
+  return type.
+- **The full-account load is gone from the import path.** Not a correctness fix, but the old dedup read
+  every transaction on the account into memory on every import; the replacement is an indexed probe over
+  the candidate keys only.
+
+#### New debt opened
+
+- **TD-64** — the currency guard iterates only the rows about to be saved, so a *skipped* row in the
+  wrong currency is never reported. Correct in that nothing bad is written, but a file whose first
+  import was rejected for currency can look clean on re-import.
+- **TD-65** — check-then-insert race. Two concurrent imports of one file can both pass the existence
+  probe before either inserts. The `(AccountId, ImportKey)` index is deliberately non-unique, so nothing
+  stops the second write. Asserted nowhere; accepted debt, now written down.
+- **TD-66** — the derived key's `source` is `ImportProfile.Name`, the only source identifier reachable
+  inside `ImportAsync`. Renaming or duplicating a profile therefore changes every derived key, and the
+  next import of an already-imported file reports every row as new. Renaming a profile is a data event.
+- **TD-67** — `ExcelImporter` and `PdfImporter` parse nothing (above).
+
+#### INCOMPLETE / NOT DONE
+
+1. **The review screen has never been seen.** Its bindings are compiler-checked (compiled bindings are
+   on; a deliberately misspelled binding path was confirmed to produce `AVLN2000`, then reverted), but
+   `DynamicResource` keys are not compile-checked, and layout, spacing and the skipped-row tint are
+   **reasoned, not observed**. No GUI was launched. Nothing here should be read as a claim that the
+   screen looks right.
+2. **Android and iOS still cannot be compiled locally** (`NETSDK1147`, workloads absent). Unchanged
+   since iteration 1. They remain **not compiler-proven**, and TD-52's runtime consequence remains
+   inferred rather than observed.
+3. **`dotnet build Pine.slnx` still does not build the solution**, and now never did — see the
+   correction above. Solution-wide build coverage does not exist locally and, with CI disarmed (§12.12),
+   does not exist remotely either.
+4. **Concurrency is untested and unhandled** (TD-65). The index is non-unique by choice, and nothing
+   asserts what two simultaneous imports do.
+5. **No importer other than CSV produces anything** (TD-67), so the "prefer `FromReference`" branch is
+   exercised only by CSV's optional `Reference` mapping and by test stubs — no real bank format has been
+   run through it.
+6. **The key's stability rests on the profile name** (TD-66), which the wizard mints per import as a
+   throwaway `ImportProfile.Create("Final Profile", …)`. That happens to be stable today; it is not
+   stable by construction.
+7. **TD-24 is not fixed.** The wizard still catches `Exception` and renders `ex.Message` raw on the
+   import path.
+8. **Nothing was committed or pushed.**
+
+### 12.12 Reconciliation pass — re-checking the register against the code
+
+Iteration 4 found that this audit had asserted a corruption path (TD-12) that its **own iteration-2
+work had already closed**, and that the claim stood wrong for two further iterations. The lesson
+recorded there was that *closing one debt silently changes another's severity, and nothing re-checks*.
+This section is that re-check, run deliberately for the first time: every 🔴/🟠 row in §8 and every
+§9 blocker still marked open was compared against what the code does today.
+
+**Method.** Source read, with a file and line for every claim. Where a claim could not be checked
+cheaply it is listed as unverified rather than guessed — a guess in this register is what created the
+TD-12 problem in the first place. Rows already scheduled for imminent work (TD-02, TD-18, TD-19, TD-24,
+TD-47, TD-61, TD-62, TD-63) were left alone, as was TD-03, which was changing under this very iteration.
+
+#### Findings that changed a row
+
+| Row | Audit's claim | Verdict | What the code actually does |
+|---|---|---|:---|
+| **TD-07 / Blocker 6 / roadmap item 3** | CI "now builds the product"; the workflow "has never executed" | **Regressed — materially worse** | `.github/workflows/dotnet-ci.yml` now triggers on `workflow_dispatch:` **only**. Commit `79c5364` deleted `push: branches:[main]` and `pull_request: branches:[main]`, with the comment *"CI automatizado deshabilitado temporalmente para ahorrar minutos de cómputo"*. The three jobs are intact and real; nothing fires them. Iterations 3 and 4 both restated "never executed" without noticing it also can no longer execute on its own. **This item regressed after it was ticked ✅ in iteration 1.** |
+| **TD-09 / Blocker 7** | "No financial-invariant tests. Every fix above would ship unverified." | **Now false** | Money-path tests have existed since iteration 2 and several are falsification-proven: `tests/Pine.Tests.Integration/Atomicity/*`, `Repositories/TransactionOwnedCollectionRoundTripTests.cs`, `tests/Pine.Tests.Unit/Domain/MoneyTests.cs`, `AccountTests.cs`, `TransactionSplitTests.cs`, and now the import-dedup suite. **Invalidated by iterations 2, 3 and 4** — each wrote money-path tests while TD-09 stayed 🔴. Now 🟡: what is genuinely missing is coverage for the P0s still open (TD-18, TD-19, TD-02). |
+| **TD-43** | "ONNX binaries tracked in git without LFS" | **Now largely false** | `.gitattributes` line 1 tracks `*.onnx` through LFS since commit `bec0887`; all three blobs at HEAD are ~133-byte pointers. Residual: LFS does not rewrite history, so pre-`bec0887` blobs remain in the pack. Now 🟡. |
+| **TD-30** | "Missing indexes on `Date` / `AccountId`; **no FK**" | **Severity wrong** | A FK does exist — Budget→Category with `DeleteBehavior.Restrict` (`PineDbContext.cs:173-176`) — and `LinkedTransactionId` is indexed (`:77`). `AccountId` gained a leading-column index via iteration 5's `(AccountId, ImportKey)` (`:98`). What remains: no index on `Date`, no transaction→account FK. |
+| **TD-32** | "Category as free string, not FK" | **Severity wrong** | `Budget.CategoryId` is already a real FK. The free string survives only on `TransactionSplit.Category`. |
+| **TD-46** | "Relative model paths (CWD-dependent)" | **Severity wrong** | Two of three remain relative (`MlNetCategorizer.cs:34`, `OnnxNlpFieldExtractor.cs:28`); `ReceiptDetector.cs:21` already anchors to `AppContext.BaseDirectory`. Invalidated by the vision work in `a1a440b`/`b6be65c`. |
+| **TD-53** | Web head "builds a real SQLCipher context"; "its own comment claims in-memory" | **Wording stale, defect intact** | `Pine.Ui.Web/Program.cs:32` now passes `":memory:"`, so the comment contradiction is gone. The defect survives for a different reason: `PineDbContext.cs:41-52` unconditionally builds a **keyed SQLCipher** connection, and an in-memory *SQLCipher* database still needs the native library WASM does not link. Independently corroborated during this iteration's build: `Pine.Ui.Web`'s one warning names `e_sqlcipher.a` among native references that "won't be linked in". |
+| **TD-21** | "Ambiguous dd/MM vs MM/dd parsing" | **Severity understated** | `OnnxNlpFieldExtractor.cs:490-509` added a "SOTA multi-culture cascade" whose comment claims it tries "ISO, then LatAm (dd/MM), then US (MM/dd)". It tries `InvariantCulture` **first**, and `InvariantCulture` *is* MM/dd — so the `es-EC` leg is unreachable for any ambiguous date, and there is still no ambiguity flag. The debt is now hidden behind code that reads as though it were handled. The CSV path is unaffected (`CsvImporter.cs` parses with `TryParseExact` against `profile.DateFormat`). |
+| **TD-14** | "`AddConsole` in a WinExe" | **Understated by one** | Two heads, not one: `Pine.Ui.Windows/Program.cs:101` and `Pine.Ui.Macos/Program.cs:72`. |
+
+#### Rows re-checked and confirmed exactly as written
+
+TD-06, TD-11, TD-15, TD-16, TD-17, TD-20, TD-22, TD-25, TD-26, TD-27, TD-28, TD-29, TD-31, TD-33,
+TD-34, TD-35, TD-36, TD-37, TD-38, TD-39, TD-40, TD-41, TD-42, TD-44, TD-45, TD-48, TD-49, TD-50,
+TD-51, TD-52, TD-54, TD-55, TD-56, TD-57, TD-58, TD-59, TD-60 — all still accurate. Spot evidence:
+TD-33's domain events are raised in exactly two places (`Account.cs:32`, `Transaction.cs:91`) and no
+dispatcher exists anywhere; TD-54's workflow still enumerates eleven `.csproj` in a bash loop rather
+than building `Pine.slnx`; TD-22's confidence score is still a literal `0.1 + 0.2 + 0.25 + 0.2 + 0.15`
+tally (`OnnxNlpFieldExtractor.cs:745-764`).
+
+#### No overstated closes
+
+Every ✅ row was checked against the code and each one is real: TD-01 (no `SaveChangesAsync` outside
+`EfCoreUnitOfWork.cs:46`), TD-04 (`Transaction.cs:137` no longer validates eagerly; `EnsureValid()` is
+the first statement of `SqliteTransactionRepository.SaveAsync`, `:77`), TD-05 (`VaultHeader` carries
+`HeaderVersion` plus every KDF parameter), TD-12 (four validators, all wired), TD-13
+(`ReconcileOwnedChildren`, `:123-145`), TD-23 (`UnlockViewModel` catches five distinct vault
+exceptions). **This is worth stating explicitly**: the failure mode being hunted was an overstated
+close, and none was found.
+
+#### §12.7 and §12.9 verified against disk
+
+Every checkable claim in the iteration-3 and iteration-4 logs holds: `EnsureValid()` at the persistence
+boundary ✓ · `ReplaceSplits`/`ReplaceLineItems` staging-then-swap (`Transaction.cs:150-172,189`) ✓ ·
+`ReconcileOwnedChildren` on the tracked graph ✓ · `ValidationBehavior` registered **before**
+`TransactionBehavior` (`PineApplicationServiceCollectionExtensions.cs:47-48`) ✓ · four
+`IRequestValidator<T>` registered by reflection via `TryAddEnumerable` ✓ · `CurrencyCodeText.TryNormalise`
+used by exactly three validators ✓ · no repository calls `SaveChangesAsync` ✓ · `Pine.Core.csproj` has
+zero references ✓.
+
+One drift, cosmetic but worth fixing when those files are next touched: the comments at
+`PineApplicationServiceCollectionExtensions.cs:42` and `:55` name tests
+`ValidationBehavior_IsRegistered_BeforeTransactionBehavior` and
+`EveryRequestValidator_IsRegistered_ByAddPineApplication`; the actual tests are
+`ValidationBehavior_ShouldBeRegistered_BeforeTransactionBehavior` (`ArchitectureTests.cs:125`) and
+`EveryValidator_InTheApplicationAssembly_ShouldBeRegisteredAsScoped` (`:160`). A reader chasing the
+cited names finds nothing.
+
+The one correction this pass makes to §12.9 itself is recorded in §12.11: its verification table cited
+`dotnet build Pine.slnx` as passing with two warnings, when that command in fact fails at restore and
+compiles nothing.
+
+#### What could not be verified, and why
+
+- **Android / iOS behaviour (TD-52).** Workloads are absent (`NETSDK1147`); the registration diff is
+  real and readable, but the runtime consequence is inferred, not observed. Not verifiable on this
+  machine at all.
+- **Runtime consequences of TD-15, TD-20, TD-34, TD-35, TD-45, TD-49.** These need a running GUI.
+  Only the code shape was confirmed.
+- **TD-43's historical pack cost.** Measuring it needs a full-history object walk; the LFS-pointer half
+  is measured, the history half is not.
+- **Whether the CI jobs would actually pass.** The workflow has never run, and now cannot run without a
+  manual dispatch, so this is unknown by construction — which is precisely what makes the disarmed
+  triggers worse than the register recorded.
+
+#### The process finding
+
+TD-07 regressed **after** being marked ✅, by a deliberate commit unrelated to any remediation
+iteration, and three subsequent iterations read past it. TD-09 was false for three iterations because
+the work that falsified it was logged in §12 but never reflected back into §8. Both are the same
+failure as TD-12's: **§8 is only ever updated by the ticket that owns a row, and no ticket owns the
+side effects it has on other rows.** A reconciliation pass of this kind belongs at the end of every
+iteration, not once.
+
+### 12.13 Next
+
+Phase 0 item **8 — TD-02**: update / void transaction commands plus balance recalculation. This is now
+the **last original P0 data-integrity finding still open**, and the most consequential of them: TD-01,
+TD-03, TD-04, TD-12 and TD-13 are closed, which means Pine can now record transactions atomically,
+import them without losing any, and split them correctly — and still cannot **correct a single one of
+them**. Any bad record, from any cause, is permanent, and a balance that has drifted cannot be
+recomputed from its ledger.
+
+Three things make it harder than the tickets before it, and they should be settled before code is
+written:
+
+1. **Correction versus deletion is a domain decision, not an implementation detail.** A finance vault
+   generally voids rather than deletes, so history survives an audit. Nothing in the domain currently
+   expresses "this transaction was reversed"; adding a delete would be quicker and would throw away the
+   property that makes a ledger trustworthy.
+2. **Balance recalculation and `Account.Deposit`/`Withdraw` are in tension.** The balance is currently
+   maintained incrementally by those two methods, which are also the only mutators and the guarantee
+   TD-12's validator ordering rests on (`Account_ShouldNot_ExposeAnyPublicMeansOfChangingItsCurrency`).
+   A recalculation path that sets a balance from the sum of its transactions is a *third* mutator, and
+   it must not become a re-denomination path — otherwise iteration 4's TOCTOU argument quietly breaks.
+3. **Editing a transaction re-enters every trap iteration 3 closed.** `ReplaceSplits`/`ReplaceLineItems`
+   mint fresh ids on each detached save (TD-60), and `ReconcileOwnedChildren` infers owned-child state
+   from EF's guess (TD-59). Both are tolerable while transactions are only ever created; an update
+   command makes them load-bearing.
+
+The seams needed are already in place: `IRequestValidator<T>` for pre-conditions, `ITransactionalRequest`
+for atomicity, and `AtomicityHost` for proving rollback from raw SQL. TD-09's remaining gap — no test
+covers balance recalculation — should be closed *by* this ticket rather than after it.
