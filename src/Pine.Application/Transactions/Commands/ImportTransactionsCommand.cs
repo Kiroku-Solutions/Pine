@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Core.Accounts;
@@ -17,7 +18,7 @@ public record ImportTransactionsCommand(
     Stream FileStream,
     IImporter Importer,
     ImportProfile Profile
-) : IRequest<IReadOnlyList<Transaction>>;
+) : IRequest<IReadOnlyList<Transaction>>, ITransactionalRequest;
 
 public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTransactionsCommand, IReadOnlyList<Transaction>>
 {

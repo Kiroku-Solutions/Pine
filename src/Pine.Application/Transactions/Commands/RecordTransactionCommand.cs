@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Accounts;
 using Pine.Core.Transactions;
 
@@ -9,7 +10,7 @@ using Pine.Core.Common.ValueObjects;
 
 namespace Pine.Application.Transactions.Commands;
 
-public record RecordTransactionCommand(Guid AccountId, DateTimeOffset Date, string Payee, decimal TotalAmount, string CurrencyCode, string Notes) : IRequest<Guid>;
+public record RecordTransactionCommand(Guid AccountId, DateTimeOffset Date, string Payee, decimal TotalAmount, string CurrencyCode, string Notes) : IRequest<Guid>, ITransactionalRequest;
 
 public class RecordTransactionCommandHandler : IRequestHandler<RecordTransactionCommand, Guid>
 {
@@ -47,7 +48,8 @@ public class RecordTransactionCommandHandler : IRequestHandler<RecordTransaction
             account.Deposit(absoluteAmount, _timeProvider);
         }
 
-        // Save transaction and updated account state (this should be inside a transaction scope ideally)
+        // The transaction and the account balance it moves are staged on the same scoped
+        // DbContext; TransactionBehavior commits them together, or not at all (TD-01).
         await _transactionRepository.SaveAsync(transaction, cancellationToken);
         await _accountRepository.SaveAsync(account, cancellationToken);
         

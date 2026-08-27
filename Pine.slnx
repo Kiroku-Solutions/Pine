@@ -15,7 +15,6 @@
     <Project Path="src/Pine.Ui.Web/Pine.Ui.Web.csproj" />
     <Project Path="src/Pine.Ui.Windows/Pine.Ui.Windows.csproj" />
   </Folder>
-  <!-- asdasda
   <Folder Name="/tests/">
     <Project Path="tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj" />
     <Project Path="tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj" />
@@ -23,5 +22,4 @@
     <Project Path="tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj" />
     <Project Path="tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj" />
   </Folder>
-   -->
 </Solution>

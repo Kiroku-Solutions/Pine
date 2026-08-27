@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Budgets;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
@@ -14,7 +15,7 @@ public record CreateBudgetCommand(
     string CurrencyCode,
     BudgetPeriod Period,
     DateTimeOffset? StartDate = null,
-    DateTimeOffset? EndDate = null) : IRequest<Guid>;
+    DateTimeOffset? EndDate = null) : IRequest<Guid>, ITransactionalRequest;
 
 public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, Guid>
 {

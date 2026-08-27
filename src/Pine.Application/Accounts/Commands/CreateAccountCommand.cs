@@ -2,13 +2,14 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Pine.Application.Common;
 using Pine.Core.Accounts;
 
 using Pine.Core.Common.ValueObjects;
 
 namespace Pine.Application.Accounts.Commands;
 
-public record CreateAccountCommand(string Name, string CurrencyCode, AccountType Type, decimal InitialBalance) : IRequest<Guid>;
+public record CreateAccountCommand(string Name, string CurrencyCode, AccountType Type, decimal InitialBalance) : IRequest<Guid>, ITransactionalRequest;
 
 public class CreateAccountCommandHandler : IRequestHandler<CreateAccountCommand, Guid>
 {

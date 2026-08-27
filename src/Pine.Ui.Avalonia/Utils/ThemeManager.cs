@@ -5,7 +5,8 @@ using Avalonia;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
-using Pine.Core.Configuration;
+using MediatR;
+using Pine.Application.Settings.Queries;
 
 namespace Pine.Ui.Avalonia.Utils;
 
@@ -102,21 +103,32 @@ public static class ThemeManager
     }
 
     /// <summary>
-    /// Loads the persisted variant + palette from the (vault-scoped) settings
-    /// repository and applies them. Safe to call after a vault is unlocked;
-    /// silently no-ops if settings are unavailable. Never throws.
+    /// Loads the persisted variant + palette for the currently unlocked vault and applies them.
+    /// Safe to call after a vault is unlocked; silently no-ops if settings are unavailable.
+    /// Never throws.
     /// </summary>
-    public static async Task ApplyFromSettingsAsync(ISettingRepository settings)
+    /// <param name="sender">Mediator used to read the settings.</param>
+    /// <returns>A task that completes once the theme has been applied (or skipped).</returns>
+    /// <remarks>
+    /// Takes an <see cref="ISender"/> rather than an <c>ISettingRepository</c> (TD-01): the
+    /// repository is Scoped, and resolving it from the root provider to hand it in here produced a
+    /// root-scoped <c>PineDbContext</c> that outlived the vault it was built for. The mediator is
+    /// a singleton that opens a fresh scope per request, so each read sees the vault that is
+    /// unlocked right now.
+    /// </remarks>
+    public static async Task ApplyFromSettingsAsync(ISender sender)
     {
+        ArgumentNullException.ThrowIfNull(sender);
+
         try
         {
-            var variant = await settings.GetAsync(VariantSettingKey);
-            if (variant != null && int.TryParse(variant.Value, out int variantIndex))
+            var variant = await sender.Send(new GetSettingQuery(VariantSettingKey)).ConfigureAwait(true);
+            if (variant != null && int.TryParse(variant, out int variantIndex))
                 ApplyVariant(variantIndex);
 
-            var palette = await settings.GetAsync(PaletteSettingKey);
+            var palette = await sender.Send(new GetSettingQuery(PaletteSettingKey)).ConfigureAwait(true);
             if (palette != null)
-                ApplyPalette(palette.Value);
+                ApplyPalette(palette);
         }
         catch
         {
