@@ -20,6 +20,17 @@
                                Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                 </StackPanel>
 
+                <!-- Manual lock (TD-11): the only pre-existing ways to lock were an idle timeout
+                     and a failed unlock attempt; there was no deliberate "I'm stepping away"
+                     action. Docked to the bottom, outside the scrolling nav list, so it stays
+                     reachable regardless of how many nav items are added above it. Must be added
+                     to the DockPanel BEFORE the ScrollViewer: DockPanel's default
+                     LastChildFill="True" makes whichever child is added LAST the one that fills
+                     the remaining space, regardless of its own Dock value. -->
+                <Button DockPanel.Dock="Bottom" Content="Lock Vault" Command="{Binding LockVaultCommand}"
+                        Classes="pine-nav" Margin="16,8,16,20"
+                        Foreground="{DynamicResource PineDanger}" />
+
                 <!-- Navigation Buttons -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="4" Margin="16,28,16,16">

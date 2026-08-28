@@ -75,6 +75,36 @@
                                      IsEnabled="{Binding !IsBusy}"
                                      FontSize="16"
                                      Padding="15" />
+
+                            <!-- Strength meter (TD-11). Value/colour move as the user types; the
+                                 pass/fail state is also carried in PasswordStrengthStatusText below,
+                                 so nothing here relies on colour alone. -->
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding PasswordStrengthFraction}"
+                                         Height="6" CornerRadius="3" Margin="0,4,0,0"
+                                         Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                         Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                         Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                            <TextBlock Text="{Binding PasswordStrengthStatusText}"
+                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                       IsVisible="{Binding PasswordStrengthStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                       Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                       Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                            <TextBlock Text="{Binding PasswordAdviceText}"
+                                       TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                                       IsVisible="{Binding PasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                            <TextBlock Text="Confirm Master Password" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,10,0,0" />
+                            <TextBox PlaceholderText="Re-enter the same password"
+                                     Text="{Binding ConfirmPassword}"
+                                     PasswordChar="●"
+                                     IsEnabled="{Binding !IsBusy}"
+                                     FontSize="16"
+                                     Padding="15" />
+                            <TextBlock Text="Passwords do not match. There is no recovery -- a typo here is permanent."
+                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                       Foreground="{DynamicResource PineDanger}"
+                                       IsVisible="{Binding !PasswordsMatch}" />
                         </StackPanel>
                     </Border>
 

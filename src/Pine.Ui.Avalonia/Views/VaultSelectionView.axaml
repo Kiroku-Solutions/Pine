@@ -10,12 +10,26 @@
   </Design.DataContext>
 
   <Grid RowDefinitions="Auto,*,Auto" Margin="40">
-    <TextBlock Text="Select a Vault" 
-               FontSize="32" 
-               FontWeight="SemiBold" 
-               Margin="0,0,0,20"/>
+    <StackPanel Spacing="20" Margin="0,0,0,20">
+      <TextBlock Text="Select a Vault"
+                 FontSize="32"
+                 FontWeight="SemiBold" />
 
-    <ListBox Grid.Row="1" 
+      <!-- TD-11: shown only after a lock brought the user back to this screen; see
+           VaultSelectionViewModel.LockNotice. -->
+      <Border Background="{DynamicResource PineSurfaceElevated}"
+              BorderBrush="{DynamicResource PineWarning}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="16,12"
+              IsVisible="{Binding LockNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Text="{Binding LockNotice}"
+                   Foreground="{DynamicResource PineText}"
+                   TextWrapping="Wrap" />
+      </Border>
+    </StackPanel>
+
+    <ListBox Grid.Row="1"
              ItemsSource="{Binding Vaults}" 
              Background="Transparent">
       <ListBox.ItemTemplate>

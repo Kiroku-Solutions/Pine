@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -57,10 +58,151 @@ public partial class SetupViewModel : ObservableObject
     public partial string MasterPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string ConfirmPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial string StatusMessage { get; set; } = "Enter a strong master password to encrypt your vault.";
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    // TD-11 live strength feedback. PasswordStrengthPolicy.Evaluate returns only enums and numbers
+    // -- see PasswordWeakness's remarks on why -- so every string below is written here, in the UI,
+    // and nowhere in Pine.Core or Pine.Application.
+
+    /// <summary>Estimated entropy of <see cref="MasterPassword"/>, in bits, for the "X of Y bits" caption.</summary>
+    [ObservableProperty]
+    public partial double PasswordStrengthBits { get; set; }
+
+    /// <summary>The floor <see cref="PasswordStrengthBits"/> is judged against; carried for the caption rather than a second reference to the policy constant.</summary>
+    [ObservableProperty]
+    public partial double PasswordStrengthRequiredBits { get; set; } = PasswordStrengthPolicy.MinimumEntropyBits;
+
+    /// <summary>0..1 fill for the strength meter. Clamped so a very-strong password does not overflow the bar.</summary>
+    [ObservableProperty]
+    public partial double PasswordStrengthFraction { get; set; }
+
+    /// <summary>The single acceptance test, mirrored from <see cref="PasswordStrengthResult.MeetsFloor"/> for binding.</summary>
+    [ObservableProperty]
+    public partial bool PasswordMeetsFloor { get; set; }
+
+    /// <summary>
+    /// "Strong -- meets Pine's minimum" or similar. The pass/fail state is carried in THIS TEXT, not
+    /// only in the meter colour, so the meter still reads correctly for a colour-blind user or under
+    /// a theme that changes the palette.
+    /// </summary>
+    [ObservableProperty]
+    public partial string PasswordStrengthStatusText { get; set; } = string.Empty;
+
+    /// <summary>Actionable advice built from <see cref="PasswordStrengthResult.Weaknesses"/>. Empty once the password is strong and unremarkable.</summary>
+    [ObservableProperty]
+    public partial string PasswordAdviceText { get; set; } = string.Empty;
+
+    /// <summary>Whether <see cref="ConfirmPassword"/> currently agrees with <see cref="MasterPassword"/>. True while <see cref="ConfirmPassword"/> is still empty, so the mismatch warning only appears once the user has actually typed something to compare.</summary>
+    [ObservableProperty]
+    public partial bool PasswordsMatch { get; set; } = true;
+
+    [ObservableProperty]
+    public partial PasswordStrengthLevel PasswordStrengthLevelValue { get; set; } = PasswordStrengthLevel.Unusable;
+
+    // Three coarse bands, not the six raw levels, because the meter has three colours available
+    // (danger/warning/success) that already mean something elsewhere in this app (BudgetsView,
+    // ScanReceiptView) -- reusing them keeps the vocabulary consistent instead of inventing a
+    // fourth palette. MeetsFloor -- not the band -- is still what InitializeVaultAsync gates on.
+    public bool IsPasswordStrengthDanger =>
+        PasswordStrengthLevelValue is PasswordStrengthLevel.Unusable or PasswordStrengthLevel.VeryWeak or PasswordStrengthLevel.Weak;
+
+    public bool IsPasswordStrengthWarning => PasswordStrengthLevelValue == PasswordStrengthLevel.Moderate;
+
+    public bool IsPasswordStrengthSuccess =>
+        PasswordStrengthLevelValue is PasswordStrengthLevel.Strong or PasswordStrengthLevel.VeryStrong;
+
+    partial void OnPasswordStrengthLevelValueChanged(PasswordStrengthLevel value)
+    {
+        OnPropertyChanged(nameof(IsPasswordStrengthDanger));
+        OnPropertyChanged(nameof(IsPasswordStrengthWarning));
+        OnPropertyChanged(nameof(IsPasswordStrengthSuccess));
+    }
+
+    partial void OnMasterPasswordChanged(string value)
+    {
+        var result = PasswordStrengthPolicy.Evaluate(value);
+
+        PasswordStrengthBits = result.EstimatedBits;
+        PasswordStrengthRequiredBits = result.RequiredBits;
+        PasswordStrengthFraction = result.RequiredBits <= 0d
+            ? 0d
+            : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
+        PasswordMeetsFloor = result.MeetsFloor;
+        PasswordStrengthLevelValue = result.Level;
+        PasswordStrengthStatusText = BuildStatusText(result);
+        PasswordAdviceText = BuildAdviceText(result);
+
+        UpdatePasswordsMatch();
+    }
+
+    partial void OnConfirmPasswordChanged(string value) => UpdatePasswordsMatch();
+
+    private void UpdatePasswordsMatch()
+    {
+        PasswordsMatch = string.IsNullOrEmpty(ConfirmPassword) || ConfirmPassword == MasterPassword;
+    }
+
+    private static string BuildStatusText(PasswordStrengthResult result)
+    {
+        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
+        {
+            return string.Empty;
+        }
+
+        var band = result.Level switch
+        {
+            PasswordStrengthLevel.VeryWeak => "Very weak",
+            PasswordStrengthLevel.Weak => "Weak",
+            PasswordStrengthLevel.Moderate => "Moderate",
+            PasswordStrengthLevel.Strong => "Strong",
+            PasswordStrengthLevel.VeryStrong => "Very strong",
+            _ => "Unusable",
+        };
+
+        return result.MeetsFloor
+            ? $"{band} -- meets Pine's minimum for a vault password."
+            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
+    }
+
+    /// <summary>
+    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
+    /// already said by <see cref="BuildStatusText"/> (<see cref="PasswordWeakness.Empty"/> and
+    /// <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of "does
+    /// not meet the minimum").
+    /// </summary>
+    private static string BuildAdviceText(PasswordStrengthResult result)
+    {
+        var sentences = result.Weaknesses
+            .Select(AdviceFor)
+            .Where(static s => s is not null);
+
+        return string.Join(" ", sentences);
+    }
+
+    private static string? AdviceFor(PasswordWeakness weakness) => weakness switch
+    {
+        PasswordWeakness.Empty => null,
+        PasswordWeakness.BelowEntropyFloor => null,
+        PasswordWeakness.TooShort =>
+            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
+        PasswordWeakness.CommonPassword =>
+            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
+        PasswordWeakness.RepeatedPattern =>
+            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
+        PasswordWeakness.SequentialRun =>
+            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
+        PasswordWeakness.KeyboardPattern =>
+            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
+        PasswordWeakness.LimitedCharacterVariety =>
+            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
+        _ => null,
+    };
 
     public SetupViewModel(
         IServiceProvider serviceProvider,
@@ -91,15 +233,30 @@ public partial class SetupViewModel : ObservableObject
     [RelayCommand]
     private async Task InitializeVaultAsync()
     {
-        if (string.IsNullOrWhiteSpace(MasterPassword))
-        {
-            StatusMessage = "Password cannot be empty.";
-            return;
-        }
-
         if (string.IsNullOrWhiteSpace(VaultName))
         {
             StatusMessage = "Vault name cannot be empty.";
+            return;
+        }
+
+        // THE GATE (TD-11). A vault must never be created below the entropy floor -- see the
+        // arithmetic on PasswordStrengthPolicy.MinimumEntropyBits. Re-evaluated here rather than
+        // trusted from the live-feedback properties above: those exist for the meter, and a command
+        // is not allowed to trust view state it did not itself just computed.
+        var strength = PasswordStrengthPolicy.Evaluate(MasterPassword);
+        if (!strength.MeetsFloor)
+        {
+            StatusMessage = string.IsNullOrEmpty(PasswordAdviceText)
+                ? "This password does not meet Pine's minimum strength for a vault password."
+                : $"This password does not meet Pine's minimum strength for a vault password. {PasswordAdviceText}";
+            return;
+        }
+
+        // There is no recovery phrase (15-Security) -- a password mistyped here is permanent data
+        // loss, not an inconvenience, so a mismatch must refuse rather than warn.
+        if (MasterPassword != ConfirmPassword)
+        {
+            StatusMessage = "Passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
             return;
         }
 
@@ -127,7 +284,13 @@ public partial class SetupViewModel : ObservableObject
                 var header = _vaultHeaderStore.Create(vaultDir);
 
                 var key = _keyDerivationService.DeriveKey(MasterPassword, header);
+
+                // Unlock() copies the key into the session's own buffer and Lock() zeroes THAT
+                // copy, never this one. Clearing here keeps a second copy of the vault key from
+                // living in the managed heap for the rest of the process (TD-11); see the same
+                // comment in UnlockViewModel.
                 _vaultSession.Unlock(vaultDir, key);
+                Array.Clear(key, 0, key.Length);
 
                 // Resolved only after Unlock: the migrator depends on PineDbContext, which refuses
                 // to be constructed while the vault session is locked.

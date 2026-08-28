@@ -13,9 +13,9 @@ against it, and **that** is the number to read before shipping anything.
 | | |
 |---|---|
 | Classification | **Not Production Ready** (audit §11) |
-| Remediation | Audit **Phase 0, items 1–8 of 11** closed or partially closed (iterations 1–6) |
-| Remaining before Phase 0 closes | **9** password entropy + idle auto-lock (TD-11) · **10** money-path coverage for TD-18 / TD-19 · **11** remove the seeded fictional account and the dead `CloudSync` setting |
-| Test suite | 28 → **240** (141 unit + 99 integration) |
+| Remediation | Audit **Phase 0, items 1–9 of 11** closed or partially closed (iterations 1–7). Item 9 is **built and behaviourally verified out-of-suite, but uncovered** — no test in `tests/` guards it; see audit §12.16 |
+| Remaining before Phase 0 closes | **tests for item 9** — a passing 25-check harness exists outside the repository and needs porting into `tests/` · **10** money-path coverage for TD-18 / TD-19 · **11** remove the seeded fictional account and the dead `CloudSync` setting |
+| Test suite | 28 → **240** (141 unit + 99 integration). Integration is currently **98/99**: one pre-existing, undiagnosed red test (TD-74) |
 | Last remediation | 2026-08-28 — TD-02: void a transaction, and recompute a balance from its ledger |
 
 Note the numbering collision: the audit's "Phase 0" is a *remediation* phase and has nothing to do

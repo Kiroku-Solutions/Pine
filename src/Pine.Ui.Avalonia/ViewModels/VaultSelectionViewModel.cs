@@ -16,6 +16,16 @@ public partial class VaultSelectionViewModel : ObservableObject
     [ObservableProperty]
     public partial ObservableCollection<VaultProfile> Vaults { get; set; } = new();
 
+    /// <summary>
+    /// TD-11: set by <c>MainViewModel</c> when it navigates here because the vault just locked
+    /// (idle timeout, manual lock, or the app being suspended), so this screen can say why the
+    /// user is looking at it instead of the shell they were just using -- otherwise a sudden idle
+    /// lock reads as a crash. Empty on every other route into this screen (first run, "create new
+    /// vault", the normal vault picker).
+    /// </summary>
+    [ObservableProperty]
+    public partial string? LockNotice { get; set; }
+
     public VaultSelectionViewModel(VaultManager vaultManager, INavigationService navigationService)
     {
         _vaultManager = vaultManager;

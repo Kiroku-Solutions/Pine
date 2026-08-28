@@ -2,6 +2,7 @@ using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using Pine.Application.Security;
 using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
@@ -9,16 +10,30 @@ namespace Pine.Ui.Avalonia.ViewModels;
 public partial class ShellViewModel : ObservableObject, INavigationService
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly IVaultSession _vaultSession;
 
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
-    public ShellViewModel(IServiceProvider serviceProvider)
+    public ShellViewModel(IServiceProvider serviceProvider, IVaultSession vaultSession)
     {
         _serviceProvider = serviceProvider;
-        
+        _vaultSession = vaultSession;
+
         // Start on the Dashboard
         NavigateToDashboard();
+    }
+
+    /// <summary>
+    /// TD-11: before this there was no way for a user to lock deliberately -- only an idle timeout
+    /// or a failed unlock attempt ever called <c>Lock()</c>. <see cref="MainViewModel"/> owns
+    /// reacting to the resulting <see cref="IVaultSession.Locked"/> event (navigating out of the
+    /// shell and explaining why), so this command's only job is to ask for the lock.
+    /// </summary>
+    [RelayCommand]
+    private void LockVault()
+    {
+        _vaultSession.Lock(VaultLockReason.UserRequested);
     }
 
     public void NavigateTo<TViewModel>() where TViewModel : ObservableObject

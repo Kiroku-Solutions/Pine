@@ -10,7 +10,7 @@
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Test suite 28 → **240** (141 unit + 99 integration). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14 repeats it as standing practice. |
+| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Test suite 28 → **240**, and the integration suite is currently **98/99** (TD-74, pre-existing and undiagnosed). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14 and §12.16 repeat it as standing practice. |
 | Last updated | 2026-08-28 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
@@ -493,7 +493,7 @@ any other single change.
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
 | TD-09 | Money-path tests now cover atomicity, split-sum, owned-collection round trip, currency match, import dedup and (iteration 6) **void + balance recalculation**, several falsification-proven. Absent only for rounding/allocation (TD-18) and line-item reconciliation (TD-19) | 🟠 | Regression net covers every closed P0; the two gaps are both P1 invariants that do not exist in the domain yet | Close alongside TD-18 and TD-19 | P1 | 🟡 **Partial** — gap narrowed twice; balance recalculation covered in iteration 6, see §12.14 |
 | TD-10 | No backup before migration | 🟠 | Unrecoverable data loss | Pre-migration copy + export | P0 | 🟡 **Partial** |
-| TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🔴 **Open** |
+| TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🟡 **Partial** — a 60-bit entropy floor derived from the shipped Argon2id parameters now gates vault creation, and a `TimeProvider`-driven idle watchdog locks the session and returns the user to the vault picker. **Verified out-of-suite**: a 25-check harness (not committed) watched the floor reject a one-character password, the idle lock fire on a fake clock, and the key zero; no test in `tests/` covers it, so nothing guards against regression. Re-authentication, lock-on-suspend and a persisted timeout remain unbuilt. See §12.16 |
 | TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
 | TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | ✅ **Done** |
 | TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | 🔴 **Open** |
@@ -554,6 +554,9 @@ any other single change.
 | TD-69 | A void cannot be undone | 🟡 | A mis-voided transaction can only be re-entered as a new one, losing its id and its import key | Unvoid command, or fold into TD-68 | P2 | 🔴 **Open** |
 | TD-70 | Accounts created before `20260828005910` have no recorded opening balance, so their FIRST recalculation anchors instead of checking | 🟡 | Pre-existing drift on those accounts is undetectable and unrecoverable — reported honestly (`OpeningBalanceWasInferred`) but not fixable | An explicit "set opening balance" gesture, so the user supplies the figure instead of the system inferring it | P2 | 🔴 **Open** |
 | TD-71 | The transactions list cannot filter or hide voided rows | 🔵 | Correct at today's volumes; a vault with many corrections reads badly | A filter on the list, once there is a read model to filter (TD-28's DTOs) | P3 | 🔴 **Open** |
+| TD-72 | `ShellViewModel` lifetime diverges: `Transient` on Windows, `Singleton` on the other four heads | 🟡 | One view model means two different things depending on platform; a singleton shell outlives the vault it was opened for | Pick one lifetime, in the shared registration TD-29 already calls for | P2 | 🔴 **Open** — iteration 7 |
+| TD-73 | `PasswordStrengthPolicy` has no natural-language word list, so multi-word passphrases are over-estimated | 🟡 | The estimator accepts a passphrase weaker than the bits it reports; the 60-bit floor's `2^6` margin is what covers this | Embed a word list in `Pine.Core` — needs the BCL-only rule relaxed to permit an embedded resource | P2 | 🔴 **Open** — iteration 7 |
+| TD-74 | One integration test is red at `19a1877` and nobody has diagnosed it | 🟠 | §12.14 recorded 99/99; the suite is 98/99. A regression net whose colour nobody reads is not a net | Diagnose `ImportDeduplicationTests.Import_OfAnExtendedStatement_…` — it is TD-03's own coverage | P1 | 🔴 **Open** — iteration 7 |
 
 ---
 
@@ -571,7 +574,7 @@ a concrete failure mode.
 6. 🔴 **TD-07 / TD-08** — CI builds the product and the three heads no longer reference a non-existent namespace, but the workflow has never executed, **and as of `79c5364` it can no longer execute on its own**: the `push` and `pull_request` triggers were deleted, leaving `workflow_dispatch:` alone. Android/iOS were never compiled (workloads absent locally). Regression protection is written, disarmed, and still not demonstrated. Iterations 3 and 4 both restated "never executed" without noticing the triggers had gone — see §12.12.
 7. 🟡 **TD-09** — ~~No financial-invariant tests. Every fix above would ship unverified.~~ **Untrue since iteration 2, and the gap has narrowed twice more since.** Atomicity, split-sum, owned-collection round trip, currency match, import dedup and now **void + balance recalculation** are all covered, several falsification-proven; the suite is 240 tests. The remaining gaps are rounding/allocation (TD-18) and line-item reconciliation (TD-19) — both P1, and both invariants the domain does not express yet, so they are work to *design* rather than tests to back-fill. See §12.12 and §12.14.
 8. 🟡 **TD-10** — Encrypted pre-migration backup is implemented and verified, so a failed upgrade no longer destroys the only copy. **Recovery is still manual**: no restore path and no UI entry point for the export command.
-9. 🔴 **TD-11** — No password policy, no auto-lock. The encryption is defeatable by the setup screen.
+9. 🟡 **TD-11** — ~~No password policy, no auto-lock. The encryption is defeatable by the setup screen.~~ **The setup screen no longer accepts a one-character password**: a 60-bit entropy floor, derived from the KDF Pine actually ships, gates vault creation, and an idle watchdog locks the session after ten minutes. **This blocker is not closed, because nothing in the suite guards it.** The behaviour has been executed and observed once, by hand, outside the repository; the code compiles on three of five heads and is unreachable on the other two for unrelated reasons (TD-08). It downgrades from 🔴 to 🟡 on structure alone, and returns to 🔴 if the tests in §12.17 are not written. See §12.16.
 10. ✅ **TD-12 ✅ / TD-13 ✅** — ~~Owned collections dropped on update~~ and ~~currency never validated against the account~~. **Blocker closed.** TD-13: `Transaction.Splits` and `LineItems` round-trip through the tracked graph, proven from a fresh context and a raw `SELECT COUNT(*)` across grow/shrink/empty. TD-12: a validation pipeline behaviour rejects a currency mismatch before any write, proven by falsification. **The honest correction this blocker needs:** it claimed *two* corruption paths. Iteration 4 measured the second one and found it was no longer a corruption path — closing TD-01 had already contained it (a mismatch rolled back cleanly: zero rows, balance untouched, `Begin, Rollback`). What remained was a domain exception (`"Cannot add money of different currencies: USD and EUR"`) leaking verbatim to the user from the wrong layer. That is a real defect and it is now fixed, but it was not data corruption, and this blocker overstated it from iteration 2 onward. See §12.9.
 11. 🔴 **TD-49** — No packaging, signing or update channel. No mechanism to deliver any of the above fixes to a user who already installed.
 
@@ -601,7 +604,7 @@ a day of work now and an impossible migration later.
 - [x] ✅ **6.** MediatR validation behaviour; validate currency against account (TD-12) — **DONE.** Hand-rolled `IRequestValidator<T>` seam + `ValidationBehavior` registered *before* `TransactionBehavior`, so a rejected command never opens a transaction. Four validators; `TransferFundsCommandHandler`'s up-front checks folded in so there is one idiom. Proven by four falsification mutations; 138 → 152 tests.
 - [x] ✅ **7.** Rewrite import dedup on a stable key with a user-facing review list (TD-03) — **DONE.** `ImportKeyFactory` (BCL-only, invariant-culture, versioned `r1:`/`h1:` prefixes), a nullable `ImportKey` column with an `(AccountId, ImportKey)` index, an indexed existence probe replacing the full-account load, in-batch duplicate detection, and an `ImportTransactionsResult` carrying every row's disposition + reason, surfaced on a new wizard review step. 152 → 170 tests.
 - [x] 🟡 **8.** Update / void transaction commands + balance recalculation (TD-02) — **VOID AND RECALCULATION DONE; EDIT DELIBERATELY DEFERRED.** `VoidTransactionCommand` (both transfer legs, both balances, one database transaction, reason required) and `RecalculateAccountBalanceCommand` (exact .NET `decimal` sum, voided rows excluded, drift reported). `Account` gained a recorded opening balance — without which recomputing a balance from its ledger is arithmetically impossible; the migration deliberately does not backfill it, see §12.14. Four falsification mutations; 170 → 240 tests. The **edit** path is TD-68.
-- [ ] 🔴 **9.** Password entropy floor and idle auto-lock (TD-11)
+- [x] 🟡 **9.** Password entropy floor and idle auto-lock (TD-11) — **BUILT, NOT VERIFIED.** `PasswordStrengthPolicy` (BCL-only shortest-path entropy estimator; the 60-bit floor is derived from `KdfParameters.Argon2idV1`, arithmetic in the constant's doc comment) gates `SetupViewModel`, which also gained a confirm-password field. `VaultAutoLockService` polls an injected `TimeProvider`, arms on resolution, and raises `IVaultSession.Locked`; `MainViewModel` marshals it to the UI thread, drops the shell's inner page and says why. Wired on all five heads. Behaviour verified by an out-of-suite harness (25 checks, transcribed in §12.16); **no test in `tests/` covers it**, so porting that harness is the first item of §12.17.
 - [ ] 🔴 **10.** Money-path test suite covering all of the above — written *alongside*, not after (TD-09)
 - [ ] 🔴 **11.** Remove the seeded fictional account; remove or wire the `CloudSync` option (TD-47, TD-48)
 
@@ -1917,7 +1920,7 @@ reconciliation pass belongs at the end of every iteration rather than once. Run 
 - **Rows re-checked and confirmed unchanged:** TD-06, TD-11, TD-14, TD-15, TD-16, TD-17, TD-18, TD-19,
   TD-20, TD-21, TD-22, TD-24, TD-25, TD-27 … TD-67. Nothing this iteration touched their premises.
 
-### 12.15 Next
+### 12.15 Next (after iteration 6) — superseded
 
 Phase 0 items **9, 10 and 11** are what remain before the phase closes:
 
@@ -1932,3 +1935,183 @@ Phase 0 items **9, 10 and 11** are what remain before the phase closes:
 
 Item 9 is the one to take first: it is the only remaining Phase 0 item whose cost grows once real
 vaults exist, which is the ordering principle §10 states.
+
+---
+
+### 12.16 Iteration 7 — Phase 0, item 9 (TD-11)
+
+| Field | Value |
+|---|---|
+| Ticket | Phase 0 item **9** — password entropy floor and idle auto-lock (TD-11) |
+| Scope decision | **Entropy floor, not a composition rule. Idle lock, not re-authentication.** The third noun in TD-11's title — re-authentication for sensitive operations — is deliberately not in this iteration; see INCOMPLETE. |
+| Tests | 240 → **240 (unchanged)**. **No test was added to the suite and the suite was not run**, by explicit instruction. Behaviour was instead verified by a 25-check harness executed outside the repository — its full output is transcribed below. That is weaker than a committed test, because nothing re-runs it; it is much stronger than the compiler alone, which is all this entry originally rested on. |
+| Schema | None. Nothing in this ticket touches persistence. |
+| Status | 🟡 **Code complete, behaviour verified out-of-suite** — the floor rejects and accepts as designed, the idle lock has been observed to fire on a fake clock, and the key buffer has been observed to zero. No test in `tests/` covers any of it, so nothing will catch a regression. |
+
+#### Verification actually executed — and what was not
+
+The behavioural rows below were produced by a throwaway console harness referencing `Pine.Core` and
+`Pine.Application`, built outside the repository because no test file could be written. **It is not
+committed and nothing re-runs it.** Its output is transcribed verbatim rather than summarised, so a
+later reader can see exactly what was and was not asserted.
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Baseline unit suite, before any change | `dotnet test tests/Pine.Tests.Unit` | ✅ **141 passing** |
+| Baseline integration suite, before any change | `dotnet test tests/Pine.Tests.Integration` | 🔴 **98 passing, 1 failing** — `ImportDeduplicationTests.Import_OfAnExtendedStatement_SavesOnlyTheNewRowAndMovesTheBalanceOnlyByIt`, thrown at `AtomicityHost.cs:201`. **Pre-existing** on the commit this iteration started from (`19a1877`) and untouched by this work. Recorded because §12.14 claimed 99/99 and that claim is now stale. Not diagnosed — see TD-74. |
+| Windows head builds | `dotnet build src/Pine.Ui.Windows` | ✅ 0 warnings, 0 errors |
+| macOS head builds | `dotnet build src/Pine.Ui.Macos` | ✅ 0 warnings, 0 errors |
+| Web head builds | `dotnet build src/Pine.Ui.Web` | ✅ builds; one pre-existing native-WASM link warning, unrelated |
+| Android / iOS heads build | **NOT CHECKED.** The workloads are not installed on this machine (`NETSDK1147`), so `Pine.slnx` cannot be built here at all. Their edits mirror the macOS/Web pattern line for line and were reviewed by reading. | ⚠️ unverified |
+| A one-character password is refused — the audit's literal finding | Harness: `"a"` 4.7 bits, `"1"` 3.3, `"x"` 4.7, `" "` 0.0, `""` 0.0 | ✅ all five refused |
+| Weak-but-plausible passwords are refused | Harness: `password` 2.0 bits, `P@ssw0rd` 4.0, `aaaaaaaaaaaa` 9.3, `qwerty123456` 10.5, `Password1!` 16.1, `Sunshine!2024` 39.4 | ✅ all six refused, each with the expected `PasswordWeakness` reasons |
+| The floor is not a wall — strong passwords pass | Harness: `xK9#mQ2$vL` 65.7 bits, `7bTz!qW4nR#8` 70.3, `gravel-thicket-cinder-9271` 149.6 | ✅ all three accepted |
+| Monotonicity: appending a character can never lower the score | Harness: four suffixes on a 65.7-bit base → 72.3, 72.3, 72.3, 78.8 | ✅ the shortest-path property holds |
+| `Evaluate(null)` does not throw | Harness | ✅ returns a failing result |
+| **The idle lock actually fires** | Harness on a `FakeTimeProvider`, no `Task.Delay` anywhere: unlocked → idle 9 min (still open, 1 min remaining) → `ReportActivity()` → idle 9 min again (still open, so activity really does reset the countdown) → idle 2 min more | ✅ **locked**, `VaultLockReason.IdleTimeout` reported, `Key` null |
+| The key is zeroed, not merely dropped | Harness captured the session's internal `_key` array by reflection before the lock and re-read it after | ✅ all 32 bytes zero |
+| The strength meter actually renders | **NOT CHECKED.** It compiles; it has never been displayed. | 🔴 **unverified** |
+
+**The honest reading of that table:** the mechanism has been watched working, but only once, by
+hand, from outside the repository. Nothing in `tests/` will notice if it stops working tomorrow —
+which is the difference between *verified* and *covered*, and the reason TD-11 stays 🟡 rather than
+becoming ✅. The two claims still resting on the compiler alone are the Android/iOS wiring and the
+strength meter's rendering.
+
+#### What was built
+
+**The floor — `src/Pine.Core/Security/`, BCL-only, no package reference.**
+`PasswordStrengthPolicy.Evaluate` decomposes a candidate into the cheapest sequence of tokens an
+attacker could use to produce it — a shortest-path search over the string — pricing a hit in a small
+ranked common-password list at about `log2(rank)`, a repeated run at its base block plus
+`log2(repeats)`, an alphabetic, numeric or QWERTY-walk run at about `log2(alphabet) + log2(length)`,
+and anything left unexplained at the full per-character pool. The total is the **minimum** over all
+decompositions, so adding a pattern can never raise a score — the property a composition rule fails
+to have, and the reason `Password1!` cannot buy its way over the floor by appending punctuation.
+`PasswordStrengthResult` carries bits, a band and a list of `PasswordWeakness` enum values; it never
+quotes the candidate back, and nothing in the file writes to a field, a cache or a log
+(`15-Security` §9). Wording lives in the view model, so the domain never dictates UI copy.
+
+**The floor is 60 bits, and its arithmetic is in the constant's own doc comment.** It is derived
+from `KdfParameters.Argon2idV1` — m = 64 MiB, t = 3, p = 4, which every vault in existence uses —
+not chosen for looking round. One guess moves at least `2 × 64 MiB × 3 ≈ 0.375 GiB` of memory
+traffic, so a 1000 GB/s GPU is bandwidth-capped near 2,700 guesses/s, rounded pessimistically **up**
+to 3,000; a thousand such GPUs give roughly `2^22` guesses/s; a century is about `2^31.5` seconds,
+hence `2^53.5` guesses; add `2^6` for a hundred years of hardware improvement and `2^1` because an
+attacker expects to succeed at half the keyspace, giving 60.5, taken as **60**. `MinimumLength = 10`
+is *derived* from that (`ceil(60 / log2(94))`), not decreed, so a nine-character password cannot
+reach the floor under any arrangement. The comment also records the leverage plainly: doubling
+Argon2id's memory to 128 MiB would lower this floor by exactly **one bit**. The password is the cheap
+lever — which is the whole thesis of the audit's original finding.
+
+**The lock — `src/Pine.Application/Security/`.** `IVaultSession` gained a `Locked` event,
+`LastActivityUtc`, `ReportActivity()` and `Lock(VaultLockReason)`; the old parameterless `Lock()` was
+kept as an overload meaning `UserRequested`, which is why `UnlockViewModel`'s six defensive `Lock()`
+call sites compile unchanged. `VaultAutoLockService` polls every 15 seconds rather than re-arming a
+timer on every keystroke, takes both its schedule and its clock from an injected `TimeProvider` — the
+same abstraction `VoidTransactionCommandHandler` already uses, so nothing new was invented — arms
+itself on **resolution** rather than requiring someone to remember to start it, and also implements
+`IHostedService` so the Windows head's existing hosted-service loop starts it with no new code. One
+monitor guards every composite read of `(key, path, unlocked)`, so no reader can observe a half-locked
+session; `ReportActivity` is deliberately outside that gate — an `Interlocked.Exchange` on a tick
+count — so the input path never contends for a lock.
+
+**The wiring — all five composition roots.** `AddPineVaultAutoLock()` on each; `TimeProvider.System`
+added to Web, Android and iOS, which had never registered one; and an explicit
+`GetRequiredService<IVaultAutoLockService>()` at startup on the four heads that do not run a
+hosted-service loop. `SetupViewModel` now refuses to create a vault unless `MeetsFloor` holds,
+re-evaluated inside the command rather than trusted from the live-feedback state, and gained a
+confirm-password field: a password mistyped at creation is unrecoverable, because this product has no
+recovery phrase. `MainViewModel` handles `Locked`, marshalling through `Dispatcher.UIThread.Post`
+because the event is raised on the timer thread, drops the shell's inner page so nothing holding
+decrypted data survives the key, and tells the user *why* they were returned to the vault picker —
+otherwise an idle lock reads as a crash. `MainWindow` reports activity from tunnelled pointer and key
+handlers, so an event that a control marks handled still counts as activity.
+
+#### Defects found while verifying, and fixed
+
+**The derived key was left in a second, unzeroed managed array — found by the harness, and it
+contradicted a claim made about this code.** `VaultSession.Unlock` *copies* the key into its own
+buffer, and `Lock()` zeroes that copy. Both `UnlockViewModel` and `SetupViewModel` derived the key
+into a local `byte[]`, handed it to `Unlock`, and then abandoned it — so a full second copy of the
+vault key stayed live on the managed heap for the whole process, untouched by any lock, idle timeout
+or vault switch. TD-11's own text is *"the 32-byte key sits in a managed `byte[]` … for the entire
+process lifetime"*, so shipping the idle lock while leaving that copy behind would have closed the
+finding on paper only. Both call sites now `Array.Clear` the local immediately after handing it over.
+The harness check that caught this had been *asserted* to pass during implementation; it could never
+have passed, because `Unlock` copies. It is recorded here because that is exactly the failure mode
+§12.12 exists to catch — a verification claim nobody could reproduce.
+
+#### A defect found while wiring, and fixed
+
+**`UnlockViewModel` was registered only on the Windows head** (`Pine.Ui.Windows/Program.cs:83`). On
+macOS, Web, Android and iOS, `GetRequiredService<UnlockViewModel>()` throws the moment the vault
+picker navigates to it: the unlock screen could not be opened at all. It is now registered on the four
+missing heads. **Pre-existing and unrelated to TD-11** — but it could not be left, because shipping a
+lock feature onto a head with no reachable unlock screen would have converted an idle timeout into a
+dead end.
+
+#### Defects found while wiring, and deliberately not fixed
+
+- **`ShellViewModel` is `Transient` on Windows and `Singleton` on the other four heads.** Changing a
+  lifetime is not a security fix and would ripple further than this ticket. Its one dangerous
+  consequence — a singleton shell retaining child view models full of decrypted data after a lock —
+  is contained by nulling the shell's inner page in the lock handler. The divergence itself stands:
+  new row **TD-72**.
+- **`App.OnFrameworkInitializationCompleted` has no `ISingleViewApplicationLifetime` branch at all.**
+  Web, Android and iOS therefore construct no root view and show nothing. That makes the missing
+  `ReportActivity()` hook on those three heads moot — there is no `MainWindow` there to hook, and a
+  head that never renders has no actively-working user to lock out. This is TD-08's "three platform
+  heads are broken" seen from a new angle, and it is sharper evidence than the register currently
+  carries.
+
+#### INCOMPLETE — stated rather than buried
+
+1. **No test in `tests/` covers any of this.** By instruction. The behaviour *was* verified — see the
+   table above — but by a harness that is not committed and that nothing re-runs, so there is no
+   regression net. The `TimeProvider` seam makes the idle-lock test a deterministic, microsecond
+   assertion with no `Task.Delay`; the harness is, in effect, that test written in the wrong place.
+   Porting it into `tests/Pine.Tests.Unit` is the first item of §12.17 and the reason the status
+   stays 🟡.
+2. **No re-authentication for sensitive operations** — the third noun in TD-11's own title. It is
+   worth little before the envelope key (TD-06) exists.
+3. **No lock-on-suspend.** `VaultLockReason.ApplicationSuspended` and `CheckNow()` exist for a UI
+   that can observe platform lifecycle; nothing observes it yet.
+4. **The idle timeout is not persisted.** `SetIdleTimeout` applies in-process only; nothing writes it
+   through `SaveSettingCommand`, and Settings exposes no control for it. The shipped default of ten
+   minutes is therefore the only value any user will ever have.
+5. **The key is still a managed `byte[]`.** Both copies are now zeroed — the session's on `Lock()`,
+   the view models' derived local immediately after `Unlock` — but a compacting GC may already have
+   moved either one and the OS may have paged it. This narrows the window; it does not close it, and
+   no claim to the contrary is made anywhere. Closing it needs an unmanaged or pinned buffer, which
+   belongs to TD-06.
+6. **No word list, so passphrases are over-estimated.** `correct horse battery staple` scores far
+   above its true ~44 bits. Every limitation of the estimator errs *generous*, which is exactly why
+   the floor carries a `2^6` margin rather than sitting at break-even: new row **TD-73**.
+
+#### Rows the register gains
+
+| ID | Debt | Sev | Impact | Fix | Priority | Status |
+|---|---|---|---|---|---|---|
+| TD-72 | `ShellViewModel` lifetime diverges: `Transient` on Windows, `Singleton` on the other four heads | 🟡 | One view model means two different things depending on platform; a singleton shell outlives the vault it was opened for | Pick one lifetime, in the shared registration TD-29 already calls for | P2 | 🔴 Open |
+| TD-73 | `PasswordStrengthPolicy` has no natural-language word list, so multi-word passphrases are over-estimated | 🟡 | The estimator accepts a passphrase weaker than the bits it reports; the 60-bit floor's `2^6` margin is what currently covers this | Embed a word list in `Pine.Core` — needs the BCL-only rule relaxed to permit an embedded resource | P2 | 🔴 Open |
+| TD-74 | One integration test is red at `19a1877` and nobody has diagnosed it | 🟠 | §12.14 recorded 99/99; the suite is 98/99. A regression net whose colour nobody reads is not a net | Diagnose `ImportDeduplicationTests.Import_OfAnExtendedStatement_…` — it is TD-03's own coverage | P1 | 🔴 Open |
+
+### 12.17 Next
+
+Phase 0 items **10** and **11** remain, plus a debt this iteration created:
+
+- **First, before either: port the verification harness into `tests/Pine.Tests.Unit`.** It already
+  exists and already passes — 25 checks across the estimator, the idle lock and the zeroing — but it
+  lives outside the repository, so nothing re-runs it and the next change to `VaultSession` will
+  break it silently. The seams were built for exactly this: an injected `TimeProvider`, a pure
+  `Evaluate`, an observable `Locked`. This is a transcription job, not a design job.
+- **10 — TD-09's remainder**: money-path coverage for TD-18 (money scale, rounding, `Allocate`) and
+  TD-19 (line-item reconciliation). Still work to *design* rather than tests to back-fill — `Money`
+  has no scale policy at all, so "the sum of the splits equals the total" is exact today only because
+  nothing rounds.
+- **11 — TD-47 / TD-48**: remove the seeded fictional $1,000 account — the
+  `CreateAccountCommand("My First Bank", "USD", AccountType.Bank, 1000m)` call in `SetupViewModel` —
+  and the `CloudSync` setting that nothing reads.
+- **TD-74**, the red import test, before it is three iterations old and something starts depending on
+  its silence.

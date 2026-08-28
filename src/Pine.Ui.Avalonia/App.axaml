@@ -159,6 +159,30 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
+        <!-- ═══ Password strength meter bands (TD-11) ═══
+             Applied to both the meter's ProgressBar (whose indicator template-binds to Foreground)
+             and its status TextBlock, so the pass/fail state is never colour-only: the same class
+             also selects wording built in SetupViewModel. Reuses the existing danger/warning/success
+             vocabulary from BudgetsView/ScanReceiptView rather than inventing a fourth palette. -->
+        <Style Selector="ProgressBar.pine-strength-danger">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+        <Style Selector="TextBlock.pine-strength-danger">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+        <Style Selector="ProgressBar.pine-strength-warning">
+            <Setter Property="Foreground" Value="{DynamicResource PineWarning}" />
+        </Style>
+        <Style Selector="TextBlock.pine-strength-warning">
+            <Setter Property="Foreground" Value="{DynamicResource PineWarning}" />
+        </Style>
+        <Style Selector="ProgressBar.pine-strength-success">
+            <Setter Property="Foreground" Value="{DynamicResource PineSuccess}" />
+        </Style>
+        <Style Selector="TextBlock.pine-strength-success">
+            <Setter Property="Foreground" Value="{DynamicResource PineSuccess}" />
+        </Style>
+
         <!-- ═══ Smooth Transitions for Cards ═══ -->
         <Style Selector="Border.card">
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
