@@ -189,6 +189,71 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         return new HashSet<string>(matches, StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// Returns the signed amount of every transaction on the account that is still in force.
+    /// Read-only; nothing is staged or flushed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE PROJECTION IS THE POINT. Only <c>TotalAmount_Amount</c> is read, and the addition happens
+    /// in .NET over <see cref="decimal"/>. Writing this as a <c>SumAsync</c> would push the addition
+    /// into SQLite, which stores decimals as TEXT (TD-31) and would coerce them to REAL to add them —
+    /// so the recomputed total would be an IEEE-754 approximation of the ledger. Repairing a balance
+    /// with an approximate total is a worse defect than the drift being repaired, so the exact path is
+    /// the only acceptable one and the extra rows are the price of it.
+    /// </para>
+    /// <para>
+    /// The filter is <c>VoidedAt == null</c> rather than the domain's <c>IsVoided</c>, which is
+    /// unmapped and would force the whole scan into memory before filtering. Both express the same
+    /// rule; only this one is translatable.
+    /// </para>
+    /// </remarks>
+    /// <param name="accountId">The account whose ledger is being totalled.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>One signed amount per transaction still in force.</returns>
+    public async Task<IReadOnlyList<decimal>> GetAmountsInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var amounts = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId && t.VoidedAt == null)
+            .Select(t => t.TotalAmount.Amount)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return amounts;
+    }
+
+    /// <summary>
+    /// Returns the distinct currency codes on the account's transactions that are still in force.
+    /// Read-only; nothing is staged or flushed.
+    /// </summary>
+    /// <remarks>
+    /// The <c>Distinct</c> runs IN SQL, so a healthy account costs one row regardless of how many
+    /// transactions it holds — this is a pre-condition check on a maintenance command, and making it
+    /// scan the ledger a second time in memory would be paying the price of the very scan it exists
+    /// to authorise. Currency codes are three ASCII letters, so unlike the decimal columns (TD-31)
+    /// there is nothing about pushing this comparison down that changes its meaning.
+    /// </remarks>
+    /// <param name="accountId">The account being inspected.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An ordinal-comparison set of the distinct currency codes.</returns>
+    public async Task<IReadOnlyCollection<string>> GetDistinctCurrenciesInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var currencies = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.AccountId == accountId && t.VoidedAt == null)
+            .Select(t => t.TotalAmount.Currency.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new HashSet<string>(currencies, StringComparer.Ordinal);
+    }
+
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var transaction = await GetByIdAsync(id, cancellationToken);

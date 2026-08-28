@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
+             xmlns:accounts="using:Pine.Core.Accounts"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -149,6 +150,51 @@
                         </StackPanel>
                         <Button Grid.Column="1" Content="Lock Vault" Command="{Binding LockVaultCommand}" Classes="pine-danger" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Data Integrity Section -->
+            <Border x:Name="IntegritySection"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Data Integrity" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"
+                               Text="Recompute an account's balance from its own transactions. Voided transactions are excluded. Nothing is changed unless the two disagree." />
+
+                    <ItemsControl ItemsSource="{Binding Accounts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="accounts:Account">
+                                <Grid ColumnDefinitions="*, Auto" Margin="0,4">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                        <TextBlock Text="{Binding Balance}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Check Balance"
+                                            Classes="pine-outline" Width="160"
+                                            HorizontalContentAlignment="Center" VerticalAlignment="Center"
+                                            AutomationProperties.Name="Recompute this account's balance from its transactions"
+                                            Command="{Binding #IntegritySection.((vm:SettingsViewModel)DataContext).RecalculateBalanceCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsRecalculating}" Margin="0,4" />
+
+                    <!-- The report is deliberately a sentence, not a checkmark: the user is being told
+                         whether a number they have been trusting was right. -->
+                    <Border IsVisible="{Binding RecalculationReport, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            CornerRadius="8" Padding="14,10"
+                            Background="{DynamicResource PineSurfaceElevated}"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource PineBorder}">
+                        <TextBlock Text="{Binding RecalculationReport}" TextWrapping="Wrap" FontSize="13"
+                                   Foreground="{DynamicResource PineText}" />
+                    </Border>
                 </StackPanel>
             </Border>
 

@@ -68,6 +68,17 @@ public sealed class PineDbContext : DbContext
                     c.Property(code => code.Value).HasColumnName("Balance_Currency").IsRequired();
                 });
             });
+
+            // A bare nullable decimal, not a second Money column. The account's currency is
+            // immutable by construction, so an opening balance can only ever be denominated in it;
+            // a second currency column would only create the possibility of the two disagreeing.
+            // NULL means "no opening balance on record" — an account created before TD-02 — and is a
+            // state the recalculation command handles explicitly rather than guessing past.
+            e.Property(a => a.OpeningBalanceAmount);
+
+            // Derived from OpeningBalanceAmount plus Balance's currency. It has no setter and no
+            // backing field, so EF must be told not to try to map it as a complex property.
+            e.Ignore(a => a.OpeningBalance);
         });
 
         modelBuilder.Entity<Transaction>(e =>
@@ -97,6 +108,21 @@ public sealed class PineDbContext : DbContext
             // key — is accepted and tracked as debt.
             e.HasIndex(t => new { t.AccountId, t.ImportKey });
 
+            // TD-02. A voided transaction keeps its row, its splits and its import key; only these
+            // two columns record that it stopped counting towards the balance, and when and why.
+            // The width matches Transaction.MaxVoidReasonLength, so an over-long reason is rejected
+            // by the domain rather than truncated by the store.
+            e.Property(t => t.VoidReason).HasMaxLength(256);
+
+            // Serves the balance recalculation scan: "every transaction on this account that is still
+            // in force". VoidedAt is the leading-null-heavy column, so it goes second — the account
+            // is the selective term. AccountId already leads the (AccountId, ImportKey) index, but
+            // that one cannot answer this predicate without also reading ImportKey.
+            e.HasIndex(t => new { t.AccountId, t.VoidedAt });
+
+            // Derived from VoidedAt, which is the stored truth. No setter, no backing field, so EF
+            // must be told not to map it.
+            e.Ignore(t => t.IsVoided);
 
             e.ComplexProperty(t => t.TotalAmount, ta =>
             {

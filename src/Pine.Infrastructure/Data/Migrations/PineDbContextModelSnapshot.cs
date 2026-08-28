@@ -31,6 +31,9 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("OpeningBalanceAmount")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -286,6 +289,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
+                        .HasColumnType("TEXT");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "TotalAmount", "Pine.Core.Transactions.Transaction.TotalAmount#Money", b1 =>
                         {
                             b1.IsRequired();
@@ -310,6 +320,8 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.HasIndex("LinkedTransactionId");
 
                     b.HasIndex("AccountId", "ImportKey");
+
+                    b.HasIndex("AccountId", "VoidedAt");
 
                     b.ToTable("Transactions");
                 });

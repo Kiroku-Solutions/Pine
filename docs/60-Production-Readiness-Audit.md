@@ -10,8 +10,8 @@
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–5 closed Phase 0 items 1–7. Test suite 28 → **170** (90 unit + 80 integration). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims. |
-| Last updated | 2026-08-27 |
+| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Test suite 28 → **240** (141 unit + 99 integration). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14 repeats it as standing practice. |
+| Last updated | 2026-08-28 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
 > **Purpose of this document.** This is the working backlog for a dedicated
@@ -484,14 +484,14 @@ any other single change.
 | ID | Debt | Sev | Impact | Action | Pri | Status |
 |---|---|---|---|---|---|:---:|
 | TD-01 | No unit of work; transient DbContext per repository | 🔴 | Non-atomic financial writes | Scope-per-request + `IUnitOfWork` | P0 | ✅ **Done** |
-| TD-02 | No update/delete/void for transactions | 🔴 | Errors permanent; balances unrepairable | Add mutation + recalculation commands | P0 | 🔴 **Open** |
+| TD-02 | No update/delete/void for transactions | 🔴 | Errors permanent; balances unrepairable | Void + balance recalculation (done); edit deferred as TD-68 | P0 | 🟡 **Partial** — a transaction can now be **voided** with a recorded reason and its balance effect undone atomically (transfers as a unit), and any account's balance can be **recomputed from its ledger** and repaired. The **edit** path is deliberately not built — a ledger voids rather than edits, and an update command would make TD-59/TD-60 load-bearing. See §12.14 |
 | TD-03 | Dedup on (date, amount) only, silent | 🔴 | Legitimate transactions lost | Stable import key + review list | P0 | ✅ **Done** |
 | TD-04 | `AddSplit` validates eagerly | 🔴 | Multi-split throws | Validate at aggregate boundary | P0 | ✅ **Done** |
 | TD-05 | No KDF version marker beside the salt | 🔴 | Parameter change bricks all vaults | Versioned vault header | P0 | ✅ **Done** |
 | TD-06 | Key = password-derived key; no envelope | 🔴 | No password change, no biometric | Wrapped data key | P0 | 🔴 **Open** |
-| TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`); the `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364` | 🔴 | Broken heads ship undetected — the regression net exists but is never armed | Restore the triggers, or state plainly that CI is opt-in | P0 | 🔴 **Open** — regressed after iteration 1; see §12.12 |
+| TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`). The `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364`; iteration 6 took the second of the two options this row offered — **CI is opt-in by an explicit project decision** (compute-minute cost), not by accident | 🟠 | The regression net exists and is real, but nothing arms it: a broken head reaches `main` unless a human dispatches the workflow. Severity dropped 🔴→🟠 because the gap is now a known, chosen operating mode rather than an unnoticed regression — the *risk* is unchanged | Dispatch the workflow by hand before any release; re-arm `pull_request:` when compute budget allows | P1 | 🟡 **Accepted** — documented decision, iteration 6; see §12.12 and §12.14 |
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
-| TD-09 | Money-path tests exist for atomicity, split-sum, owned-collection round trip, currency match and (iteration 5) import dedup; absent for rounding/allocation (TD-18), line-item reconciliation (TD-19) and balance recalculation (TD-02) | 🔴 | Regression net covers the closed P0s, not the open ones | Extend as each remaining P0 closes | P0 | 🟡 **Partial** — was 🔴 "no financial-invariant tests"; false since iteration 2, see §12.12 |
+| TD-09 | Money-path tests now cover atomicity, split-sum, owned-collection round trip, currency match, import dedup and (iteration 6) **void + balance recalculation**, several falsification-proven. Absent only for rounding/allocation (TD-18) and line-item reconciliation (TD-19) | 🟠 | Regression net covers every closed P0; the two gaps are both P1 invariants that do not exist in the domain yet | Close alongside TD-18 and TD-19 | P1 | 🟡 **Partial** — gap narrowed twice; balance recalculation covered in iteration 6, see §12.14 |
 | TD-10 | No backup before migration | 🟠 | Unrecoverable data loss | Pre-migration copy + export | P0 | 🟡 **Partial** |
 | TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🔴 **Open** |
 | TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
@@ -550,6 +550,10 @@ any other single change.
 | TD-65 | Import de-duplication has a check-then-insert race; the `(AccountId, ImportKey)` index is deliberately non-unique | 🟡 | Two concurrent imports of one file can both pass the existence probe before either inserts, and both write | Unique index + conflict handling, or serialise imports per account | P2 | 🔴 **Open** |
 | TD-66 | The derived import key's `source` field is `ImportProfile.Name`, the only source identifier reachable inside `ImportAsync` | 🟡 | Renaming or duplicating a profile changes every derived key, so the next import of an already-imported file reports every row as new | Key the source to something stable (profile id, or the file's own identity) | P2 | 🔴 **Open** |
 | TD-67 | `ExcelImporter` and `PdfImporter` parse nothing — both open the file, loop, and return an empty list | 🟡 | Two of three advertised import formats are stubs; neither is reachable from the wizard, which hardcodes `CsvImporter` | Implement or delete; they are documented as stubs as of iteration 5 | P2 | 🔴 **Open** |
+| TD-68 | No update/edit path for a transaction; correction is void-then-re-enter | 🟡 | Two rows where the user made one mistake, and the re-entered row carries no link back to the one it replaces | Update command — but close TD-59 and TD-60 first, which it makes load-bearing | P2 | 🔴 **Open** — deliberate scope decision, iteration 6 |
+| TD-69 | A void cannot be undone | 🟡 | A mis-voided transaction can only be re-entered as a new one, losing its id and its import key | Unvoid command, or fold into TD-68 | P2 | 🔴 **Open** |
+| TD-70 | Accounts created before `20260828005910` have no recorded opening balance, so their FIRST recalculation anchors instead of checking | 🟡 | Pre-existing drift on those accounts is undetectable and unrecoverable — reported honestly (`OpeningBalanceWasInferred`) but not fixable | An explicit "set opening balance" gesture, so the user supplies the figure instead of the system inferring it | P2 | 🔴 **Open** |
+| TD-71 | The transactions list cannot filter or hide voided rows | 🔵 | Correct at today's volumes; a vault with many corrections reads badly | A filter on the list, once there is a read model to filter (TD-28's DTOs) | P3 | 🔴 **Open** |
 
 ---
 
@@ -560,12 +564,12 @@ financial data. Strict but not manufactured — every one has an identified file
 a concrete failure mode.
 
 1. ✅ **TD-01** — ~~No transactional boundary.~~ **Closed.** Scope-per-request DI, `IUnitOfWork`, and an opt-in `TransactionBehavior`; repositories no longer self-commit. Rollback proven by tests that flush real rows inside the transaction and assert the database comes back empty.
-2. 🔴 **TD-02** — No correction mechanism. Any bad record, from any cause, is permanent.
+2. 🟡 **TD-02** — ~~No correction mechanism.~~ **Blocker closed; the row stays 🟡 for a narrower reason.** A transaction can be **voided** with a recorded reason, its effect on the balance undone in the same database transaction, and a transfer voided as a unit across both legs and both accounts. Any account's balance can be **recomputed from its own ledger** and repaired, exactly — the sum is done in .NET `decimal` because SQLite would coerce a pushed-down `SUM` to REAL (TD-31). Proven by four falsification mutations (§12.14). What is *not* built is the **edit** path: correcting a transaction means voiding it and re-entering it, which is the right default for a ledger and is tracked as TD-68. The blocker said "any bad record is permanent" — that is no longer true, and it is the sentence that made this a blocker.
 3. ✅ **TD-03** — ~~Silent import data loss.~~ **Closed.** De-duplication keys on a stable per-row import key (`ImportKeyFactory`, `r1:`/`h1:` schemes) looked up through an indexed `(AccountId, ImportKey)` probe, never again on `(date, amount)`. Two same-day same-amount rows both survive. The command now returns every parsed row with its disposition and a reason, and the wizard shows them on a review step — so a row is never discarded without the user being told which and why. Proven from a fresh context and raw SQLCipher `SELECT`s, and by three falsification mutations (see §12.11).
 4. ✅ **TD-04** — ~~`AddSplit` throws.~~ **Closed.** `AddSplit` no longer validates the sum eagerly, `ReplaceSplits`/`ReplaceLineItems` validate a whole set atomically, and the invariant is enforced at the persistence boundary by `Transaction.EnsureValid()` in `SqliteTransactionRepository.SaveAsync`. A two-way €50/€50 split on a €100 transaction now persists; the boundary check is proven by falsification (removing it turns the test red).
 5. 🟡 **TD-05 ✅ / TD-06 🔴** — ~~Unversioned KDF~~ and no envelope key. The versioned header now records the KDF id and every parameter, so the irreversible half of this blocker is closed; envelope encryption (TD-06) is not built, so password change and biometric unlock remain impossible.
 6. 🔴 **TD-07 / TD-08** — CI builds the product and the three heads no longer reference a non-existent namespace, but the workflow has never executed, **and as of `79c5364` it can no longer execute on its own**: the `push` and `pull_request` triggers were deleted, leaving `workflow_dispatch:` alone. Android/iOS were never compiled (workloads absent locally). Regression protection is written, disarmed, and still not demonstrated. Iterations 3 and 4 both restated "never executed" without noticing the triggers had gone — see §12.12.
-7. 🟡 **TD-09** — ~~No financial-invariant tests. Every fix above would ship unverified.~~ **That is no longer true and has not been since iteration 2.** Atomicity, split-sum, owned-collection round trip, currency match and now import dedup are all covered and several are falsification-proven. What is genuinely missing is coverage for the P0s still open: rounding/allocation (TD-18), line-item reconciliation (TD-19) and balance recalculation (TD-02). See §12.12.
+7. 🟡 **TD-09** — ~~No financial-invariant tests. Every fix above would ship unverified.~~ **Untrue since iteration 2, and the gap has narrowed twice more since.** Atomicity, split-sum, owned-collection round trip, currency match, import dedup and now **void + balance recalculation** are all covered, several falsification-proven; the suite is 240 tests. The remaining gaps are rounding/allocation (TD-18) and line-item reconciliation (TD-19) — both P1, and both invariants the domain does not express yet, so they are work to *design* rather than tests to back-fill. See §12.12 and §12.14.
 8. 🟡 **TD-10** — Encrypted pre-migration backup is implemented and verified, so a failed upgrade no longer destroys the only copy. **Recovery is still manual**: no restore path and no UI entry point for the export command.
 9. 🔴 **TD-11** — No password policy, no auto-lock. The encryption is defeatable by the setup screen.
 10. ✅ **TD-12 ✅ / TD-13 ✅** — ~~Owned collections dropped on update~~ and ~~currency never validated against the account~~. **Blocker closed.** TD-13: `Transaction.Splits` and `LineItems` round-trip through the tracked graph, proven from a fresh context and a raw `SELECT COUNT(*)` across grow/shrink/empty. TD-12: a validation pipeline behaviour rejects a currency mismatch before any write, proven by falsification. **The honest correction this blocker needs:** it claimed *two* corruption paths. Iteration 4 measured the second one and found it was no longer a corruption path — closing TD-01 had already contained it (a mismatch rolled back cleanly: zero rows, balance untouched, `Begin, Rollback`). What remained was a domain exception (`"Cannot add money of different currencies: USD and EUR"`) leaking verbatim to the user from the wrong layer. That is a real defect and it is now fixed, but it was not data corruption, and this blocker overstated it from iteration 2 onward. See §12.9.
@@ -596,7 +600,7 @@ a day of work now and an impossible migration later.
 - [x] ✅ **5.** Fix `AddSplit`; fix `CurrentValues.SetValues` to update tracked graphs (TD-04, TD-13) — **DONE.** Deferred split validation with an atomic `ReplaceSplits`/`ReplaceLineItems`, the invariant enforced at the persistence boundary, and owned collections reconciled on the tracked graph. Round-trip proven from a fresh context; 124 → 138 tests.
 - [x] ✅ **6.** MediatR validation behaviour; validate currency against account (TD-12) — **DONE.** Hand-rolled `IRequestValidator<T>` seam + `ValidationBehavior` registered *before* `TransactionBehavior`, so a rejected command never opens a transaction. Four validators; `TransferFundsCommandHandler`'s up-front checks folded in so there is one idiom. Proven by four falsification mutations; 138 → 152 tests.
 - [x] ✅ **7.** Rewrite import dedup on a stable key with a user-facing review list (TD-03) — **DONE.** `ImportKeyFactory` (BCL-only, invariant-culture, versioned `r1:`/`h1:` prefixes), a nullable `ImportKey` column with an `(AccountId, ImportKey)` index, an indexed existence probe replacing the full-account load, in-batch duplicate detection, and an `ImportTransactionsResult` carrying every row's disposition + reason, surfaced on a new wizard review step. 152 → 170 tests.
-- [ ] 🔴 **8.** Update / void transaction commands + balance recalculation (TD-02)
+- [x] 🟡 **8.** Update / void transaction commands + balance recalculation (TD-02) — **VOID AND RECALCULATION DONE; EDIT DELIBERATELY DEFERRED.** `VoidTransactionCommand` (both transfer legs, both balances, one database transaction, reason required) and `RecalculateAccountBalanceCommand` (exact .NET `decimal` sum, voided rows excluded, drift reported). `Account` gained a recorded opening balance — without which recomputing a balance from its ledger is arithmetically impossible; the migration deliberately does not backfill it, see §12.14. Four falsification mutations; 170 → 240 tests. The **edit** path is TD-68.
 - [ ] 🔴 **9.** Password entropy floor and idle auto-lock (TD-11)
 - [ ] 🔴 **10.** Money-path test suite covering all of the above — written *alongside*, not after (TD-09)
 - [ ] 🔴 **11.** Remove the seeded fictional account; remove or wire the `CloudSync` option (TD-47, TD-48)
@@ -1645,7 +1649,17 @@ failure as TD-12's: **§8 is only ever updated by the ticket that owns a row, an
 side effects it has on other rows.** A reconciliation pass of this kind belongs at the end of every
 iteration, not once.
 
-### 12.13 Next
+### 12.13 Next (after iteration 5) — superseded
+
+> Carried out by iteration 6 (§12.14). Its three warnings all held: the correction-versus-deletion
+> question was settled as **void**; the balance-recalculation tension with `Deposit`/`Withdraw` was
+> resolved by a third mutator that cannot re-denominate **by construction**, so iteration 4's TOCTOU
+> argument survived intact; and the editing traps (TD-59, TD-60) were avoided rather than solved, by
+> deferring the edit path — which is why it stayed deferred rather than being quietly dropped
+> (TD-68). What it did **not** foresee is recorded in §12.14: the opening balance was never stored,
+> so "recompute the balance from its ledger" was arithmetically impossible before this ticket
+> created somewhere to put it.
+
 
 Phase 0 item **8 — TD-02**: update / void transaction commands plus balance recalculation. This is now
 the **last original P0 data-integrity finding still open**, and the most consequential of them: TD-01,
@@ -1674,3 +1688,247 @@ written:
 The seams needed are already in place: `IRequestValidator<T>` for pre-conditions, `ITransactionalRequest`
 for atomicity, and `AtomicityHost` for proving rollback from raw SQL. TD-09's remaining gap — no test
 covers balance recalculation — should be closed *by* this ticket rather than after it.
+
+### 12.14 Iteration 6 — Phase 0, item 8 (TD-02)
+
+| Field | Value |
+|---|---|
+| Ticket | Phase 0 item **8** — correction mechanism and balance recalculation (TD-02) |
+| Scope decision | **Void, not edit, and not delete.** Taken deliberately before code was written; see "The scope decision" below. |
+| Tests | 170 → **240** (141 unit + 99 integration) |
+| Schema | `20260828005910_AddTransactionVoidAndAccountOpeningBalance` |
+| Status | 🟡 **Partial by design** — the correction and repair halves are closed; the *edit* half is explicitly deferred, see INCOMPLETE |
+
+#### Verification actually executed
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Baseline before any change | `dotnet test` on both suites | 90 + 80 = **170 passing** |
+| Windows head builds | `dotnet build src/Pine.Ui.Windows` | ✅ 0 warnings, 0 errors |
+| Final unit suite | `dotnet test tests/Pine.Tests.Unit` | ✅ **141 passing**, 0 failed |
+| Final integration suite | `dotnet test tests/Pine.Tests.Integration` | ✅ **99 passing**, 0 failed |
+| Migration is real, not asserted | A vault migrated down to `…_AddTransactionImportKey`, seeded over a raw SQLCipher connection, migrated up through the production `EfCoreVaultMigrator` + `VaultBackupService` path, then reopened | ✅ rows survive; void columns and `OpeningBalanceAmount` come back **raw-NULL** |
+| Every "was / was not saved" claim | Fresh `PineDbContext` or raw SQL, never the change tracker that wrote it | ✅ |
+| The four load-bearing guards | Falsification: each one removed, suite re-run | ✅ all four turn tests red — table below |
+| Android / iOS heads | **Not checked.** Workloads absent (`NETSDK1147`), as in every prior iteration | ⚠️ unknown |
+| The GUI | **Not checked.** The void confirmation, the struck-through row and the Settings report were never rendered; only the view models and bindings compile | ⚠️ unverified — see `61-Manual-Test-Plan` §8 |
+
+#### The scope decision, taken before any code
+
+The roadmap phrases item 8 as "Update / void transaction commands + balance recalculation". Those are
+three features, not one, and the audit's own §12.13 warned that the first of them re-enters every trap
+iteration 3 closed (`ReplaceSplits` minting fresh ids on each detached save, TD-60; owned-child state
+inferred from EF's guess, TD-59). The decision taken was **void plus recalculation, and no edit**:
+
+- A finance vault voids rather than edits, so the record of what was originally entered survives an
+  audit. An edit destroys the very evidence a correction mechanism exists to preserve.
+- Voiding does not touch owned collections at all, so TD-59 and TD-60 stay latent instead of becoming
+  load-bearing. An update command would have had to close both first.
+- The user is not blocked: a wrong transaction is voided with a reason and re-entered correctly. The
+  cost is two rows instead of one, and that cost is visible rather than silent.
+
+The deferred half is recorded as **TD-68**, not quietly dropped.
+
+#### What was built
+
+**Domain.** `Transaction` gained `VoidedAt`, `VoidReason`, a derived `IsVoided`, and
+`Void(reason, timeProvider)`. Voiding is deliberately *not* idempotent: a second call throws, because
+silently accepting one would let a double-void move a balance twice — the same class of defect as a
+double-posted transaction. A rejected void leaves the aggregate completely unmutated.
+`TransactionVoidedEvent` is raised for symmetry with `TransactionRegisteredEvent` (still undispatched —
+TD-33).
+
+`Account` gained `OpeningBalanceAmount`, a derived `OpeningBalance`, `AdoptOpeningBalance(...)` and
+`RecalculateBalance(...)`.
+
+**Persistence.** Four columns and an `(AccountId, VoidedAt)` index.
+`ITransactionRepository.GetAmountsInForceAsync` projects the amounts of the non-voided rows;
+`GetDistinctCurrenciesInForceAsync` answers the pre-condition the sum depends on.
+
+**Application.** `VoidTransactionCommand` and `RecalculateAccountBalanceCommand`, both
+`ITransactionalRequest`, both with an `IRequestValidator<T>` — the seams iteration 4 built, used as
+intended and with no new mechanism invented.
+
+**UI.** A per-row *Void* action with a confirmation that requires a reason; voided rows stay in the
+list, dimmed and struck through, with a `VOIDED` badge carrying the reason in its tooltip. A **Data
+Integrity** section in Settings checks any account's balance against its own ledger and reports the
+result as a sentence. Neither path renders `ex.Message`, so neither adds to TD-24.
+
+#### The trap in this ticket — the opening balance did not exist
+
+The ticket reads as "sum the transactions and compare". It is not, and the reason is not in the audit:
+
+> `Account.Create(name, type, initialBalance, …)` accepted an opening balance, folded it into
+> `Balance`, and **kept no record of it**. The balance is `opening + Σ transactions`, and `opening` was
+> unrecoverable. "Recompute the balance from its ledger" was arithmetically impossible.
+
+Only three things could have been done about it, and two of them are wrong:
+
+1. **Backfill it in the migration** — `Balance_Amount − SUM(TotalAmount_Amount)`. Wrong twice over.
+   *Arithmetically*: EF's own scaffold emits `type: "TEXT"` for these columns, so SQLite coerces them
+   to REAL to add them, and the figure baked in as the account's origin would be a floating-point
+   approximation. *Semantically*, and far worse: it derives the opening balance **from the current
+   balance**, which assumes the current balance is correct — the exact assumption recalculation exists
+   to stop making. An account whose balance had already drifted would have that drift written in as its
+   opening figure, and every later recalculation would confirm the wrong number forever.
+2. **Refuse to recalculate accounts that predate the column.** Honest, and useless: those are precisely
+   the accounts most likely to have drifted.
+3. **What was done.** The column is nullable and unbackfilled. The first recalculation of such an
+   account infers the opening figure in exact .NET `decimal`, records it through
+   `AdoptOpeningBalance` (which refuses a second call, so the anchor can never be moved to make a
+   disagreement go away), and returns `OpeningBalanceWasInferred: true`. The settings screen says so in
+   words: *"This first check could not detect drift; run it again from now on and it will."*
+
+That flag is the honest part of the whole feature. Reporting that run as a clean bill of health would
+have been a lie, and it is the lie a less careful implementation tells by default. The residual
+limitation is **TD-70**.
+
+#### The second trap — a tripwire that was supposed to make this hard
+
+`ArchitectureTests.Account_ShouldNot_ExposeAnyPublicMeansOfChangingItsCurrency` pins Account's entire
+public method surface to a literal list, and its own doc-comment says that a new public member
+invalidates `ValidationBehavior`'s TOCTOU-free currency read and forces the behaviour-ordering decision
+to be revisited. This ticket needed **two** new methods. The tripwire fired exactly as designed.
+
+It was widened, and the widening is justified in writing beside the list. The premise survives because
+neither method can re-denominate an account **by construction rather than by check**:
+`RecalculateBalance` builds the new `Balance` from the *existing* `CurrencyCode` instance and discards
+the argument's; `AdoptOpeningBalance` stores a bare `decimal` and never persists a currency at all.
+Deleting either guard would not open the window. Two unit tests prove it with `ReferenceEquals` rather
+than value equality — necessarily, because `CurrencyCode` compares structurally, so an equal-but-
+distinct instance sails through both guards and only reference identity distinguishes "discarded" from
+"validated". So the ordering decision did **not** have to be revisited.
+
+#### The third trap — a transfer is two transactions
+
+Voiding one leg of a transfer and not the other leaves money that left one account and arrived nowhere:
+a worse state than the one the user was correcting. The handler voids both legs and adjusts both
+balances inside the one transaction, and `VoidTransactionResult` returns both id lists so the caller
+knows to refresh more than the row that was clicked. The two links are established by two *different*
+mechanisms in `TransferFundsCommandHandler` — the destination leg through the constructor, the source
+leg through the reflection call that is TD-26 — so each direction can break independently, and each has
+its own test.
+
+#### How the fix is *proven*, not asserted
+
+Four mutations, each applied to green code, suite re-run, then reverted:
+
+| # | Mutation | Expected | Actual |
+|---|---|---|---|
+| A | Delete the foreign-currency rule from `RecalculateAccountBalanceCommandValidator` | Red | ✅ **3 red** — 2 unit, 1 integration |
+| B | Stop adding the linked leg in `VoidTransactionCommandHandler` | Red | ✅ **2 red** — both transfer directions |
+| C | `Account.RecalculateBalance`: `Balance = total` instead of rebuilding from the existing currency | Red | ✅ **1 red** — `Account_RecalculateBalance_CannotRedenominateTheAccount` |
+| D | Drop `&& t.VoidedAt == null` from `GetAmountsInForceAsync` | Red | ✅ **3 red** — including the void/recalculation agreement test |
+
+The exactness of the sum is pinned separately, by a ledger built so that a `double` gets it wrong: the
+test asserts the premise first (`the double sum really is wrong`) so that reshuffling the amounts into
+a floating-point-friendly order makes the test say so instead of passing quietly.
+
+#### The defect the review found, and why it was the important one
+
+The unit-test workstream reported that `RecalculateAccountBalanceCommand` had **no currency rule**. It
+was right, and it is the only defect in this feature that could have made a balance *worse* while
+telling the user it had been verified:
+
+`GetAmountsInForceAsync` returns bare decimals on the reasoning that every transaction on an account
+shares the account's currency. All four transaction validators enforce that — but
+`VoidTransactionCommandValidator` had *already documented*, in this same iteration, that rows written
+before those validators existed can violate it, and refuses to void them. The recalculation path was
+written against the optimistic reading of the same fact. A legacy EUR row on a USD account would have
+had its raw number folded into a USD total; `RecalculateBalance` would have accepted it, because it
+validates the currency of the *total* — which the handler builds correctly — and knows nothing about the
+provenance of the numbers inside it. The balance would then be overwritten with a figure that is not a
+quantity of anything, and the settings screen would have called it a clean check.
+
+Closed by a validator rule that names every offending currency and **refuses**. Refusing rather than
+skipping is deliberate: dropping the odd row from the sum would silently delete a transaction's
+contribution to a balance, which is the defect class TD-03 closed on the import path. Falsification A
+above is this rule.
+
+The same review raised two other items. One — that the void handler does not call
+`Transaction.EnsureValid()` — was checked and is **wrong**: `EnsureValid()` is the first statement of
+`SqliteTransactionRepository.SaveAsync`, which is where iteration 3 deliberately put the aggregate
+boundary, so every write path is covered including this one. The other was an inaccurate XML doc on
+`VoidTransactionResult.AdjustedAccountIds`, corrected.
+
+#### Pre-existing defects found and fixed incidentally
+
+- **A test that had been passing for the wrong reason for two iterations.** EF Core writes a `Guid`
+  into a SQLite TEXT column **upper-cased**, and SQLite compares TEXT case-sensitively.
+  `ImportKeyMigrationTests` seeded its legacy row with `accountId.ToString()` — lower case. The row
+  still *materialises* correctly (`Guid.Parse` ignores case), so every client-side assertion in that
+  file was sound; but the **server-side** predicate in `GetExistingImportKeysAsync` could never match
+  it. Its `matches.Should().BeEmpty()` — which reads as "a NULL import key is not a wildcard" — was
+  therefore vacuous, and would have passed even if a NULL key *did* behave as a wildcard. Fixed: the
+  seed is upper-cased, and the assertion is now preceded by a check that the row is visible to a
+  server-side predicate at all. The encoding itself is pinned by a new `Data/RawGuidEncodingTests`, so
+  a future EF change makes one test fail loudly instead of several going quietly vacuous. **Verified
+  empirically, not assumed** — the probe reads the raw cell out of a vault EF itself wrote.
+- **A stale tripwire.** `EfCoreVaultMigratorTests.CurrentSchemaVersion` still named
+  `…_AddTransactionLineItems` after `…_AddTransactionImportKey` shipped in iteration 5, so for one
+  iteration those tests asserted that an upgrade reached a schema that was no longer the head. Nothing
+  failed, because `Should().Contain(...)` is satisfied by an earlier id in the applied set. Retargeted,
+  with the history recorded on the constant. This is the same failure mode as TD-07 and TD-09: a
+  constant that has to be re-examined by a human, and was not.
+
+#### New debt opened
+
+| ID | Debt | Sev | Pri |
+|---|---|---|:---:|
+| TD-68 | No update/edit path for a transaction. Correction is void-then-re-enter, which is the right default for a ledger but costs two rows and loses the original's `ImportKey` linkage to the re-entered row | 🟡 | P2 |
+| TD-69 | A void cannot be undone. A mis-voided transaction can only be re-entered as a new one, losing its id and its import key | 🟡 | P2 |
+| TD-70 | Accounts created before this migration have no recorded opening balance, so their FIRST recalculation anchors instead of checking and cannot detect pre-existing drift. Reported honestly, but the drift is unrecoverable | 🟡 | P2 |
+| TD-71 | The transactions list has no way to filter or hide voided rows. Correct at today's volumes; a vault with many corrections will read badly | 🔵 | P3 |
+
+#### INCOMPLETE / NOT DONE
+
+- **The edit half of TD-02 is not built**, by decision. See "The scope decision". TD-68.
+- **A void cannot be undone.** TD-69.
+- **No GUI verification.** Every claim above about the UI is a claim about code that compiles and view
+  models that are unit-testable, not about pixels. The void confirmation, the struck-through row, the
+  badge tooltip and the Settings report have never been rendered. `61-Manual-Test-Plan` §8 covers them.
+- **Android / iOS still uncompiled.** Unchanged from every prior iteration; workloads are absent.
+- **TD-59 / TD-60 remain latent.** Voiding does not touch owned collections, so neither became
+  load-bearing. They will the day TD-68 is built — which is half the reason it was deferred.
+- **Budget "spent" figures are unaffected because they are not implemented** (`BudgetsViewModel`
+  hardcodes `SpentAmount = 0m`). When they are, they must exclude voided rows. Not new debt; noted so
+  the next person does not have to rediscover it.
+
+#### Reconciliation pass
+
+§12.12's process finding was that **no ticket owns the side effects it has on other rows**, and that a
+reconciliation pass belongs at the end of every iteration rather than once. Run again here:
+
+- **TD-02 → ✅ for the correction and repair halves**, 🟡 overall; the edit half is TD-68.
+- **TD-09** — the register's remaining gap named "balance recalculation (TD-02)" as uncovered. It is now
+  covered, by a falsification-proven integration suite. Rounding/allocation (TD-18) and line-item
+  reconciliation (TD-19) remain the only money-path invariants with no test. Row updated.
+- **TD-07** — resolved as a **decision** rather than a defect: CI is opt-in by choice, the choice and
+  its cost are now written into the workflow file itself, and the row is 🟡 Accepted at P1 rather than
+  🔴 Open at P0. The *risk* is unchanged; what changed is that it is no longer recorded as an
+  unnoticed regression that three iterations read past.
+- **TD-26** — unchanged in severity, but this iteration made it load-bearing in a new place: voiding a
+  transfer depends on the source leg's `LinkedTransactionId`, which is written by the reflection call.
+  Silently dropping that line would now produce a half-voided transfer, not just a missing link. Both
+  directions are covered by tests.
+- **TD-31** — unchanged, and this iteration is the clearest illustration of it yet: the decision to
+  project amounts and add them in .NET rather than push `SUM` into SQL exists solely because of it, and
+  is pinned by a test built to fail if it is ever "optimised" away.
+- **Rows re-checked and confirmed unchanged:** TD-06, TD-11, TD-14, TD-15, TD-16, TD-17, TD-18, TD-19,
+  TD-20, TD-21, TD-22, TD-24, TD-25, TD-27 … TD-67. Nothing this iteration touched their premises.
+
+### 12.15 Next
+
+Phase 0 items **9, 10 and 11** are what remain before the phase closes:
+
+- **9 — TD-11**, password entropy floor and idle auto-lock. The largest remaining security gap, and the
+  one whose absence makes the encryption defeatable at the setup screen rather than at the vault.
+- **10 — TD-09's remainder**, money-path coverage for TD-18 (money scale, rounding, `Allocate`) and
+  TD-19 (line-item reconciliation). These two are the last money-path invariants with no test, and
+  TD-18 in particular should be *designed* rather than back-filled: `Money` has no scale policy at all
+  today, so "the sum of splits equals the total" is currently exact only because nothing rounds.
+- **11 — TD-47 / TD-48**, remove the seeded fictional $1,000 account and the `CloudSync` setting that
+  nothing reads.
+
+Item 9 is the one to take first: it is the only remaining Phase 0 item whose cost grows once real
+vaults exist, which is the ordering principle §10 states.

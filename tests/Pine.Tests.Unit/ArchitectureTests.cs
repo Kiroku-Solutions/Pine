@@ -18,7 +18,34 @@ public class ArchitectureTests
     /// Held in a field rather than inlined at the assertion because CA1861 forbids a constant array
     /// argument to a repeatedly-called method.
     /// </summary>
-    private static readonly string[] ExpectedAccountPublicMethods = ["Create", "Deposit", "Withdraw"];
+    /// <remarks>
+    /// <para>
+    /// AMENDED IN ITERATION 6 (TD-02), FROM <c>["Create", "Deposit", "Withdraw"]</c>. This list is a
+    /// tripwire, so widening it is the thing it exists to make hard. It was widened deliberately, and
+    /// the reasoning has to survive next to it or the next reader will assume it drifted.
+    /// </para>
+    /// <para>
+    /// <c>RecalculateBalance</c> is a third balance mutator, which is exactly what
+    /// <c>60-Production-Readiness-Audit</c> §12.13 warned this ticket would need and warned must not
+    /// become a re-denomination path. <c>AdoptOpeningBalance</c> is a one-time repair for accounts
+    /// created before opening balances were recorded. Neither can change the account's currency, and
+    /// neither does so merely by passing a check: <c>RecalculateBalance</c> rebuilds
+    /// <c>Balance</c> from the EXISTING <c>CurrencyCode</c> instance and discards the argument's, and
+    /// <c>AdoptOpeningBalance</c> stores a bare <c>decimal</c> and never persists a currency at all.
+    /// Deleting the guard in either one would not open the window;
+    /// <c>Account_RecalculateBalance_CannotRedenominateTheAccount</c> and
+    /// <c>Account_AdoptOpeningBalance_CannotRedenominateTheAccount</c> in
+    /// <c>Domain/AccountTests</c> prove that by construction rather than by assertion.
+    /// </para>
+    /// <para>
+    /// So the premise of this test — that the currency read by the validators outside the transaction
+    /// cannot change before the write — still holds, and the ordering decision pinned by
+    /// <c>ValidationBehavior_ShouldBeRegistered_BeforeTransactionBehavior</c> did not have to be
+    /// revisited. Any FURTHER addition to this list must be justified the same way, in writing.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] ExpectedAccountPublicMethods =
+        ["AdoptOpeningBalance", "Create", "Deposit", "RecalculateBalance", "Withdraw"];
 
     [Fact]
     public void DomainLayer_ShouldNot_DependOnOtherLayers()

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Updated** | 2026-08-26 |
+| **Updated** | 2026-08-28 |
 | **Branch of record** | `main` |
-| **Focus of this cycle** | Avalonia UI → production quality, runtime theming, receipt-flow fixes |
+| **Focus of this cycle** | Production-readiness remediation (`docs/60`), Phase 0 — iteration 6 closed item 8 (TD-02) |
 
 A living snapshot of the project's state so anyone can see, at a glance, what is
 done, what is pending, and where we are heading. Update the date + relevant
@@ -13,6 +13,34 @@ sections whenever a meaningful chunk of work lands.
 ---
 
 ## 1. What just shipped (this cycle)
+
+### 1.0 Remediation iteration 6 — corrections and balance repair (TD-02)
+
+The last original P0 data-integrity finding. Until this landed, Pine could record transactions
+atomically, import them without losing any and split them correctly — and could not **correct a single
+one of them**. Any bad record, from any cause, was permanent, and a balance that had drifted could not
+be recomputed.
+
+- **Void, not delete, and not edit.** A transaction is marked void with a required reason; the row, its
+  splits and its import key all survive, so the correction is auditable. Its effect on the account
+  balance is undone in the *same* database transaction, so the flag and the balance can never disagree.
+  Voiding one leg of a transfer voids the other and moves both balances.
+- **Balance repair.** Any account can be recomputed from its opening figure plus every transaction
+  still in force, and the result is *reported* — old figure, new figure, drift, rows counted — rather
+  than acknowledged. The sum is done in .NET `decimal`: SQLite stores these values as TEXT and would
+  coerce a pushed-down `SUM` to floating point (TD-31).
+- **`Account` now records its opening balance**, which it never did. Without it, "recompute the balance
+  from the ledger" was arithmetically impossible. The migration deliberately does **not** backfill it
+  for existing accounts — deriving it from the current balance would bake any existing drift in as the
+  account's origin. Those accounts get an honest, on-screen "this first check could not detect drift".
+- **UI**: per-row *Void* with confirmation, struck-through voided rows with a badge and the reason in a
+  tooltip, and **Settings → Data Integrity** to check any account against its ledger.
+- **Tests 170 → 240**, with four falsification mutations proving the guards are load-bearing.
+- Found and fixed along the way: an existing migration test that had been passing for the wrong reason
+  for two iterations (EF writes `Guid` keys upper-cased and SQLite compares TEXT case-sensitively), and
+  a stale schema-version constant. See audit §12.14.
+
+**Not done, deliberately:** editing a transaction (TD-68), undoing a void (TD-69).
 
 ### 1.1 UI production pass (shared `Pine.Ui.Avalonia`)
 Full audit of every screen (dashboard → live scanner) and a state-of-the-art pass:
@@ -78,10 +106,25 @@ Full audit of every screen (dashboard → live scanner) and a state-of-the-art p
 
 ## 3. Suggested next steps
 
-1. Address tech-debt #1 (messenger) — plan is written and ready to execute.
-2. Optionally reuse `ImageLightbox` in Live Scanner / Crop.
-3. Decide on legacy-vault healing vs. "recreate" policy for pre-release testers (#2).
-4. Localization pass (there was Spanish text hardcoded in an English UI, now fixed —
+**The remediation backlog takes precedence over everything below it** — see `docs/60` §10. The next
+three items close audit Phase 0:
+
+1. **TD-11** — password entropy floor and idle auto-lock. The encryption is currently defeatable at the
+   setup screen rather than at the vault, and this is the last Phase 0 item whose cost grows once real
+   vaults exist.
+2. **TD-18 / TD-19** — a scale and rounding policy for `Money`, plus line-item reconciliation. These are
+   the only money-path invariants with no test, and both need designing rather than back-filling:
+   `Money` has no scale policy at all today, so "splits sum to the total" holds only because nothing
+   rounds yet.
+3. **TD-47 / TD-48** — remove the seeded fictional $1,000 account and the `CloudSync` setting nothing
+   reads.
+
+Then, from this cycle's own list:
+
+4. Address tech-debt #1 (messenger) — plan is written and ready to execute.
+5. Optionally reuse `ImageLightbox` in Live Scanner / Crop.
+6. Decide on legacy-vault healing vs. "recreate" policy for pre-release testers (#2).
+7. Localization pass (there was Spanish text hardcoded in an English UI, now fixed —
    but no i18n framework yet; see `docs/41-Localization.md`).
 
 ---

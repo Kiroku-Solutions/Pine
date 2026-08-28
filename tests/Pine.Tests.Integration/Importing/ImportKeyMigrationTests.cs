@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -52,6 +52,20 @@ public class ImportKeyMigrationTests
 
     /// <summary>The migration under test.</summary>
     private const string ImportKeySchemaVersion = "20260827141109_AddTransactionImportKey";
+
+    /// <summary>
+    /// The migration that landed AFTER the one under test. This class does not exercise it; it is
+    /// named only so the "what is still pending" assertion below stays exact.
+    /// </summary>
+    /// <remarks>
+    /// This is the tripwire working as designed. Iteration 6 (TD-02) added a migration, which made
+    /// two migrations pending where this test asserted exactly one, and the assertion went red —
+    /// forcing a human to confirm that the test's premise ("previous" is still the schema before
+    /// ImportKey) still holds. It does: the new migration adds void columns and an opening balance,
+    /// touches nothing this class inspects, and sits after the one under test.
+    /// </remarks>
+    private const string VoidAndOpeningBalanceSchemaVersion =
+        "20260828005910_AddTransactionVoidAndAccountOpeningBalance";
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
 
@@ -136,6 +150,18 @@ public class ImportKeyMigrationTests
 
         await using (var probeContext = new PineDbContext(vault.DatabasePath, vault.Key))
         {
+            // FIRST prove the legacy row is actually reachable by an account-scoped SQL predicate.
+            // Without this, the assertion that follows is vacuous: a row the database cannot see
+            // matches nothing for a reason that has nothing to do with import keys, and the test
+            // would keep passing even if a NULL key DID behave as a wildcard.
+            var visibleToSql = await probeContext.Transactions
+                .AsNoTracking()
+                .CountAsync(t => t.AccountId == accountId, CancellationToken.None);
+            visibleToSql.Should().Be(
+                1,
+                "the seeded legacy row must be visible to a server-side predicate on AccountId, or the "
+                + "next assertion proves nothing about import keys");
+
             var repository = new SqliteTransactionRepository(probeContext);
             var matches = await repository.GetExistingImportKeysAsync(accountId, new[] { key }, CancellationToken.None);
             matches.Should().BeEmpty("a row that predates import keys can neither veto nor authorise an incoming row");
@@ -182,9 +208,11 @@ public class ImportKeyMigrationTests
         await context.GetService<IMigrator>().MigrateAsync(PreviousSchemaVersion, CancellationToken.None);
 
         var pending = await context.Database.GetPendingMigrationsAsync(CancellationToken.None);
-        // Exactly one migration must remain, otherwise this test is no longer testing the one it
-        // names. (Equal takes params string[], so the explanation cannot ride along as a "because".)
-        pending.Should().Equal(new[] { ImportKeySchemaVersion });
+        // The exact pending set, in order, otherwise this test is no longer testing the migration it
+        // names. Asserting the whole sequence rather than "contains" is what makes a newly added
+        // migration fail here and be looked at, instead of sliding in unnoticed.
+        // (Equal takes params string[], so the explanation cannot ride along as a "because".)
+        pending.Should().Equal(new[] { ImportKeySchemaVersion, VoidAndOpeningBalanceSchemaVersion });
     }
 
     /// <summary>
@@ -208,8 +236,15 @@ public class ImportKeyMigrationTests
                  "CreatedAt", "TotalAmount_Amount", "TotalAmount_Currency")
             VALUES ($id, $accountId, $date, $payee, '', $type, NULL, $createdAt, $amount, 'USD');
             """;
-        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
-        command.Parameters.AddWithValue("$accountId", accountId.ToString());
+        // UPPER CASE, and this is not cosmetic. EF writes Guid keys upper-cased and SQLite compares
+        // TEXT case-sensitively, so a row seeded with the obvious ToString() still materialises
+        // correctly (Guid.Parse ignores case) while being invisible to every predicate pushed down
+        // into SQL. That is what made the "a NULL key matches nothing" assertion below pass for the
+        // wrong reason for two iterations. The encoding itself is pinned by
+        // Data/RawGuidEncodingTests, so if EF ever changes it, one test says so rather than several
+        // quietly going vacuous.
+        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString().ToUpperInvariant());
+        command.Parameters.AddWithValue("$accountId", accountId.ToString().ToUpperInvariant());
         command.Parameters.AddWithValue("$date", Text(date));
         command.Parameters.AddWithValue("$payee", payee);
         command.Parameters.AddWithValue("$type", amount < 0 ? nameof(TransactionType.Expense) : nameof(TransactionType.Income));

@@ -230,6 +230,86 @@ internal sealed class AtomicityHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Reads one transaction's void columns over a RAW SQLCipher connection, exactly as they sit in
+    /// the encrypted file.
+    /// </summary>
+    /// <remarks>
+    /// A void is recorded by two nullable columns, and "the column is NULL" versus "EF materialised
+    /// the default" are different facts with the same shape once EF has been through them — the same
+    /// reasoning that put <see cref="ReadImportKeysRaw"/> here. The values come back as the raw TEXT
+    /// SQLite holds rather than as a <see cref="DateTimeOffset"/>, because the only question a test
+    /// asks of them is whether something was written.
+    /// </remarks>
+    /// <param name="transactionId">The transaction to inspect.</param>
+    /// <returns>The raw <c>VoidedAt</c> and <c>VoidReason</c> values, null where the column is NULL.</returns>
+    public (string? VoidedAt, string? VoidReason) ReadVoidStateRaw(Guid transactionId)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            @"SELECT ""VoidedAt"", ""VoidReason"" FROM ""Transactions"" WHERE ""Id"" = $id COLLATE NOCASE;";
+        command.Parameters.AddWithValue("$id", transactionId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            throw new InvalidOperationException($"No transaction row with id {transactionId}.");
+        }
+
+        return (
+            reader.IsDBNull(0) ? null : reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
+    /// <summary>
+    /// Reads one account's stored balance and opening balance over a RAW SQLCipher connection, as
+    /// the TEXT SQLite actually holds (TD-31).
+    /// </summary>
+    /// <remarks>
+    /// <c>OpeningBalanceAmount</c> is nullable and its NULL is load-bearing: it is what tells a
+    /// recalculation that the account predates opening-balance tracking. Read back through EF a
+    /// missing figure and a zero one are both a <c>decimal?</c>, so the distinction is only safe to
+    /// assert here.
+    /// </remarks>
+    /// <param name="accountId">The account to inspect.</param>
+    /// <returns>The raw <c>Balance_Amount</c> and <c>OpeningBalanceAmount</c> text.</returns>
+    public (string Balance, string? OpeningBalanceAmount) ReadAccountAmountsRaw(Guid accountId)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            @"SELECT ""Balance_Amount"", ""OpeningBalanceAmount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
+        command.Parameters.AddWithValue("$id", accountId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            throw new InvalidOperationException($"No account row with id {accountId}.");
+        }
+
+        return (reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
+    /// <summary>
+    /// Runs a statement straight at the encrypted file, with EF removed from the picture.
+    /// </summary>
+    /// <remarks>
+    /// This exists to PLANT CORRUPTION. A balance that has drifted from its own ledger cannot be
+    /// produced through any command — that is the whole point of the transactional boundary — so the
+    /// only honest way to test the repair is to write the wrong number behind the application's back,
+    /// which is also how such a vault comes about in the field (a partial write before TD-01, or a
+    /// hand-edited database).
+    /// </remarks>
+    /// <param name="sql">The statement to execute.</param>
+    public void ExecuteSqlRaw(string sql)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
     /// Seeds an account through the real <c>CreateAccountCommand</c> pipeline, then clears the
     /// unit-of-work log so a test only sees the calls made by the request it is exercising.
     /// </summary>

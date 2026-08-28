@@ -4,7 +4,19 @@ name: CI
 # The previous version only restored/built/tested tests/**, which is why three
 # broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
 
-# CI automatizado deshabilitado temporalmente para ahorrar minutos de cómputo (solo se puede ejecutar manualmente)
+# TRIGGERS: MANUAL ONLY, BY DECISION (TD-07).
+# `push:` and `pull_request:` were removed in 79c5364 to save compute minutes, and iteration 6 of the
+# production-readiness remediation confirmed that as the intended operating mode rather than restoring
+# them. This is written down because the audit previously recorded it as an unnoticed regression, and
+# three iterations read past it.
+#
+# WHAT THAT COSTS, STATED PLAINLY: nothing arms this workflow. A commit that breaks a platform head, or
+# a change that reddens the 170-test suite, reaches `main` undetected unless a human dispatches this
+# run. The jobs below are real and do build the product; they are simply never fired automatically.
+#
+# THE OBLIGATION THAT REPLACES THE TRIGGER: dispatch this workflow by hand before any release, and
+# after any change to a platform head. Re-arm `pull_request: branches: [main]` when the compute budget
+# allows — that alone restores the regression net where it matters most.
 on:
   workflow_dispatch:
 

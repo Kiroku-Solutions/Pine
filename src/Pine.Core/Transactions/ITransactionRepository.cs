@@ -34,4 +34,66 @@ public interface ITransactionRepository
         Guid accountId,
         IReadOnlyCollection<string> candidateKeys,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the signed amount of every transaction on the given account that is still in force —
+    /// that is, every transaction except the voided ones.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY THIS RETURNS THE AMOUNTS AND NOT THEIR SUM. Summing has to happen in .NET, over
+    /// <see cref="decimal"/>, and this signature is what makes that non-negotiable. EF Core's SQLite
+    /// provider stores <see cref="decimal"/> as TEXT (TD-31); pushing <c>SUM</c> down into SQL makes
+    /// SQLite coerce that TEXT to REAL and add it in IEEE-754 binary floating point, where a handful of
+    /// ordinary two-decimal amounts is already enough to produce a total that is off by a fraction of a
+    /// cent. A balance repaired with a drifting total would be a worse defect than the drift this
+    /// feature exists to repair.
+    /// </para>
+    /// <para>
+    /// WHY NOT <c>Money</c>. The amounts all belong to one account and therefore to one currency, which
+    /// the account itself already knows and can never change. Re-attaching a currency to each row here
+    /// would invite the caller to trust a per-row currency that is not independently meaningful.
+    /// </para>
+    /// </remarks>
+    /// <param name="accountId">The account whose ledger is being totalled.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// One entry per transaction still in force, signed as stored. Empty when the account has no
+    /// transactions, or none that are still in force.
+    /// </returns>
+    Task<IReadOnlyList<decimal>> GetAmountsInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the distinct currency codes carried by the transactions on the given account that are
+    /// still in force.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS IS THE GUARD THAT MAKES <see cref="GetAmountsInForceAsync"/> SAFE TO USE. That method
+    /// returns bare amounts, on the reasoning that every transaction on an account shares the
+    /// account's currency. That reasoning holds for anything the current write paths can produce — all
+    /// four transaction validators enforce it — but NOT necessarily for rows written before those
+    /// validators existed. A single legacy row in another currency would otherwise have its raw
+    /// number folded into the account's total, and the balance would be "repaired" to a figure that
+    /// is not a quantity of anything.
+    /// </para>
+    /// <para>
+    /// It is a separate call rather than a currency attached to each amount because the caller does
+    /// not want a per-row currency — it wants to know whether the assumption holds at all, before it
+    /// starts adding. One row disagreeing is enough to refuse, and refusing is the only correct
+    /// answer: silently skipping the odd row would produce a total that is wrong in a different and
+    /// less visible way.
+    /// </para>
+    /// </remarks>
+    /// <param name="accountId">The account being inspected.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// The distinct currency codes, compared ordinally. Empty when the account has no transactions
+    /// still in force.
+    /// </returns>
+    Task<IReadOnlyCollection<string>> GetDistinctCurrenciesInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
 }

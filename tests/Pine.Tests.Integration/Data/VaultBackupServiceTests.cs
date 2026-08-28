@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -75,7 +75,11 @@ public class VaultBackupServiceTests : IDisposable
 
         // Assert
         backup.Reason.Should().Be(VaultBackupReason.PreMigration);
-        backup.SchemaVersionBefore.Should().Be("20260827141109_AddTransactionImportKey");
+        // Deliberate tripwire: this is the HEAD migration id, spelled out so that adding a migration
+        // without deciding what the backup record should say turns this test red instead of letting
+        // the recorded schema version drift silently away from the schema that was backed up.
+        // Retargeted in iteration 6 (TD-02) from 20260827141109_AddTransactionImportKey.
+        backup.SchemaVersionBefore.Should().Be("20260828005910_AddTransactionVoidAndAccountOpeningBalance");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

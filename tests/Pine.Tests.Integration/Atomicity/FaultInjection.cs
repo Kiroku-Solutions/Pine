@@ -225,6 +225,18 @@ internal sealed class FaultInjectingTransactionRepository : ITransactionReposito
         => _inner.GetExistingImportKeysAsync(accountId, candidateKeys, cancellationToken);
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<decimal>> GetAmountsInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+        => _inner.GetAmountsInForceAsync(accountId, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyCollection<string>> GetDistinctCurrenciesInForceAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+        => _inner.GetDistinctCurrenciesInForceAsync(accountId, cancellationToken);
+
+    /// <inheritdoc />
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
         await _inner.SaveAsync(transaction, cancellationToken);

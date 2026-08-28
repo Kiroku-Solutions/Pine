@@ -4,54 +4,95 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:views="using:Pine.Ui.Avalonia.Views"
+             xmlns:core="using:Pine.Core.Transactions"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.TransactionsView"
              x:DataType="vm:TransactionsViewModel">
 
-    <Grid>
+    <UserControl.Styles>
+        <!-- A voided transaction stays in the list. It is dimmed and struck through rather than
+             hidden, because the record of a correction is the reason for voiding instead of
+             deleting: a row that disappears cannot be audited. -->
+        <Style Selector="Border.voided TextBlock">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+        <Style Selector="Border.voided TextBlock.tx-primary">
+            <Setter Property="TextDecorations" Value="Strikethrough" />
+        </Style>
+        <Style Selector="Border.voided Border.tx-avatar">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid x:Name="Root">
         <!-- Main Content Area -->
         <Grid RowDefinitions="Auto, *" Margin="40">
-            
+
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="Transactions" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <TextBlock Text="Review all your income and expenses." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
-                
+
                 <Button Grid.Column="1" Content="+ Add Transaction" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
             </Grid>
 
             <!-- Transactions List -->
-            <Border Grid.Row="1" Padding="20" CornerRadius="12" 
+            <Border Grid.Row="1" Padding="20" CornerRadius="12"
                     Background="{DynamicResource PineSurface}"
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1"
                     BoxShadow="0 4 16 0 #18000000">
-                
+
                 <ScrollViewer>
                     <StackPanel>
                         <ItemsControl ItemsSource="{Binding Transactions}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Classes="card" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
-                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto">
-                                            
-                                            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
+                                <DataTemplate DataType="core:Transaction">
+                                    <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
+                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto">
+
+                                            <Border Grid.Column="0" Classes="tx-avatar" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
                                                 <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
                                             </Border>
-                                            
+
                                             <!-- Details -->
                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Classes="tx-primary" Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" />
+
+                                                    <!-- The badge carries the reason in its tooltip: the "why" is the
+                                                         thing a void is for, and hiding it behind another screen would
+                                                         make the audit trail unreadable in practice. -->
+                                                    <Border IsVisible="{Binding IsVoided}"
+                                                            Background="{DynamicResource PineDangerContainer}"
+                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                                            ToolTip.Tip="{Binding VoidReason}">
+                                                        <TextBlock Text="VOIDED" FontSize="10" FontWeight="Bold" Opacity="1"
+                                                                   Foreground="{DynamicResource PineDanger}" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
                                             </StackPanel>
-                                            
+
                                             <!-- Notes -->
                                             <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
-                                            
+
                                             <!-- Amount -->
-                                            <TextBlock Grid.Column="3" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
+                                            <TextBlock Grid.Column="3" Classes="tx-primary" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
+
+                                            <!-- Void action. Bound to the page view model through the named root,
+                                                 because the row's own DataContext is the Transaction. Hidden once the
+                                                 transaction is void: there is no second void. -->
+                                            <Button Grid.Column="4" Classes="pine-outline"
+                                                    Content="Void"
+                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding !IsVoided}"
+                                                    AutomationProperties.Name="Void this transaction"
+                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginVoidCommand}"
+                                                    CommandParameter="{Binding}" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -59,15 +100,15 @@
                         </ItemsControl>
 
                         <!-- Infinite Scroll / Load More Placeholder -->
-                        <Button Content="Load More" Command="{Binding LoadNextPageCommand}" 
-                                IsVisible="{Binding HasMorePages}" 
+                        <Button Content="Load More" Command="{Binding LoadNextPageCommand}"
+                                IsVisible="{Binding HasMorePages}"
                                 HorizontalAlignment="Center" Margin="0,20,0,10" Classes="pine-nav" />
                         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Center" Margin="0,10,0,10" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
         </Grid>
-        
+
         <!-- Dialog Overlay -->
         <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsAddTransactionDialogVisible}">
             <ContentControl Content="{Binding AddTransactionVm}">
@@ -77,6 +118,46 @@
                     </DataTemplate>
                 </ContentControl.DataTemplates>
             </ContentControl>
+        </Border>
+
+        <!-- Void confirmation -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsVoidDialogVisible}">
+            <Border Width="440" Padding="28" CornerRadius="14"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 32 0 #30000000">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="Void this transaction?" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding VoidTarget.Payee}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineText}" />
+                        <TextBlock Text="{Binding VoidTarget.TotalAmount}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="The transaction is kept and marked as void, and its effect on the account balance is undone. Voiding one leg of a transfer voids the other leg too." />
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Reason" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineText}" />
+                        <TextBox Text="{Binding VoidReason}" MaxLength="256"
+                                 PlaceholderText="e.g. Entered twice by mistake"
+                                 AutomationProperties.Name="Reason for voiding"
+                                 IsEnabled="{Binding !IsVoiding}" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding VoidError}" IsVisible="{Binding VoidError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineError}" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                        <Button Content="Cancel" Classes="pine-outline" Padding="16,9"
+                                Command="{Binding CancelVoidCommand}" IsEnabled="{Binding !IsVoiding}" />
+                        <Button Content="Void transaction" Classes="pine-danger" Padding="16,9"
+                                Command="{Binding ConfirmVoidCommand}" IsEnabled="{Binding !IsVoiding}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </UserControl>

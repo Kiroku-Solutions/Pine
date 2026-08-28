@@ -53,6 +53,45 @@ public sealed class Transaction : AggregateRoot
     /// </remarks>
     public string? ImportKey { get; private set; }
 
+    /// <summary>
+    /// When this transaction was voided, or <see langword="null"/> while it is still in force.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY A VOID FLAG AND NOT A DELETE (TD-02). A ledger that can silently lose a row cannot be
+    /// audited. Deleting the transaction would remove the only evidence that the money movement was
+    /// ever recorded, and with it the ability to answer "why did this balance change in March?".
+    /// Voiding keeps the row, keeps its <see cref="ImportKey"/>, keeps its splits, and records
+    /// WHEN and WHY it stopped counting.
+    /// </para>
+    /// <para>
+    /// WHY THERE IS NO SEPARATE REVERSAL ROW. A contra-entry would be the other classic shape, and it
+    /// is the right one for a system that has already published a period. Pine has no period close, no
+    /// posting concept and no statement it has committed to; a contra-entry here would double every
+    /// corrected row in the list and in every sum, buying no property this flag does not already give.
+    /// The balance effect is undone by the void handler in the same database transaction as the flag,
+    /// so the two can never disagree.
+    /// </para>
+    /// <para>
+    /// WHY THE IMPORT KEY SURVIVES A VOID. The key answers "was this external row already imported?",
+    /// and it was. Clearing it on void would make the next import of the same statement re-create the
+    /// row the user just voided, silently undoing their correction -- the exact class of defect TD-03
+    /// closed.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? VoidedAt { get; private set; }
+
+    /// <summary>
+    /// Why this transaction was voided, or <see langword="null"/> while it is still in force.
+    /// </summary>
+    public string? VoidReason { get; private set; }
+
+    /// <summary>
+    /// Whether this transaction has been voided and therefore no longer contributes to its account's
+    /// balance. Not mapped: it is derived from <see cref="VoidedAt"/>, which is the stored truth.
+    /// </summary>
+    public bool IsVoided => VoidedAt.HasValue;
+
     private readonly List<TransactionSplit> _splits = new();
     public IReadOnlyCollection<TransactionSplit> Splits => _splits.AsReadOnly();
 
@@ -206,6 +245,56 @@ public sealed class Transaction : AggregateRoot
 
         _lineItems.Clear();
         _lineItems.AddRange(staged);
+    }
+
+    /// <summary>
+    /// The maximum length of <see cref="VoidReason"/>, matching the persisted column width.
+    /// </summary>
+    public const int MaxVoidReasonLength = 256;
+
+    /// <summary>
+    /// Marks this transaction as void, recording when and why.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This method changes the transaction ONLY. Undoing the amount's effect on the account balance is
+    /// the caller's job, and it is deliberately not done here: <see cref="Transaction"/> and
+    /// <c>Account</c> are separate aggregate roots, and an aggregate that reached across that boundary
+    /// would be doing the unit of work's job with none of its guarantees. The pairing is enforced one
+    /// layer up, inside the single database transaction the command pipeline opens.
+    /// </para>
+    /// <para>
+    /// Voiding is not idempotent on purpose. A second call means the caller believed the transaction
+    /// was still in force, and silently accepting it would let a double-void adjust the balance twice
+    /// -- the same class of defect as a double-posted transaction. Failing loudly makes the caller
+    /// check first, which is what the command validator does.
+    /// </para>
+    /// </remarks>
+    /// <param name="reason">Why the transaction is being voided. Required, and trimmed.</param>
+    /// <param name="timeProvider">Clock used to stamp <see cref="VoidedAt"/>.</param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="reason"/> is null, empty, whitespace, or longer than
+    /// <see cref="MaxVoidReasonLength"/> characters once trimmed.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">The transaction is already void.</exception>
+    public void Void(string reason, TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        if (IsVoided)
+            throw new InvalidOperationException("This transaction has already been voided.");
+
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("A void reason is required.", nameof(reason));
+
+        var trimmed = reason.Trim();
+        if (trimmed.Length > MaxVoidReasonLength)
+            throw new ArgumentException($"Void reason cannot exceed {MaxVoidReasonLength} characters.", nameof(reason));
+
+        VoidedAt = timeProvider.GetUtcNow();
+        VoidReason = trimmed;
+
+        AddDomainEvent(new TransactionVoidedEvent(Id, AccountId, TotalAmount, trimmed, VoidedAt.Value));
     }
 
     /// <summary>

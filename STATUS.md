@@ -2,6 +2,27 @@
 
 This document tracks the real-time implementation progress based on the master plan (docs/56-IMPLEMENTATION-PLAN.md).
 
+## Production readiness — read this first
+
+The phase percentages below track **feature delivery against `docs/56-IMPLEMENTATION-PLAN.md`**. They
+do not track whether the software is safe to put real money in, and the two have diverged: the
+production-readiness audit (`docs/60-Production-Readiness-Audit.md`) rated this codebase
+**2.3 / 5 — Not Production Ready** and opened 71 numbered debts. A remediation cycle is running
+against it, and **that** is the number to read before shipping anything.
+
+| | |
+|---|---|
+| Classification | **Not Production Ready** (audit §11) |
+| Remediation | Audit **Phase 0, items 1–8 of 11** closed or partially closed (iterations 1–6) |
+| Remaining before Phase 0 closes | **9** password entropy + idle auto-lock (TD-11) · **10** money-path coverage for TD-18 / TD-19 · **11** remove the seeded fictional account and the dead `CloudSync` setting |
+| Test suite | 28 → **240** (141 unit + 99 integration) |
+| Last remediation | 2026-08-28 — TD-02: void a transaction, and recompute a balance from its ledger |
+
+Note the numbering collision: the audit's "Phase 0" is a *remediation* phase and has nothing to do
+with the implementation plan's "Phase 0 (Foundations)" below.
+
+---
+
 ## Overall Progress
 
 - **Phase 0 (Foundations):** ✅ 100% Completed
