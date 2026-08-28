@@ -1970,13 +1970,15 @@ later reader can see exactly what was and was not asserted.
 | `Evaluate(null)` does not throw | Harness | ✅ returns a failing result |
 | **The idle lock actually fires** | Harness on a `FakeTimeProvider`, no `Task.Delay` anywhere: unlocked → idle 9 min (still open, 1 min remaining) → `ReportActivity()` → idle 9 min again (still open, so activity really does reset the countdown) → idle 2 min more | ✅ **locked**, `VaultLockReason.IdleTimeout` reported, `Key` null |
 | The key is zeroed, not merely dropped | Harness captured the session's internal `_key` array by reflection before the lock and re-read it after | ✅ all 32 bytes zero |
-| The strength meter actually renders | **NOT CHECKED.** It compiles; it has never been displayed. | 🔴 **unverified** |
+| The strength meter actually renders | **NOT CHECKED.** It compiles; it has never been displayed. `61-Manual-Test-Plan` §9.2, §9.14 and §9.15 cover it. | 🔴 **unverified** |
 
 **The honest reading of that table:** the mechanism has been watched working, but only once, by
 hand, from outside the repository. Nothing in `tests/` will notice if it stops working tomorrow —
 which is the difference between *verified* and *covered*, and the reason TD-11 stays 🟡 rather than
 becoming ✅. The two claims still resting on the compiler alone are the Android/iOS wiring and the
-strength meter's rendering.
+strength meter's rendering. Both, and everything else a harness cannot reach — an existing weak-password
+vault still opening, an accepted password still unlocking after a restart, the lock taking the
+decrypted data with it — are now written up as `61-Manual-Test-Plan` §9.
 
 #### What was built
 

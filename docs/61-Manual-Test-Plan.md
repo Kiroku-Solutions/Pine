@@ -1,12 +1,12 @@
-# 61 · Manual Test Plan — Phase 0 items 1–8
+# 61 · Manual Test Plan — Phase 0 items 1–9
 
 | Field | Value |
 |---|---|
 | Document ID | `PINE-DOC-61-MANUALTEST` |
 | Purpose | Verify by hand what the automated suite cannot prove about the remediation in `60-Production-Readiness-Audit.md` §12. |
-| Covers | Phase 0 items **1–8** → TD-01, TD-02, TD-03, TD-04, TD-05, TD-10, TD-12, TD-13, TD-23 |
-| Automated baseline | 141 unit + 99 integration = **240 passing** |
-| Created | 2026-08-27 · updated 2026-08-28 (item 8) |
+| Covers | Phase 0 items **1–9** → TD-01, TD-02, TD-03, TD-04, TD-05, TD-10, TD-11, TD-12, TD-13, TD-23 |
+| Automated baseline | 141 unit + 99 integration = **240**, currently **239 passing / 1 failing** (TD-74, pre-existing). **§9 has no automated coverage at all** — unlike every other section here, it is the only evidence TD-11 has. |
+| Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 
 > **How to read the markers.**
@@ -332,7 +332,171 @@ path — report it with the exact text.
 
 ---
 
-## 9. What a failure means
+## 9. Password floor and idle auto-lock — item 9, TD-11
+
+**Read this before you start.** Every other section in this plan sits on top of automated coverage
+and asks you to check what a test cannot see. This one does not: **no test in `tests/` covers any of
+TD-11**. The behaviour was verified once, by hand, with a throwaway harness that was never
+committed (audit §12.16). So here almost everything is **[M]**, and a failure below is not
+necessarily a regression — it may be the first time anyone has looked.
+
+Use a **throwaway vault** for §9.1–§9.5. §9.12 needs a vault that already existed before this build;
+if you do not have one, say so and skip it rather than faking it — it is the most important test in
+the section.
+
+**§9.6 costs eleven real minutes of not touching the machine.** There is no setting to shorten the
+timeout (it is fixed at ten minutes and not persisted — see §9.13). Plan for it; do not fake it by
+changing the system clock, because the watchdog reads a monotonic `TimeProvider` and a clock jump
+does not exercise the same path.
+
+### The floor, at vault creation
+
+**9.1 [M] A one-character password is refused.**
+Start a new vault. In the master-password box type `a`. Try to continue.
+*Expected:* the vault is **not** created, and the screen says the password does not meet Pine's
+minimum strength, followed by advice on what to change.
+*This is the audit's literal finding* — "a one-character master password is accepted". If a vault is
+created, item 9 has not been done.
+
+**9.2 [M] The strength meter renders, and it moves as you type.**
+Type slowly into the password box: `p`, `pa`, `pas`, … up to `password`, then keep going with random
+characters until the meter turns positive.
+*Expected:* a bar and a sentence that update on **every keystroke** with no lag, an estimated
+strength that **never goes down when you add a character**, and a clear statement of whether it
+passes.
+*This has never been rendered.* It compiles; nobody has seen it. Screenshot whatever appears, even
+if it looks right.
+
+**9.3 [M] The advice is written for a person.**
+Try each of these and read what comes back: `password` · `P@ssw0rd` · `qwerty123456` ·
+`aaaaaaaaaaaa` · `Password1!` · `Sunshine!2024`. All six must be refused.
+*Expected:* plain sentences — "Use at least 10 characters", "…pick something less guessable", and
+similar. Each refusal should tell you something you can act on.
+*If you see `BelowEntropyFloor`, `LimitedCharacterVariety`, `PasswordWeakness` or any other enum
+name, type name or bit count presented as an error:* that is a real defect. The domain deliberately
+returns only enums so the UI can choose the words; an enum reaching the screen means it did not.
+
+**9.4 [M] Adding punctuation cannot buy a pass.**
+Type `Password1!` (refused), then keep appending: `Password1!!`, `Password1!!!`.
+*Expected:* it stays refused. The estimate may rise slightly but must not cross the floor from
+appended junk alone.
+*If padding a known-bad password gets you in*, the estimator's monotonicity is broken and the floor
+is decorative.
+
+**9.5 [M] The floor is not a wall — and an accepted password really works.**
+Create the vault with `gravel-thicket-cinder-9271`.
+*Expected:* accepted. Then **close the app completely, reopen it, and unlock with the same
+password.** It must open.
+*This second half is the point:* it catches a password being trimmed, case-folded, re-encoded or
+otherwise mangled between the setup screen and the KDF. A vault you can create but not reopen is
+total data loss, and it would look like success at creation time.
+
+**9.6 [M] A mistyped password is refused, not accepted.**
+Type a strong password in the first box and a different one in the confirm box.
+*Expected:* refusal, naming the mismatch, and the vault is not created.
+*Why this matters more than it looks:* Pine has no recovery phrase. A typo here is not an
+inconvenience, it is a vault nobody can ever open again.
+
+### The idle lock
+
+**9.7 [M] It fires. — eleven minutes, hands off.**
+Unlock a vault, land on the dashboard, then **leave the machine completely alone for eleven
+minutes.** Do not move the mouse; a pointer move counts as activity. Do not let the screensaver or
+sleep kick in, or you are testing the OS, not Pine.
+*Expected:* Pine returns to the vault picker on its own, with a message saying it locked the vault
+after ten minutes of inactivity.
+*If nothing happens after ~12 minutes:* the watchdog is not armed on this head. Record it — the
+whole item hangs on this.
+*If it locks much sooner than ten minutes:* activity reporting is not reaching the session.
+
+**9.8 [M] Working continuously does not get you locked out.**
+Unlock, then use the app **continuously for fifteen minutes** — click between screens, type into a
+form, scroll a list. Do not idle for more than a minute at a stretch.
+*Expected:* no lock, ever.
+*If it locks while you are actively working*, that is the worst possible outcome of this feature and
+it is worse than not shipping it. Stop and report it with what you were doing at the moment it fired.
+
+**9.9 [M] The lock explains itself.**
+Read the message on the vault picker after §9.7 fires.
+*Expected:* a sentence that tells you Pine locked the vault because you were away, and how long it
+waited. It must not look like a crash, a logout, or an error.
+*If you are simply dumped on the picker with no explanation:* users will read that as the app
+crashing and losing their work. Report it.
+
+**9.10 [M] Nothing decrypted survives the lock.**
+Before the lock, navigate to **Transactions** so real rows are on screen. Let §9.7 fire. After it
+does, look at the screen carefully, then unlock again.
+*Expected:* no transaction rows, balances or account names remain visible anywhere behind or during
+the picker, not even for a frame. After unlocking, the app starts you fresh rather than restoring the
+screen you had.
+*The key is gone at that point*, so anything still on screen is data that outlived the key that
+protected it.
+
+**9.11 [M] The manual lock button works.**
+Unlock, find **Lock Vault** in the sidebar, press it.
+*Expected:* immediate return to the vault picker. The message must read as *your* action, not as an
+idle timeout — the two reasons are distinguished in code and the wording must reflect that.
+
+**9.12 [M] An existing vault with a weak password still opens. — do not skip this.**
+Take a vault created **before this build**, whose password would not pass §9.1–§9.3 today (a short
+one, or `Password1!`). Unlock it.
+*Expected:* **it opens normally.** The floor applies at **creation only**.
+*If an existing vault is refused at the unlock screen, stop everything and report it immediately.*
+That is not a strict security policy, it is every existing user permanently locked out of their own
+data by an upgrade, with no recovery phrase to fall back on. This is the single highest-consequence
+failure mode in the whole item.
+
+**9.13 [M] The password never reaches disk.**
+After doing §9.1–§9.6, open `%LOCALAPPDATA%\Pine\crash.log` if it exists, and look at any log or
+trace file in the vault directory.
+*Expected:* none of the passwords you typed appear anywhere, in any form — not the accepted one, not
+the rejected ones.
+
+### Presentation
+
+**9.14 [M] The meter survives a theme change.**
+With the password box showing a refusal, switch the app between light and dark (and any accent).
+*Expected:* the bar and its text stay legible in both. Pine themes at runtime, so a hardcoded colour
+shows up here as text that vanishes into its background.
+
+**9.15 [M] Pass and fail are not signalled by colour alone.**
+Squint, or take a screenshot and desaturate it.
+*Expected:* you can still tell a passing password from a failing one from the **words**, not just
+from red versus green (`40-Accessibility`).
+
+### Known gaps — confirm, do not report
+
+**9.16 [G] The timeout is ten minutes and cannot be changed.**
+Look in **Settings** for an auto-lock or timeout control.
+*Expected:* **there is none.** `SetIdleTimeout` exists in code but nothing writes the choice through
+`SaveSettingCommand`, so ten minutes is the only value any user will ever have. Documented in audit
+§12.16 INCOMPLETE item 4. Do not file it.
+
+**9.17 [G] Minimising, suspending or locking the OS does not lock the vault.**
+Unlock, then minimise Pine, or lock Windows itself, and come back inside ten minutes.
+*Expected:* still unlocked. Only elapsed idle time locks it; `VaultLockReason.ApplicationSuspended`
+exists but nothing raises it. Audit §12.16 INCOMPLETE item 3. Do not file it.
+
+**9.18 [G] Nothing re-authenticates before a sensitive action.**
+An unlocked session will export a backup or void a transaction without asking for the password
+again. That is the third noun in TD-11's title and it is deliberately not built — it is worth little
+before the envelope key (TD-06). Do not file it.
+
+**9.19 [G] A long passphrase scores higher than it deserves.**
+Try `correct horse battery staple` at the setup screen.
+*Expected:* accepted, with a very high strength reading. Its true strength is roughly 44 bits, well
+under the 60-bit floor — there is no word list, so the estimator reads it as random letters. Every
+limitation of the estimator errs *generous*, which is why the floor carries margin. This is **TD-73**;
+confirm the behaviour and do not file it.
+
+**9.20 [G] None of §9 can be tested on macOS, Web, Android or iOS.**
+Web, Android and iOS construct no root view at all, so they show nothing to lock (TD-08, sharpened in
+audit §12.16). macOS builds and is wired identically to Windows but has never been run by hand.
+Android and iOS have never been compiled. Test on Windows and record that as the scope.
+
+---
+
+## 10. What a failure means
 
 | Where it fails | Severity |
 |---|---|
@@ -343,11 +507,17 @@ path — report it with the exact text.
 | §7.3 | Cosmetic to structural. Describe precisely what looks wrong. |
 | §8.1, §8.2, §8.5 | A correction that half-happened. **Stop.** This is the defect the feature exists to prevent. |
 | §8.6 | A repair tool that made a balance worse. **Stop everything.** |
+| §9.12 | **Stop everything.** An existing user is locked out of their own vault by an upgrade, and there is no recovery phrase. The worst outcome in this document. |
+| §9.5 (second half) | **Stop everything.** A vault that can be created but not reopened is total data loss that looks like success. |
+| §9.1, §9.4 | The floor is decorative. Item 9's stated purpose is unmet — reopen TD-11. |
+| §9.8 | Locking an actively-working user. Worse than not shipping the feature; disable the watchdog until fixed. |
+| §9.7, §9.10, §9.11 | The lock does not fire, or does not take the data with it. Reopen TD-11. |
+| §9.2, §9.3, §9.9, §9.14, §9.15 | Presentation defects on a screen nobody has ever rendered. Report with a screenshot. |
 | any **[G]** behaving *better* than documented | Good news — verify it, then correct the audit. |
 
 ---
 
-## 10. Not covered here
+## 11. Not covered here
 
 - **Android and iOS.** Not compilable locally; workloads absent. Nothing about those heads has ever
   been compiled, let alone run.
@@ -358,5 +528,12 @@ path — report it with the exact text.
 - **Editing a transaction.** Still does not exist (TD-68). Voiding does — see §8 — so a bad record
   is no longer permanent, but correcting one means voiding it and entering it again.
 - **Undoing a void** (TD-69). Once voided, a transaction stays voided.
+- **Any automated proof of item 9.** §9 is it. The behaviour passed a 25-check harness once
+  (audit §12.16) but that harness was never committed, so nothing re-runs it and nothing will
+  catch a regression in the entropy estimator, the watchdog or the key zeroing. Porting it into
+  `tests/Pine.Tests.Unit` is the first item of audit §12.17.
+- **A configurable auto-lock timeout** (§9.16), **lock on suspend or minimise** (§9.17), and
+  **re-authentication before sensitive actions** (§9.18). None exist; all three are recorded in
+  audit §12.16.
 - **Accounts created before 2026-08-28.** Their first balance check anchors rather than checks, and
   says so on screen (TD-70). §8.7 covers exactly that.
