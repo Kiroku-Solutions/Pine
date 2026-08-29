@@ -38,7 +38,17 @@ public partial class CreateAccountViewModel : ObservableObject
     public partial string ErrorMessage { get; set; } = string.Empty;
 
     public ObservableCollection<AccountType> AccountTypes { get; } = new(Enum.GetValues<AccountType>());
-    public ObservableCollection<string> Currencies { get; } = new(new[] { "USD", "EUR", "GBP", "JPY", "BTC" });
+    /// <summary>
+    /// The currencies offered when creating an account.
+    /// </summary>
+    /// <remarks>
+    /// "BTC" was in this list and has been removed. It is not an ISO 4217 code, and since TD-18 gave
+    /// <c>CurrencyCode</c> membership validation, picking it would have thrown out of the handler —
+    /// a shipped UI affordance that cannot succeed. Pine has no crypto-asset model (no divisibility,
+    /// no rate source), so offering one was always a promise the domain could not keep. Widening
+    /// this to the full ISO table with a searchable picker is TD-76.
+    /// </remarks>
+    public ObservableCollection<string> Currencies { get; } = new(new[] { "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD" });
 
     public CreateAccountViewModel(IMediator mediator, Action onComplete)
     {

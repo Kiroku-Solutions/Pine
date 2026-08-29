@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -181,6 +182,134 @@ internal sealed class AtomicityHost : IAsyncDisposable
         => QueryAsync(context => context.Transactions.AsNoTracking().CountAsync(t => t.AccountId == accountId));
 
     /// <summary>
+    /// Counts the rows of a table over a RAW SQLCipher connection, bypassing EF Core entirely.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="QueryAsync{T}"/> already avoids the change tracker, but it still trusts EF's
+    /// model, its query translation and its <see cref="Guid"/> encoding. For the strongest form of
+    /// "nothing was written", the audit asks for a count that no part of EF can explain away, so
+    /// this issues <c>SELECT COUNT(*)</c> straight at the encrypted file — the same mechanism
+    /// <c>TransactionOwnedCollectionRoundTripTests</c> uses.
+    /// </remarks>
+    /// <param name="table">The table to count.</param>
+    /// <returns>The number of rows currently in the table.</returns>
+    public int CountRowsRaw(string table)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"SELECT COUNT(*) FROM ""{table}"";";
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Reads the <c>ImportKey</c> column of every transaction row over a RAW SQLCipher connection,
+    /// in insertion order, with a database NULL coming back as a null element.
+    /// </summary>
+    /// <remarks>
+    /// Import de-duplication turns entirely on this one column, so an assertion about it must not be
+    /// something EF could explain away. A key read back through <see cref="QueryAsync{T}"/> still
+    /// travels through EF's model and its NULL handling; read here it is the bytes in the encrypted
+    /// file. The distinction matters most for the legacy case, where "the row has no key" and "EF
+    /// materialised an empty string" are different facts with the same shape.
+    /// </remarks>
+    /// <returns>One entry per row of <c>Transactions</c>, null where the column is NULL.</returns>
+    public IReadOnlyList<string?> ReadImportKeysRaw()
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = @"SELECT ""ImportKey"" FROM ""Transactions"" ORDER BY rowid;";
+
+        var keys = new List<string?>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            keys.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
+        }
+
+        return keys;
+    }
+
+    /// <summary>
+    /// Reads one transaction's void columns over a RAW SQLCipher connection, exactly as they sit in
+    /// the encrypted file.
+    /// </summary>
+    /// <remarks>
+    /// A void is recorded by two nullable columns, and "the column is NULL" versus "EF materialised
+    /// the default" are different facts with the same shape once EF has been through them — the same
+    /// reasoning that put <see cref="ReadImportKeysRaw"/> here. The values come back as the raw TEXT
+    /// SQLite holds rather than as a <see cref="DateTimeOffset"/>, because the only question a test
+    /// asks of them is whether something was written.
+    /// </remarks>
+    /// <param name="transactionId">The transaction to inspect.</param>
+    /// <returns>The raw <c>VoidedAt</c> and <c>VoidReason</c> values, null where the column is NULL.</returns>
+    public (string? VoidedAt, string? VoidReason) ReadVoidStateRaw(Guid transactionId)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            @"SELECT ""VoidedAt"", ""VoidReason"" FROM ""Transactions"" WHERE ""Id"" = $id COLLATE NOCASE;";
+        command.Parameters.AddWithValue("$id", transactionId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            throw new InvalidOperationException($"No transaction row with id {transactionId}.");
+        }
+
+        return (
+            reader.IsDBNull(0) ? null : reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
+    /// <summary>
+    /// Reads one account's stored balance and opening balance over a RAW SQLCipher connection, as
+    /// the TEXT SQLite actually holds (TD-31).
+    /// </summary>
+    /// <remarks>
+    /// <c>OpeningBalanceAmount</c> is nullable and its NULL is load-bearing: it is what tells a
+    /// recalculation that the account predates opening-balance tracking. Read back through EF a
+    /// missing figure and a zero one are both a <c>decimal?</c>, so the distinction is only safe to
+    /// assert here.
+    /// </remarks>
+    /// <param name="accountId">The account to inspect.</param>
+    /// <returns>The raw <c>Balance_Amount</c> and <c>OpeningBalanceAmount</c> text.</returns>
+    public (string Balance, string? OpeningBalanceAmount) ReadAccountAmountsRaw(Guid accountId)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            @"SELECT ""Balance_Amount"", ""OpeningBalanceAmount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
+        command.Parameters.AddWithValue("$id", accountId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            throw new InvalidOperationException($"No account row with id {accountId}.");
+        }
+
+        return (reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
+    /// <summary>
+    /// Runs a statement straight at the encrypted file, with EF removed from the picture.
+    /// </summary>
+    /// <remarks>
+    /// This exists to PLANT CORRUPTION. A balance that has drifted from its own ledger cannot be
+    /// produced through any command — that is the whole point of the transactional boundary — so the
+    /// only honest way to test the repair is to write the wrong number behind the application's back,
+    /// which is also how such a vault comes about in the field (a partial write before TD-01, or a
+    /// hand-edited database).
+    /// </remarks>
+    /// <param name="sql">The statement to execute.</param>
+    public void ExecuteSqlRaw(string sql)
+    {
+        using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
     /// Seeds an account through the real <c>CreateAccountCommand</c> pipeline, then clears the
     /// unit-of-work log so a test only sees the calls made by the request it is exercising.
     /// </summary>
@@ -238,17 +367,47 @@ internal sealed class TempVaultSession : IVaultSession
 
     public bool IsUnlocked => Key is not null && DbPath is not null;
 
+    /// <inheritdoc />
+    /// <remarks>Null while locked, exactly as <c>VaultSession</c> reports it.</remarks>
+    public DateTimeOffset? LastActivityUtc => IsUnlocked ? _lastActivityUtc : null;
+
+    /// <inheritdoc />
+    public event EventHandler<VaultLockedEventArgs>? Locked;
+
     public void Unlock(string dbPath, byte[] key)
     {
         DbPath = dbPath;
         Key = key;
+        _lastActivityUtc = TimeProvider.System.GetUtcNow();
     }
 
-    public void Lock()
+    /// <inheritdoc />
+    public void ReportActivity()
     {
+        if (!IsUnlocked)
+        {
+            return;
+        }
+
+        _lastActivityUtc = TimeProvider.System.GetUtcNow();
+    }
+
+    public void Lock() => Lock(VaultLockReason.UserRequested);
+
+    /// <inheritdoc />
+    public void Lock(VaultLockReason reason)
+    {
+        var wasUnlocked = IsUnlocked;
         Key = null;
         DbPath = null;
+
+        if (wasUnlocked)
+        {
+            Locked?.Invoke(this, new VaultLockedEventArgs(reason, TimeProvider.System.GetUtcNow()));
+        }
     }
+
+    private DateTimeOffset _lastActivityUtc = TimeProvider.System.GetUtcNow();
 }
 
 /// <summary>

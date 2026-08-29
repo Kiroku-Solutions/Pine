@@ -24,9 +24,9 @@ public partial class ImportWizardViewModel : ObservableObject
     private readonly TimeProvider _timeProvider;
 
     private int _stepIndex;
-    public int StepIndex 
-    { 
-        get => _stepIndex; 
+    public int StepIndex
+    {
+        get => _stepIndex;
         set
         {
             if (SetProperty(ref _stepIndex, value))
@@ -34,6 +34,7 @@ public partial class ImportWizardViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsStep0));
                 OnPropertyChanged(nameof(IsStep1));
                 OnPropertyChanged(nameof(IsStep2));
+                OnPropertyChanged(nameof(IsStep3));
             }
         }
     }
@@ -41,6 +42,7 @@ public partial class ImportWizardViewModel : ObservableObject
     public bool IsStep0 => StepIndex == 0;
     public bool IsStep1 => StepIndex == 1;
     public bool IsStep2 => StepIndex == 2;
+    public bool IsStep3 => StepIndex == 3;
 
     // Step 0: Select File & Account
     [ObservableProperty]
@@ -79,6 +81,52 @@ public partial class ImportWizardViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = "";
+
+    // Step 3: Review.
+    //
+    // WHY THIS STEP EXISTS: the import handler decides, per row, whether to save it, and a skipped row is
+    // a row the user's file contained but their vault will not. Before TD-03 that decision was made and
+    // then thrown away -- the wizard said "Import successful!" and closed itself 1.5 seconds later,
+    // whichever way the decisions had gone. A rule the user cannot see is a rule they cannot trust, so
+    // every parsed row now surfaces here with the handler's own explanation attached.
+
+    /// <summary>Gets every parsed row of the last import, in file order, with what happened to it.</summary>
+    public ObservableCollection<ImportReviewRowViewModel> ReviewRows { get; } = new();
+
+    /// <summary>Gets or sets a one-line, count-accurate statement of what the import did.</summary>
+    [ObservableProperty]
+    public partial string ReviewHeadline { get; set; } = "";
+
+    [ObservableProperty]
+    public partial int TotalRowCount { get; set; }
+
+    [ObservableProperty]
+    public partial int ImportedCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of rows that were saved but could NOT be duplicate-checked, because their
+    /// importer supplied no import key. Broken out of <see cref="ImportedCount"/> deliberately: folding
+    /// them into one "imported" total would present an unverified claim as a verified one.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUncheckedRows))]
+    public partial int UncheckedCount { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSkippedRows))]
+    public partial int SkippedCount { get; set; }
+
+    /// <summary>Gets or sets how many rows the target account already held from an earlier import.</summary>
+    [ObservableProperty]
+    public partial int SkippedAlreadyInAccountCount { get; set; }
+
+    /// <summary>Gets or sets how many rows repeated an earlier row of the same file.</summary>
+    [ObservableProperty]
+    public partial int SkippedDuplicateInFileCount { get; set; }
+
+    public bool HasSkippedRows => SkippedCount > 0;
+
+    public bool HasUncheckedRows => UncheckedCount > 0;
 
     public ImportWizardViewModel(IMediator mediator, TimeProvider timeProvider, Action onClose)
     {
@@ -206,7 +254,8 @@ public partial class ImportWizardViewModel : ObservableObject
                     
                     if (!string.IsNullOrEmpty(categoryName))
                     {
-                        tx.AddSplit(tx.TotalAmount, categoryName, "AI");
+                        // Set (not append) the category: a repeated preview must not add a second split.
+                        tx.ReplaceSplits(new[] { new SplitDefinition(tx.TotalAmount, categoryName, "AI") });
                     }
                 }
 
@@ -249,11 +298,25 @@ public partial class ImportWizardViewModel : ObservableObject
             using var stream = File.OpenRead(SelectedFilePath);
 
             var command = new ImportTransactionsCommand(SelectedAccount.Id, stream, importer, profile);
-            await _mediator.Send(command);
+            var result = await _mediator.Send(command);
 
-            StatusMessage = "Import successful!";
-            await Task.Delay(1500); // Give user time to see success message
-            _onClose?.Invoke();
+            ApplyImportResult(result, SelectedAccount.Name);
+
+            // Auto-close ONLY when the review step would have nothing to add: every parsed row was saved,
+            // and every one of them was actually checked against the account first. Anything else -- a
+            // skipped row, or a row saved without a duplicate check -- is a claim about the user's money
+            // that they have to be able to read, so the wizard stops on the review step and waits for them.
+            if (!HasSkippedRows && !HasUncheckedRows)
+            {
+                StatusMessage = ReviewHeadline;
+                await Task.Delay(1500); // Give user time to see success message
+                _onClose?.Invoke();
+                return;
+            }
+
+            // The review pane states the outcome in full; a second copy in the header would only compete.
+            StatusMessage = "";
+            StepIndex = 3;
         }
         catch (Exception ex)
         {
@@ -265,9 +328,110 @@ public partial class ImportWizardViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Projects the handler's per-row decisions onto the review step.
+    /// </summary>
+    /// <param name="result">The outcome returned by <see cref="ImportTransactionsCommand"/>.</param>
+    /// <param name="accountName">Name of the account imported into, used in the headline.</param>
+    /// <remarks>
+    /// This counts and orders; it does not judge. Every explanatory sentence shown to the user is the
+    /// <see cref="ImportReviewRow.Reason"/> the handler already wrote, carried through untouched. Composing
+    /// a second set of sentences here would put the deduplication rules in two places, and the copy in the
+    /// UI would be the one that silently drifts out of step with the rule it describes.
+    /// </remarks>
+    private void ApplyImportResult(ImportTransactionsResult result, string accountName)
+    {
+        ReviewRows.Clear();
+
+        var uncheckedRows = 0;
+        var alreadyInAccount = 0;
+        var duplicateInFile = 0;
+
+        foreach (var row in result.Rows)
+        {
+            ReviewRows.Add(new ImportReviewRowViewModel(row));
+
+            switch (row.Disposition)
+            {
+                case ImportRowDisposition.ImportedWithoutKeyCheck:
+                    uncheckedRows++;
+                    break;
+                case ImportRowDisposition.SkippedAlreadyInAccount:
+                    alreadyInAccount++;
+                    break;
+                case ImportRowDisposition.SkippedDuplicateInFile:
+                    duplicateInFile++;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        TotalRowCount = result.Rows.Count;
+        ImportedCount = result.Imported.Count;
+        SkippedCount = result.Skipped.Count;
+        UncheckedCount = uncheckedRows;
+        SkippedAlreadyInAccountCount = alreadyInAccount;
+        SkippedDuplicateInFileCount = duplicateInFile;
+
+        var rowWord = TotalRowCount == 1 ? "row" : "rows";
+        ReviewHeadline = $"Imported {ImportedCount} of {TotalRowCount} {rowWord} into '{accountName}'.";
+    }
+
     [RelayCommand]
     private void Cancel()
     {
         _onClose?.Invoke();
     }
+
+    /// <summary>
+    /// Closes the wizard from the review step. Distinct from <see cref="CancelCommand"/> only in what it
+    /// means: by this point the import has already been written, so there is nothing left to cancel.
+    /// </summary>
+    [RelayCommand]
+    private void Finish()
+    {
+        _onClose?.Invoke();
+    }
+}
+
+/// <summary>
+/// One row of the import review list: the parsed transaction, and flags describing its outcome.
+/// </summary>
+/// <remarks>
+/// Deliberately exposes booleans and nothing else derived. The outcome's explanation is
+/// <see cref="Reason"/>, written by the import handler and passed through verbatim; the flags exist only so
+/// the view can tint a row and pick a short status chip, which needs the shape of the decision rather than
+/// a restatement of it.
+/// </remarks>
+public sealed class ImportReviewRowViewModel
+{
+    private readonly ImportReviewRow _row;
+
+    /// <summary>Initialises the row from one decision returned by the import handler.</summary>
+    /// <param name="row">The parsed row and its disposition. Never null.</param>
+    public ImportReviewRowViewModel(ImportReviewRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        _row = row;
+    }
+
+    /// <summary>Gets the parsed transaction, whether or not it was saved.</summary>
+    public Transaction Transaction => _row.Transaction;
+
+    /// <summary>Gets the handler's user-facing explanation of this row's outcome.</summary>
+    public string Reason => _row.Reason;
+
+    /// <summary>Gets a value indicating whether this row was written to the vault.</summary>
+    public bool WasImported => _row.WasImported;
+
+    /// <summary>Gets a value indicating whether this row was not written to the vault.</summary>
+    public bool WasSkipped => !_row.WasImported;
+
+    /// <summary>Gets a value indicating whether this row was saved without any duplicate check.</summary>
+    public bool WasImportedWithoutKeyCheck =>
+        _row.Disposition == ImportRowDisposition.ImportedWithoutKeyCheck;
+
+    /// <summary>Gets a value indicating whether this row was saved after passing a duplicate check.</summary>
+    public bool WasImportedAndChecked => _row.Disposition == ImportRowDisposition.Imported;
 }

@@ -37,18 +37,35 @@ public sealed class SqliteCategoryRepository : ICategoryRepository
 
     public async Task SaveAsync(Category category, CancellationToken cancellationToken = default)
     {
-        if (!_dbContext.Categories.Local.Contains(category))
+        ArgumentNullException.ThrowIfNull(category);
+
+        // The previous guard was `Local.Contains(category)`, which compares with Entity.Equals and
+        // therefore matches on Id: a detached copy of an already-tracked category made the whole
+        // method a no-op and the update was lost. Identity is checked by reference below instead.
+        var existing = await _dbContext.Categories
+            .FindAsync(new object[] { category.Id }, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
         {
-            var existing = await _dbContext.Categories.FindAsync(new object[] { category.Id }, cancellationToken);
-            if (existing == null)
-            {
-                await _dbContext.Categories.AddAsync(category, cancellationToken);
-            }
-            else
-            {
-                _dbContext.Entry(existing).CurrentValues.SetValues(category);
-            }
+            await _dbContext.Categories.AddAsync(category, cancellationToken).ConfigureAwait(false);
+            return;
         }
+
+        if (ReferenceEquals(existing, category))
+        {
+            // The caller mutated the very instance this context already tracks. Every change is
+            // already staged on the change tracker; copying the entity onto itself does nothing.
+            return;
+        }
+
+        // CurrentValues.SetValues copies scalars and complex properties only; it ignores navigations
+        // entirely, so an owned collection would be dropped silently (TD-13). It is sufficient here
+        // *because* this aggregate has none. If an OwnsMany navigation is ever added to it, this call
+        // must be replaced by an explicit reconciliation of the tracked graph, the way
+        // SqliteTransactionRepository.SaveAsync reconciles Transaction.Splits.
+        // Category is flat: no complex property and no owned navigation.
+        _dbContext.Entry(existing).CurrentValues.SetValues(category);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

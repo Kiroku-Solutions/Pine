@@ -34,7 +34,10 @@ public class ImportAtomicityTests
         var imported = await host.Mediator.Send(new ImportTransactionsCommand(
             account, file, new StubImporter(RowAmounts), NewProfile()));
 
-        imported.Should().HaveCount(RowAmounts.Length);
+        // The command now answers with a per-row report rather than a bare list; this file is about
+        // atomicity, so it asserts only that every row survived. Which disposition each row received
+        // is the subject of Pine.Tests.Integration.Importing.ImportDeduplicationTests.
+        imported.Imported.Should().HaveCount(RowAmounts.Length);
         (await host.CountTransactionsAsync(account)).Should().Be(RowAmounts.Length);
         (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance - 100m);
 
@@ -102,8 +105,9 @@ public class ImportAtomicityTests
     /// </summary>
     /// <remarks>
     /// <c>ImportTransactionsCommand</c> takes its <see cref="IImporter"/> as a request parameter, so
-    /// supplying one here is the command's own extension point rather than a testing back door. The
-    /// amounts are distinct so the handler's date+amount de-duplication keeps every row.
+    /// supplying one here is the command's own extension point rather than a testing back door. It
+    /// assigns no import key, so every row is imported unchecked (TD-03) and de-duplication cannot
+    /// remove a row and quietly weaken the atomicity assertions below.
     /// </remarks>
     private sealed class StubImporter : IImporter
     {

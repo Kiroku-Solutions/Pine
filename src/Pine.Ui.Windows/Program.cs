@@ -14,6 +14,7 @@ using Pine.Infrastructure.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Categorisation;
 using Pine.Application.Common;
+using Pine.Application.Security;
 using Pine.Application.Services;
 using Microsoft.Extensions.Hosting;
 
@@ -108,6 +109,11 @@ sealed class Program
 
         // Security Session
         services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
+
+        // Idle auto-lock watchdog (TD-11). Registered here so IVaultSession is already known to
+        // the container; actually STARTING the watchdog happens below, where it is added as an
+        // IHostedService and started by the hosted-service loop in Main (~line 53).
+        services.AddPineVaultAutoLock();
 
         // Vault Manager
         services.AddSingleton<Pine.Application.Security.VaultManager>();

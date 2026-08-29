@@ -87,8 +87,15 @@ public partial class UnlockViewModel : ObservableObject
 
                 var key = _keyDerivationService.DeriveKey(MasterPassword, header);
 
-                // Unlock session
+                // Unlock session. Unlock() COPIES the key into the session's own buffer, and it is
+                // that copy which Lock() zeroes -- so this local is a second, independent copy of
+                // the vault key that nothing else will ever clear. Left alone it would outlive
+                // every lock, idle timeout and vault switch for the rest of the process, which is
+                // precisely the exposure TD-11 exists to reduce. Cleared the moment it is handed
+                // over. (A managed array still cannot be guaranteed un-copied by a compacting GC;
+                // this narrows the window, it does not close it -- see TD-06.)
                 _vaultSession.Unlock(vaultDir, key);
+                Array.Clear(key, 0, key.Length);
 
                 // PineDbContext and IVaultMigrator are both Scoped (TD-01). Resolving either from
                 // the ROOT provider silently creates a root-scoped instance that never dies, so the

@@ -2,6 +2,27 @@
 
 This document tracks the real-time implementation progress based on the master plan (docs/56-IMPLEMENTATION-PLAN.md).
 
+## Production readiness — read this first
+
+The phase percentages below track **feature delivery against `docs/56-IMPLEMENTATION-PLAN.md`**. They
+do not track whether the software is safe to put real money in, and the two have diverged: the
+production-readiness audit (`docs/60-Production-Readiness-Audit.md`) rated this codebase
+**2.3 / 5 — Not Production Ready** and opened 71 numbered debts. A remediation cycle is running
+against it, and **that** is the number to read before shipping anything.
+
+| | |
+|---|---|
+| Classification | **Not Production Ready** (audit §11) |
+| Remediation | Audit **Phase 0: all 11 items worked** (iterations 1–10). Items 1 and 4–11 are ✅. **The phase is not clean**: item 2's encrypted export is still unreachable from the UI (TD-56), and item 3 **regressed after it was ticked** — `79c5364` removed the CI workflow's `push`/`pull_request` triggers, so it has never run and the Android/iOS heads have never compiled. See audit §12.22 |
+| Remaining before the branch is defensible | **Commit this work** — four iterations, ~50 files, nothing staged · **TD-07**: re-arm CI, now the largest single risk, since every claim above was verified on one machine by hand · then TD-78, TD-75, TD-81 |
+| Test suite | 28 → **432** (313 unit + 119 integration), both green. TD-74's "98/99" was a misdiagnosis: the integration project had not **compiled** since `f691ba8` — zero tests executed, not one failing. Fixed and reclassified; see audit §12.20 |
+| Last remediation | 2026-08-28 — Phase 0 item 11: the seeded fictional account and the dead `CloudSync` option removed, plus a telemetry consent checkbox for a capability that does not exist (TD-80) |
+
+Note the numbering collision: the audit's "Phase 0" is a *remediation* phase and has nothing to do
+with the implementation plan's "Phase 0 (Foundations)" below.
+
+---
+
 ## Overall Progress
 
 - **Phase 0 (Foundations):** ✅ 100% Completed

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pine.Infrastructure.Data;
 using Pine.Application.Common;
+using Pine.Application.Security;
 using Pine.Core.Accounts;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia;
@@ -40,6 +41,12 @@ sealed class Program
             // 2. Initialize App Services
             App.InitializeServices(serviceProvider);
 
+            // 2.5 Start the idle auto-lock watchdog (TD-11). This head does not run a generic
+            // host, so nothing else ever resolves IVaultAutoLockService; VaultAutoLockService arms
+            // itself on construction (VaultAutoLockOptions.StartAutomatically defaults to true), so
+            // simply resolving it once here is enough to start the watchdog for the process's life.
+            serviceProvider.GetRequiredService<IVaultAutoLockService>();
+
             // 3. Start Avalonia
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
@@ -64,6 +71,12 @@ sealed class Program
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.VaultSelectionViewModel>();
         services.AddTransient<SetupViewModel>();
+        // TD-11 fix (pre-existing defect, not part of the TD-11 feature itself): UnlockViewModel
+        // was registered only on Windows. Without this, GetRequiredService<UnlockViewModel>()
+        // throws the moment VaultSelectionViewModel.SelectVaultCommand navigates here, so the
+        // unlock screen could never open on macOS at all -- including after the lock this ticket
+        // now makes reachable from inside the app.
+        services.AddTransient<UnlockViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<AddTransactionViewModel>();
@@ -79,6 +92,10 @@ sealed class Program
 
         // Security Session
         services.AddSingleton<Pine.Application.Security.IVaultSession, Pine.Application.Security.VaultSession>();
+
+        // Idle auto-lock watchdog (TD-11). Started explicitly in Main (~2.5), since this head
+        // does not run a generic host that would resolve an IHostedService for us.
+        services.AddPineVaultAutoLock();
 
         // Vault Manager
         services.AddSingleton<Pine.Application.Security.VaultManager>();

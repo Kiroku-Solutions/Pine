@@ -15,7 +15,19 @@ public class EfCoreVaultMigratorTests : IDisposable
     /// </summary>
     private const string PreviousSchemaVersion = "20250101000000_InitialSchema";
 
-    private const string CurrentSchemaVersion = "20260825151122_AddTransactionLineItems";
+    /// <summary>
+    /// The HEAD migration id. Every assertion below says "a real upgrade reaches the newest schema",
+    /// so this has to track the newest migration or the tests keep passing while asserting something
+    /// weaker than they read as.
+    /// </summary>
+    /// <remarks>
+    /// This constant was stale: it still named 20260825151122_AddTransactionLineItems after
+    /// 20260827141109_AddTransactionImportKey shipped, so for one iteration these tests asserted the
+    /// upgrade reached a schema that was no longer the head. Nothing failed, because
+    /// <c>Should().Contain(...)</c> is satisfied by an earlier id in the applied set. Corrected in
+    /// iteration 6 (TD-02) along with the new head.
+    /// </remarks>
+    private const string CurrentSchemaVersion = "20260828201103_AddTransactionLineItemKind";
 
     private readonly TempVault _vault = new();
 

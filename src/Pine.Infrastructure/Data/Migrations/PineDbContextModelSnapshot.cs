@@ -31,6 +31,9 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("OpeningBalanceAmount")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -267,6 +270,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("Date")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ImportKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("LinkedTransactionId")
                         .HasColumnType("TEXT");
 
@@ -280,6 +287,13 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
                         .HasColumnType("TEXT");
 
                     b.ComplexProperty(typeof(Dictionary<string, object>), "TotalAmount", "Pine.Core.Transactions.Transaction.TotalAmount#Money", b1 =>
@@ -305,6 +319,10 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.HasIndex("LinkedTransactionId");
 
+                    b.HasIndex("AccountId", "ImportKey");
+
+                    b.HasIndex("AccountId", "VoidedAt");
+
                     b.ToTable("Transactions");
                 });
 
@@ -328,6 +346,10 @@ namespace Pine.Infrastructure.Data.Migrations
                             b1.Property<string>("Description")
                                 .IsRequired()
                                 .HasColumnType("TEXT");
+
+                            b1.Property<string>("Kind")
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Kind");
 
                             b1.Property<decimal>("Quantity")
                                 .HasColumnType("TEXT");

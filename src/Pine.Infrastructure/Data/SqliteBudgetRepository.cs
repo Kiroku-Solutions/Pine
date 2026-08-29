@@ -47,15 +47,32 @@ public class SqliteBudgetRepository : IBudgetRepository
 
     public async Task SaveAsync(Budget budget, CancellationToken cancellationToken = default)
     {
-        var existing = await _dbContext.Budgets.FindAsync(new object[] { budget.Id }, cancellationToken);
-        if (existing == null)
+        ArgumentNullException.ThrowIfNull(budget);
+
+        var existing = await _dbContext.Budgets
+            .FindAsync(new object[] { budget.Id }, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
         {
-            await _dbContext.Budgets.AddAsync(budget, cancellationToken);
+            await _dbContext.Budgets.AddAsync(budget, cancellationToken).ConfigureAwait(false);
+            return;
         }
-        else
+
+        if (ReferenceEquals(existing, budget))
         {
-            _dbContext.Entry(existing).CurrentValues.SetValues(budget);
+            // The caller mutated the very instance this context already tracks. Every change is
+            // already staged on the change tracker; copying the entity onto itself does nothing.
+            return;
         }
+
+        // CurrentValues.SetValues copies scalars and complex properties only; it ignores navigations
+        // entirely, so an owned collection would be dropped silently (TD-13). It is sufficient here
+        // *because* this aggregate has none. If an OwnsMany navigation is ever added to it, this call
+        // must be replaced by an explicit reconciliation of the tracked graph, the way
+        // SqliteTransactionRepository.SaveAsync reconciles Transaction.Splits.
+        // Budget.Limit is a complex property, so it is covered.
+        _dbContext.Entry(existing).CurrentValues.SetValues(budget);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

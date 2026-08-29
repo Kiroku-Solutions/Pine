@@ -37,20 +37,11 @@
                     
                     <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PinePrimary}" BorderThickness="2" BoxShadow="0 4 20 0 #10000000">
                         <StackPanel Spacing="8">
-                            <RadioButton Content="Local Only (Recommended)" GroupName="StorageMode" IsChecked="{Binding IsLocalOnly}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Your data never leaves this device. Max privacy." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
+                            <TextBlock Text="Local Only" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Your data never leaves this device. Max privacy." Foreground="{DynamicResource PineTextMuted}"/>
                         </StackPanel>
                     </Border>
-                    
-                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" Opacity="0.6">
-                        <StackPanel Spacing="8">
-                            <RadioButton Content="Local + Cloud Sync (Coming Soon)" GroupName="StorageMode" IsChecked="{Binding IsCloudSync}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" IsEnabled="False" />
-                            <TextBlock Text="Sync to your own cloud provider via plugin." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <CheckBox Content="Help improve Pine by sending anonymous usage telemetry" IsChecked="{Binding TelemetryOptIn}" Foreground="{DynamicResource PineTextMuted}" Margin="0,15,0,0" />
-                    
+
                     <Button Content="Continue to Security" Command="{Binding NextStepCommand}" Classes="pine-accent" HorizontalAlignment="Right" HorizontalContentAlignment="Center" FontSize="16" Padding="25,12" Margin="0,20,0,0"/>
                 </StackPanel>
 
@@ -75,6 +66,36 @@
                                      IsEnabled="{Binding !IsBusy}"
                                      FontSize="16"
                                      Padding="15" />
+
+                            <!-- Strength meter (TD-11). Value/colour move as the user types; the
+                                 pass/fail state is also carried in PasswordStrengthStatusText below,
+                                 so nothing here relies on colour alone. -->
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding PasswordStrengthFraction}"
+                                         Height="6" CornerRadius="3" Margin="0,4,0,0"
+                                         Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                         Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                         Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                            <TextBlock Text="{Binding PasswordStrengthStatusText}"
+                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                       IsVisible="{Binding PasswordStrengthStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                       Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                       Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                            <TextBlock Text="{Binding PasswordAdviceText}"
+                                       TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                                       IsVisible="{Binding PasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                            <TextBlock Text="Confirm Master Password" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,10,0,0" />
+                            <TextBox PlaceholderText="Re-enter the same password"
+                                     Text="{Binding ConfirmPassword}"
+                                     PasswordChar="●"
+                                     IsEnabled="{Binding !IsBusy}"
+                                     FontSize="16"
+                                     Padding="15" />
+                            <TextBlock Text="Passwords do not match. There is no recovery -- a typo here is permanent."
+                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                       Foreground="{DynamicResource PineDanger}"
+                                       IsVisible="{Binding !PasswordsMatch}" />
                         </StackPanel>
                     </Border>
 

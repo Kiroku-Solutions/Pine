@@ -68,6 +68,17 @@ public sealed class PineDbContext : DbContext
                     c.Property(code => code.Value).HasColumnName("Balance_Currency").IsRequired();
                 });
             });
+
+            // A bare nullable decimal, not a second Money column. The account's currency is
+            // immutable by construction, so an opening balance can only ever be denominated in it;
+            // a second currency column would only create the possibility of the two disagreeing.
+            // NULL means "no opening balance on record" — an account created before TD-02 — and is a
+            // state the recalculation command handles explicitly rather than guessing past.
+            e.Property(a => a.OpeningBalanceAmount);
+
+            // Derived from OpeningBalanceAmount plus Balance's currency. It has no setter and no
+            // backing field, so EF must be told not to try to map it as a complex property.
+            e.Ignore(a => a.OpeningBalance);
         });
 
         modelBuilder.Entity<Transaction>(e =>
@@ -75,7 +86,44 @@ public sealed class PineDbContext : DbContext
             e.HasKey(t => t.Id);
             e.Property(t => t.Type).HasConversion<string>(); // Store enum as string
             e.HasIndex(t => t.LinkedTransactionId); // Index for fast transfer lookups
-            
+
+            // Nullable: every transaction created before import keys existed, and every transaction
+            // the user enters by hand, legitimately has no key. The width matches
+            // Transaction.MaxImportKeyLength so the domain rejects an over-long key before the store
+            // would silently truncate it into a key that matches a different row.
+            e.Property(t => t.ImportKey).HasMaxLength(128);
+
+            // Serves the import de-duplication probe: "which of these candidate keys does this
+            // account already have?". Pushing that comparison into SQL is safe here precisely because
+            // ImportKey is a string — SQLite keeps decimals as TEXT (TD-31), so a numeric key would
+            // have compared lexicographically and matched the wrong rows.
+            //
+            // DELIBERATELY NOT UNIQUE, and this is a trade-off worth knowing about. A unique
+            // constraint would read as the stronger guarantee, but it would (a) make a future
+            // "I know it looks like a duplicate, import it anyway" gesture impossible without a
+            // schema change, and (b) turn two concurrent imports of the same file into a raw
+            // DbUpdateException surfaced to the user instead of a handled duplicate. The handler
+            // checks before inserting, so the index exists to make that check fast, not to enforce
+            // the rule. The residual risk — a race between check and insert writing a duplicate
+            // key — is accepted and tracked as debt.
+            e.HasIndex(t => new { t.AccountId, t.ImportKey });
+
+            // TD-02. A voided transaction keeps its row, its splits and its import key; only these
+            // two columns record that it stopped counting towards the balance, and when and why.
+            // The width matches Transaction.MaxVoidReasonLength, so an over-long reason is rejected
+            // by the domain rather than truncated by the store.
+            e.Property(t => t.VoidReason).HasMaxLength(256);
+
+            // Serves the balance recalculation scan: "every transaction on this account that is still
+            // in force". VoidedAt is the leading-null-heavy column, so it goes second — the account
+            // is the selective term. AccountId already leads the (AccountId, ImportKey) index, but
+            // that one cannot answer this predicate without also reading ImportKey.
+            e.HasIndex(t => new { t.AccountId, t.VoidedAt });
+
+            // Derived from VoidedAt, which is the stored truth. No setter, no backing field, so EF
+            // must be told not to map it.
+            e.Ignore(t => t.IsVoided);
+
             e.ComplexProperty(t => t.TotalAmount, ta =>
             {
                 ta.Property(m => m.Amount).HasColumnName("TotalAmount_Amount");
@@ -106,6 +154,15 @@ public sealed class PineDbContext : DbContext
                 lineItem.WithOwner().HasForeignKey(li => li.TransactionId);
                 lineItem.HasKey(li => li.Id);
                 lineItem.ToTable("TransactionLineItems");
+
+                // Stored as a nullable string, matching how every other enum in this model is
+                // stored. NULL is the legacy marker (TD-19): rows written before the reconciliation
+                // model existed have no kind, and Transaction suspends the sum invariant for a set
+                // that contains one. The column is deliberately NOT given a default value -- a
+                // default would silently turn legacy rows into Product lines and make every
+                // pre-existing scanned receipt unsaveable.
+                lineItem.Property(li => li.Kind).HasConversion<string>().HasColumnName("Kind");
+
                 
                 lineItem.OwnsOne(li => li.UnitPrice, a =>
                 {
@@ -144,7 +201,7 @@ public sealed class PineDbContext : DbContext
                 limit.Property(m => m.Currency).HasColumnName("LimitCurrency")
                     .HasConversion(
                         c => c.Value,
-                        c => new Pine.Core.Common.ValueObjects.CurrencyCode(c)
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c)
                     );
             });
             // Category mapping
