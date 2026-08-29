@@ -6,7 +6,7 @@
 | Status           | Draft — pending review                                                               |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
-| Last Updated     | 2026-07-08                                                                           |
+| Last Updated     | 2026-08-29                                                                           |
 | Specification Standard | Internal (security)                                                            |
 | Glossary         | `PINE-DOC-03-GLOSSARY`                                                               |
 | Prerequisites    | `00-Vision`..`14-Synchronization`                                                    |
@@ -72,6 +72,22 @@ OD-03 from `00-Vision` §14 is **closed by this document** as follows:
 acceptable implementations of this baseline; the choice between
 them is a per-platform engineering decision and is owned by
 `29-Deployment`. The *policy* is what this document fixes.
+
+> **Implementation status, added 2026-08-29 (TD-06, audit §12.27).** This section is policy, and
+> the policy is now **partly** implemented. Stated clause by clause so the section cannot be read
+> as closed:
+>
+> | Clause | Status |
+> |---|---|
+> | AES-256-GCM, data key wrapped by an Argon2id-derived auth key | ✅ **Implemented.** `pine.vault.json` header version 2 carries a `keyWrap` — algorithm, 12-byte nonce, ciphertext, 16-byte tag — whose AEAD associated data binds every other field of the header. |
+> | The data key is never written to disk in plaintext | ✅ **Implemented.** It is drawn from the CSPRNG and exists on disk only as that ciphertext. |
+> | The encrypted store format is versioned | ✅ **Implemented**, with one divergence: this document says older versions "can be opened for read-only access for migration", and the code instead **refuses** header version 1 outright (`LegacyVaultFormatException`). That was decided deliberately while no vault existed outside a developer machine; carrying a second, un-enveloped key path was judged the larger risk. |
+> | The data key is held in the platform's secure storage (Keychain / Keystore / DPAPI / libsecret) | ❌ **Not implemented.** There is no platform secure-storage integration anywhere in the codebase. The data key is wrapped by the passphrase-derived key only — which this section's own "OR" clause permits, but the keychain half does not exist. **TD-87.** |
+> | The data key is rotated when the user changes their credential | ❌ **Not implemented.** Changing the password rotates the **auth key** and the salt and re-wraps the *same* data key. Anyone who already knew the data key still knows it afterwards. Real rotation requires re-encrypting the database. **TD-86.** |
+> | Biometric unlock | ❌ **Not implemented.** The envelope makes it a second wrap rather than a redesign; nothing implements that wrap. **TD-87.** |
+>
+> §18's checklist entry "OD-03 and OD-10 are closed" therefore remains **overstated** for OD-03
+> until TD-86 and TD-87 land.
 
 ## 5. Closing OD-10 — Telemetry Policy
 

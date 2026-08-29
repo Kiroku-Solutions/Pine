@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Pine.Core.Security;
@@ -8,6 +7,22 @@ namespace Pine.Infrastructure.Security;
 /// <summary>
 /// Stores the vault header as <c>pine.vault.json</c> inside the vault directory.
 /// </summary>
+/// <remarks>
+/// <para>
+/// THIS CLASS IS PURE PERSISTENCE, AND IT BECAME SO WITH TD-06. It used to mint headers
+/// (<c>Create</c>) and adopt pre-header vaults (<c>ReadOrAdoptLegacy</c>), which is why it once
+/// needed a default KDF profile injected into its constructor. Neither survives envelope encryption:
+/// a header now carries a <see cref="VaultKeyWrap"/>, and producing one requires the master
+/// password - which a file store has no business receiving, holding, or being tempted to log.
+/// Minting moved to <see cref="IVaultKeyService.CreateVault"/>; this type only reads and writes what
+/// it is handed, and needs no configuration at all.
+/// </para>
+/// <para>
+/// A HEADER IS NEVER INVENTED, ONLY REJECTED. Every branch below that cannot fully trust the file
+/// throws. Substituting a default for a missing or unreadable field would derive the wrong key, and
+/// the only symptom - deep inside SQLCipher, long after the fact - would look exactly like data loss.
+/// </para>
+/// </remarks>
 public sealed class FileVaultHeaderStore : IVaultHeaderStore
 {
     /// <summary>Name of the versioned header file.</summary>
@@ -17,21 +32,6 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
     public const string LegacySaltFileName = "pine.salt";
 
     private const string TempFileSuffix = ".tmp";
-
-    private readonly KdfParameters _defaultParameters;
-
-    /// <summary>Creates a store that stamps new vaults with the current production Argon2id profile.</summary>
-    public FileVaultHeaderStore()
-        : this(KdfParameters.Argon2idV1)
-    {
-    }
-
-    /// <summary>Creates a store that stamps new vaults with the supplied profile.</summary>
-    public FileVaultHeaderStore(KdfParameters defaultParameters)
-    {
-        ArgumentNullException.ThrowIfNull(defaultParameters);
-        _defaultParameters = defaultParameters;
-    }
 
     /// <inheritdoc />
     public bool Exists(string vaultDirectory)
@@ -48,6 +48,15 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
         var path = GetHeaderPath(vaultDirectory);
         if (!File.Exists(path))
         {
+            // A directory with no header but WITH pine.salt is not an empty directory - it is a
+            // pre-header vault whose database is real and whose key is derived straight from that
+            // salt. Reporting it as "not found" would invite the caller to create a new vault on top
+            // of it, which is the one irreversible mistake available here.
+            if (File.Exists(Path.Combine(vaultDirectory, LegacySaltFileName)))
+            {
+                throw new LegacyVaultFormatException(vaultDirectory, foundHeaderVersion: null);
+            }
+
             throw new VaultHeaderNotFoundException(vaultDirectory);
         }
 
@@ -88,6 +97,15 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
         if (headerVersion > VaultHeader.CurrentVersion)
         {
             throw UnsupportedVaultHeaderException.ForHeaderVersion(headerVersion, VaultHeader.CurrentVersion);
+        }
+
+        // The same discipline pointing the other way. A version-1 header is perfectly well-formed;
+        // it simply describes a vault whose database key IS the Argon2id output, with no wrap to
+        // read. Continuing would fail on a missing keyWrap section and report "corrupt", sending the
+        // user hunting for a backup of a file that is not damaged at all.
+        if (headerVersion < VaultHeader.MinimumSupportedVersion)
+        {
+            throw new LegacyVaultFormatException(vaultDirectory, headerVersion);
         }
 
         if (dto.Kdf is not { } kdf)
@@ -139,6 +157,8 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
             throw new VaultHeaderCorruptException(path, "The vault header salt is not valid Base64.", ex);
         }
 
+        var keyWrap = ReadKeyWrap(path, dto.KeyWrap);
+
         try
         {
             var parameters = new KdfParameters(
@@ -151,7 +171,7 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
 
             // The VaultHeader constructor also enforces salt length == SaltLengthBytes, which is
             // what catches a truncated or tampered salt.
-            return new VaultHeader(headerVersion, vaultId, createdAtUtc, parameters, salt);
+            return new VaultHeader(headerVersion, vaultId, createdAtUtc, parameters, salt, keyWrap);
         }
         catch (ArgumentException ex)
         {
@@ -189,6 +209,17 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
                 SaltLengthBytes = header.KdfParameters.SaltLengthBytes,
             },
             SaltBase64 = Convert.ToBase64String(header.Salt),
+
+            // The wrapped data key is written as plain Base64 next to everything it is bound to.
+            // It is safe here precisely because it is a ciphertext: without the auth key that
+            // Argon2id derives from the master password, these bytes are inert.
+            KeyWrap = new VaultKeyWrapDto
+            {
+                Algorithm = header.KeyWrap.Algorithm,
+                NonceBase64 = Convert.ToBase64String(header.KeyWrap.Nonce),
+                CiphertextBase64 = Convert.ToBase64String(header.KeyWrap.Ciphertext),
+                TagBase64 = Convert.ToBase64String(header.KeyWrap.Tag),
+            },
         };
 
         try
@@ -198,6 +229,8 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
             // crashed mid-write onto the real path instead, the vault would be left with a
             // truncated header - i.e. an unopenable vault. The rename is atomic, so a reader
             // sees either the entire old header or the entire new one, never a half of either.
+            // With envelope encryption this is what makes a password change safe: a crash mid-change
+            // leaves the OLD wrap intact and the OLD password still working.
             using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 JsonSerializer.Serialize(stream, dto, VaultHeaderJsonContext.Default.VaultHeaderDto);
@@ -222,64 +255,63 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
         }
     }
 
-    /// <inheritdoc />
-    public VaultHeader Create(string vaultDirectory)
+    /// <summary>
+    /// Rebuilds the key wrap from its wire form, treating every defect as corruption.
+    /// </summary>
+    /// <remarks>
+    /// A missing field, unusable Base64, and a length or algorithm the
+    /// <see cref="VaultKeyWrap"/> constructor rejects are all the same class of problem: bytes that
+    /// cannot be the wrap this vault was sealed with. Each gets its own message so a support log says
+    /// which field failed, but none of them is recoverable - there is no defaulting a ciphertext.
+    /// </remarks>
+    private static VaultKeyWrap ReadKeyWrap(string path, VaultKeyWrapDto? dto)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(vaultDirectory);
+        if (dto is null)
+        {
+            throw new VaultHeaderCorruptException(path, "The vault header has no keyWrap section.");
+        }
 
-        var salt = RandomNumberGenerator.GetBytes(_defaultParameters.SaltLengthBytes);
-        var header = new VaultHeader(
-            VaultHeader.CurrentVersion,
-            Guid.NewGuid(),
-            DateTimeOffset.UtcNow,
-            _defaultParameters,
-            salt);
+        if (string.IsNullOrWhiteSpace(dto.Algorithm))
+        {
+            throw new VaultHeaderCorruptException(path, "The vault header keyWrap has no algorithm.");
+        }
 
-        Write(vaultDirectory, header);
-        return header;
+        var nonce = DecodeRequiredBase64(path, dto.NonceBase64, "keyWrap nonce");
+        var ciphertext = DecodeRequiredBase64(path, dto.CiphertextBase64, "keyWrap ciphertext");
+        var tag = DecodeRequiredBase64(path, dto.TagBase64, "keyWrap tag");
+
+        try
+        {
+            return new VaultKeyWrap(dto.Algorithm, nonce, ciphertext, tag);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new VaultHeaderCorruptException(
+                path,
+                "The vault header keyWrap contains invalid values.",
+                ex);
+        }
     }
 
-    /// <inheritdoc />
-    public VaultHeader ReadOrAdoptLegacy(string vaultDirectory)
+    /// <summary>Decodes a required Base64 field, or reports precisely which one was unusable.</summary>
+    private static byte[] DecodeRequiredBase64(string path, string? value, string fieldDescription)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(vaultDirectory);
-
-        if (Exists(vaultDirectory))
+        if (string.IsNullOrWhiteSpace(value))
         {
-            return Read(vaultDirectory);
+            throw new VaultHeaderCorruptException(path, $"The vault header has no {fieldDescription}.");
         }
 
-        var legacySaltPath = Path.Combine(vaultDirectory, LegacySaltFileName);
-        if (!File.Exists(legacySaltPath))
+        try
         {
-            throw new VaultHeaderNotFoundException(vaultDirectory);
+            return Convert.FromBase64String(value);
         }
-
-        var legacySalt = File.ReadAllBytes(legacySaltPath);
-        if (legacySalt.Length == 0)
+        catch (FormatException ex)
         {
-            throw new VaultHeaderCorruptException(legacySaltPath, "The legacy salt file is empty.");
+            throw new VaultHeaderCorruptException(
+                path,
+                $"The vault header {fieldDescription} is not valid Base64.",
+                ex);
         }
-
-        // Pre-TD-05 vaults were always created with the Argon2idV1 profile, so adopting them with
-        // those parameters reproduces the same key bit-for-bit. The salt length is taken from the
-        // file rather than assumed, so the adopted header round-trips even if that vault's salt
-        // is not the current default length.
-        var parameters = KdfParameters.Argon2idV1.WithSaltLengthBytes(legacySalt.Length);
-
-        var header = new VaultHeader(
-            VaultHeader.CurrentVersion,
-            Guid.NewGuid(),
-            DateTimeOffset.UtcNow,
-            parameters,
-            legacySalt);
-
-        Write(vaultDirectory, header);
-
-        // pine.salt is deliberately LEFT IN PLACE. Pine has zero tolerance for irreversible data
-        // operations, and this file is the only copy of the material that unlocks the vault: if
-        // anything about the new header were ever wrong, the legacy file is the fallback.
-        return header;
     }
 
     private static string GetHeaderPath(string vaultDirectory) =>
@@ -317,6 +349,8 @@ internal sealed class VaultHeaderDto
     public KdfParametersDto? Kdf { get; set; }
 
     public string? SaltBase64 { get; set; }
+
+    public VaultKeyWrapDto? KeyWrap { get; set; }
 }
 
 /// <summary>Wire format of the KDF section. Every field is nullable so a missing one is detectable.</summary>
@@ -336,6 +370,22 @@ internal sealed class KdfParametersDto
 }
 
 /// <summary>
+/// Wire format of the wrapped data key. Every field is nullable, for the same reason as the KDF
+/// section: a field that is absent from the file must be distinguishable from one that is present
+/// and empty, and a non-nullable string would silently turn the first case into the second.
+/// </summary>
+internal sealed class VaultKeyWrapDto
+{
+    public string? Algorithm { get; set; }
+
+    public string? NonceBase64 { get; set; }
+
+    public string? CiphertextBase64 { get; set; }
+
+    public string? TagBase64 { get; set; }
+}
+
+/// <summary>
 /// Source-generated serialization metadata. Reflection-based System.Text.Json would emit
 /// trim/AOT analysis warnings, and warnings are build errors in this solution.
 /// </summary>
@@ -343,6 +393,7 @@ internal sealed class KdfParametersDto
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(VaultHeaderDto))]
+[JsonSerializable(typeof(VaultKeyWrapDto))]
 internal sealed partial class VaultHeaderJsonContext : JsonSerializerContext
 {
 }

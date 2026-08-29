@@ -18,7 +18,13 @@ public partial class UnlockViewModel : ObservableObject
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
     private readonly IVaultHeaderStore _vaultHeaderStore;
-    private readonly IKeyDerivationService _keyDerivationService;
+
+    /// <summary>
+    /// The envelope (TD-06). This screen no longer derives a database key from the password: it
+    /// asks this service to unwrap the vault's stored data key, and a wrong password is a failed
+    /// AEAD tag inside that call rather than a SQLCipher error guessed at further down.
+    /// </summary>
+    private readonly IVaultKeyService _vaultKeyService;
 
     private VaultProfile? _profile;
 
@@ -39,13 +45,13 @@ public partial class UnlockViewModel : ObservableObject
         IVaultSession vaultSession,
         INavigationService navigationService,
         IVaultHeaderStore vaultHeaderStore,
-        IKeyDerivationService keyDerivationService)
+        IVaultKeyService vaultKeyService)
     {
         _serviceProvider = serviceProvider;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
         _vaultHeaderStore = vaultHeaderStore;
-        _keyDerivationService = keyDerivationService;
+        _vaultKeyService = vaultKeyService;
     }
 
     public void Initialize(VaultProfile profile)
@@ -79,13 +85,18 @@ public partial class UnlockViewModel : ObservableObject
             {
                 var vaultDir = _profile.Path;
 
-                // The header states which KDF and which cost parameters produced this vault's key.
-                // A pre-TD-05 vault that only has pine.salt is adopted into a versioned header here
-                // (the legacy file is kept as a fallback). If the header cannot be understood this
-                // throws rather than guessing parameters, which would silently derive a wrong key.
-                var header = _vaultHeaderStore.ReadOrAdoptLegacy(vaultDir);
+                // The header states which KDF and cost parameters produced this vault's AUTH key,
+                // and carries the wrapped data key itself. Read() never invents or upgrades
+                // anything: a pre-envelope vault throws LegacyVaultFormatException and an
+                // unreadable one throws rather than guessing parameters, because a guess would
+                // silently derive the wrong key and present as unexplained data loss.
+                var header = _vaultHeaderStore.Read(vaultDir);
 
-                var key = _keyDerivationService.DeriveKey(MasterPassword, header);
+                // THIS is the password check now (TD-06). Unwrapping runs the AEAD tag over the
+                // stored wrap, so a wrong password fails HERE, before any file is opened, and it
+                // fails as one specific exception type instead of as whatever error SQLCipher
+                // happens to raise when handed a bad key.
+                var key = _vaultKeyService.UnwrapDataKey(MasterPassword, header);
 
                 // Unlock session. Unlock() COPIES the key into the session's own buffer, and it is
                 // that copy which Lock() zeroes -- so this local is a second, independent copy of
@@ -105,18 +116,27 @@ public partial class UnlockViewModel : ObservableObject
                 // only after MigrateAsync has completed.
                 using var vaultScope = _serviceProvider.CreateScope();
 
-                // Verify db access to ensure password was correct
+                // THE PROBE IS NO LONGER THE PASSWORD CHECK, AND THE DIFFERENCE MATTERS (TD-06).
+                // Before the envelope, this query WAS the authentication: the password derived the
+                // database key directly, so "SQLCipher refused to read a page" was the only signal
+                // that the password had been wrong. Now UnwrapDataKey has already answered that
+                // question above, with an authentication tag rather than an inference.
+                //
+                // What the probe still proves is a different proposition: that the data key we just
+                // unwrapped actually opens THIS database file. Those can diverge -- a header paired
+                // with a database from another vault, a restored backup, a half-finished copy -- and
+                // that mismatch is not a wrong password and would otherwise only surface later, on
+                // some arbitrary first query deep inside the app. It is checked here, once, up front.
                 var dbContext = vaultScope.ServiceProvider.GetRequiredService<PineDbContext>();
 
-                // Force a query to evaluate SQLCipher decryption. If the password is wrong, 
-                // this will throw an exception (e.g., "file is not a database") which we catch below.
                 bool canConnect = dbContext.Database.CanConnect();
-                if (!canConnect) 
+                if (!canConnect)
                 {
                     throw new InvalidOperationException("Cannot connect to database.");
                 }
 
-                // Force actual read to trigger SQLCipher decryption failure if password is wrong
+                // CanConnect alone is too weak: it can succeed without ever decrypting a page. One
+                // real read forces SQLCipher to actually use the key.
                 _ = System.Linq.Queryable.Any(dbContext.Accounts);
 
                 // Schema phase, kept distinct from the auth phase above so its failures are not
@@ -168,6 +188,35 @@ public partial class UnlockViewModel : ObservableObject
         {
             _vaultSession.Lock();
             StatusMessage = "No Pine vault was found in this folder.";
+        }
+        catch (VaultKeyUnwrapException)
+        {
+            // The data key could not be unwrapped: either the password is wrong or the header has
+            // been altered since the wrap was made. THE WORDING IS IDENTICAL TO THE GENERIC CATCH
+            // BELOW, ON PURPOSE. Distinguishing "your password is wrong" from "this vault is
+            // damaged" would hand an attacker holding a copy of the vault exactly the oracle they
+            // want -- confirmation that a candidate password was the failing part. VaultKeyUnwrap-
+            // Exception itself carries no detail for the same reason; this block must not undo that
+            // by saying more than the generic path does.
+            _vaultSession.Lock();
+            StatusMessage = "Incorrect password or corrupted vault.";
+        }
+        catch (LegacyVaultFormatException)
+        {
+            // A pre-envelope vault: its database key IS the raw Argon2id output, with no wrapped
+            // data key to unwrap, so no password can open it in this build. Saying anything about
+            // the password would send the user to retype a password that was very possibly right.
+            // The vault directory is deliberately not named (TD-24).
+            _vaultSession.Lock();
+            StatusMessage = "This vault was created by a pre-release build of Pine, before encrypted key storage, and cannot be opened by this version. Please create a new vault.";
+        }
+        catch (VaultKeyWrapUnavailableException)
+        {
+            // The header is valid and another build could open it; this platform simply does not
+            // provide the AEAD the wrap needs (AesGcm.IsSupported is false on the browser runtime).
+            // Not an authentication failure, and must not be reported as one.
+            _vaultSession.Lock();
+            StatusMessage = "This build of Pine cannot open vaults on this platform, because the encryption it requires is not available here. Your vault is undamaged -- open it with the desktop version of Pine.";
         }
         catch (Exception)
         {

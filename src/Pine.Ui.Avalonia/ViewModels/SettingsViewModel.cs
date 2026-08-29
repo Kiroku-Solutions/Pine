@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,9 +11,11 @@ using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Common;
+using Pine.Application.Security.Commands;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Core.Accounts;
+using Pine.Core.Security;
 using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 
@@ -237,13 +240,320 @@ public partial class SettingsViewModel : ObservableObject
         await _sender.Send(new SaveSettingCommand(key, value));
     }
 
-#pragma warning disable CA1822
+    // ----------------------------------------------------------------------------------------
+    // Master password change (TD-06).
+    //
+    // WHY THIS LIVES ON THE SETTINGS PAGE AND NOT ON A PAGE OF ITS OWN. A dedicated view model
+    // would have to be registered in all five composition roots (Windows, macOS, Web, Android,
+    // iOS) and reached by a navigation route that exists nowhere yet. The change is three text
+    // boxes and one command; folding it into the page that already owns "Security & Vault" costs
+    // one section of XAML and no wiring at all.
+    //
+    // WHAT A PASSWORD CHANGE ACTUALLY IS HERE: unwrap the data key with the old password, rewrap
+    // it under the new one, write the header. The database is never touched and an open session
+    // stays open, because the data key does not change -- only which password recovers it. That
+    // whole dance happens inside IVaultKeyService, behind ChangeVaultPasswordCommand; this view
+    // model only collects three strings and reports what came back.
+    // ----------------------------------------------------------------------------------------
 
-    [RelayCommand]
-    private void ChangeMasterPassword()
+    /// <summary>The password the vault is currently locked with. Cleared after every attempt, success or failure.</summary>
+    [ObservableProperty]
+    public partial string CurrentPassword { get; set; } = string.Empty;
+
+    /// <summary>The proposed new password. Drives the live strength meter below.</summary>
+    [ObservableProperty]
+    public partial string NewPassword { get; set; } = string.Empty;
+
+    /// <summary>Re-entry of <see cref="NewPassword"/>. There is no recovery phrase, so this is the only defence against a typo.</summary>
+    [ObservableProperty]
+    public partial string ConfirmNewPassword { get; set; } = string.Empty;
+
+    /// <summary>The outcome of the last attempt, as a sentence, or <see langword="null"/> when none has been made.</summary>
+    [ObservableProperty]
+    public partial string? PasswordChangeMessage { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="PasswordChangeMessage"/> reports a failure. Bound to styling only; the
+    /// message itself already says which it is in words, so nothing depends on colour alone.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool PasswordChangeFailed { get; set; }
+
+    /// <summary>Whether a change is in flight. The command's button is disabled while it is.</summary>
+    [ObservableProperty]
+    public partial bool IsChangingPassword { get; set; }
+
+    // TD-11 live strength feedback for the NEW password.
+    //
+    // THIS IS A DELIBERATE DUPLICATE OF SetupViewModel's block, strings included. The two screens
+    // are judging the same thing against the same floor, so they must say the same words -- a
+    // password called "Moderate" at setup cannot become "Weak" here. Sharing it properly means a
+    // reusable strength-meter control (view model + template), which is worth doing once a third
+    // caller appears; copying it until then is the honest smaller change, and the copy is marked
+    // so the next person knows both halves must move together.
+    //
+    // As in SetupViewModel: PasswordStrengthPolicy.Evaluate returns only enums and numbers -- see
+    // PasswordWeakness's remarks on why -- so the PasswordWeakness -> text mapping is written HERE,
+    // in the UI, and exists nowhere in Pine.Core or Pine.Application.
+
+    /// <summary>Estimated entropy of <see cref="NewPassword"/>, in bits, for the "X of Y bits" caption.</summary>
+    [ObservableProperty]
+    public partial double NewPasswordStrengthBits { get; set; }
+
+    /// <summary>The floor <see cref="NewPasswordStrengthBits"/> is judged against; carried for the caption rather than a second reference to the policy constant.</summary>
+    [ObservableProperty]
+    public partial double NewPasswordStrengthRequiredBits { get; set; } = PasswordStrengthPolicy.MinimumEntropyBits;
+
+    /// <summary>0..1 fill for the strength meter. Clamped so a very-strong password does not overflow the bar.</summary>
+    [ObservableProperty]
+    public partial double NewPasswordStrengthFraction { get; set; }
+
+    /// <summary>The single acceptance test, mirrored from <see cref="PasswordStrengthResult.MeetsFloor"/> for binding.</summary>
+    [ObservableProperty]
+    public partial bool NewPasswordMeetsFloor { get; set; }
+
+    /// <summary>
+    /// "Strong -- meets Pine's minimum" or similar. The pass/fail state is carried in THIS TEXT, not
+    /// only in the meter colour, so the meter still reads correctly for a colour-blind user or under
+    /// a theme that changes the palette.
+    /// </summary>
+    [ObservableProperty]
+    public partial string NewPasswordStrengthStatusText { get; set; } = string.Empty;
+
+    /// <summary>Actionable advice built from <see cref="PasswordStrengthResult.Weaknesses"/>. Empty once the password is strong and unremarkable.</summary>
+    [ObservableProperty]
+    public partial string NewPasswordAdviceText { get; set; } = string.Empty;
+
+    /// <summary>Whether <see cref="ConfirmNewPassword"/> currently agrees with <see cref="NewPassword"/>. True while the confirmation is still empty, so the warning only appears once there is something to compare.</summary>
+    [ObservableProperty]
+    public partial bool NewPasswordsMatch { get; set; } = true;
+
+    /// <summary>The raw level behind the three bands below.</summary>
+    [ObservableProperty]
+    public partial PasswordStrengthLevel NewPasswordStrengthLevelValue { get; set; } = PasswordStrengthLevel.Unusable;
+
+    // Three coarse bands, not the six raw levels, because the meter has three colours available
+    // (danger/warning/success) that already mean something elsewhere in this app -- reusing them
+    // keeps the vocabulary consistent instead of inventing a fourth palette. MeetsFloor -- not the
+    // band -- is still what ChangePasswordAsync gates on. Identical to SetupViewModel by design.
+
+    /// <summary>Whether the new password falls in the red band.</summary>
+    public bool IsNewPasswordStrengthDanger =>
+        NewPasswordStrengthLevelValue is PasswordStrengthLevel.Unusable or PasswordStrengthLevel.VeryWeak or PasswordStrengthLevel.Weak;
+
+    /// <summary>Whether the new password falls in the amber band.</summary>
+    public bool IsNewPasswordStrengthWarning => NewPasswordStrengthLevelValue == PasswordStrengthLevel.Moderate;
+
+    /// <summary>Whether the new password falls in the green band.</summary>
+    public bool IsNewPasswordStrengthSuccess =>
+        NewPasswordStrengthLevelValue is PasswordStrengthLevel.Strong or PasswordStrengthLevel.VeryStrong;
+
+    partial void OnNewPasswordStrengthLevelValueChanged(PasswordStrengthLevel value)
     {
-        // To be implemented via DialogService
+        OnPropertyChanged(nameof(IsNewPasswordStrengthDanger));
+        OnPropertyChanged(nameof(IsNewPasswordStrengthWarning));
+        OnPropertyChanged(nameof(IsNewPasswordStrengthSuccess));
     }
+
+    partial void OnNewPasswordChanged(string value)
+    {
+        var result = PasswordStrengthPolicy.Evaluate(value);
+
+        NewPasswordStrengthBits = result.EstimatedBits;
+        NewPasswordStrengthRequiredBits = result.RequiredBits;
+        NewPasswordStrengthFraction = result.RequiredBits <= 0d
+            ? 0d
+            : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
+        NewPasswordMeetsFloor = result.MeetsFloor;
+        NewPasswordStrengthLevelValue = result.Level;
+        NewPasswordStrengthStatusText = BuildPasswordStatusText(result);
+        NewPasswordAdviceText = BuildPasswordAdviceText(result);
+
+        UpdateNewPasswordsMatch();
+    }
+
+    partial void OnConfirmNewPasswordChanged(string value) => UpdateNewPasswordsMatch();
+
+    private void UpdateNewPasswordsMatch()
+    {
+        NewPasswordsMatch = string.IsNullOrEmpty(ConfirmNewPassword) || ConfirmNewPassword == NewPassword;
+    }
+
+    /// <summary>Word-for-word the same banding sentence SetupViewModel produces; see the note above on the duplication.</summary>
+    private static string BuildPasswordStatusText(PasswordStrengthResult result)
+    {
+        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
+        {
+            return string.Empty;
+        }
+
+        var band = result.Level switch
+        {
+            PasswordStrengthLevel.VeryWeak => "Very weak",
+            PasswordStrengthLevel.Weak => "Weak",
+            PasswordStrengthLevel.Moderate => "Moderate",
+            PasswordStrengthLevel.Strong => "Strong",
+            PasswordStrengthLevel.VeryStrong => "Very strong",
+            _ => "Unusable",
+        };
+
+        return result.MeetsFloor
+            ? $"{band} -- meets Pine's minimum for a vault password."
+            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
+    }
+
+    /// <summary>
+    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
+    /// already said by <see cref="BuildPasswordStatusText"/> (<see cref="PasswordWeakness.Empty"/>
+    /// and <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of
+    /// "does not meet the minimum").
+    /// </summary>
+    private static string BuildPasswordAdviceText(PasswordStrengthResult result)
+    {
+        var sentences = result.Weaknesses
+            .Select(AdviceForPasswordWeakness)
+            .Where(static s => s is not null);
+
+        return string.Join(" ", sentences);
+    }
+
+    private static string? AdviceForPasswordWeakness(PasswordWeakness weakness) => weakness switch
+    {
+        PasswordWeakness.Empty => null,
+        PasswordWeakness.BelowEntropyFloor => null,
+        PasswordWeakness.TooShort =>
+            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
+        PasswordWeakness.CommonPassword =>
+            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
+        PasswordWeakness.RepeatedPattern =>
+            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
+        PasswordWeakness.SequentialRun =>
+            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
+        PasswordWeakness.KeyboardPattern =>
+            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
+        PasswordWeakness.LimitedCharacterVariety =>
+            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Re-wraps the vault's data key under a new master password.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE TWO LOCAL REFUSALS BELOW ARE NOT VALIDATION DUPLICATED FOR ITS OWN SAKE. The mismatch
+    /// check cannot be done by the command at all -- the confirmation box is a UI concept and the
+    /// command is only ever handed one new password -- and it has to be a refusal rather than a
+    /// warning because there is no recovery phrase: a password mistyped identically twice would be
+    /// permanent lockout, exactly as SetupViewModel argues at vault creation.
+    /// </para>
+    /// <para>
+    /// The strength floor IS re-evaluated by the command, and is re-evaluated here anyway, for the
+    /// same reason SetupViewModel gives: a command must not trust view state it did not itself just
+    /// compute. <see cref="NewPasswordMeetsFloor"/> exists to drive the meter, and checking it
+    /// instead of recomputing would make a stale binding into a security hole. The local check buys
+    /// a better message; the command's check is the one that is load-bearing.
+    /// </para>
+    /// <para>
+    /// Nothing here ever puts a password into a message. Failures are reported as a fixed sentence
+    /// or from the validation errors, never from <see cref="Exception.Message"/> (TD-24).
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task ChangePasswordAsync()
+    {
+        if (IsChangingPassword) return;
+
+        if (string.IsNullOrEmpty(CurrentPassword))
+        {
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = "Enter your current master password.";
+            return;
+        }
+
+        // There is no recovery phrase (15-Security): a typo agreed to by both boxes would lock the
+        // user out of their own vault permanently, so a mismatch refuses rather than warns.
+        if (NewPassword != ConfirmNewPassword)
+        {
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = "The new passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
+            return;
+        }
+
+        // Recomputed, not read off the meter's properties -- see the remarks above.
+        var strength = PasswordStrengthPolicy.Evaluate(NewPassword);
+        if (!strength.MeetsFloor)
+        {
+            var advice = BuildPasswordAdviceText(strength);
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = string.IsNullOrEmpty(advice)
+                ? "This password does not meet Pine's minimum strength for a vault password."
+                : $"This password does not meet Pine's minimum strength for a vault password. {advice}";
+            return;
+        }
+
+        IsChangingPassword = true;
+        PasswordChangeMessage = null;
+        PasswordChangeFailed = false;
+
+        try
+        {
+            await _sender.Send(new ChangeVaultPasswordCommand(CurrentPassword, NewPassword));
+
+            // Cleared the instant they are no longer needed, so the new password does not sit in a
+            // bound text box for the rest of the session (TD-11). The finally block clears the
+            // other two regardless of outcome; NewPassword is cleared only on success, because a
+            // rejected new password is worth leaving on screen to be corrected -- but once it has
+            // been accepted there is no reason to keep it.
+            CurrentPassword = string.Empty;
+            NewPassword = string.Empty;
+            ConfirmNewPassword = string.Empty;
+
+            PasswordChangeFailed = false;
+            PasswordChangeMessage =
+                "Your master password was changed. Your vault stayed open and none of your data was re-encrypted -- "
+                + "only the key that protects it was re-wrapped. Use the new password the next time you unlock.";
+        }
+        catch (VaultKeyUnwrapException)
+        {
+            // Unlike the unlock screen, naming this one is not an oracle: the vault is ALREADY
+            // open, so whoever is typing has demonstrably passed authentication once. Being vague
+            // here would only make a mistyped current password look like a broken feature.
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = "The current password is incorrect. Your master password was not changed.";
+        }
+        catch (RequestValidationException ex)
+        {
+            // Validation messages are written as complete, user-facing sentences and never contain
+            // the submitted values, so they can be shown verbatim. The errors are read rather than
+            // ex.Message so that nothing but those sentences can ever reach the screen.
+            var detail = string.Join(" ", ex.Errors.Select(static e => e.Message));
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = string.IsNullOrWhiteSpace(detail)
+                ? "The new password was rejected. Your master password was not changed."
+                : detail;
+        }
+        catch (Exception)
+        {
+            // Not ex.Message: this path does not add to TD-24. The header write is atomic, so a
+            // failure anywhere in the change leaves the OLD header intact and the old password
+            // working -- which is what makes this reassurance true rather than hopeful.
+            PasswordChangeFailed = true;
+            PasswordChangeMessage = "Your master password could not be changed. Your vault is unchanged and your current password still works.";
+        }
+        finally
+        {
+            IsChangingPassword = false;
+
+            // Cleared on every path, including the failure paths: a wrong current password that
+            // stays in the box is a password sitting in memory for no purpose, and re-typing it is
+            // the cost of one retry.
+            CurrentPassword = string.Empty;
+            ConfirmNewPassword = string.Empty;
+        }
+    }
+
+#pragma warning disable CA1822
 
     [RelayCommand]
     private void ExportVault()

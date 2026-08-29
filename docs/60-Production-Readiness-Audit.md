@@ -297,7 +297,7 @@ with Argon2id at 64 MB / t=3 / p=4 over a CSPRNG per-vault salt. Unlock failures
 are deliberately collapsed into one generic message. The gap is between that
 primitive and a key-management *architecture*.
 
-- 🔴 **P0** Password-derived key used directly; no envelope, no version marker (TD-05, TD-06) — see §4.4.
+- ✅ ~~**P0** Password-derived key used directly; no envelope, no version marker (TD-05, TD-06)~~ — both closed; see §4.4 and §12.27.
 - 🟠 **P0** No password policy, no auto-lock, no re-authentication (TD-11). `SetupViewModel` rejects only whitespace-empty passwords — a one-character master password is accepted. `VaultSession.Lock()` is called from exactly one place: the `catch` of a failed unlock. No idle timer, no lock-on-suspend, no lock button. The 32-byte key sits in a managed `byte[]` in a singleton for the entire process lifetime. Argon2id at 64 MB is meaningless against a one-character password.
 - 🟠 **P1** ML model plaintext, cross-vault, outside the vault (TD-16) — see §4.9.
 - 🟡 **P1** Unredacted diagnostic files (TD-25). `Program.Main` writes the full exception + stack to `%LOCALAPPDATA%/Pine/crash.log`; `PaddleOcrEngine` writes `ocr_init_error.log` next to the exe; `PaddleOcrEngine.cs:107` does `Console.WriteLine($"[OCR] Extracted: '{region.Text}'…")` — the full recognised text of every receipt. `docs/30-Observability.md` mandates a redaction posture no code implements.
@@ -488,7 +488,7 @@ any other single change.
 | TD-03 | Dedup on (date, amount) only, silent | 🔴 | Legitimate transactions lost | Stable import key + review list | P0 | ✅ **Done** |
 | TD-04 | `AddSplit` validates eagerly | 🔴 | Multi-split throws | Validate at aggregate boundary | P0 | ✅ **Done** |
 | TD-05 | No KDF version marker beside the salt | 🔴 | Parameter change bricks all vaults | Versioned vault header | P0 | ✅ **Done** |
-| TD-06 | Key = password-derived key; no envelope | 🔴 | No password change, no biometric | Wrapped data key | P0 | 🔴 **Open** |
+| TD-06 | ~~Key = password-derived key; no envelope~~ | 🔴 | ~~No password change, no biometric~~ | Wrapped data key | P0 | ✅ **Closed (iteration 13, §12.27)** — random data key wrapped with AES-256-GCM under the Argon2id auth key, bound to the header; password change shipped. Biometric is architecturally possible and **not built** (TD-87); the data key itself is still never rotated (TD-86) |
 | TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`). The `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364`; iteration 6 took the second of the two options this row offered — **CI is opt-in by an explicit project decision** (compute-minute cost), not by accident | 🟠 | The regression net exists and is real, but nothing arms it: a broken head reaches `main` unless a human dispatches the workflow. Severity dropped 🔴→🟠 because the gap is now a known, chosen operating mode rather than an unnoticed regression — the *risk* is unchanged | Dispatch the workflow by hand before any release; re-arm `pull_request:` when compute budget allows | P1 | 🟡 **Accepted** — documented decision, iteration 6; see §12.12 and §12.14 |
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
 | TD-09 | Money-path tests cover atomicity, split-sum, owned-collection round trip, currency match, import dedup, void + balance recalculation, and — since iterations 8 and 9 — `Money` scale/rounding/`Allocate` (TD-18) and line-item reconciliation (TD-19) | 🟠 | The regression net now covers every closed P0 and both remaining money-path invariants; eleven falsification mutations across the two iterations, all killed | — | P1 | ✅ **Closed** — iteration 9, §12.20 |
@@ -581,7 +581,7 @@ a concrete failure mode.
 2. 🟡 **TD-02** — ~~No correction mechanism.~~ **Blocker closed; the row stays 🟡 for a narrower reason.** A transaction can be **voided** with a recorded reason, its effect on the balance undone in the same database transaction, and a transfer voided as a unit across both legs and both accounts. Any account's balance can be **recomputed from its own ledger** and repaired, exactly — the sum is done in .NET `decimal` because SQLite would coerce a pushed-down `SUM` to REAL (TD-31). Proven by four falsification mutations (§12.14). What is *not* built is the **edit** path: correcting a transaction means voiding it and re-entering it, which is the right default for a ledger and is tracked as TD-68. The blocker said "any bad record is permanent" — that is no longer true, and it is the sentence that made this a blocker.
 3. ✅ **TD-03** — ~~Silent import data loss.~~ **Closed.** De-duplication keys on a stable per-row import key (`ImportKeyFactory`, `r1:`/`h1:` schemes) looked up through an indexed `(AccountId, ImportKey)` probe, never again on `(date, amount)`. Two same-day same-amount rows both survive. The command now returns every parsed row with its disposition and a reason, and the wizard shows them on a review step — so a row is never discarded without the user being told which and why. Proven from a fresh context and raw SQLCipher `SELECT`s, and by three falsification mutations (see §12.11).
 4. ✅ **TD-04** — ~~`AddSplit` throws.~~ **Closed.** `AddSplit` no longer validates the sum eagerly, `ReplaceSplits`/`ReplaceLineItems` validate a whole set atomically, and the invariant is enforced at the persistence boundary by `Transaction.EnsureValid()` in `SqliteTransactionRepository.SaveAsync`. A two-way €50/€50 split on a €100 transaction now persists; the boundary check is proven by falsification (removing it turns the test red).
-5. 🟡 **TD-05 ✅ / TD-06 🔴** — ~~Unversioned KDF~~ and no envelope key. The versioned header now records the KDF id and every parameter, so the irreversible half of this blocker is closed; envelope encryption (TD-06) is not built, so password change and biometric unlock remain impossible.
+5. ✅ **TD-05 ✅ / TD-06 ✅** — ~~Unversioned KDF and no envelope key.~~ The versioned header records the KDF id and every parameter, and header version 2 now carries the data key wrapped under the Argon2id-derived auth key (§12.27). Password change is an ordinary feature. Biometric unlock is *possible* and still unbuilt (TD-87), and the data key is re-wrapped rather than rotated (TD-86).
 6. 🔴 **TD-07 / TD-08** — CI builds the product and the three heads no longer reference a non-existent namespace, but the workflow has never executed, **and as of `79c5364` it can no longer execute on its own**: the `push` and `pull_request` triggers were deleted, leaving `workflow_dispatch:` alone. Android/iOS were never compiled (workloads absent locally). Regression protection is written, disarmed, and still not demonstrated. Iterations 3 and 4 both restated "never executed" without noticing the triggers had gone — see §12.12.
 7. 🟡 **TD-09** — ~~No financial-invariant tests. Every fix above would ship unverified.~~ **Untrue since iteration 2, and the gap has narrowed twice more since.** Atomicity, split-sum, owned-collection round trip, currency match, import dedup and now **void + balance recalculation** are all covered, several falsification-proven; the suite is 240 tests. The remaining gaps are rounding/allocation (TD-18) and line-item reconciliation (TD-19) — both P1, and both invariants the domain does not express yet, so they are work to *design* rather than tests to back-fill. See §12.12 and §12.14.
 8. 🟡 **TD-10** — Encrypted pre-migration backup is implemented and verified, so a failed upgrade no longer destroys the only copy. **Recovery is still manual**: no restore path and no UI entry point for the export command.
@@ -623,7 +623,7 @@ a day of work now and an impossible migration later.
 
 - [x] ✅ **1.** Structured file logging with redaction at the boundary; delete the OCR content trace (TD-14, TD-25) — **DONE.** A hand-rolled JSONL sink (`Pine.Infrastructure/Diagnostics/`, zero new NuGet packages) with `LogRedactor` as the single boundary every string crosses, size rotation and retention per `30-Observability` §4.4, one `AddPineLogging()` replacing five different ways of logging nothing, and a container-free `PineCrashLogger` for the two `Main` catch blocks. The OCR content trace is **deleted, not redacted**. Four falsification mutations, all killed. 313 → 367 tests. Log **encryption at rest** is deliberately out of scope (TD-82) and §4.4 is annotated accordingly. See §12.24.
 - [x] ✅ **2.** Real diagnostics or no diagnostics (TD-15) — **DONE, THE "REAL" HALF.** The panel keeps its place and every value on it is now measured rather than asserted: a `ILogTailReader` reading the TD-14 JSONL files back (bounded 200-record tail, `FileShare.ReadWrite` so the live file the sink holds open is still readable), a singleton `IDatabaseHealthProbe` that answers `Locked` without touching the database and otherwise reports `Healthy`/`PendingMigrations`/`Unreachable`/`Faulted` as a closed status set carrying no exception text (TD-23), and an `IRuntimeInfoProvider` whose `AppVersion` is *the same resolution* the sink stamps into every record. The `Export DIB` and `Seed Demo Data` buttons are **removed, not reimplemented** (TD-84; the second was TD-47's defect class writing fiction into a real vault). Seven falsification mutations, all killed. 367 → 423 tests. See §12.25.
-- [ ] Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06)
+- [x] ✅ **3.** Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06) — **DONE FOR PASSWORD CHANGE; BIOMETRIC IS POSSIBLE, NOT BUILT.** Header version 2 carries a `keyWrap` (AES-256-GCM, 12-byte nonce, 16-byte tag) whose associated data binds every other header field, so splicing a wrap between vaults or editing the vault id fails the tag check. The Argon2id derivation is byte-for-byte unchanged — its output is now the *auth* key — and the pre-TD-05 known-answer vector still passes. `ChangeVaultPasswordCommand` re-wraps under a fresh salt without touching the database or closing the session, gated by the same entropy floor setup enforces. Pre-envelope vaults (v1, `pine.salt`) are **refused, not adopted**: a deliberate breaking change taken while no vault exists outside a developer machine, which deletes the second key path instead of carrying it. Nine falsification mutations, all killed. 423 → 474 unit, 119 → 150 integration. See §12.27. Three rows registered: **TD-86** (the data key is re-wrapped, never rotated), **TD-87** (no platform secure storage, so no biometric), **TD-88** (WASM has no AES-GCM, so the Browser head can open nothing).
 - [ ] Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16)
 - [ ] Row versions; indexes on `Date` and `AccountId`; FK transaction→account; scaled-integer money converter (TD-17, TD-30, TD-31)
 - [ ] Money scale + rounding + `Allocate`; line-item reconciliation in the confirmation UI (TD-18, TD-19)
@@ -2919,4 +2919,154 @@ The row this iteration closed is struck from §12.24's list. In order:
   password change and biometric unlock from impossible into ordinary.
 - **TD-83**, which this iteration narrowed but did not close, and which folds naturally into TD-29.
 - Then **TD-78**, **TD-75**, **TD-81** — the three carried over from §12.23.
+- **TD-84** last: the DIB cannot be honestly built until metrics, SLOs and a plugin host exist.
+
+### 12.27 Iteration 13 — Phase 1, item 3 (TD-06)
+
+**Ticket:** envelope encryption. A random data key, wrapped by the Argon2id key, so that password
+change and biometric unlock stop being architecturally impossible.
+
+**One decision reshaped the whole iteration, and it was the product owner's, not the
+implementer's.** Asked how to adopt existing version-1 and `pine.salt` vaults, the answer was that
+no vault exists in production at all — so the instruction was to build the thing that is correct
+from zero rather than the thing that is compatible with a past nobody has. That turned the largest
+and riskiest half of the ticket into a deletion. There is now exactly **one** key path, and the
+un-enveloped one is gone rather than carried.
+
+#### What the envelope actually is
+
+- **Two keys where there was one.** Argon2id still runs, with the same parameters, from the same
+  header, producing bit-for-bit the same 32 bytes it produced before — but those bytes are now the
+  **auth key**, and all they ever do is encrypt and decrypt 32 other bytes. The **data key** that
+  SQLCipher is keyed with comes from the CSPRNG and exists on disk only as ciphertext.
+  The pre-TD-05 known-answer vector (`correct horse battery staple`, salt `000102…0f` →
+  `853b272a…`) is unchanged and still asserted, which is the proof that the KDF did not move while
+  the envelope was added around it.
+- **`pine.vault.json` version 2**, carrying a `keyWrap` object: `AES-256-GCM`, a 12-byte nonce, the
+  wrapped key, and a 16-byte tag. `15-Security` §4 names AES-256-GCM and a wrapped data key; this
+  is that, minus the platform-keychain half — see INCOMPLETE.
+- **`VaultHeaderBinding` — the part worth reading.** The AEAD's associated data is *every field of
+  the header except the wrap*, deliberately stated as a rule rather than a judgement call about
+  which fields are "security relevant". Its real payload is the vault id: the id is never fed to
+  Argon2id, so without the binding it would be a field an attacker could edit at will. With it,
+  splicing one vault's wrap onto another's header fails the tag check. Length-prefixed encoding,
+  so no two distinct headers can produce the same associated data.
+- **A wrong password is now detected in the right place.** It fails as an authentication tag
+  mismatch, before any file is opened, as one specific exception type — rather than as whatever
+  SQLCipher says when handed a bad key. The database probe survives in `UnlockViewModel` but has
+  changed meaning: it no longer checks the password, it checks that the unwrapped key opens *this*
+  database.
+- **`VaultKeyUnwrapException` carries nothing.** No inner exception, no property separating "wrong
+  password" from "tampered header". Both are the same tag failure, and any signal distinguishing
+  them is an oracle for the one question an attacker wants answered.
+- **`ChangeVaultPasswordCommand`**, with the entropy floor `SetupViewModel` already enforces —
+  without it, "create a strong vault, then change the password to `hunter2`" would have been a
+  documented way to walk straight around that gate. Unwrap-and-rewrap happens entirely inside
+  `IVaultKeyService.ChangePassword`, so no plaintext data key ever passes through the application
+  layer, where nothing would zero it. The database is untouched and the open session is left alone:
+  the data key did not change, so there is no reason to log the user out of a vault they are using.
+- **`IVaultHeaderStore` became pure persistence.** `Create` and `ReadOrAdoptLegacy` are deleted —
+  minting a header now requires the master password, which a file store has no business receiving.
+
+#### Verification actually executed
+
+Every number below was produced on this machine, by the orchestrating session, after the
+implementing agents had finished. The agents were forbidden from building or testing anything —
+they share this solution and would have raced on build output — so no agent's claim about a
+compile or a test result was, or could have been, taken at face value. Three research agents ran
+first; each of their load-bearing claims (call sites, DI registrations, the `15-Security` §4 text,
+the ADR inventory, the test counts) was re-checked by hand with `grep` before being used.
+
+| | |
+|---|---|
+| `dotnet build` | `Pine.Core`, `Pine.Application`, `Pine.Infrastructure`, `Pine.Ui.Windows`, `Pine.Ui.Macos` — **0 errors, 0 warnings each** |
+| `Pine.Ui.Web` | **0 errors, 1 warning** — the pre-existing `NativeFileReference` wasm-linking warning, unrelated to this change |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED.** `NETSDK1147`: the `android` and `ios` workloads are not installed on this machine. Both were edited (one DI line each). Re-confirmed by running both builds, not assumed from §12.25 |
+| `dotnet test` — unit | **474 passed, 0 failed**, from a 423 baseline |
+| `dotnet test` — integration | **150 passed, 0 failed**, from a 119 baseline |
+| Falsification mutations | **9 applied, 9 killed**, each reverted and the file byte-compared against its backup afterwards; both suites re-run green at the end |
+
+#### The nine mutations
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Drop the associated data from both `AesGcm.Encrypt` and `AesGcm.Decrypt` | 2 tests failed |
+| 2 | Make the data key the Argon2id output instead of random — i.e. no envelope at all | 1 test failed |
+| 3 | `ChangePassword` reuses the old salt instead of rotating it | 1 test failed |
+| 4 | Swallow the tag mismatch and return the plaintext buffer anyway | **8 tests failed** |
+| 5 | `MinimumSupportedVersion` back to 1, re-accepting pre-envelope vaults | 1 test failed |
+| 6 | Remove the vault id from `VaultHeaderBinding` | 1 unit + 1 integration test failed |
+| 7 | Remove the auth-key-length guard, letting a 16-byte profile reach AES-256 | 2 tests failed |
+| 8 | Handler writes the header it read instead of the re-wrapped one | 1 test failed |
+| 9 | Neutralise the entropy floor in the password-change validator | 1 test failed |
+
+Mutation 4 is the one to keep in mind. "Fails open" is a one-line edit — return the buffer instead
+of throwing — and it turns the entire envelope into decoration while every round-trip test still
+passes. Eight tests catch it, and not one of them is the round trip.
+
+Mutation 9's first form (`else if (false)`) could not be applied at all: `CS0162 unreachable code`
+is an error under `TreatWarningsAsErrors`. Recorded because it is a small, real piece of evidence
+that the build gate has teeth.
+
+#### INCOMPLETE — stated rather than buried
+
+1. **Biometric unlock is not built.** The roadmap row says the envelope makes it an ordinary
+   feature, and that is now true of the *architecture* and of nothing else: there is no platform
+   secure storage anywhere in this repository — no Keychain, no Keystore, no DPAPI. What the
+   envelope buys is that adding one becomes a second wrap rather than a redesign. New row
+   **TD-87**.
+2. **The data key is never rotated.** `15-Security` §4 says "the data key is rotated when the user
+   changes their credential." This rotates the **auth key** and the salt. Anyone who already knew
+   the data key — not the old password, the key — still knows it afterwards. The command's own
+   documentation says so in those words. Closing it means `PRAGMA rekey` over the whole database,
+   which is a data-loss-class operation. New row **TD-86**.
+3. **This is a breaking change, and it is affordable exactly once.** Version-1 and `pine.salt`
+   vaults are now refused with `LegacyVaultFormatException`. That was the right call while no vault
+   exists outside a developer machine, and it stops being available the moment one does. If a real
+   vault is created before TD-86 lands, `MinimumSupportedVersion` can never rise again without a
+   migration that re-encrypts the database.
+4. **Nothing on this page has been seen running.** The password-change section in Settings is a
+   compiler claim, not a rendering claim: the strength meter, the three password boxes, the
+   `IsEnabled` bindings and the result message are all manual rows. `61-Manual-Test-Plan` §1.4 has
+   been rewritten from "confirm the UI does not offer this" into the steps that exercise it.
+5. **The Web head now registers a crypto stack it cannot run.** `AesGcm.IsSupported` is false on
+   the browser/WASM runtime, so `Pine.Ui.Web` will refuse to open any vault with
+   `VaultKeyWrapUnavailableException`. That is the honest behaviour, and it is reported as "this
+   build cannot open vaults" rather than as a wrong password — but it is **untested**, because
+   there is no WASM runtime on this machine to test it in, and it makes the Browser head's standing
+   worse than Phase 3 already records. New row **TD-88**.
+6. **The key is still a managed `byte[]`.** TD-11's §12.16 write-up said closing that window
+   "belongs with the envelope-key work (TD-06)". It does not close it. Every intermediate auth key
+   and data key is now zeroed with `CryptographicOperations.ZeroMemory` on every path including the
+   failing ones, which is more than was true before — but a compacting GC may already have moved
+   any of those buffers, and nothing here can reach the copy it left behind. No claim to the
+   contrary is made anywhere in the code.
+7. **`15-Security` §4 is narrowed, not satisfied.** Its wrapped-data-key clause is implemented; its
+   platform-secure-storage clause is not; its rotation clause is not (see 2). §4 has been annotated
+   in place rather than left to read as closed.
+8. **ADR-0013 still does not exist.** The encryption baseline this iteration implements is cited
+   across the codebase as ADR-0013 and remains an eight-word row in `25-ADR.md`. TD-40 is untouched,
+   and this iteration made that citation more load-bearing, not less.
+
+#### Rows the register gains
+
+| ID | Debt | Sev | Impact | Fix | Priority | Status |
+|---|---|---|---|---|---|---|
+| TD-86 | Password change rotates the auth key, never the data key | 🟠 | A leaked data key survives every password change; `15-Security` §4's rotation clause is unmet | `PRAGMA rekey` to a fresh random data key, behind a mandatory pre-rekey backup | P2 | 🔴 Open |
+| TD-87 | No platform secure storage, so no biometric unlock | 🟡 | The envelope's second wrap has no consumer; `15-Security` §4's keychain clause is unmet | A second `VaultKeyWrap` under a platform-held key, per head | P2 | 🔴 Open |
+| TD-88 | `Pine.Ui.Web` registers AES-GCM, which WASM does not provide | 🟡 | The Browser head can no longer open any vault, and this is untested rather than observed | Decide the Browser head's fate (Phase 3 already proposes dropping it) before writing a WASM-safe wrap | P2 | 🔴 Open |
+
+### 12.28 Next
+
+The row this iteration closed is struck from §12.26's list. In order:
+
+- **TD-07 — re-arm CI.** Still the largest single risk on this branch. Three consecutive iterations
+  have now shipped registration changes to `Pine.Ui.Android` and `Pine.Ui.Ios` sight unseen.
+- **TD-86 — rotate the data key.** Newly registered, and the one item on this list with a deadline
+  attached to it: it is cheap while no real vault exists and expensive the moment one does.
+- **TD-85 — decide the per-head page inventory**, carried from §12.26, now with TD-88 beside it as
+  a second reason to settle what the Browser head is for.
+- **Phase 1 item 4 — per-vault encrypted ML model (TD-16).** The next roadmap row.
+- **TD-83**, which folds naturally into TD-29.
+- Then **TD-78**, **TD-75**, **TD-81** — carried over from §12.23.
 - **TD-84** last: the DIB cannot be honestly built until metrics, SLOs and a plugin host exist.

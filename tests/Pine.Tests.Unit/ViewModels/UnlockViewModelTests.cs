@@ -26,7 +26,7 @@ public class UnlockViewModelTests
     private readonly IVaultSession _vaultSession = Substitute.For<IVaultSession>();
     private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
     private readonly IVaultHeaderStore _vaultHeaderStore = Substitute.For<IVaultHeaderStore>();
-    private readonly IKeyDerivationService _keyDerivationService = Substitute.For<IKeyDerivationService>();
+    private readonly IVaultKeyService _vaultKeyService = Substitute.For<IVaultKeyService>();
 
     private UnlockViewModel CreateViewModel()
     {
@@ -35,7 +35,7 @@ public class UnlockViewModelTests
             _vaultSession,
             _navigationService,
             _vaultHeaderStore,
-            _keyDerivationService);
+            _vaultKeyService);
 
         vm.Initialize(new VaultProfile { Name = "Personal", Path = @"C:\vaults\personal" });
         vm.MasterPassword = "correct horse battery staple";
@@ -54,7 +54,7 @@ public class UnlockViewModelTests
 
         // Assert
         vm.StatusMessage.Should().Contain("cannot be empty");
-        _vaultHeaderStore.DidNotReceiveWithAnyArgs().ReadOrAdoptLegacy(default!);
+        _vaultHeaderStore.DidNotReceiveWithAnyArgs().Read(default!);
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class UnlockViewModelTests
     {
         // Arrange
         var vm = CreateViewModel();
-        _vaultHeaderStore.ReadOrAdoptLegacy(Arg.Any<string>())
+        _vaultHeaderStore.Read(Arg.Any<string>())
             .Throws(UnsupportedVaultHeaderException.ForKdfId("scrypt"));
 
         // Act
@@ -74,9 +74,9 @@ public class UnlockViewModelTests
         vm.IsBusy.Should().BeFalse();
         _vaultSession.Received().Lock();
         _navigationService.DidNotReceive().NavigateTo<ShellViewModel>();
-        // Refusing an unknown KDF must happen BEFORE any key is derived: deriving with guessed
-        // parameters silently produces the wrong key, which is the failure TD-05 exists to kill.
-        _keyDerivationService.DidNotReceiveWithAnyArgs().DeriveKey(default!, default!);
+        // Refusing an unknown KDF must happen BEFORE any key is recovered: unwrapping under guessed
+        // parameters derives the wrong auth key, which is the failure TD-05 exists to kill.
+        _vaultKeyService.DidNotReceiveWithAnyArgs().UnwrapDataKey(default!, default!);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class UnlockViewModelTests
     {
         // Arrange
         var vm = CreateViewModel();
-        _vaultHeaderStore.ReadOrAdoptLegacy(Arg.Any<string>())
+        _vaultHeaderStore.Read(Arg.Any<string>())
             .Throws(new VaultHeaderCorruptException(@"C:\vaults\personal\pine.vault.json", "truncated"));
 
         // Act
@@ -102,7 +102,7 @@ public class UnlockViewModelTests
         // Arrange - an unexpected internal failure must collapse to the generic auth message and
         // must never surface ex.Message, which leaks paths and internals (TD-24).
         var vm = CreateViewModel();
-        _vaultHeaderStore.ReadOrAdoptLegacy(Arg.Any<string>())
+        _vaultHeaderStore.Read(Arg.Any<string>())
             .Throws(new InvalidOperationException(@"connection to C:\secret\path\pine.db failed"));
 
         // Act

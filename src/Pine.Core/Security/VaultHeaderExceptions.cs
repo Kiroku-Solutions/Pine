@@ -57,6 +57,33 @@ public sealed class UnsupportedVaultHeaderException : Exception
             supportedHeaderVersion: VaultHeader.CurrentVersion,
             foundKdfId: foundKdfId,
             supportedKdfIds: SupportedKdfIdList);
+
+    /// <summary>
+    /// Creates an exception for a KDF profile whose derived-key length cannot key the wrap
+    /// algorithm the envelope uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS EXISTS BECAUSE <see cref="KdfParameters"/> DELIBERATELY DOES NOT PIN
+    /// <see cref="KdfParameters.KeyLengthBytes"/> TO 32. Its bounds are wide on purpose - they are
+    /// there to reject nonsense, not to encode one profile - so a well-formed header may legally
+    /// declare a 16-byte auth key. AES-256-GCM cannot be keyed with one.
+    /// </para>
+    /// <para>
+    /// It is refused UP FRONT, with its own message, rather than being allowed to surface as
+    /// <c>VaultKeyUnwrapException</c>. Both would fail closed, but "could not be unwrapped" is the
+    /// sentence a wrong password produces, and a misconfigured profile is not a wrong password: the
+    /// user would be sent to retype a password that was never the problem, which is exactly the
+    /// confusion TD-05 and TD-24 exist to eliminate.
+    /// </para>
+    /// </remarks>
+    public static UnsupportedVaultHeaderException ForAuthKeyLength(int foundKeyLengthBytes, int requiredKeyLengthBytes) =>
+        new(
+            $"A {foundKeyLengthBytes}-byte auth key cannot key {VaultKeyWrapAlgorithms.Aes256Gcm}, which requires {requiredKeyLengthBytes} bytes.",
+            foundHeaderVersion: null,
+            supportedHeaderVersion: VaultHeader.CurrentVersion,
+            foundKdfId: null,
+            supportedKdfIds: SupportedKdfIdList);
 }
 
 /// <summary>

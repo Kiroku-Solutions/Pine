@@ -16,11 +16,11 @@ public class SetupViewModelTests
     private readonly IVaultSession _vaultSession = Substitute.For<IVaultSession>();
     private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
     private readonly IVaultHeaderStore _vaultHeaderStore = Substitute.For<IVaultHeaderStore>();
-    private readonly IKeyDerivationService _keyDerivationService = Substitute.For<IKeyDerivationService>();
+    private readonly IVaultKeyService _vaultKeyService = Substitute.For<IVaultKeyService>();
 
     private SetupViewModel CreateViewModel()
     {
-        return new SetupViewModel(_serviceProvider, _vaultSession, _navigationService, _vaultHeaderStore, _keyDerivationService);
+        return new SetupViewModel(_serviceProvider, _vaultSession, _navigationService, _vaultHeaderStore, _vaultKeyService);
     }
 
     [Fact]
