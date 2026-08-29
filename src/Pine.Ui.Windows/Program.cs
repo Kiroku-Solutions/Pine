@@ -109,6 +109,11 @@ sealed class Program
         // console this WinExe does not have. See PineLoggingServiceCollectionExtensions.
         services.AddPineLogging();
 
+        // Real diagnostics seams (TD-15): the log tail reader, the database health probe and the
+        // runtime info provider that DiagnosticsViewModel reads instead of the constants it used to
+        // display. MUST come after AddPineLogging(), whose sink owns the log directory these read.
+        services.AddPineDiagnostics();
+
         // TimeProvider
         services.AddSingleton(TimeProvider.System);
 

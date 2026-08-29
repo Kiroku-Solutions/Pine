@@ -88,9 +88,19 @@ sealed class Program
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<AddTransactionViewModel>();
 
+        // TD-15 fix (pre-existing defect, like the UnlockViewModel line above): DiagnosticsViewModel
+        // was registered only on Windows, so ShellViewModel.NavigateTo's GetRequiredService threw
+        // the moment the Diagnostics nav button was pressed on this head.
+        services.AddTransient<DiagnosticsViewModel>();
+
         // Structured file logging (TD-14). Replaces AddConsole(), which wrote every record to a
         // console this windowed head does not have. See PineLoggingServiceCollectionExtensions.
         services.AddPineLogging();
+
+        // Real diagnostics seams (TD-15): the log tail reader, the database health probe and the
+        // runtime info provider that DiagnosticsViewModel reads instead of the constants it used to
+        // display. MUST come after AddPineLogging(), whose sink owns the log directory these read.
+        services.AddPineDiagnostics();
 
         // TimeProvider
         services.AddSingleton(TimeProvider.System);

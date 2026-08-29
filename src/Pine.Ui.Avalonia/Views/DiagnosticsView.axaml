@@ -7,17 +7,24 @@
              x:Class="Pine.Ui.Avalonia.Views.DiagnosticsView"
              x:DataType="vm:DiagnosticsViewModel">
 
+    <!--
+        TD-15: this page used to carry two buttons that had no business existing.
+        "Seed Demo Data / Test Features" wrote fictional accounts, transactions, a transfer and a
+        budget into the user's real vault from a nav-reachable button (the defect class TD-47
+        closed elsewhere), and "Export DIB" reported that it was exporting a diagnostic bundle
+        while its handler did nothing at all. Both are gone; Refresh below is the only action the
+        header offers, and it only reads.
+    -->
     <Grid RowDefinitions="Auto, Auto, *" Margin="40">
-        
+
         <!-- Header -->
         <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,32">
             <StackPanel Grid.Column="0" Spacing="4">
                 <TextBlock Text="Diagnostics &amp; System" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="Local runtime observability and diagnostic tools." FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="Local runtime observability. Every value on this page is read from the running process." FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                <Button Content="Seed Demo Data / Test Features" Command="{Binding TestFeaturesCommand}" Classes="pine-nav" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Creates accounts, transactions, transfers and budgets for testing" />
-                <Button Content="Export DIB" Command="{Binding ExportDibCommand}" Classes="pine-accent" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Export Diagnostic Information Bundle" />
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsLoading}" Classes="pine-accent" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="Re-read runtime info, database health and the log tail" />
             </StackPanel>
         </Grid>
 
@@ -31,11 +38,11 @@
                 </StackPanel>
             </Border>
 
-            <!-- OS Version -->
+            <!-- Host Environment -->
             <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,16,0" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="Host Environment" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
-                    <TextBlock Text="{Binding OsVersion}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding OsDescription}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
@@ -43,15 +50,20 @@
             <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,16,0" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="Vault DB Status" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
-                    <TextBlock Text="{Binding DatabaseStatus}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PinePrimary}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding DatabaseStatus}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PinePrimary}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
-            <!-- Memory -->
+            <!--
+                Memory. The label says "Managed Heap" and not "Engine Memory": the number is
+                GC.GetTotalMemory, which is not the process working set, and a user comparing it
+                against Task Manager under the old label was being told something false about a
+                true number (TD-15).
+            -->
             <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,0,0" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
-                    <TextBlock Text="Engine Memory" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
-                    <TextBlock Text="{Binding MemoryUsage}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" />
+                    <TextBlock Text="Managed Heap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" ToolTip.Tip="Bytes held by the .NET managed heap. Not total process memory." />
+                    <TextBlock Text="{Binding ManagedMemory}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
         </UniformGrid>
@@ -59,7 +71,7 @@
         <!-- Live Log Terminal -->
         <Border Grid.Row="2" Background="#0C0908" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" ClipToBounds="True" BoxShadow="0 8 32 0 #30000000">
             <Grid RowDefinitions="Auto, *">
-                
+
                 <!-- Terminal Header -->
                 <Border Grid.Row="0" Background="#161110" BorderBrush="#2E241E" BorderThickness="0,0,0,1" Padding="16,10">
                     <Grid ColumnDefinitions="*, Auto">
@@ -67,26 +79,58 @@
                             <Ellipse Width="10" Height="10" Fill="{DynamicResource PineDanger}" />
                             <Ellipse Width="10" Height="10" Fill="#F5A623" />
                             <Ellipse Width="10" Height="10" Fill="#7ED321" />
-                            <TextBlock Text="pine-engine-stdout.log" FontSize="12" Foreground="#827168" Margin="16,0,0,0" VerticalAlignment="Center" FontFamily="Consolas, Courier New, monospace" />
+                            <!--
+                                The header used to read "pine-engine-stdout.log", which is not the
+                                name of any file Pine has ever written. The real sink (TD-14) writes
+                                %LOCALAPPDATA%/Pine/logs/<date>.log.jsonl, so the header names that
+                                and a reader who wants the raw records knows where to go.
+                            -->
+                            <TextBlock Text="%LOCALAPPDATA%/Pine/logs/&lt;date&gt;.log.jsonl" FontSize="12" Foreground="#827168" Margin="16,0,0,0" VerticalAlignment="Center" FontFamily="Consolas, Courier New, monospace" ToolTip.Tip="The newest records from the Pine JSONL log, oldest first." />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <Button Content="Copy" Click="CopyLogs_Click" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" />
-                            <Button Content="Clear" Command="{Binding ClearLogsCommand}" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" />
+                            <Button Content="Copy" Click="CopyLogs_Click" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" ToolTip.Tip="Copy the records shown here to the clipboard" />
+                            <!--
+                                "Clear view", not "Clear": this empties the list on screen and
+                                touches no file. The old label plus its "Logs cleared by user."
+                                line read as though Pine had deleted the log.
+                            -->
+                            <Button Content="Clear view" Command="{Binding ClearViewCommand}" Background="Transparent" Foreground="#827168" FontSize="12" Padding="8,4" CornerRadius="4" Cursor="Hand" ToolTip.Tip="Clears this view only. The log files on disk are not touched." />
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- Log Output -->
-                <ScrollViewer Grid.Row="1" Padding="16" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Logs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontFamily="Consolas, Courier New, monospace" FontSize="13" Foreground="#A3948B" Margin="0,2" TextWrapping="Wrap" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <Grid Grid.Row="1">
+                    <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding LogEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiagnosticsLogEntryViewModel">
+                                    <Grid ColumnDefinitions="Auto, Auto, *" Margin="0,2">
+                                        <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontFamily="Consolas, Courier New, monospace" FontSize="13" Foreground="#6E5F58" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LevelText}" FontFamily="Consolas, Courier New, monospace" FontSize="13" Foreground="#827168" Margin="12,0" MinWidth="52" ToolTip.Tip="{Binding Category}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}" FontFamily="Consolas, Courier New, monospace" FontSize="13" Foreground="#A3948B" TextWrapping="Wrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!--
+                        The empty state. An empty log is a real, displayable condition, so it is
+                        displayed. The panel deliberately does NOT synthesise a placeholder record
+                        to fill the space - fabricating log lines is the whole of TD-15.
+                    -->
+                    <TextBlock Text="{Binding EmptyLogMessage}"
+                               IsVisible="{Binding HasNoLogRecords}"
+                               FontFamily="Consolas, Courier New, monospace"
+                               FontSize="13"
+                               Foreground="#6E5F58"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="24" />
+                </Grid>
             </Grid>
         </Border>
     </Grid>

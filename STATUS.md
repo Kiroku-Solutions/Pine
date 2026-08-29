@@ -13,10 +13,10 @@ against it, and **that** is the number to read before shipping anything.
 | | |
 |---|---|
 | Classification | **Not Production Ready** (audit §11) |
-| Remediation | Audit **Phase 0: all 11 items worked** (iterations 1–10). Items 1 and 4–11 are ✅. **The phase is not clean**: item 2's encrypted export is still unreachable from the UI (TD-56), and item 3 **regressed after it was ticked** — `79c5364` removed the CI workflow's `push`/`pull_request` triggers, so it has never run and the Android/iOS heads have never compiled. See audit §12.22 |
-| Remaining before the branch is defensible | **Commit this work** — four iterations, ~50 files, nothing staged · **TD-07**: re-arm CI, now the largest single risk, since every claim above was verified on one machine by hand · then TD-78, TD-75, TD-81 |
-| Test suite | 28 → **432** (313 unit + 119 integration), both green. TD-74's "98/99" was a misdiagnosis: the integration project had not **compiled** since `f691ba8` — zero tests executed, not one failing. Fixed and reclassified; see audit §12.20 |
-| Last remediation | 2026-08-28 — Phase 0 item 11: the seeded fictional account and the dead `CloudSync` option removed, plus a telemetry consent checkbox for a capability that does not exist (TD-80) |
+| Remediation | Audit **Phase 0: all 11 items worked** (iterations 1–10). Items 1 and 4–11 are ✅. **The phase is not clean**: item 2's encrypted export is still unreachable from the UI (TD-56), and item 3 **regressed after it was ticked** — `79c5364` removed the CI workflow's `push`/`pull_request` triggers, so it has never run and the Android/iOS heads have never compiled. See audit §12.22. **Phase 1: items 1–2 are ✅** (structured logging TD-14/TD-25, iteration 11; real diagnostics TD-15, iteration 12). Item 3 (envelope encryption, TD-06) is next |
+| Remaining before the branch is defensible | **TD-07**: re-arm CI — the largest single risk, since every claim above was verified on one machine by hand and the Android/iOS heads have now been edited blind in two consecutive iterations · **TD-85**: four of the five heads throw on navigation buttons the shell renders unconditionally · then TD-83, TD-78, TD-75, TD-81 |
+| Test suite | 28 → **542** (423 unit + 119 integration), both green, verified on this machine at iteration 12. TD-74's "98/99" was a misdiagnosis: the integration project had not **compiled** since `f691ba8` — zero tests executed, not one failing. Fixed and reclassified; see audit §12.20 |
+| Last remediation | 2026-08-29 — Phase 1 item 2: the Diagnostics screen stopped fabricating (TD-15). Real log tail, real database probe, real version; `Export DIB` and `Seed Demo Data` removed rather than reimplemented. Found and fixed en route: `DiagnosticsViewModel` was registered on one head of five. Found and **not** fixed: TD-85, the same defect across four other pages. See audit §12.25 |
 
 Note the numbering collision: the audit's "Phase 0" is a *remediation* phase and has nothing to do
 with the implementation plan's "Phase 0 (Foundations)" below.
@@ -80,12 +80,12 @@ with the implementation plan's "Phase 0 (Foundations)" below.
   - Unified Interface (IDashboardWidgetViewModel) and 12 baseline placeholder widget ViewModels.
   - Custom dynamic resize Thumb for 2D fluid reflowing of dashboard items.
   - SettingsViewModel / SettingsView.axaml implementing configuration tabs for Appearance, Language, and Vault Security.
-  - DiagnosticsViewModel / DiagnosticsView.axaml implementing real-time log tailing, environment metrics, and DIB (Diagnostic Information Bundle) export hooks.
+  - DiagnosticsViewModel / DiagnosticsView.axaml. **Corrected, iteration 12 (TD-15):** this line claimed real-time log tailing, environment metrics and DIB export hooks. None of the three were true when it was written — the log lines were seven literals in the constructor, the database status was the constant `"Connected (Healthy)"`, and `ExportDib` was one log line plus `// To be implemented`. The log tail and the environment metrics are now real (`ILogTailReader`, `IDatabaseHealthProbe`, `IRuntimeInfoProvider`); the DIB export was **removed**, not implemented, and is tracked as TD-84. See audit §12.25.
   - **Architecture Bugfix**: Overhauled MVVM Toolkit 8.3 [ObservableProperty] syntax using partial properties and an initialization flag to prevent lifecycle theme-reset glitches on view creation.
 - **Design System**: 
   - Overhauled the global UI aesthetic, shifting from default Fluent Avalonia colors to a highly polished **S-Tier custom palette**. 
   - Implemented deep umbers for Dark Mode ("Midnight Pine") and subtle warm tones for Light Mode ("Morning Wood"), rooting the entire application's aesthetic in the core Pine orange logo identity.
-  - Diagnostics Panel utilizes a custom "hacker terminal" aesthetic for logs while maintaining Pine UI compliance for metrics cards.
+  - Diagnostics Panel utilizes a custom "hacker terminal" aesthetic for logs while maintaining Pine UI compliance for metrics cards. The aesthetic survived iteration 12; the fabricated content behind it did not.
 - **Security Unlock Flow**: Implemented UnlockViewModel and dynamic startup routing in MainViewModel. Fixed critical SQLCipher integration bugs by enforcing SQLitePCL.Batteries_V2.Init() y migrando PineDbContext DI scoping a Transient para garantizar ciclos de vida correctos.
 
 ### ✅ Implemented (Pilar 3 - Formularios, Diálogos y Reactividad UI)

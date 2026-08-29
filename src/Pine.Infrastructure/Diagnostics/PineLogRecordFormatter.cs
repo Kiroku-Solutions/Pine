@@ -35,8 +35,20 @@ namespace Pine.Infrastructure.Diagnostics;
 /// </remarks>
 internal static class PineLogRecordFormatter
 {
-    /// <summary>The application version stamped into every record's <c>version</c> field.</summary>
-    private static readonly string ApplicationVersion = ResolveApplicationVersion();
+    /// <summary>
+    /// The application version stamped into every record's <c>version</c> field.
+    /// </summary>
+    /// <remarks>
+    /// INTERNAL, AND SHARED WITH <see cref="PineRuntimeInfoProvider"/> ON PURPOSE. TD-15's
+    /// diagnostics panel reports an application version next to a tail of this very log file, and
+    /// <c>30-Observability</c> §4.1 makes the two the same fact. A second resolution of "the app
+    /// version" -- however faithfully copied today -- is a fork that drifts the first time either
+    /// side changes, and a panel naming a different build than the log it is displaying is worse
+    /// than useless during the incident it exists to serve. So there is exactly one resolution, here,
+    /// and <see cref="PineRuntimeInfoProvider.AppVersion"/> reads it rather than recomputing it. Do
+    /// not inline this into a second call to <see cref="ResolveApplicationVersion"/>.
+    /// </remarks>
+    internal static readonly string ApplicationVersion = ResolveApplicationVersion();
 
     /// <summary>
     /// Formats a single record.

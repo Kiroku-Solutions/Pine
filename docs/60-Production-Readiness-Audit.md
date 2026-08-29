@@ -497,7 +497,7 @@ any other single change.
 | TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
 | TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | ✅ **Done** |
 | TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | ✅ **Done** — iteration 11, §12.24. One `AddPineLogging()` in all five roots writing JSONL to `%LOCALAPPDATA%/Pine/logs`; every `Console.WriteLine` and `File.AppendAllText` outside `Pine.Cli` is gone, and a NetArchTest forbids `Pine.Infrastructure` from depending on `System.Console` so they cannot come back |
-| TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | 🔴 **Open** |
+| TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | ✅ **Done** — iteration 12, §12.25. Every value on the page is now measured: `ILogTailReader` over the TD-14 JSONL files, `IDatabaseHealthProbe` over the keyed connection, `IRuntimeInfoProvider` for version/OS/heap. The two dishonest buttons (`Export DIB`, `Seed Demo Data`) are removed rather than reimplemented. Seven falsification mutations, all killed |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🔴 **Open** |
 | TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
 | TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | ✅ **Closed** — iteration 8, §12.18. `Money` normalises in its constructor to the currency's ISO 4217 minor units (`ToEven`), rejects a fractional amount in a zero-minor-unit currency, and gains `Allocate`/`Multiply`/`Negate`/`Round`/`Scale`. `CurrencyCode` validates membership and offers `TryCreate`. Six falsification mutations, all killed |
@@ -566,6 +566,8 @@ any other single change.
 | TD-81 | `SetupViewModel`'s happy path cannot be tested | 🟠 | `VaultManager` is `sealed`, has no interface, hard-codes `LocalApplicationData/Pine` in its constructor and writes `vaults.json` to the real disk, so `InitializeVaultAsync` cannot run under test without mutating the developer's machine. Every existing test of this view model stops at an early validation failure; iteration 10's tests had to assert type-level dependencies instead of behaviour | Extract `IVaultManager`, or inject the data directory | P2 | 🔴 **Open** — iteration 10 |
 | TD-82 | Log files are not encrypted at rest | 🟡 | `30-Observability` §4.4 requires logs to be encrypted with the data-store key. They are not: iteration 11 writes plaintext JSONL to `%LOCALAPPDATA%/Pine/logs`. The reason is structural — the records that matter most (startup, KDF failure, crash, every pre-unlock error) exist precisely when no vault key is available — so the honest posture is redaction plus a location outside the vault, not a half-encrypted log. Residual exposure is whatever `LogRedactor` misses | Either a post-unlock encrypted sink alongside the plaintext pre-unlock one, or amend §4.4 to match reality | P2 | 🔴 **Open** — iteration 11 |
 | TD-83 | Nothing proves a head still registers logging | 🟠 | `AddPineLogging()` is verified by a unit test that builds one `ServiceCollection` by hand. No test builds any head's real container, because `tests/Pine.Tests.Unit` references `Pine.Ui.Avalonia` but none of the five heads. Deleting the call from `Pine.Ui.Web/Program.cs` would leave 367 tests green — the same class of hole as TD-14 itself, one layer up. The identical gap applies to `AddPineApplication` and `AddPineVaultAutoLock` | A composition-root smoke test per head, or a single shared `AddPineHost()` the heads cannot bypass (folds into TD-29) | P2 | 🔴 **Open** — iteration 11 |
+| TD-84 | No Diagnostic Information Bundle exists | 🟡 | `30-Observability` §9 specifies a **signed** ZIP carrying sync run summaries, an SLO budget summary and a plugin inventory. None of those subsystems exist, and there is no signing key, no distribution and no verification path. Iteration 12 removed the `Export DIB` button — whose body was one log line and a `// To be implemented` — rather than shipping something else under that name, and annotated §8 and §9 `Status: Aspirational` | Build the DIB once metrics, SLOs and a plugin host exist, or narrow §9 to what a local-first app can honestly produce | P2 | 🔴 **Open** — iteration 12 |
+| TD-85 | Four of five heads never register their navigation targets | 🔴 | `ShellViewModel.NavigateTo` resolves through `GetRequiredService`, so an unregistered view model is not a blank page but a **throw on click**. Only `Pine.Ui.Windows` registers all seven nav targets. macOS is missing `Budgets`, `Settings`, `ScanReceipt` and `LiveScanner`; Web is missing `Settings`, `ScanReceipt` and `LiveScanner`; Android and iOS are missing all four. `Diagnostics` was a fifth instance and was fixed under TD-15 in iteration 12 — the rest were left alone deliberately, because registering `ScanReceipt`/`LiveScanner` on the Browser head would wire up a page that cannot run OpenCV or PaddleInference at all (§10, Phase 3). It compiles on every head, which is why nothing caught it | Decide per head which pages exist, hide the nav entries the head cannot serve, and register the rest — ideally once, via TD-29's shared root | P1 | 🔴 **Open** — iteration 12 |
 
 ---
 
@@ -620,7 +622,7 @@ a day of work now and an impossible migration later.
 ### Phase 1 — Stabilisation
 
 - [x] ✅ **1.** Structured file logging with redaction at the boundary; delete the OCR content trace (TD-14, TD-25) — **DONE.** A hand-rolled JSONL sink (`Pine.Infrastructure/Diagnostics/`, zero new NuGet packages) with `LogRedactor` as the single boundary every string crosses, size rotation and retention per `30-Observability` §4.4, one `AddPineLogging()` replacing five different ways of logging nothing, and a container-free `PineCrashLogger` for the two `Main` catch blocks. The OCR content trace is **deleted, not redacted**. Four falsification mutations, all killed. 313 → 367 tests. Log **encryption at rest** is deliberately out of scope (TD-82) and §4.4 is annotated accordingly. See §12.24.
-- [ ] Real diagnostics or no diagnostics (TD-15)
+- [x] ✅ **2.** Real diagnostics or no diagnostics (TD-15) — **DONE, THE "REAL" HALF.** The panel keeps its place and every value on it is now measured rather than asserted: a `ILogTailReader` reading the TD-14 JSONL files back (bounded 200-record tail, `FileShare.ReadWrite` so the live file the sink holds open is still readable), a singleton `IDatabaseHealthProbe` that answers `Locked` without touching the database and otherwise reports `Healthy`/`PendingMigrations`/`Unreachable`/`Faulted` as a closed status set carrying no exception text (TD-23), and an `IRuntimeInfoProvider` whose `AppVersion` is *the same resolution* the sink stamps into every record. The `Export DIB` and `Seed Demo Data` buttons are **removed, not reimplemented** (TD-84; the second was TD-47's defect class writing fiction into a real vault). Seven falsification mutations, all killed. 367 → 423 tests. See §12.25.
 - [ ] Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06)
 - [ ] Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16)
 - [ ] Row versions; indexes on `Date` and `AccountId`; FK transaction→account; scaled-integer money converter (TD-17, TD-30, TD-31)
@@ -2754,15 +2756,167 @@ rather than by branch.
   single line to each, and TD-83 exists precisely because there is no shared root to test.
 - **Rows re-checked and confirmed unchanged:** TD-01 … TD-13, TD-15 … TD-24, TD-26 … TD-81.
 
-### 12.25 Next
+### 12.25 Iteration 12 — Phase 1, item 2 (TD-15)
 
-§12.23's list stands, minus the row this iteration closed. In order:
+**Ticket:** real diagnostics or no diagnostics. The choice was made explicitly in favour of *real*:
+the sink built in iteration 11 is the data source the panel had been pretending to have, so removing
+the screen would have thrown away a reader that was already half-written.
 
-- ~~**Commit.**~~ Done: this iteration was committed straight after verification, and iterations
-  7-10 had already landed in `77802c2` / `9c2118e`. §12.23's first bullet is discharged.
-- **TD-07 — re-arm CI.** Unchanged in priority. It is the only thing that would compile Android and
-  iOS, which this iteration edited blind.
-- **Phase 1 item 2 — real diagnostics or no diagnostics (TD-15).** The natural successor: the sink
-  this iteration built is the data source the mock panel has been pretending to have.
-- **TD-83**, cheaply, alongside whichever head is next touched.
+#### Verification actually executed
+
+Every number below was produced on this machine, by the orchestrating session, after the
+implementing agents had finished. The agents were forbidden from building or testing anything
+themselves — they share `Pine.Infrastructure` and would have raced on build output — so no agent's
+claim about a test result could be, or was, taken at face value.
+
+| | |
+|---|---|
+| `dotnet build` | `Pine.Core`, `Pine.Application`, `Pine.Infrastructure`, `Pine.Ui.Avalonia`, `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Ui.Web` — **0 errors each** |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED.** `NETSDK1147`: the `android` and `ios` workloads are not installed on this machine. Both were edited. This is TD-07's blind spot, unchanged |
+| `dotnet test` — unit | **423 passed, 0 failed**, from a 367 baseline measured before any edit |
+| `dotnet test` — integration | **119 passed, 0 failed**, confirmed on four consecutive runs |
+| Falsification mutations | **7 applied, 7 killed**, each reverted and the suite reconfirmed green afterwards |
+
+**One unexplained integration flake.** A single run reported `1 failed / 118 passed`. It occurred in
+the shell invocation immediately after building all seven projects, and that run produced no `.trx`,
+so the failing test's name was not captured. Four subsequent runs were green. It is recorded here
+rather than dismissed: an intermittent failure whose name is unknown is not the same as no failure.
+
+#### The seven mutations
+
+Each was applied to the restored tree, the unit suite run, then the file restored from a backup.
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Re-add a fabricated `"Migrations are up to date."` entry in the view model's constructor | 1 test failed |
+| 2 | Restore `AppVersion = "Pine Vault v1.0.0-beta.1"` as a literal | 1 test failed |
+| 3 | `FileShare.ReadWrite` → `FileShare.None` in the tail reader | 2 tests failed |
+| 4 | Delete the probe's locked-vault short-circuit | 1 test failed |
+| 5 | Add a `string? Detail` field to `DatabaseHealth` — the TD-23 leak route | 1 test failed |
+| 6 | Flatten the tail with a flat `Reverse()` instead of per-file blocks | 11 tests failed |
+| 7 | Remove the `IVaultLockState` bridge from `AddPineApplication` | 3 tests failed |
+
+Mutation 6 is the one worth keeping in mind. Reversing a single flat list looks identical to
+reversing the block order, and is wrong in a way no reader would spot: it also reverses the records
+*within* each file, so a tail that spans a rotation comes back interleaved backwards. Eleven tests
+die on it, which is the right amount of noise for a bug that silently reorders an incident timeline.
+
+An earlier attempt at mutation 4 — replacing the guard's condition with `if (false)` — did not
+compile, because unreachable-code warnings are errors here. That is worth noting: a mutation that
+fails to build proves nothing, and was redone as a deletion.
+
+#### What was built
+
+Five contracts in **`Pine.Core.Diagnostics`** — `ILogTailReader`, `LogTailEntry`,
+`IDatabaseHealthProbe`, `DatabaseHealth`, `IRuntimeInfoProvider` — implemented in
+`Pine.Infrastructure/Diagnostics/` by `PineLogTailReader`, `PineDatabaseHealthProbe` and
+`PineRuntimeInfoProvider`, registered by one `AddPineDiagnostics()` mirroring `AddPineLogging`'s
+`TryAdd` idiom, and consumed by a rewritten `DiagnosticsViewModel`.
+
+- **The tail reader** walks `*.log.jsonl` in ordinal name order — which *is* age order, by the
+  writer's naming — from the newest file backwards, keeping a bounded queue of the last N lines per
+  file rather than reading a 50 MB file into memory, and parsing with `JsonDocument`. A truncated
+  final line, a real possibility mid-rotation, is skipped and never surfaced as a fake record. It
+  opens with `FileShare.ReadWrite` because `PineFileLogWriter` holds the live file open; any other
+  share mode makes the panel fail precisely while the app is running, which is always.
+- **The probe** is a singleton over `IServiceScopeFactory`, not an injected `PineDbContext`. The
+  context is Scoped and its factory *throws* when the vault is locked, while `DiagnosticsViewModel`
+  is Transient and resolved from the root — so injecting it would either capture a scoped service
+  under `ValidateScopes`, on in all five roots since TD-01, or take the diagnostics screen down at
+  the moment someone opened it. `Locked` is answered before any scope is created.
+- **`AppVersion` is not a second resolution.** `PineLogRecordFormatter.ApplicationVersion` became
+  `internal` and `PineRuntimeInfoProvider` reads it, so the version on the card and the `version`
+  field of the records displayed underneath it cannot drift apart. A test asserts they are equal by
+  writing a record through the real provider and reading the field back off disk.
+
+#### Two layering corrections made mid-flight
+
+Both were found by compiling, not by reading, and both invalidated a decision made before the agents
+were dispatched.
+
+1. The contracts were first written into `Pine.Application.Diagnostics`. **`Pine.Infrastructure`
+   references only `Pine.Core`**, so nothing there could implement them. They were moved to
+   `Pine.Core.Diagnostics`. One agent independently hit the same wall and proposed the opposite fix —
+   adding a `Pine.Infrastructure → Pine.Application` project reference. That was rejected: every
+   other abstraction Infrastructure implements (`IVaultBackupService`, `IVaultMigrator`,
+   `IKeyDerivationService`) already lives in `Pine.Core`, and inverting a project reference to avoid
+   moving five files would be a structural change made for a clerical reason.
+2. The probe needs the vault's lock state, but `IVaultSession` also lives in `Pine.Application`. A
+   new `Pine.Core.Security.IVaultLockState` carries the single `IsUnlocked` bit; `IVaultSession`
+   **extends** it, so there is one session object and no adapter, and the binding is made once inside
+   `AddPineApplication` rather than five times across the roots. The rejected alternative was to
+   resolve the context and read the `InvalidOperationException` the factory throws while locked —
+   which would have made "locked" and "broken" indistinguishable, since that exception type covers
+   every other misconfiguration too.
+
+#### Pre-existing defects found and fixed
+
+- **`DiagnosticsViewModel` was registered in `Pine.Ui.Windows` and nowhere else.** Because
+  `ShellViewModel.NavigateTo` resolves via `GetRequiredService`, the Diagnostics nav button *threw*
+  on macOS, Web, Android and iOS. It compiled everywhere. It is now registered on all five, and
+  `PineDiagnosticsCompositionTests` builds a root-shaped container under `ValidateScopes` so the
+  graph is proven resolvable rather than merely compilable.
+- **`ClearLogs` implied it deleted something.** It appended `"Logs cleared by user."` to a list. It is
+  now `ClearViewCommand`, labelled "Clear view", and the empty state says the files were not touched.
+- **The terminal header read `pine-engine-stdout.log`**, a file Pine has never written. It now names
+  `%LOCALAPPDATA%/Pine/logs/<date>.log.jsonl`.
+- **The memory card said "Engine Memory"** over a `GC.GetTotalMemory` reading, which is the managed
+  heap and not the process working set. Relabelled "Managed Heap".
+
+#### Removed rather than reimplemented
+
+- **`ExportDib`** — body: one log line and `// To be implemented`. `30-Observability` §9 wants a
+  signed ZIP with a plugin inventory and a 30-day SLO summary; four of its seven contents have no
+  subsystem behind them. A button exporting something else under that name is the same lie in a new
+  format. §8 and §9 are annotated `Status: Aspirational`; the work is TD-84.
+- **`TestFeatures` / "Seed Demo Data"** — it wrote fictional accounts, two transactions, a transfer
+  and a budget **into the user's real vault**, from a button reachable in the ordinary navigation.
+  This is TD-47's defect class exactly, and it was not in the register. Removing it also removed the
+  view model's last write path, so `IMediator`, `TimeProvider` and the `DataChangedMessage` broadcast
+  went with it — the panel now only reads.
+
+#### New debt opened
+
+- **TD-84** — no DIB exists; §9 annotated aspirational.
+- **TD-85** — and this is the larger one. Auditing the registration bug above showed it is not
+  specific to Diagnostics: **only the Windows head registers all seven navigation targets.** macOS
+  lacks `Budgets`, `Settings`, `ScanReceipt` and `LiveScanner`; Web lacks the last three; Android and
+  iOS lack all four. Each is a nav button that throws on click. It was **not** fixed here, on
+  purpose: registering `ScanReceipt` or `LiveScanner` on the Browser head would wire up pages that
+  cannot run OpenCV or PaddleInference at all (§10, Phase 3), so the fix is a per-head decision about
+  which pages exist, not four more registration lines.
+
+#### What TD-83 still says after this iteration
+
+`PineDiagnosticsCompositionTests` narrows TD-83 but does not close it. It builds a container from the
+same extension methods the heads call; it does not build any head's *real* container, because the
+test projects reference `Pine.Ui.Avalonia` and none of the five heads. Deleting
+`services.AddPineDiagnostics()` from `Pine.Ui.Web/Program.cs` would still leave every test green.
+TD-83 stays open, and TD-85 is now a second, sharper argument for TD-29's shared root.
+
+#### INCOMPLETE / NOT DONE
+
+- **Android and iOS were edited blind again.** Registration lines went into two heads this machine
+  cannot compile. TD-07 remains the largest risk on this branch.
+- **Nothing on this page has been seen running.** Every claim here is a compiler claim or a test
+  claim. The panel's rendering, the empty state, the Copy button and the
+  `IsEnabled="{Binding !IsLoading}"` compiled binding are manual rows in `61-Manual-Test-Plan`.
+- **The tail is untested against a real rotation ceiling.** The bounded-buffer behaviour is proven
+  against a 5 000-line file, not against a 50 MB one.
+- **TD-85 is registered, not fixed.**
+
+### 12.26 Next
+
+The row this iteration closed is struck from §12.24's list. In order:
+
+- **TD-07 — re-arm CI.** Still the largest single risk on this branch, and now with one more reason:
+  this iteration edited `Pine.Ui.Android` and `Pine.Ui.Ios` and could not compile either. Two
+  consecutive iterations have now shipped registration changes to those heads sight unseen.
+- **TD-85 — decide the per-head page inventory.** New, and the sharpest thing found this iteration.
+  Four of the five heads throw on navigation buttons the shell renders unconditionally. It needs a
+  decision about which pages each head actually serves before it needs any code.
+- **Phase 1 item 3 — envelope encryption (TD-06).** The next roadmap row, and the one that turns
+  password change and biometric unlock from impossible into ordinary.
+- **TD-83**, which this iteration narrowed but did not close, and which folds naturally into TD-29.
 - Then **TD-78**, **TD-75**, **TD-81** — the three carried over from §12.23.
+- **TD-84** last: the DIB cannot be honestly built until metrics, SLOs and a plugin host exist.

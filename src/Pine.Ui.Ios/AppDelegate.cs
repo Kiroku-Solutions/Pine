@@ -54,6 +54,11 @@ public partial class AppDelegate : AvaloniaAppDelegate<Pine.Ui.Avalonia.App>
         // MediatR's requirement, and now the records land somewhere.
         services.AddPineLogging();
 
+        // Real diagnostics seams (TD-15): the log tail reader, the database health probe and the
+        // runtime info provider that DiagnosticsViewModel reads instead of the constants it used to
+        // display. MUST come after AddPineLogging(), whose sink owns the log directory these read.
+        services.AddPineDiagnostics();
+
         // MediatR + per-request DI scoping + transactional pipeline behaviour (TD-01).
         services.AddPineApplication();
         services.AddSingleton<Pine.Ui.Avalonia.ViewModels.MainViewModel>();
@@ -68,6 +73,11 @@ public partial class AppDelegate : AvaloniaAppDelegate<Pine.Ui.Avalonia.App>
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.DashboardViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.TransactionsViewModel>();
         services.AddTransient<Pine.Ui.Avalonia.ViewModels.AddTransactionViewModel>();
+
+        // TD-15 fix (pre-existing defect, like the UnlockViewModel line above): DiagnosticsViewModel
+        // was registered only on Windows, so ShellViewModel.NavigateTo's GetRequiredService threw
+        // the moment the Diagnostics nav button was pressed on this head.
+        services.AddTransient<Pine.Ui.Avalonia.ViewModels.DiagnosticsViewModel>();
         services.AddSingleton<Pine.Ui.Avalonia.Services.INavigationService>(sp => sp.GetRequiredService<Pine.Ui.Avalonia.ViewModels.MainViewModel>());
         
         // Vault header + key derivation (TD-05). Stateless, so singletons are safe.

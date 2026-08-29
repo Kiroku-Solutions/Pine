@@ -71,6 +71,20 @@ public static class PineApplicationServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IPublisher>(
             sp => sp.GetRequiredService<IMediator>()));
 
+        // 5. The lock-state bridge (TD-15). Pine.Infrastructure references only Pine.Core, so an
+        //    infrastructure component that needs to know whether the vault is open -- currently just
+        //    PineDatabaseHealthProbe -- depends on Pine.Core.Security.IVaultLockState rather than on
+        //    IVaultSession. IVaultSession EXTENDS that interface, so this is a binding to the same
+        //    object, not an adapter, and there is still exactly one session.
+        //
+        //    IT IS BOUND HERE RATHER THAN IN THE FIVE ROOTS on purpose: TD-29 exists because every
+        //    such line has to be repeated five times and is forgotten in at least one of them --
+        //    DiagnosticsViewModel itself was registered in only one root until TD-15. The factory is
+        //    lazy, so a host that calls AddPineApplication without registering IVaultSession (the CLI
+        //    and the test hosts) is unaffected unless it actually resolves IVaultLockState.
+        services.TryAddSingleton<Pine.Core.Security.IVaultLockState>(
+            sp => sp.GetRequiredService<Pine.Application.Security.IVaultSession>());
+
         return services;
     }
 
