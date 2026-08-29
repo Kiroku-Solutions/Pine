@@ -367,17 +367,47 @@ internal sealed class TempVaultSession : IVaultSession
 
     public bool IsUnlocked => Key is not null && DbPath is not null;
 
+    /// <inheritdoc />
+    /// <remarks>Null while locked, exactly as <c>VaultSession</c> reports it.</remarks>
+    public DateTimeOffset? LastActivityUtc => IsUnlocked ? _lastActivityUtc : null;
+
+    /// <inheritdoc />
+    public event EventHandler<VaultLockedEventArgs>? Locked;
+
     public void Unlock(string dbPath, byte[] key)
     {
         DbPath = dbPath;
         Key = key;
+        _lastActivityUtc = TimeProvider.System.GetUtcNow();
     }
 
-    public void Lock()
+    /// <inheritdoc />
+    public void ReportActivity()
     {
+        if (!IsUnlocked)
+        {
+            return;
+        }
+
+        _lastActivityUtc = TimeProvider.System.GetUtcNow();
+    }
+
+    public void Lock() => Lock(VaultLockReason.UserRequested);
+
+    /// <inheritdoc />
+    public void Lock(VaultLockReason reason)
+    {
+        var wasUnlocked = IsUnlocked;
         Key = null;
         DbPath = null;
+
+        if (wasUnlocked)
+        {
+            Locked?.Invoke(this, new VaultLockedEventArgs(reason, TimeProvider.System.GetUtcNow()));
+        }
     }
+
+    private DateTimeOffset _lastActivityUtc = TimeProvider.System.GetUtcNow();
 }
 
 /// <summary>

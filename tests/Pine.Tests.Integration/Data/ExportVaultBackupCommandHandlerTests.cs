@@ -60,17 +60,42 @@ public class ExportVaultBackupCommandHandlerTests
 
         public bool IsUnlocked => Key is not null && DbPath is not null;
 
+        public DateTimeOffset? LastActivityUtc => IsUnlocked ? _lastActivityUtc : null;
+
+        public event EventHandler<VaultLockedEventArgs>? Locked;
+
         public void Unlock(string dbPath, byte[] key)
         {
             DbPath = dbPath;
             Key = key;
+            _lastActivityUtc = TimeProvider.System.GetUtcNow();
         }
 
-        public void Lock()
+        public void ReportActivity()
         {
+            if (!IsUnlocked)
+            {
+                return;
+            }
+
+            _lastActivityUtc = TimeProvider.System.GetUtcNow();
+        }
+
+        public void Lock() => Lock(VaultLockReason.UserRequested);
+
+        public void Lock(VaultLockReason reason)
+        {
+            var wasUnlocked = IsUnlocked;
             Key = null;
             DbPath = null;
+
+            if (wasUnlocked)
+            {
+                Locked?.Invoke(this, new VaultLockedEventArgs(reason, TimeProvider.System.GetUtcNow()));
+            }
         }
+
+        private DateTimeOffset _lastActivityUtc = TimeProvider.System.GetUtcNow();
     }
 
     private sealed class RecordingBackupService : IVaultBackupService
