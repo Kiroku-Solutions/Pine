@@ -6,6 +6,7 @@ using Pine.Ui.Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Common;
 using Pine.Application.Security;
+using Pine.Infrastructure.Diagnostics;
 
 namespace Pine.Ui.Web;
 
@@ -47,9 +48,11 @@ internal sealed partial class Program
             return new Pine.Infrastructure.Data.PineDbContext(":memory:", session.Key!);
         });
         
-        // MediatR 14 requires an ILoggerFactory in the container (its licence check resolves one
-        // when Mediator is constructed), so logging must be registered before any request is sent.
-        services.AddLogging();
+        // Structured file logging (TD-14). Replaces a bare AddLogging(), which registered the
+        // ILoggerFactory that MediatR 14's licence check resolves but no PROVIDER at all, so every
+        // record this head produced was formatted and then dropped. AddPineLogging still satisfies
+        // MediatR's requirement, and now the records land somewhere.
+        services.AddPineLogging();
 
         // MediatR + per-request DI scoping + transactional pipeline behaviour (TD-01).
         services.AddPineApplication();

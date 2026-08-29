@@ -92,7 +92,18 @@ budgets → `39-Performance`; security event logging → `15-Security`
 - Logs are stored under `<profile>/logs/<date>.log.jsonl`.
 - Logs rotate by size (per default: 50 MB per file, 10 files).
 - Logs are encrypted at rest using the same key as the data store.
+  **Status: Aspirational (TD-82).** Not implemented, and deliberately so as of
+  iteration 11 of `60-Production-Readiness-Audit`. The records that matter most —
+  startup, KDF failure, crash, every error before the vault is unlocked — exist
+  precisely when no data-store key is available, so encrypting with it would
+  cover the least important half of the log. The shipped posture is instead:
+  redaction at the boundary (§4.3, enforced by `LogRedactor`) plus a location
+  outside the vault. Revisit as a post-unlock sink alongside the pre-unlock one,
+  or amend this clause.
 - A log file older than the user's retention preference is deleted.
+  **Status: Partially implemented.** Retention is by file COUNT (10 files, above),
+  not by age, and there is no user preference to read: no such setting exists in
+  the app, and `IOptions`-based configuration is itself still TD-27.
 
 ## 5. Metrics
 

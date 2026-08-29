@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Tokenizers;
@@ -27,8 +28,38 @@ namespace Pine.Infrastructure.Ai.Extraction;
 public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 {
     private const string ModelPath = "Assets/Ai/ner_minilm_int8.onnx";
+
+    private readonly ILogger<HeuristicFieldExtractor>? _logger;
     private InferenceSession? _session;
     private readonly object _lock = new();
+
+    /// <summary>Creates the extractor.</summary>
+    /// <param name="logger">
+    /// Where a failed model load is recorded (TD-14). Optional for the same reason
+    /// <c>PaddleOcrEngine</c>'s is: this type is hand-constructed by <c>DefaultLocalAiProvider</c>,
+    /// which threads the container's <c>ILoggerFactory</c> through when it has one.
+    /// </param>
+    public HeuristicFieldExtractor(ILogger<HeuristicFieldExtractor>? logger = null)
+    {
+        _logger = logger;
+    }
+
+    // Source-generated, because CA1848 is an error in this repository; see PaddleOcrEngine for the
+    // same pattern and for why the wrapper takes a nullable logger.
+    [LoggerMessage(
+        EventId = 1,
+        EventName = "nlp.model_load_failed",
+        Level = Microsoft.Extensions.Logging.LogLevel.Warning,
+        Message = "Failed to load the ONNX NER model; falling back to layout heuristics only.")]
+    private static partial void LogModelLoadFailedCore(ILogger logger, Exception exception);
+
+    private static void LogModelLoadFailed(ILogger? logger, Exception exception)
+    {
+        if (logger is not null)
+        {
+            LogModelLoadFailedCore(logger, exception);
+        }
+    }
 
     // ===== COMPILED REGEX PATTERNS =====
 
@@ -123,7 +154,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load ONNX model: {ex.Message}");
+                // WAS: Console.WriteLine, in a WinExe with no console attached (TD-14). The
+                // extractor deliberately keeps running -- the heuristic path does not need the
+                // model -- so this is a recoverable anomaly, which 30-Observability §4.2 puts at
+                // warn, not error.
+                LogModelLoadFailed(_logger, ex);
             }
         }
     }

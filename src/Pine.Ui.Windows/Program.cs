@@ -13,6 +13,7 @@ using Pine.Core.Ai;
 using Pine.Infrastructure.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Categorisation;
+using Pine.Infrastructure.Diagnostics;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Services;
@@ -63,12 +64,18 @@ sealed class Program
         }
         catch (Exception ex)
         {
-            // Write crash log so WinExe doesn't swallow errors silently
-            var crashLog = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Pine", "crash.log");
-            Directory.CreateDirectory(Path.GetDirectoryName(crashLog)!);
-            File.WriteAllText(crashLog, $"{DateTime.UtcNow}\n{ex}");
+            // Record the crash so a WinExe does not swallow it silently (TD-25).
+            //
+            // WAS: File.WriteAllText(%LOCALAPPDATA%/Pine/crash.log, $"{DateTime.UtcNow}\n{ex}") --
+            // the whole exception, every inner exception and every stack frame, verbatim. A stack
+            // trace from a build with PDBs carries the source path of each frame, and the message
+            // itself routinely carries the vault path, so that file was a standing violation of
+            // 30-Observability §4.3's third clause.
+            //
+            // PineCrashLogger is STATIC and takes no container on purpose: the most likely thing to
+            // have thrown above is BuildServiceProvider itself, and a crash handler that needs the
+            // container cannot record the failure of the container.
+            PineCrashLogger.WriteCrash(ex);
             throw;
         }
     }
@@ -98,8 +105,9 @@ sealed class Program
         services.AddSingleton<IImageProcessor, OpenCvImageProcessor>();
         services.AddSingleton<IHostedService, CategorizationTrainingBackgroundService>();
 
-        // Logging
-        services.AddLogging(builder => builder.AddConsole());
+        // Structured file logging (TD-14). Replaces AddConsole(), which wrote every record to a
+        // console this WinExe does not have. See PineLoggingServiceCollectionExtensions.
+        services.AddPineLogging();
 
         // TimeProvider
         services.AddSingleton(TimeProvider.System);

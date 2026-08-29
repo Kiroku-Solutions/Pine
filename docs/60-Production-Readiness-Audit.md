@@ -496,7 +496,7 @@ any other single change.
 | TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🟡 **Partial** — a 60-bit entropy floor derived from the shipped Argon2id parameters now gates vault creation, and a `TimeProvider`-driven idle watchdog locks the session and returns the user to the vault picker. **Verified out-of-suite**: a 25-check harness (not committed) watched the floor reject a one-character password, the idle lock fire on a fake clock, and the key zero; no test in `tests/` covers it, so nothing guards against regression. Re-authentication, lock-on-suspend and a persisted timeout remain unbuilt. See §12.16 |
 | TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
 | TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | ✅ **Done** |
-| TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | 🔴 **Open** |
+| TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | ✅ **Done** — iteration 11, §12.24. One `AddPineLogging()` in all five roots writing JSONL to `%LOCALAPPDATA%/Pine/logs`; every `Console.WriteLine` and `File.AppendAllText` outside `Pine.Cli` is gone, and a NetArchTest forbids `Pine.Infrastructure` from depending on `System.Console` so they cannot come back |
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | 🔴 **Open** |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🔴 **Open** |
 | TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
@@ -507,7 +507,7 @@ any other single change.
 | TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | 🔴 **Open** |
 | TD-23 | Migration failure reported as wrong password | 🟠 | Undiagnosable support cases | Split auth and schema phases | P1 | ✅ **Done** |
 | TD-24 | Raw `ex.Message` surfaced in UI | 🟡 | Path/internals leakage | Map to user-facing messages | P2 | 🔴 **Open** |
-| TD-25 | Unredacted crash.log / OCR text to console | 🟡 | Sensitive data outside vault | Redact and relocate | P1 | 🔴 **Open** |
+| TD-25 | Unredacted crash.log / OCR text to console | 🟡 | Sensitive data outside vault | Redact and relocate | P1 | ✅ **Done** — iteration 11, §12.24. The OCR content trace is deleted outright (a receipt cannot be usefully redacted); `crash.log` and `ocr_init_error.log` are replaced by redacted JSONL records. The log files are still **plaintext on disk** — see TD-82 |
 | TD-26 | Reflection sets `LinkedTransactionId` | 🟠 | Silent runtime break on rename | Domain method or single aggregate | P1 | 🔴 **Open** |
 | TD-27 | No configuration system | 🟠 | Nothing tunable; no env separation | `IOptions` + appsettings | P1 | 🔴 **Open** |
 | TD-28 | Service locator in view models | 🟠 | Hidden deps; UI touches EF | Typed VM factories | P1 | 🔴 **Open** |
@@ -564,6 +564,8 @@ any other single change.
 | TD-79 | `PineDbContext` declares no `HasPrecision()` and no `HasColumnType()` anywhere; every `decimal` is stored as SQLite `TEXT` | 🟡 | The store has no scale of its own, so TD-18's policy is enforced only by the domain. Anything writing that file outside Pine — a migration, a repair script, another tool — can plant an out-of-scale amount, and the read path is deliberately tolerant of exactly that | Related to TD-31; at minimum a `CHECK` constraint or an explicit column type | P2 | 🔴 **Open** — opened by iteration 8 |
 | TD-80 | Onboarding asked consent for telemetry that does not exist | 🟠 | Worse than TD-48: the cloud radio was disabled, this checkbox was **enabled** and asked for real consent. No telemetry code exists anywhere in the repository and nothing read `System.Telemetry`. In a product whose argument is local privacy, this is the worst place to be inaccurate | Checkbox, `TelemetryOptIn` and the setting write removed | P1 | ✅ **Opened and closed** — iteration 10, §12.22 |
 | TD-81 | `SetupViewModel`'s happy path cannot be tested | 🟠 | `VaultManager` is `sealed`, has no interface, hard-codes `LocalApplicationData/Pine` in its constructor and writes `vaults.json` to the real disk, so `InitializeVaultAsync` cannot run under test without mutating the developer's machine. Every existing test of this view model stops at an early validation failure; iteration 10's tests had to assert type-level dependencies instead of behaviour | Extract `IVaultManager`, or inject the data directory | P2 | 🔴 **Open** — iteration 10 |
+| TD-82 | Log files are not encrypted at rest | 🟡 | `30-Observability` §4.4 requires logs to be encrypted with the data-store key. They are not: iteration 11 writes plaintext JSONL to `%LOCALAPPDATA%/Pine/logs`. The reason is structural — the records that matter most (startup, KDF failure, crash, every pre-unlock error) exist precisely when no vault key is available — so the honest posture is redaction plus a location outside the vault, not a half-encrypted log. Residual exposure is whatever `LogRedactor` misses | Either a post-unlock encrypted sink alongside the plaintext pre-unlock one, or amend §4.4 to match reality | P2 | 🔴 **Open** — iteration 11 |
+| TD-83 | Nothing proves a head still registers logging | 🟠 | `AddPineLogging()` is verified by a unit test that builds one `ServiceCollection` by hand. No test builds any head's real container, because `tests/Pine.Tests.Unit` references `Pine.Ui.Avalonia` but none of the five heads. Deleting the call from `Pine.Ui.Web/Program.cs` would leave 367 tests green — the same class of hole as TD-14 itself, one layer up. The identical gap applies to `AddPineApplication` and `AddPineVaultAutoLock` | A composition-root smoke test per head, or a single shared `AddPineHost()` the heads cannot bypass (folds into TD-29) | P2 | 🔴 **Open** — iteration 11 |
 
 ---
 
@@ -617,7 +619,7 @@ a day of work now and an impossible migration later.
 
 ### Phase 1 — Stabilisation
 
-- [ ] Structured file logging with redaction at the boundary; delete the OCR content trace (TD-14, TD-25)
+- [x] ✅ **1.** Structured file logging with redaction at the boundary; delete the OCR content trace (TD-14, TD-25) — **DONE.** A hand-rolled JSONL sink (`Pine.Infrastructure/Diagnostics/`, zero new NuGet packages) with `LogRedactor` as the single boundary every string crosses, size rotation and retention per `30-Observability` §4.4, one `AddPineLogging()` replacing five different ways of logging nothing, and a container-free `PineCrashLogger` for the two `Main` catch blocks. The OCR content trace is **deleted, not redacted**. Four falsification mutations, all killed. 313 → 367 tests. Log **encryption at rest** is deliberately out of scope (TD-82) and §4.4 is annotated accordingly. See §12.24.
 - [ ] Real diagnostics or no diagnostics (TD-15)
 - [ ] Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06)
 - [ ] Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16)
@@ -2635,3 +2637,132 @@ Phase 0's list is worked through. What remains before this branch is defensible:
   has; and the `VaultManager` seam that makes first-run behaviour testable.
 - Then **Phase 1** proper, whose first row — structured logging with redaction (TD-14, TD-25) — is the one
   that makes everything after it debuggable.
+
+
+### 12.24 Iteration 11 — Phase 1, item 1
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-28 |
+| Branch | `feat/production-readiness-phase0-items-5-7` |
+| Baseline commit | `9c2118e` |
+| Scope | Phase 1 item **1** → TD-14, TD-25 |
+| Outcome | 2 closed ✅ · 2 new debts opened (TD-82, TD-83) |
+
+Written by an implementing agent against a written brief; every claim below was **re-run
+independently by the reviewer**, including all four falsification mutations, which the reviewer
+applied and reverted himself.
+
+#### What was built
+
+`src/Pine.Infrastructure/Diagnostics/`, eight new files, **no new NuGet package** beyond
+`Microsoft.Extensions.Logging` itself (the abstraction was already a transitive dependency; the user
+chose a hand-rolled sink over Serilog, for the same reason `IRequestValidator` was hand-rolled over
+FluentValidation):
+
+| File | What it is |
+|---|---|
+| `LogRedactor` | **The boundary.** Four single forward passes — paths → `<path>`/`<home>`, e-mail → `<email>`, money `nnn[.,]nn` → `<amount>`, digit runs ≥ 6 → `<digits>` — no `Regex`, so no input can make it backtrack; ordinal and invariant throughout; on failure it returns `<redaction-failed>`, **never the input**. Each rule's doc comment names the `30-Observability` §4.3 clause it implements |
+| `PineLogRecordFormatter` | The §4.1 record shape, written field by field with `Utf8JsonWriter`: `timestamp` (RFC 3339 UTC), `level` in §4.2's vocabulary (`warn`, `fatal` — not the BCL spellings), `event` (snake_case, from `EventId.Name` or the category), `version`, `category`, `message`, optional `context`, optional `exception`. Every string leaves through `LogRedactor`; `{OriginalFormat}` is dropped |
+| `PineFileLogWriter` | One lock, one handle, flush per record, size rotation to `<date>.NNNN.log.jsonl`, retention by ordinal name order. Every write wrapped: **a logging failure can never crash the app** |
+| `PineFileLogger` / `PineFileLoggerProvider` | `ILogger`/`ILoggerProvider`. Scopes are accepted and **ignored on purpose** — a scope is exactly where a vault path or an account id would ride along unnoticed |
+| `PineCrashLogger` | Static, container-free, ignores the minimum level. The thing that failed may well be DI itself |
+| `PineLoggingOptions` / `…ServiceCollectionExtensions` | The §4.4 defaults (50 MB × 10 files, `%LOCALAPPDATA%/Pine/logs`) and the one `AddPineLogging()` that replaced five different ways of logging nothing |
+
+Call sites: the OCR content trace at `PaddleOcrEngine.cs:107` is **deleted, not redacted** — there is
+no redaction of a receipt's text that leaves anything worth keeping, which is the whole argument for
+deleting it; what replaced it logs the region **count** and the mean confidence, both as numbers.
+Both `ocr_init_error.log` writes, the `OCR EXCEPTION` console write, `OnnxNlpFieldExtractor.cs:126`
+and `CropReceiptViewModel.cs:90` now go through `ILogger`; all four use `[LoggerMessage]` delegates
+because CA1848 is an *error* in this repository. `Pine.Cli`'s `Console.WriteLine` calls are a CLI's
+legitimate stdout and were left alone. Both `Main` catch blocks call `PineCrashLogger.WriteCrash(ex)`
+instead of dumping the raw stack to `crash.log`.
+
+Four heads also had `Microsoft.Extensions.DependencyInjection` bumped 10.0.9 → 10.0.11: the 10.0.9
+pin became a hard `NU1605` downgrade error once Logging 10.0.11 entered the graph. That is a real
+change to four composition roots, recorded here rather than left silent in the diff.
+
+#### Falsification — 4 mutations, 4 killed, every one applied and reverted by the reviewer
+
+Backups were taken with `cp`, never `git checkout` — see §12.20 INCOMPLETE 2 — and all four files
+were confirmed byte-identical afterwards with `diff -q` before the suite was re-run green.
+
+| # | Mutation | Red |
+|---|---|---|
+| M1 | Re-add the deleted OCR content trace (the `Console.WriteLine` of `region.Text`) | `ArchitectureTests.InfrastructureLayer_ShouldNot_DependOnSystemConsole` — and only it (1 failed, 366 passed) |
+| M2 | Raise `LogRedactor.DigitRunThreshold` from 6 to 20 | `Redact_ShouldReplaceALongDigitRun` + `Redact_ShouldStripEveryIdentifyingPart_OfAReceiptShapedTrace` (2 failed, 365 passed) |
+| M3 | Write the raw `message` instead of `LogRedactor.Redact(message)` | `Log_ShouldRedactTheFormattedMessage` — and only it (1 failed, 366 passed) |
+| M4 | Make the rotation threshold unreachable (`long.MaxValue / 2`) | `Log_ShouldRotate_OnceTheFileExceedsTheByteThreshold` + `Log_ShouldDeleteTheOldestFile_OnceRetentionIsExceeded` (2 failed, 365 passed) |
+
+M1 is the one that matters: it proves the guard against the *regression*, not merely against the
+line. The first attempt at M4 (`if (false)`) did not compile — `CS0162` is an error here — the same
+property §12.20 recorded, and the reason the mutation had to make the threshold unreachable by value
+rather than by branch.
+
+#### Verification actually executed — every row re-run by the reviewer
+
+| Check | Result |
+|---|---|
+| `dotnet build -c Release` (whole solution) | ❌ fails at restore with **2 errors, 0 warnings** — `NETSDK1147`, android + ios workloads absent. Unchanged since iteration 1 |
+| `dotnet build -c Release` × `Core`, `Application`, `Infrastructure`, `Ui.Avalonia`, `Ui.Windows`, `Ui.Macos`, `Ui.Web`, `Cli`, `Ai.Default`, `Ai.Explainer`, `Plugins.Host`, `Plugins.Sdk` | ✅ 0 errors; 0 warnings on eleven, `Ui.Web` carries its one pre-existing `NativeFileReference` warning |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **367 passed**, 0 failed, 0 skipped (313 → 367, +54) |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **119 passed**, 0 failed, 0 skipped |
+| M1 / M2 / M3 / M4 re-run by hand | ✅ each killed by exactly the named tests; four files restored byte-identical; 367 green afterwards |
+| `Console.Write` / `AppendAllText` / `AddConsole` / `crash.log` remaining in `src/` outside `Pine.Cli` | ✅ **0 occurrences in code** — every remaining hit is a `// WAS:` comment recording what used to be there |
+| All five heads call `AddPineLogging()` | ✅ grepped and confirmed in `Ui.Windows`, `Ui.Macos`, `Ui.Web`, `Ui.Android`, `Ui.Ios` — but see INCOMPLETE 2: nothing *tests* it |
+| Android / iOS heads | ❌ **not compiled** — workloads absent |
+| Any log file produced by a running app | ❌ **not observed.** No head was launched; `%LOCALAPPDATA%/Pine/logs` does not exist on this machine. Every claim about the sink comes from tests driving it over a temp directory |
+
+#### INCOMPLETE — stated rather than buried
+
+1. **No running application has written a log record.** The sink is proven by tests, not by use.
+   Nobody has seen a real `<date>.log.jsonl`, and `61-Manual-Test-Plan` needs a §10 row: launch the
+   Windows head, force an OCR failure, confirm a redacted record appears and that no receipt text
+   does.
+2. **Nothing prevents a head from silently dropping logging again — TD-83.** `AddPineLogging` is
+   tested against a hand-built `ServiceCollection`; no test builds any head's real container.
+   Deleting the call from `Pine.Ui.Web/Program.cs` would leave all 367 tests green. This is TD-14's
+   own failure mode one layer up: five roots, no assertion.
+3. **The log files are plaintext — TD-82.** `30-Observability` §4.4 mandates encryption at rest; this
+   iteration deliberately does not implement it, and the doc has been annotated rather than left to
+   read as though it were true.
+4. **The OCR error path still returns `ex.Message` to the UI as an `OcrWord`.** The console leak is
+   gone; the on-screen one predates this ticket and belongs to TD-23/TD-24, which are unchanged.
+5. **Redaction is a net, not a proof.** It cannot recognise a payee or a category as such — the
+   redactor's own test asserts that a merchant name *survives* it. That is the documented reason the
+   OCR trace had to be deleted, and anything similar added later will leak until someone deletes it
+   too.
+6. **The work was uncommitted while it was verified.** Unlike iterations 7-10, the tree was clean
+   at the start of this one (`9c2118e`), so only this iteration's changes were ever at risk, and
+   they were committed immediately after the verification above.
+
+#### Reconciliation pass
+
+- **TD-14 → ✅. TD-25 → ✅. TD-82 → 🔴 opened. TD-83 → 🔴 opened.**
+- **`docs/30-Observability.md` §4.4** — the encryption clause is now annotated as aspirational with
+  its reason, per the Phase 1 doc-reconciliation row (TD-39/TD-40). The rest of §4 is now
+  *implemented* rather than aspirational: §4.1's record shape, §4.2's level vocabulary, §4.3's
+  privacy rules and §4.4's paths, rotation and retention all have code and tests behind them. §5
+  (metrics), §6 (tracing) and §9 (DIB) remain unbuilt — §4.1's `trace_id`/`span_id` are omitted for
+  that reason, which §4.1 explicitly permits.
+- **TD-15** (diagnostics screen shows mock data) — unchanged, but now *cheaper*: a real log tail
+  exists to wire the panel to, and it is Phase 1's next row.
+- **TD-07** — unchanged, and still the largest risk on this branch. Everything above was verified on
+  one machine by hand; CI has not run since `79c5364` disarmed its triggers, and the two heads this
+  iteration edited but could not compile are exactly the two CI would have compiled.
+- **TD-29** — one more small argument for it: this ticket touched all five composition roots to add a
+  single line to each, and TD-83 exists precisely because there is no shared root to test.
+- **Rows re-checked and confirmed unchanged:** TD-01 … TD-13, TD-15 … TD-24, TD-26 … TD-81.
+
+### 12.25 Next
+
+§12.23's list stands, minus the row this iteration closed. In order:
+
+- ~~**Commit.**~~ Done: this iteration was committed straight after verification, and iterations
+  7-10 had already landed in `77802c2` / `9c2118e`. §12.23's first bullet is discharged.
+- **TD-07 — re-arm CI.** Unchanged in priority. It is the only thing that would compile Android and
+  iOS, which this iteration edited blind.
+- **Phase 1 item 2 — real diagnostics or no diagnostics (TD-15).** The natural successor: the sink
+  this iteration built is the data source the mock panel has been pretending to have.
+- **TD-83**, cheaply, alongside whichever head is next touched.
+- Then **TD-78**, **TD-75**, **TD-81** — the three carried over from §12.23.
