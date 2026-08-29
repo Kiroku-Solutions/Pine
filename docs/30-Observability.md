@@ -92,7 +92,18 @@ budgets → `39-Performance`; security event logging → `15-Security`
 - Logs are stored under `<profile>/logs/<date>.log.jsonl`.
 - Logs rotate by size (per default: 50 MB per file, 10 files).
 - Logs are encrypted at rest using the same key as the data store.
+  **Status: Aspirational (TD-82).** Not implemented, and deliberately so as of
+  iteration 11 of `60-Production-Readiness-Audit`. The records that matter most —
+  startup, KDF failure, crash, every error before the vault is unlocked — exist
+  precisely when no data-store key is available, so encrypting with it would
+  cover the least important half of the log. The shipped posture is instead:
+  redaction at the boundary (§4.3, enforced by `LogRedactor`) plus a location
+  outside the vault. Revisit as a post-unlock sink alongside the pre-unlock one,
+  or amend this clause.
 - A log file older than the user's retention preference is deleted.
+  **Status: Partially implemented.** Retention is by file COUNT (10 files, above),
+  not by age, and there is no user preference to read: no such setting exists in
+  the app, and `IOptions`-based configuration is itself still TD-27.
 
 ## 5. Metrics
 
@@ -164,15 +175,36 @@ Requirements` §11 are:
 
 - The application surfaces a `Diagnostics` panel in the settings.
 - The Diagnostics panel shows:
-  - Log tail.
-  - SLO budget status (last 30 days).
-  - Local metrics summary.
-  - Plugin inventory.
-  - Sync run history.
+  - Log tail. **Status: Implemented** as of iteration 12 of
+    `60-Production-Readiness-Audit` (TD-15). `ILogTailReader` reads the newest
+    records back out of the §4.4 files and the panel renders them; an empty log
+    is shown as an empty state rather than padded with a synthetic record.
+  - SLO budget status (last 30 days). **Status: Aspirational.** §7's error
+    budgets are not computed anywhere; there is no SLO subsystem to query.
+  - Local metrics summary. **Status: Aspirational.** §5 is unimplemented.
+  - Plugin inventory. **Status: Aspirational.** Pine has no plugin host; the
+    plugin projects are empty (TD-37).
+  - Sync run history. **Status: Aspirational.** Sync does not exist, and
+    `60-Production-Readiness-Audit` §10 sequences it behind row versions,
+    audit columns and stable natural keys.
 - The Diagnostics panel may export the DIB (§9) to the user's
-  clipboard or filesystem.
+  clipboard or filesystem. **Status: Aspirational (TD-84).** The panel used to
+  carry an `Export DIB` button whose handler appended a log line and was
+  otherwise `// To be implemented`. It was removed rather than reimplemented in
+  iteration 12: four of the seven §9.2 contents have no source (see §9), so a
+  button under that name could only export something other than a DIB.
 
 ## 9. Diagnostic Information Bundle (DIB)
+
+**Status: Aspirational (TD-84).** No DIB is produced by any code path as of
+iteration 12 of `60-Production-Readiness-Audit`. Four of §9.2's contents have no
+subsystem behind them — sync run summaries, SLO budget summary and plugin
+inventory do not exist, and §9.3's signature has no signing key, no key
+distribution and no verification path. The two contents that *are* available
+today (application version and OS/runtime versions via `IRuntimeInfoProvider`,
+and the log tail via `ILogTailReader`) are surfaced directly on the Diagnostics
+panel instead. This clause is retained as the target shape, not as a description
+of the build.
 
 ### 9.1 Purpose
 

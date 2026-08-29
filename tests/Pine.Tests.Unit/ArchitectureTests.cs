@@ -264,6 +264,52 @@ public class ArchitectureTests
     }
 
     /// <summary>
+    /// TD-14 / TD-25. The falsifiable guard that stops the console traces coming back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pine.Infrastructure used to write diagnostics with <c>Console.WriteLine</c> -- including, at
+    /// <c>PaddleOcrEngine.cs:107</c>, the full recognised text of every region of every receipt the
+    /// user scanned. Those calls have been replaced by <c>ILogger</c> records that go through
+    /// <c>LogRedactor</c>, and the OCR content trace was deleted outright rather than redacted.
+    /// </para>
+    /// <para>
+    /// A code review cannot keep it that way; this can. <c>Console</c> is the API a future
+    /// contributor reaches for when they want to see what the OCR engine read, and it bypasses the
+    /// redaction boundary entirely -- so an IL-level dependency on <c>System.Console</c> anywhere in
+    /// the infrastructure assembly fails the build. It is not vacuous: before this ticket, three
+    /// types in this assembly referenced it, and this test would have named them.
+    /// </para>
+    /// <para>
+    /// It is scoped to Pine.Infrastructure on purpose. <c>Pine.Cli.Program</c>'s
+    /// <c>Console.WriteLine</c> calls are a command-line tool's legitimate stdout, not logging, and
+    /// are deliberately left alone.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void InfrastructureLayer_ShouldNot_DependOnSystemConsole()
+    {
+        // Arrange
+        var infrastructureAssembly = typeof(Pine.Infrastructure.Diagnostics.LogRedactor).Assembly;
+
+        // Guard against a vacuous pass: NetArchTest reports success when it inspected nothing.
+        Types.InAssembly(infrastructureAssembly).GetTypes().Should().NotBeEmpty();
+
+        // Act
+        var result = Types
+            .InAssembly(infrastructureAssembly)
+            .ShouldNot()
+            .HaveDependencyOn("System.Console")
+            .GetResult();
+
+        // Assert
+        result.IsSuccessful.Should().BeTrue(
+            "TD-14/TD-25: infrastructure diagnostics must go through ILogger and LogRedactor, never " +
+            "the console, which bypasses redaction entirely. Offending types: {0}",
+            string.Join(", ", result.FailingTypeNames ?? Array.Empty<string>()));
+    }
+
+    /// <summary>
     /// TD-47. Setup used to seed a fictitious "My First Bank" / $1,000 account into every new vault
     /// via <c>CreateAccountCommand</c> -- invented data in a tool whose entire value is an exact
     /// picture of the user's real money. A type-level dependency check is used, rather than an

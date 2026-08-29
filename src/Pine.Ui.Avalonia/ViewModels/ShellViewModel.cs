@@ -108,10 +108,21 @@ public partial class ShellViewModel : ObservableObject, INavigationService
         NavigateTo<SettingsViewModel>();
     }
 
+    /// <summary>
+    /// Opens the diagnostics panel and asks it to read.
+    /// </summary>
+    /// <remarks>
+    /// TD-15: this used the parameterless overload, which was correct while every value on that
+    /// page was a constant fabricated in its constructor. Now that the panel measures what it
+    /// shows, navigation has to kick the read off -- otherwise the page opens reading "Not read
+    /// yet" in every card until the user finds the Refresh button. Same idiom as
+    /// <see cref="NavigateToBudgets"/>: fire the load, do not await it, so navigation stays
+    /// synchronous and the page paints immediately.
+    /// </remarks>
     [RelayCommand]
     private void NavigateToDiagnostics()
     {
-        NavigateTo<DiagnosticsViewModel>();
+        NavigateTo<DiagnosticsViewModel>(vm => _ = vm.RefreshAsync());
     }
 
     [RelayCommand]

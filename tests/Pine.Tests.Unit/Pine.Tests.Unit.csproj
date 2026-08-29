@@ -5,7 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- CA1707: xunit test names are Method_Should_Behaviour, which the rule dislikes.
+         CA1848/CA1873: the LoggerMessage-delegate rules. They are ERRORS in the product
+         assemblies and stay that way; a test that drives the sink is exercising the ILogger
+         extension surface on purpose, and rewriting each of those calls as a generated
+         delegate would test the generator instead of the sink. -->
+    <NoWarn>$(NoWarn);CA1707;CA1848;CA1873</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

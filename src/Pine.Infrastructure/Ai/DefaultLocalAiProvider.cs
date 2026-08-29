@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Pine.Core.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Extraction;
@@ -20,11 +21,24 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     private readonly HeuristicFieldExtractor _extractor;
     private readonly MlNetCategorizer _categorizer;
 
-    public DefaultLocalAiProvider()
+    /// <summary>Builds the on-device pipeline.</summary>
+    /// <param name="loggerFactory">
+    /// The factory the hand-constructed pipeline stages take their loggers from (TD-14). It is
+    /// OPTIONAL so that <c>new DefaultLocalAiProvider()</c> still compiles everywhere it is written
+    /// by hand, and so that this type keeps a constructor the container can call with nothing but
+    /// what it already has: every head registers logging via <c>AddPineLogging</c>, so the container
+    /// picks this constructor and supplies a real factory.
+    /// </param>
+    /// <remarks>
+    /// THE FACTORY, NOT AN <c>ILogger</c>. The stages below are separate categories -- an OCR
+    /// failure and a model-load failure are different events with different owners -- and threading
+    /// one logger through would collapse them into a single category named after this class.
+    /// </remarks>
+    public DefaultLocalAiProvider(ILoggerFactory? loggerFactory = null)
     {
         _detector = new ReceiptDetector();
-        _ocr = new PaddleOcrEngine();
-        _extractor = new HeuristicFieldExtractor();
+        _ocr = new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
+        _extractor = new HeuristicFieldExtractor(loggerFactory?.CreateLogger<HeuristicFieldExtractor>());
         _extractor.LoadModel();
         _categorizer = new MlNetCategorizer();
     }

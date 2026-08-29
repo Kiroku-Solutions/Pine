@@ -5,6 +5,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using Pine.Core.Ai;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
@@ -15,6 +16,7 @@ public partial class CropReceiptViewModel : ObservableObject
 {
     private readonly INavigationService _navigationService;
     private readonly IImageProcessor _imageProcessor;
+    private readonly ILogger<CropReceiptViewModel>? _logger;
     private Stream? _originalStream;
 
     [ObservableProperty]
@@ -23,10 +25,21 @@ public partial class CropReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsProcessing { get; set; }
 
-    public CropReceiptViewModel(INavigationService navigationService, IImageProcessor imageProcessor)
+    /// <summary>Creates the crop screen's view model.</summary>
+    /// <param name="navigationService">Where the confirmed crop navigates to.</param>
+    /// <param name="imageProcessor">The perspective-crop and OCR-enhance pipeline.</param>
+    /// <param name="logger">
+    /// Where a failed crop is recorded (TD-14). Optional so the designer and the existing tests can
+    /// construct this view model directly; the container injects a real one.
+    /// </param>
+    public CropReceiptViewModel(
+        INavigationService navigationService,
+        IImageProcessor imageProcessor,
+        ILogger<CropReceiptViewModel>? logger = null)
     {
         _navigationService = navigationService;
         _imageProcessor = imageProcessor;
+        _logger = logger;
 
         WeakReferenceMessenger.Default.Register<ReceiptCapturedMessage>(this, (r, m) =>
         {
@@ -87,11 +100,30 @@ public partial class CropReceiptViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Cropping failed: {ex.Message}");
+            // WAS: Console.WriteLine, from a WinExe with no console attached (TD-14). The user is
+            // left on the crop screen with nothing captured, so this is user-affecting: error.
+            LogCropFailed(_logger, ex);
         }
         finally
         {
             IsProcessing = false;
+        }
+    }
+
+    // Source-generated, because CA1848 is an error in this repository. The wrapper takes a nullable
+    // logger so the designer and the existing tests can still construct this view model directly.
+    [LoggerMessage(
+        EventId = 1,
+        EventName = "receipt.crop_failed",
+        Level = LogLevel.Error,
+        Message = "Perspective crop of the captured receipt failed.")]
+    private static partial void LogCropFailedCore(ILogger logger, Exception exception);
+
+    private static void LogCropFailed(ILogger? logger, Exception exception)
+    {
+        if (logger is not null)
+        {
+            LogCropFailedCore(logger, exception);
         }
     }
 

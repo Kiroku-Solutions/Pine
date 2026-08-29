@@ -31,7 +31,7 @@ namespace Pine.Application.Security;
 /// See <c>VaultSession</c> for exactly what that guarantees and, honestly, what it does not.
 /// </para>
 /// </remarks>
-public interface IVaultSession
+public interface IVaultSession : Pine.Core.Security.IVaultLockState
 {
     /// <summary>
     /// The vault encryption key, or <c>null</c> when locked.
@@ -47,8 +47,11 @@ public interface IVaultSession
     /// <summary>The directory of the open vault, or <c>null</c> when locked.</summary>
     string? DbPath { get; }
 
-    /// <summary>Whether a vault is currently open.</summary>
-    bool IsUnlocked { get; }
+    // IsUnlocked is INHERITED from Pine.Core.Security.IVaultLockState, not declared here.
+    // This interface extends it so that Pine.Infrastructure components -- which reference only
+    // Pine.Core -- can read the lock state without an adapter (see PineDatabaseHealthProbe, TD-15).
+    // Re-declaring it with `new` would HIDE the base member rather than inherit it, leaving two
+    // members on the type; inheriting keeps one.
 
     /// <summary>
     /// When user activity was last reported, or <c>null</c> when locked. Read from the session's
