@@ -262,4 +262,88 @@ public class ArchitectureTests
             ExpectedAccountPublicMethods,
             "a new public member on Account is a new way its currency might change, which would invalidate reading that currency outside the transaction.");
     }
+
+    /// <summary>
+    /// TD-47. Setup used to seed a fictitious "My First Bank" / $1,000 account into every new vault
+    /// via <c>CreateAccountCommand</c> -- invented data in a tool whose entire value is an exact
+    /// picture of the user's real money. A type-level dependency check is used, rather than an
+    /// <c>IMediator</c> substitute driven through the happy path, because <c>SetupViewModel</c>
+    /// resolves <c>VaultManager</c> -- a sealed class with no seam that writes to the real
+    /// %LocalAppData%\Pine\vaults.json -- so nothing can drive <c>InitializeVaultCommand</c> past
+    /// vault creation in a unit test without mutating the developer's own machine state. This
+    /// assertion is nonetheless not vacuous: before TD-47 was closed, <c>SetupViewModel</c> held a
+    /// real IL reference to <c>CreateAccountCommand</c>, and this test would have failed then.
+    /// </summary>
+    [Fact]
+    public void SetupViewModel_ShouldNot_HaveDependencyOnCreateAccountCommand()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.SetupViewModel).Assembly;
+
+        // Act
+        var result = Types.InAssembly(uiAssembly)
+            .That()
+            .HaveName("SetupViewModel")
+            .ShouldNot()
+            .HaveDependencyOn("Pine.Application.Accounts.Commands.CreateAccountCommand")
+            .GetResult();
+
+        // Assert
+        result.IsSuccessful.Should().BeTrue(
+            "TD-47: completing setup must never seed an invented account into a fresh vault.");
+    }
+
+    /// <summary>
+    /// TD-48 / TD-80. Setup used to write <c>System.StorageMode</c> and <c>System.Telemetry</c>
+    /// settings through <c>SaveSettingCommand</c> for a dead "Cloud Sync" radio button and a
+    /// telemetry-consent checkbox for a capability that has no code anywhere in this repository.
+    /// Same testability constraint and same anti-vacuity argument as
+    /// <see cref="SetupViewModel_ShouldNot_HaveDependencyOnCreateAccountCommand"/>: before this
+    /// close, <c>SetupViewModel</c> referenced <c>SaveSettingCommand</c> twice, and this test would
+    /// have failed then.
+    /// </summary>
+    [Fact]
+    public void SetupViewModel_ShouldNot_HaveDependencyOnSaveSettingCommand()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.SetupViewModel).Assembly;
+
+        // Act
+        var result = Types.InAssembly(uiAssembly)
+            .That()
+            .HaveName("SetupViewModel")
+            .ShouldNot()
+            .HaveDependencyOn("Pine.Application.Settings.Commands.SaveSettingCommand")
+            .GetResult();
+
+        // Assert
+        result.IsSuccessful.Should().BeTrue(
+            "TD-48/TD-80: setup must not persist a storage-mode or telemetry setting that nothing in Pine reads.");
+    }
+
+    /// <summary>
+    /// TD-48 / TD-80, direct check. <c>HaveDependencyOnSaveSettingCommand</c> above cannot tell
+    /// apart a mutation that reintroduces only the storage-mode write from one that reintroduces
+    /// only the telemetry write, because both would restore the same IL reference. This reflects on
+    /// the properties themselves -- <c>IsCloudSync</c> and <c>TelemetryOptIn</c> -- which is
+    /// independent evidence, catching a mutation that restores a property without restoring the
+    /// command call.
+    /// </summary>
+    [Fact]
+    public void SetupViewModel_ShouldNotExpose_CloudSyncOrTelemetryProperties()
+    {
+        // Arrange
+        var setupViewModelType = typeof(Pine.Ui.Avalonia.ViewModels.SetupViewModel);
+
+        // Act
+        var propertyNames = setupViewModelType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(property => property.Name)
+            .ToArray();
+
+        // Assert
+        propertyNames.Should().NotContain(
+            ["IsCloudSync", "TelemetryOptIn"],
+            "TD-48 removed the dead cloud-sync radio button and TD-80 removed the telemetry checkbox; neither property should exist to bind to.");
+    }
 }

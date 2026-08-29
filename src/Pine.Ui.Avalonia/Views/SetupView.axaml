@@ -37,20 +37,11 @@
                     
                     <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PinePrimary}" BorderThickness="2" BoxShadow="0 4 20 0 #10000000">
                         <StackPanel Spacing="8">
-                            <RadioButton Content="Local Only (Recommended)" GroupName="StorageMode" IsChecked="{Binding IsLocalOnly}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Your data never leaves this device. Max privacy." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
+                            <TextBlock Text="Local Only" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="Your data never leaves this device. Max privacy." Foreground="{DynamicResource PineTextMuted}"/>
                         </StackPanel>
                     </Border>
-                    
-                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" Opacity="0.6">
-                        <StackPanel Spacing="8">
-                            <RadioButton Content="Local + Cloud Sync (Coming Soon)" GroupName="StorageMode" IsChecked="{Binding IsCloudSync}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" IsEnabled="False" />
-                            <TextBlock Text="Sync to your own cloud provider via plugin." Foreground="{DynamicResource PineTextMuted}" Margin="30,0,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <CheckBox Content="Help improve Pine by sending anonymous usage telemetry" IsChecked="{Binding TelemetryOptIn}" Foreground="{DynamicResource PineTextMuted}" Margin="0,15,0,0" />
-                    
+
                     <Button Content="Continue to Security" Command="{Binding NextStepCommand}" Classes="pine-accent" HorizontalAlignment="Right" HorizontalContentAlignment="Center" FontSize="16" Padding="25,12" Margin="0,20,0,0"/>
                 </StackPanel>
 

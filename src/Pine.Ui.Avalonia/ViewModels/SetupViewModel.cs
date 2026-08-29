@@ -5,12 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection;
-using Pine.Application.Accounts.Commands;
 using Pine.Application.Security;
-using Pine.Application.Settings.Commands;
-using Pine.Core.Accounts;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 
@@ -41,15 +37,6 @@ public partial class SetupViewModel : ObservableObject
         OnPropertyChanged(nameof(IsStep1));
         OnPropertyChanged(nameof(IsStep2));
     }
-
-    [ObservableProperty]
-    public partial bool IsLocalOnly { get; set; } = true;
-
-    [ObservableProperty]
-    public partial bool IsCloudSync { get; set; }
-
-    [ObservableProperty]
-    public partial bool TelemetryOptIn { get; set; }
 
     [ObservableProperty]
     public partial string VaultName { get; set; } = string.Empty;
@@ -310,17 +297,15 @@ public partial class SetupViewModel : ObservableObject
                 await migrator.MigrateAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
-            StatusMessage = "Vault initialized! Saving settings...";
+            StatusMessage = "Vault initialized!";
 
-            // These two settings go through the mediator, not through ISettingRepository (TD-01).
-            // The repository no longer calls SaveChangesAsync, so a direct SaveAsync here would be
-            // staged on a context nobody commits and the user's storage-mode and telemetry choices
-            // would be silently lost on first run.
-            var mediator = _serviceProvider.GetRequiredService<IMediator>();
-            await mediator.Send(new SaveSettingCommand("System.StorageMode", IsCloudSync ? "CloudSync" : "LocalOnly"));
-            await mediator.Send(new SaveSettingCommand("System.Telemetry", TelemetryOptIn.ToString()));
-
-            await mediator.Send(new CreateAccountCommand("My First Bank", "USD", AccountType.Bank, 1000m));
+            // No settings are written here (TD-47/TD-48/TD-80): the storage-mode and telemetry
+            // choices this step used to record described capabilities Pine does not have --
+            // cloud sync was disabled in the UI and never wired to a reader, and telemetry has no
+            // code path anywhere in the repository. Recording a setting nobody reads, or asking
+            // consent for a capability that does not exist, is worse than the disabled affordance
+            // it replaced. A fresh vault also seeds no account: see DashboardView's always-visible
+            // "+ New Account" affordance for the empty-vault path.
 
             _navigationService.NavigateTo<ShellViewModel>();
         }
