@@ -133,6 +133,7 @@ sealed class Program
         // Vault header + key derivation (TD-05). Stateless, so singletons are safe.
         services.AddSingleton<Pine.Core.Security.IVaultHeaderStore, Pine.Infrastructure.Security.FileVaultHeaderStore>();
         services.AddSingleton<Pine.Core.Security.IKeyDerivationService, Pine.Infrastructure.Security.Argon2idKeyDerivationService>();
+        services.AddSingleton<Pine.Core.Security.IVaultKeyService, Pine.Infrastructure.Security.AesGcmVaultKeyService>();
 
         // Vault backup + migration (TD-10). These depend on PineDbContext, so they must share its
         // lifetime and must only be resolved once the vault session is unlocked.

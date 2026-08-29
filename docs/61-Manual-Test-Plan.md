@@ -55,17 +55,25 @@ verified through the UI, except the backup-encryption test in §2, which only ne
 
 The most irreversible work in the whole remediation. Test it first.
 
-**1.1 [M] A new vault writes a versioned header.**
+**1.1 [M] A new vault writes a versioned header carrying a wrapped key.**
 Create a fresh vault. Open `%LOCALAPPDATA%\Pine\<vault>\pine.vault.json`.
-*Expected:* a JSON header naming the KDF (Argon2id) and every cost parameter — memory, iterations,
-parallelism, salt. If this file is missing, the vault is unversioned and a future parameter change
-would brick it.
+*Expected:* `"headerVersion": 2`, a `kdf` object naming Argon2id and every cost parameter — memory,
+iterations, parallelism, key length, salt length — a `saltBase64`, and a `keyWrap` object with
+`"algorithm": "AES-256-GCM"` plus `nonceBase64`, `ciphertextBase64` and `tagBase64`. Decode the
+nonce and tag: they must be **12** and **16** bytes. If `keyWrap` is absent the vault has no
+envelope and the database key is the password-derived key, which is the state TD-06 removed.
 
-**1.2 [M] A pre-remediation vault still opens.**
-If you have a vault created before this work, open it. If you do not, simulate one: close the app,
-rename `pine.vault.json` to `pine.vault.json.bak`, and confirm `pine.salt` is still present.
-*Expected:* the vault unlocks normally with its existing password, and a `pine.vault.json` is
-adopted for it. **A failure here means every existing vault is locked out — stop and report.**
+**1.2 [M] The wrapped key is not the password-derived key.**
+Create two vaults with the *same* password. Compare their `keyWrap.ciphertextBase64` values.
+*Expected:* they differ, and so do `saltBase64`, `keyWrap.nonceBase64` and `vaultId`. Two vaults
+sharing a password must share nothing on disk. **If the two ciphertexts match, the data key is
+being derived rather than generated and the envelope is decoration — stop and report.**
+
+> **Superseded:** this step previously read "a pre-remediation vault still opens" and asserted that
+> a `pine.salt`-only vault would be adopted into a versioned header. Iteration 13 (§12.27) removed
+> legacy adoption deliberately: a pre-envelope vault is now **refused**, and that refusal is
+> exercised by step 1.5 below. The change was taken while no vault existed outside a developer
+> machine; see the audit's INCOMPLETE note 3 for why it is affordable exactly once.
 
 **1.3 [M] A wrong password says one thing, always.**
 Enter a wrong password on an existing vault.
@@ -73,9 +81,45 @@ Enter a wrong password on an existing vault.
 or a file path. Then enter the correct password on a vault whose schema is behind — the migration
 must report itself as a migration, not as a wrong password (TD-23).
 
-**1.4 [S] Password change / biometric unlock.**
-*Expected:* **not available.** There is no envelope key yet (TD-06 open). Confirm the UI does not
-offer either.
+**1.4 [M] Password change — Settings → Master Password (TD-06, §12.27).**
+Unlock a vault, open Settings and scroll to the "Master Password" card. Everything below is a
+rendering claim that no test in the suite can make.
+
+- *Meter.* Type into "New Password" and watch the bar and the sentence under it move together. The
+  sentence must state pass or fail **in words** ("meets Pine's minimum" / "does not yet meet…"), so
+  the state survives a colour-blind reader and a palette change. Confirm the advice line appears
+  for a weak password and disappears for a strong one.
+- *Confirmation.* Enter mismatched new passwords and press Change Password. *Expected:* it refuses
+  with the mismatch sentence and **nothing is sent** — there is no recovery phrase, so a typo
+  agreed to by both boxes is permanent lockout.
+- *Wrong current password.* Enter a correct new password and a wrong current one. *Expected:*
+  "The current password is incorrect. Your master password was not changed." Unlike the unlock
+  screen this may name the cause: the vault is already open, so the typist has demonstrably passed
+  authentication once and there is no oracle to protect.
+- *Weak new password.* Try `hunter2`. *Expected:* refused before anything is written, and the
+  message must **never** contain the password itself or its bit estimate.
+- *The happy path, and the claim it makes.* Change to a strong new password. *Expected:* the three
+  boxes clear, the vault **stays open** (you are not bounced to the unlock screen), and the message
+  says the data was not re-encrypted. Then confirm the substance of that: the app must still list
+  your transactions without re-prompting. This is the observable proof that the data key did not
+  change.
+- *The change actually took.* Lock the vault. Unlock with the **old** password — must fail with the
+  generic message. Unlock with the **new** password — must succeed, and your data must all be
+  there. This is the single most important row in §1.
+- *Crash safety, if you can arrange it.* Kill the process during the change. *Expected:* the vault
+  still opens with the **old** password. The header write is atomic, so the only two reachable
+  states are old-header/old-password and new-header/new-password.
+
+**1.5 [S] A pre-envelope vault is refused, and says why.**
+If you still have a vault folder created before iteration 13 — one whose `pine.vault.json` says
+`"headerVersion": 1`, or a folder with only `pine.salt` — attempt to unlock it.
+*Expected:* a message saying the vault was created by a pre-release build that predates encrypted
+key storage and cannot be opened, and that a new vault should be created. It must **not** blame the
+password, must **not** say "corrupted", and must **not** print the folder path (TD-24).
+
+**1.6 [S] Biometric unlock.**
+*Expected:* **not available.** The envelope makes it architecturally possible, but no platform
+secure storage is implemented (TD-87 open). Confirm the UI does not offer it.
 
 ---
 

@@ -127,13 +127,10 @@
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
                     <TextBlock Text="Manage your vault's encryption and access controls." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"/>
 
-                    <Grid ColumnDefinitions="*, Auto" Margin="0,4">
-                        <StackPanel>
-                            <TextBlock Text="Change Master Password" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Update your vault encryption key." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="Change Password" Command="{Binding ChangeMasterPasswordCommand}" Classes="pine-accent" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
-                    </Grid>
+                    <!-- "Change Master Password" used to be a button here, wired to a stub command
+                         that did nothing. It is now the real "Master Password" card below: the
+                         change needs three fields and a strength meter, which does not fit the
+                         one-line-per-action shape of this section. -->
 
                     <Grid ColumnDefinitions="*, Auto" Margin="0,4">
                         <StackPanel>
@@ -150,6 +147,89 @@
                         </StackPanel>
                         <Button Grid.Column="1" Content="Lock Vault" Command="{Binding LockVaultCommand}" Classes="pine-danger" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Master Password Section (TD-06).
+                 Changing the password re-wraps the vault's data key; it does not re-encrypt the
+                 database and does not close the open session. The copy below says so, because a
+                 user who expects a long re-encryption will otherwise assume an instant result
+                 means nothing happened. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Master Password" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"
+                               Text="Change the password that unlocks this vault. Your data is not re-encrypted and your vault stays open — only the key that protects it is re-wrapped. There is no recovery: if you forget the new password, the vault cannot be opened." />
+
+                    <TextBlock Text="Current Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBox PlaceholderText="Enter your current master password"
+                             Text="{Binding CurrentPassword}"
+                             PasswordChar="●"
+                             IsEnabled="{Binding !IsChangingPassword}"
+                             AutomationProperties.Name="Current master password" />
+
+                    <TextBlock Text="New Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                    <TextBox PlaceholderText="Enter a strong new password"
+                             Text="{Binding NewPassword}"
+                             PasswordChar="●"
+                             IsEnabled="{Binding !IsChangingPassword}"
+                             AutomationProperties.Name="New master password" />
+
+                    <!-- Strength meter (TD-11), the same shape SetupView uses. Value/colour move as
+                         the user types; the pass/fail state is also carried in
+                         NewPasswordStrengthStatusText below, so nothing here relies on colour alone. -->
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding NewPasswordStrengthFraction}"
+                                 Height="6" CornerRadius="3" Margin="0,4,0,0"
+                                 Classes.pine-strength-danger="{Binding IsNewPasswordStrengthDanger}"
+                                 Classes.pine-strength-warning="{Binding IsNewPasswordStrengthWarning}"
+                                 Classes.pine-strength-success="{Binding IsNewPasswordStrengthSuccess}" />
+                    <TextBlock Text="{Binding NewPasswordStrengthStatusText}"
+                               TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                               IsVisible="{Binding NewPasswordStrengthStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes.pine-strength-danger="{Binding IsNewPasswordStrengthDanger}"
+                               Classes.pine-strength-warning="{Binding IsNewPasswordStrengthWarning}"
+                               Classes.pine-strength-success="{Binding IsNewPasswordStrengthSuccess}" />
+                    <TextBlock Text="{Binding NewPasswordAdviceText}"
+                               TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               IsVisible="{Binding NewPasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <TextBlock Text="Confirm New Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                    <TextBox PlaceholderText="Re-enter the same new password"
+                             Text="{Binding ConfirmNewPassword}"
+                             PasswordChar="●"
+                             IsEnabled="{Binding !IsChangingPassword}"
+                             AutomationProperties.Name="Confirm new master password" />
+                    <TextBlock Text="Passwords do not match. There is no recovery -- a typo here is permanent."
+                               TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                               Foreground="{DynamicResource PineDanger}"
+                               IsVisible="{Binding !NewPasswordsMatch}" />
+
+                    <Button Content="Change Password"
+                            Command="{Binding ChangePasswordCommand}"
+                            IsEnabled="{Binding !IsChangingPassword}"
+                            Classes="pine-accent" Width="180"
+                            HorizontalAlignment="Right"
+                            HorizontalContentAlignment="Center" />
+
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsChangingPassword}" Margin="0,4" />
+
+                    <!-- Success and failure are both sentences, and each one says in words which it
+                         is. PasswordChangeFailed only tints the text: a colour-blind user, or a
+                         palette that repurposes the accent, must lose nothing. -->
+                    <Border IsVisible="{Binding PasswordChangeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            CornerRadius="8" Padding="14,10"
+                            Background="{DynamicResource PineSurfaceElevated}"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource PineBorder}">
+                        <!-- No local Foreground here: a locally set value outranks a style setter in
+                             Avalonia, so setting one would silently disable both classes below. -->
+                        <TextBlock Text="{Binding PasswordChangeMessage}" TextWrapping="Wrap" FontSize="13"
+                                   Classes.pine-strength-danger="{Binding PasswordChangeFailed}"
+                                   Classes.pine-strength-success="{Binding !PasswordChangeFailed}" />
+                    </Border>
                 </StackPanel>
             </Border>
 

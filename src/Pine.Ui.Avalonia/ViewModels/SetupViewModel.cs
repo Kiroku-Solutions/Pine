@@ -24,7 +24,13 @@ public partial class SetupViewModel : ObservableObject
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
     private readonly IVaultHeaderStore _vaultHeaderStore;
-    private readonly IKeyDerivationService _keyDerivationService;
+
+    /// <summary>
+    /// The only thing in this process allowed to turn a master password into a data key (TD-06).
+    /// The view model never sees the KDF, the salt or the wrap; it sees a
+    /// <see cref="VaultKeyMaterial"/> and hands both halves straight on.
+    /// </summary>
+    private readonly IVaultKeyService _vaultKeyService;
 
     [ObservableProperty]
     public partial int CurrentStep { get; set; } = 1;
@@ -196,13 +202,13 @@ public partial class SetupViewModel : ObservableObject
         IVaultSession vaultSession,
         INavigationService navigationService,
         IVaultHeaderStore vaultHeaderStore,
-        IKeyDerivationService keyDerivationService)
+        IVaultKeyService vaultKeyService)
     {
         _serviceProvider = serviceProvider;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
         _vaultHeaderStore = vaultHeaderStore;
-        _keyDerivationService = keyDerivationService;
+        _vaultKeyService = vaultKeyService;
     }
 
     [RelayCommand]
@@ -266,18 +272,27 @@ public partial class SetupViewModel : ObservableObject
                     throw new InvalidOperationException("A vault already exists at this path.");
                 }
 
-                // Writes pine.vault.json recording the KDF id and its cost parameters alongside the
-                // salt, so this vault stays openable even after those parameters change (TD-05).
-                var header = _vaultHeaderStore.Create(vaultDir);
+                // Mints the envelope in one step (TD-06): a random data key, a random salt, and
+                // that data key wrapped under an auth key derived from the master password with
+                // the Argon2idV1 profile. The password is stamped nowhere -- what lands on disk is
+                // the wrap, and only this password's auth key opens it.
+                var material = _vaultKeyService.CreateVault(MasterPassword, KdfParameters.Argon2idV1);
 
-                var key = _keyDerivationService.DeriveKey(MasterPassword, header);
+                // ORDERING IS A CORRECTNESS REQUIREMENT, NOT A STYLE CHOICE. The header is written
+                // BEFORE anything creates the database file, because the two failure modes are not
+                // symmetric: a database whose header was never written is encrypted under a data
+                // key that now exists nowhere and can NEVER be opened again -- silent, total data
+                // loss. A header with no database is just an unused vault: harmless, and setup's
+                // Exists() check above will refuse to overwrite it. If the process dies between
+                // these two statements, the user loses nothing.
+                _vaultHeaderStore.Write(vaultDir, material.Header);
 
                 // Unlock() copies the key into the session's own buffer and Lock() zeroes THAT
                 // copy, never this one. Clearing here keeps a second copy of the vault key from
                 // living in the managed heap for the rest of the process (TD-11); see the same
                 // comment in UnlockViewModel.
-                _vaultSession.Unlock(vaultDir, key);
-                Array.Clear(key, 0, key.Length);
+                _vaultSession.Unlock(vaultDir, material.DataKey);
+                Array.Clear(material.DataKey, 0, material.DataKey.Length);
 
                 // Resolved only after Unlock: the migrator depends on PineDbContext, which refuses
                 // to be constructed while the vault session is locked.
