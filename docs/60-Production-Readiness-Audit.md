@@ -10,7 +10,7 @@
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Test suite 28 → **240**, and the integration suite is currently **98/99** (TD-74, pre-existing and undiagnosed). See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14 and §12.16 repeat it as standing practice. |
+| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Iteration 8 closed the TD-18 half of item 10 — see §12.18. Iteration 9 closed the TD-19 half, ported the TD-11 harness into `tests/`, and reclassified TD-74 — see §12.20. **Every Phase 0 item has now been worked, and items 1, 4–11 are ✅. Phase 0 is NOT clean: item 2's export is still unreachable and item 3 regressed — CI has had its triggers removed since `79c5364` and has never run.** Test suite 28 → **432** (313 unit + 119 integration), both suites green at this commit. See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14, §12.16, §12.18, §12.20 and §12.22 repeat it as standing practice. |
 | Last updated | 2026-08-28 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
@@ -491,7 +491,7 @@ any other single change.
 | TD-06 | Key = password-derived key; no envelope | 🔴 | No password change, no biometric | Wrapped data key | P0 | 🔴 **Open** |
 | TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`). The `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364`; iteration 6 took the second of the two options this row offered — **CI is opt-in by an explicit project decision** (compute-minute cost), not by accident | 🟠 | The regression net exists and is real, but nothing arms it: a broken head reaches `main` unless a human dispatches the workflow. Severity dropped 🔴→🟠 because the gap is now a known, chosen operating mode rather than an unnoticed regression — the *risk* is unchanged | Dispatch the workflow by hand before any release; re-arm `pull_request:` when compute budget allows | P1 | 🟡 **Accepted** — documented decision, iteration 6; see §12.12 and §12.14 |
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
-| TD-09 | Money-path tests now cover atomicity, split-sum, owned-collection round trip, currency match, import dedup and (iteration 6) **void + balance recalculation**, several falsification-proven. Absent only for rounding/allocation (TD-18) and line-item reconciliation (TD-19) | 🟠 | Regression net covers every closed P0; the two gaps are both P1 invariants that do not exist in the domain yet | Close alongside TD-18 and TD-19 | P1 | 🟡 **Partial** — gap narrowed twice; balance recalculation covered in iteration 6, see §12.14 |
+| TD-09 | Money-path tests cover atomicity, split-sum, owned-collection round trip, currency match, import dedup, void + balance recalculation, and — since iterations 8 and 9 — `Money` scale/rounding/`Allocate` (TD-18) and line-item reconciliation (TD-19) | 🟠 | The regression net now covers every closed P0 and both remaining money-path invariants; eleven falsification mutations across the two iterations, all killed | — | P1 | ✅ **Closed** — iteration 9, §12.20 |
 | TD-10 | No backup before migration | 🟠 | Unrecoverable data loss | Pre-migration copy + export | P0 | 🟡 **Partial** |
 | TD-11 | No password policy; no auto-lock | 🟠 | Key exposed on idle machine | Entropy floor + idle lock | P0 | 🟡 **Partial** — a 60-bit entropy floor derived from the shipped Argon2id parameters now gates vault creation, and a `TimeProvider`-driven idle watchdog locks the session and returns the user to the vault picker. **Verified out-of-suite**: a 25-check harness (not committed) watched the floor reject a one-character password, the idle lock fire on a fake clock, and the key zero; no test in `tests/` covers it, so nothing guards against regression. Re-authentication, lock-on-suspend and a persisted timeout remain unbuilt. See §12.16 |
 | TD-12 | Currency not validated against account | 🟠 | Orphaned ledger entry — **measured: no longer reachable once TD-01 closed; the residual defect was a domain exception leaking to the UI** | Validation behaviour | P0 | ✅ **Done** |
@@ -500,8 +500,8 @@ any other single change.
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | 🔴 **Open** |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🔴 **Open** |
 | TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
-| TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | 🔴 **Open** |
-| TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | Reconcile in confirmation UI | P1 | 🔴 **Open** |
+| TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | ✅ **Closed** — iteration 8, §12.18. `Money` normalises in its constructor to the currency's ISO 4217 minor units (`ToEven`), rejects a fractional amount in a zero-minor-unit currency, and gains `Allocate`/`Multiply`/`Negate`/`Round`/`Scale`. `CurrencyCode` validates membership and offers `TryCreate`. Six falsification mutations, all killed |
+| TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | `LineItemKind` represents the difference instead of tolerating it; the invariant is enforced at the persistence boundary and the receipt confirmation UI offers a one-click adjustment | P1 | ✅ **Closed** — iteration 9, §12.20 |
 | TD-20 | No receipt duplicate detection | 🟠 | Double-counted expenses | Content-hash check | P1 | 🔴 **Open** |
 | TD-21 | Ambiguous dd/MM vs MM/dd parsing — and the OCR "multi-culture cascade" tries `InvariantCulture` (MM/dd) **first**, so its `es-EC` leg is unreachable for any ambiguous date while its comment claims dd/MM is tried first | 🟠 | Silently misdated transactions, now behind code that reads as if it handled them | Locale-driven order; flag ambiguity | P1 | 🔴 **Open** — severity understated, see §12.12 |
 | TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | 🔴 **Open** |
@@ -529,8 +529,8 @@ any other single change.
 | TD-44 | Windows-only native runtimes | 🟡 | Scanning impossible off Windows | Per-RID runtimes; state support | P2 | 🔴 **Open** |
 | TD-45 | Hardcoded English UI; no localisation | 🟡 | Costly retrofit across 26 views | `.resx` + `IStringLocalizer` | P2 | 🔴 **Open** |
 | TD-46 | Relative model paths in `MlNetCategorizer` and `OnnxNlpFieldExtractor`; `ReceiptDetector` already anchors to `AppContext.BaseDirectory` | 🟡 | Feature silently off; stray files | Anchor the remaining two | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
-| TD-47 | Seeded fictional $1,000 account | 🔵 | Fabricated data in a finance app | Real onboarding step | P1 | 🔴 **Open** |
-| TD-48 | `CloudSync` setting read by nothing | 🔵 | Onboarding promises absent feature | Remove until sync exists | P2 | 🔴 **Open** |
+| TD-47 | New vaults seeded with a fictional $1,000 account | 🔵 | In a tool whose value is an accurate picture of the user's money, seeding invented data is a correctness problem | Removed from `SetupViewModel`; a fresh vault now has zero accounts, and the dashboard's always-visible `+ New Account` button is the path in | P1 | ✅ **Closed** — iteration 10, §12.22 |
+| TD-48 | `CloudSync` setting read by nothing | 🔵 | Onboarding promises an absent feature | The disabled radio, the `IsCloudSync` property and the `System.StorageMode` write are all gone; the step keeps the local option, whose privacy claim is true | P2 | ✅ **Closed** — iteration 10, §12.22 |
 | TD-49 | No packaging, signing or update channel | 🟠 | No way to ship or patch | Installer + signing + updater | P1 | 🔴 **Open** |
 | TD-50 | No file-type or size validation on imports | 🔵 | Parser DoS / hang | Magic-byte + size cap | P2 | 🔴 **Open** |
 | TD-51 | Draft comments and `<!-- asdasda` in source | 🔵 | Signals unreviewed code | Clean up; enforce in review | P2 | 🟡 **Partial** |
@@ -542,7 +542,7 @@ any other single change.
 | TD-57 | `IVaultMigrator` lives in `Pine.Core` because Infrastructure cannot see Application | 🟡 | A persistence-orchestration port sits in the domain project | Add the ProjectReference, then move the port | P2 | 🔴 **Open** |
 | TD-58 | `AddTransactionViewModel` / `CreateAccountViewModel` take an unregistered `Action onComplete` ctor parameter | 🟡 | Blocks `ValidateOnBuild`; the container cannot self-check at startup | Typed VM factories (TD-28) or a registered callback | P2 | 🔴 **Open** |
 | TD-59 | `ReconcileOwnedChildren` infers owned-child state from EF's Modified/Added guess | 🟡 | A client-keyed owned child is promoted Modified→Added; if either owned type ever gains a public setter, a real update is silently rewritten as an insert | Set owned-child state explicitly, or key them server-side | P2 | 🟡 **Partial** — assumption pinned by `OwnedTransactionChildren_ShouldNot_ExposePublicSetters` |
-| TD-61 | `CurrencyCodeText.TryNormalise` restates `CurrencyCode`'s shape rule outside the domain | 🟡 | Two copies of one rule can drift — most concretely when `CurrencyCode` gains ISO 4217 *membership* validation (TD-18), after which the validator would still wave `"ZZZ"` through | Expose a non-throwing `CurrencyCode.TryCreate` and delete the copy | P2 | 🔴 **Open** |
+| TD-61 | `CurrencyCodeText.TryNormalise` restates `CurrencyCode`'s shape rule outside the domain | 🟡 | Two copies of one rule can drift — most concretely when `CurrencyCode` gains ISO 4217 *membership* validation (TD-18), after which the validator would still wave `"ZZZ"` through | Expose a non-throwing `CurrencyCode.TryCreate` and delete the copy | P2 | ✅ **Closed** — iteration 8, §12.18. The helper now delegates to `CurrencyCode.TryCreate`; the copy is deleted. Pinned by a theory asserting `TryCreate` and the constructor agree on every input, and by falsification M6 |
 | TD-62 | Validators cover currency only; other pre-conditions still fail inside the domain | 🟡 | `AddTransactionCommand` with `Amount == 0` still reaches `account.Deposit(...)` and surfaces "Deposit amount must be strictly positive."; `ImportTransactionsCommandHandler` still throws a bare `ArgumentException` for a missing account. Same wrong-layer class TD-12 fixed, different fields | Extend the existing validators; the seam is already in place | P2 | 🔴 **Open** |
 | TD-63 | `CreateBudgetCommand` carries a currency anchored to nothing | 🟡 | A budget's `CurrencyCode` is validated for shape only — it has no account to be checked against, so a EUR budget can sit against a USD-only vault and no total is comparable | Decide whether a budget is per-account or per-vault, then anchor it | P2 | 🔴 **Open** |
 | TD-60 | `ReplaceSplits` / `ReplaceLineItems` mint fresh `Guid` ids on every detached save | 🔵 | Owned children are deleted and re-inserted with new ids on each update; any future reference to a split id (rules, attachments, audit trail) would dangle | Diff by identity instead of replacing wholesale | P2 | 🔴 **Open** |
@@ -556,7 +556,14 @@ any other single change.
 | TD-71 | The transactions list cannot filter or hide voided rows | 🔵 | Correct at today's volumes; a vault with many corrections reads badly | A filter on the list, once there is a read model to filter (TD-28's DTOs) | P3 | 🔴 **Open** |
 | TD-72 | `ShellViewModel` lifetime diverges: `Transient` on Windows, `Singleton` on the other four heads | 🟡 | One view model means two different things depending on platform; a singleton shell outlives the vault it was opened for | Pick one lifetime, in the shared registration TD-29 already calls for | P2 | 🔴 **Open** — iteration 7 |
 | TD-73 | `PasswordStrengthPolicy` has no natural-language word list, so multi-word passphrases are over-estimated | 🟡 | The estimator accepts a passphrase weaker than the bits it reports; the 60-bit floor's `2^6` margin is what covers this | Embed a word list in `Pine.Core` — needs the BCL-only rule relaxed to permit an embedded resource | P2 | 🔴 **Open** — iteration 7 |
-| TD-74 | One integration test is red at `19a1877` and nobody has diagnosed it | 🟠 | §12.14 recorded 99/99; the suite is 98/99. A regression net whose colour nobody reads is not a net | Diagnose `ImportDeduplicationTests.Import_OfAnExtendedStatement_…` — it is TD-03's own coverage | P1 | 🔴 **Open** — iteration 7 |
+| TD-74 | ~~One integration test is red at `19a1877`~~ **The whole integration project stopped compiling at `f691ba8` and nobody noticed for two iterations** | 🟠 | The reported symptom was wrong. `Pine.Tests.Integration` was not 98/99; it was **0 tests executed**, 8 × CS0535. A suite that does not build reports no colour at all | Fixed in iteration 9 — the two hand-written `IVaultSession` fakes now track the interface; see §12.20 | P1 | ✅ **Closed — reclassified**, iteration 9 |
+| TD-75 | Every money figure in the UI is formatted `{0:N2}` — `BudgetsView.axaml:57,59`, `RecentTransactionsWidgetView.axaml:30`, `BalanceWidgetView.axaml:29` | 🟡 | Two decimals is now provably wrong for a JPY account (0 minor units) and a KWD one (3). The domain knows the right number since TD-18; the view hardcodes the wrong one. There are no Avalonia converters in the project, so there is nowhere to put the rule today | A value converter reading `Money.Scale`, or a formatted string on the view model | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-76 | The account-creation currency picker is a seven-item hardcoded list (`CreateAccountViewModel.Currencies`) | 🔵 | `"BTC"` was in it and could not have succeeded once TD-18 landed; it was removed. The remaining list is arbitrary and excludes ~170 real currencies a user may hold | A searchable picker over `IsoCurrencies.Codes` | P3 | 🔴 **Open** — opened by iteration 8 |
+| TD-77 | `Account.OpeningBalanceAmount` is a bare `decimal?` column with no `Money` around it (`PineDbContext:77`) | 🟡 | TD-18's scale policy lives in `Money`'s constructor, so a column that does not pass through `Money` on the way out is outside it. Writes are covered transitively (`AdoptOpeningBalance` takes a `Money`); a raw SQL update or a legacy row is not, and `Account.OpeningBalance` now rounds on projection rather than throwing | Store it as a `Money` complex property, or keep the projection and document it (done) | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-78 | `CreateAccountCommand` and `CreateBudgetCommand` still have no validator, so an unknown currency now throws `ArgumentException` from inside the handler | 🟡 | TD-18 made `CurrencyCode` reject `"ZZZ"`, which turned two previously-silent paths into wrong-layer throws rendered verbatim by `catch (Exception)` view models. Same class as TD-12, and a direct widening of TD-24's blast radius. The validator seam already exists; nothing was added because the rows are TD-62/TD-63 | An `IRequestValidator<T>` for each, using `CurrencyCodeText.TryNormalise` | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-79 | `PineDbContext` declares no `HasPrecision()` and no `HasColumnType()` anywhere; every `decimal` is stored as SQLite `TEXT` | 🟡 | The store has no scale of its own, so TD-18's policy is enforced only by the domain. Anything writing that file outside Pine — a migration, a repair script, another tool — can plant an out-of-scale amount, and the read path is deliberately tolerant of exactly that | Related to TD-31; at minimum a `CHECK` constraint or an explicit column type | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-80 | Onboarding asked consent for telemetry that does not exist | 🟠 | Worse than TD-48: the cloud radio was disabled, this checkbox was **enabled** and asked for real consent. No telemetry code exists anywhere in the repository and nothing read `System.Telemetry`. In a product whose argument is local privacy, this is the worst place to be inaccurate | Checkbox, `TelemetryOptIn` and the setting write removed | P1 | ✅ **Opened and closed** — iteration 10, §12.22 |
+| TD-81 | `SetupViewModel`'s happy path cannot be tested | 🟠 | `VaultManager` is `sealed`, has no interface, hard-codes `LocalApplicationData/Pine` in its constructor and writes `vaults.json` to the real disk, so `InitializeVaultAsync` cannot run under test without mutating the developer's machine. Every existing test of this view model stops at an early validation failure; iteration 10's tests had to assert type-level dependencies instead of behaviour | Extract `IVaultManager`, or inject the data directory | P2 | 🔴 **Open** — iteration 10 |
 
 ---
 
@@ -604,9 +611,9 @@ a day of work now and an impossible migration later.
 - [x] ✅ **6.** MediatR validation behaviour; validate currency against account (TD-12) — **DONE.** Hand-rolled `IRequestValidator<T>` seam + `ValidationBehavior` registered *before* `TransactionBehavior`, so a rejected command never opens a transaction. Four validators; `TransferFundsCommandHandler`'s up-front checks folded in so there is one idiom. Proven by four falsification mutations; 138 → 152 tests.
 - [x] ✅ **7.** Rewrite import dedup on a stable key with a user-facing review list (TD-03) — **DONE.** `ImportKeyFactory` (BCL-only, invariant-culture, versioned `r1:`/`h1:` prefixes), a nullable `ImportKey` column with an `(AccountId, ImportKey)` index, an indexed existence probe replacing the full-account load, in-batch duplicate detection, and an `ImportTransactionsResult` carrying every row's disposition + reason, surfaced on a new wizard review step. 152 → 170 tests.
 - [x] 🟡 **8.** Update / void transaction commands + balance recalculation (TD-02) — **VOID AND RECALCULATION DONE; EDIT DELIBERATELY DEFERRED.** `VoidTransactionCommand` (both transfer legs, both balances, one database transaction, reason required) and `RecalculateAccountBalanceCommand` (exact .NET `decimal` sum, voided rows excluded, drift reported). `Account` gained a recorded opening balance — without which recomputing a balance from its ledger is arithmetically impossible; the migration deliberately does not backfill it, see §12.14. Four falsification mutations; 170 → 240 tests. The **edit** path is TD-68.
-- [x] 🟡 **9.** Password entropy floor and idle auto-lock (TD-11) — **BUILT, NOT VERIFIED.** `PasswordStrengthPolicy` (BCL-only shortest-path entropy estimator; the 60-bit floor is derived from `KdfParameters.Argon2idV1`, arithmetic in the constant's doc comment) gates `SetupViewModel`, which also gained a confirm-password field. `VaultAutoLockService` polls an injected `TimeProvider`, arms on resolution, and raises `IVaultSession.Locked`; `MainViewModel` marshals it to the UI thread, drops the shell's inner page and says why. Wired on all five heads. Behaviour verified by an out-of-suite harness (25 checks, transcribed in §12.16); **no test in `tests/` covers it**, so porting that harness is the first item of §12.17.
-- [ ] 🔴 **10.** Money-path test suite covering all of the above — written *alongside*, not after (TD-09)
-- [ ] 🔴 **11.** Remove the seeded fictional account; remove or wire the `CloudSync` option (TD-47, TD-48)
+- [x] ✅ **9.** Password entropy floor and idle auto-lock (TD-11) — **DONE.** `PasswordStrengthPolicy` (BCL-only shortest-path entropy estimator; the 60-bit floor is derived from `KdfParameters.Argon2idV1`, arithmetic in the constant's doc comment) gates `SetupViewModel`, which also gained a confirm-password field. `VaultAutoLockService` polls an injected `TimeProvider`, arms on resolution, and raises `IVaultSession.Locked`; `MainViewModel` marshals it to the UI thread, drops the shell's inner page and says why. Wired on all five heads. Behaviour was verified by an out-of-suite harness (25 checks, transcribed in §12.16). **[Updated, iteration 9: that harness is now in `tests/Pine.Tests.Unit/Security/` as 44 tests, and every value §12.16 transcribed reproduced exactly. The item is ✅ for everything a test can reach; the strength meter's rendering and the Android/iOS wiring remain manual rows in `61-Manual-Test-Plan` §9. See §12.20.]**
+- [x] ✅ **10.** Money-path test suite covering all of the above — written *alongside*, not after (TD-09) — **DONE.** `Money` scale/rounding/`Allocate` and ISO-4217 membership (iteration 8, §12.18); line-item reconciliation via `LineItemKind` (iteration 9, §12.20). 240 → 429 tests, eleven falsification mutations across the two iterations, all killed.
+- [x] ✅ **11.** Remove the seeded fictional account; remove or wire the `CloudSync` option (TD-47, TD-48) — **DONE.** Both removed, plus the telemetry consent checkbox found alongside them (TD-80). Three falsification mutations, all killed. 310 → 313 tests. See §12.22.
 
 ### Phase 1 — Stabilisation
 
@@ -1958,7 +1965,7 @@ later reader can see exactly what was and was not asserted.
 | Claim | How it was checked | Result |
 |---|---|---|
 | Baseline unit suite, before any change | `dotnet test tests/Pine.Tests.Unit` | ✅ **141 passing** |
-| Baseline integration suite, before any change | `dotnet test tests/Pine.Tests.Integration` | 🔴 **98 passing, 1 failing** — `ImportDeduplicationTests.Import_OfAnExtendedStatement_SavesOnlyTheNewRowAndMovesTheBalanceOnlyByIt`, thrown at `AtomicityHost.cs:201`. **Pre-existing** on the commit this iteration started from (`19a1877`) and untouched by this work. Recorded because §12.14 claimed 99/99 and that claim is now stale. Not diagnosed — see TD-74. |
+| Baseline integration suite, before any change | `dotnet test tests/Pine.Tests.Integration` | 🔴 **98 passing, 1 failing** — `ImportDeduplicationTests.Import_OfAnExtendedStatement_SavesOnlyTheNewRowAndMovesTheBalanceOnlyByIt`, thrown at `AtomicityHost.cs:201`. **Pre-existing** on the commit this iteration started from (`19a1877`) and untouched by this work. Recorded because §12.14 claimed 99/99 and that claim is now stale. Not diagnosed — see TD-74. **[Correction, iteration 9: this row is wrong and could not have been produced as written. `f691ba8` — this very iteration's commit — added four members to `IVaultSession` and touched no file under `tests/`, so `Pine.Tests.Integration` failed to *compile* (8 × CS0535) from that commit onward: not 98 passing and 1 failing, but zero tests executed. At `19a1877`, where the project still builds, the suite runs 99/99 — confirmed over four full runs in a clean worktree, and four more at HEAD after the build was repaired. Baseline text left intact per this document's convention; see §12.20.]** |
 | Windows head builds | `dotnet build src/Pine.Ui.Windows` | ✅ 0 warnings, 0 errors |
 | macOS head builds | `dotnet build src/Pine.Ui.Macos` | ✅ 0 warnings, 0 errors |
 | Web head builds | `dotnet build src/Pine.Ui.Web` | ✅ builds; one pre-existing native-WASM link warning, unrelated |
@@ -2099,7 +2106,7 @@ dead end.
 | TD-73 | `PasswordStrengthPolicy` has no natural-language word list, so multi-word passphrases are over-estimated | 🟡 | The estimator accepts a passphrase weaker than the bits it reports; the 60-bit floor's `2^6` margin is what currently covers this | Embed a word list in `Pine.Core` — needs the BCL-only rule relaxed to permit an embedded resource | P2 | 🔴 Open |
 | TD-74 | One integration test is red at `19a1877` and nobody has diagnosed it | 🟠 | §12.14 recorded 99/99; the suite is 98/99. A regression net whose colour nobody reads is not a net | Diagnose `ImportDeduplicationTests.Import_OfAnExtendedStatement_…` — it is TD-03's own coverage | P1 | 🔴 Open |
 
-### 12.17 Next
+### 12.17 Next (after iteration 7) — superseded
 
 Phase 0 items **10** and **11** remain, plus a debt this iteration created:
 
@@ -2117,3 +2124,514 @@ Phase 0 items **10** and **11** remain, plus a debt this iteration created:
   and the `CloudSync` setting that nothing reads.
 - **TD-74**, the red import test, before it is three iterations old and something starts depending on
   its silence.
+
+### 12.18 Iteration 8 — Phase 0, item 10, first half (TD-18, TD-61)
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-28 |
+| Scope | Phase 0 item **10**, the TD-18 half: a scale and rounding policy for `Money`, exact allocation, ISO 4217 membership for `CurrencyCode` — and TD-61, which could not be left open once membership existed |
+| Outcome | **TD-18 ✅ closed · TD-61 ✅ closed · TD-09 narrowed to TD-19 only.** 5 new debts opened (TD-75 … TD-79) |
+| Tests | 185 + 99 = 284 → **274 + 110 = 384** |
+| Schema | **No migration.** Nothing about the storage shape changed; see below |
+| State | Working tree only — not committed, not pushed |
+
+#### Verification actually executed
+
+| Check | Result |
+|---|---|
+| Baseline before any change | ✅ 185 unit, 99 integration, both green |
+| `dotnet build` × 8 heads, Release (`Core`, `Application`, `Infrastructure`, `Ui.Avalonia`, `Ui.Windows`, `Ui.Macos`, `Ui.Web`, `Cli`) | ✅ 0 errors; 0 warnings except `Ui.Web`'s pre-existing SDK `.targets` warning, unchanged since iteration 2 |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **274 passed, 0 failed, 0 skipped** |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **110 passed, 0 failed, 0 skipped** |
+| Legacy vault tolerance | ✅ proven, not assumed — rows planted by raw SQL over a keyed SQLCipher connection |
+| Falsification | ✅ **six mutations, six killed**, table below; green restored after each |
+| Android / iOS heads | ❌ **not compiled** — workloads absent (`NETSDK1147`), unchanged since iteration 1 |
+| The GUI | ❌ **not rendered.** The currency-picker change and the `{0:N2}` finding are claims about code, not pixels |
+
+#### The design, and where the policy lives
+
+The policy is in **`Money`'s constructor**, and the scale it uses comes from **`CurrencyCode.MinorUnits`**,
+which reads an ISO 4217 table embedded in `Pine.Core`. Putting it at the boundaries instead would mean
+there is a boundary to forget; putting it in the value object means an out-of-scale amount cannot exist
+inside the domain and no aggregate has to defend against one.
+
+The table is embedded rather than read from `RegionInfo` / `NumberFormatInfo.CurrencyDecimalDigits`
+deliberately: those are ICU culture data, revised between OS releases and different across platforms, so a
+vault's arithmetic would otherwise depend on the machine that opened it.
+
+**What is normalised versus what is rejected is asymmetric, and the asymmetry is the design.** For a
+currency with a minor unit, digits below it are sub-unit noise — division residue, never a sum anybody
+meant — and are rounded away half-to-even. For a currency with **no** minor unit there is no sub-unit for
+noise to occupy, so a fractional yen is not residue but a quantity the currency cannot express, which means
+the caller computed it somewhere it should not have: `new Money(10.5m, JPY)` **throws**. Silently making it
+10 JPY would hide the arithmetic that produced the half.
+
+That frontier is drawn at the **constructor** — the caller-authored boundary. Results this type computes
+itself (`Multiply`, `Allocate`) are not caller-authored, so they round through `Money.Round` and never
+throw. A caller that genuinely wants the nearest expressible yen says so by calling `Money.Round` or
+`Money.FromRounded`.
+
+**Half-to-even, not half-away-from-zero**: away-from-zero rounds every midpoint in the same direction and
+accumulates a drift proportional to the number of operations, which in a ledger is the wrong error to have.
+
+`Allocate` is **largest remainder** over whole minor units: each part takes the truncated units its ratio
+earns, and the leftover units — always fewer than the number of parts — go one each to the largest
+remainders, ties by position. `new Money(10.00m, USD).Allocate(3)` is `[3.34, 3.33, 3.33]`. Divide-and-round
+is the defect this exists to prevent: three shares of 3.3333… each round to 3.33 and sum to 9.99, which
+breaks `Transaction.ValidateSplits` for a number that is not a quantity of money. Negative amounts are
+allocated by magnitude and re-signed, so the two directions mirror exactly; a zero ratio yields a zero part
+and can never receive a leftover unit.
+
+**`decimal` is still the type.** Scaled integers are TD-31 and were not touched. `ToMinorUnits()` is a
+projection used for allocation arithmetic, not a change of representation.
+
+#### Backward compatibility, and why there is no migration
+
+A vault in the field may hold a currency outside the table (the old rule was `^[A-Z]{3}$` and nothing more)
+or an amount outside its currency's scale. **Neither can be migrated**: there is no correct value to rewrite
+an unknown currency to, and rounding stored history is destroying evidence. So the read path is deliberately
+tolerant and the write path is deliberately strict.
+
+The seam is that **EF Core binds the private parameterless constructors** of `Money` and `CurrencyCode` and
+writes the backing fields directly, so materialisation executes neither rule. That is a fact about EF's
+constructor selection rather than about Pine, which is exactly why it is now a test rather than an
+assumption — an EF upgrade that changed the selection rule would turn "opens fine" into "throws on open"
+with no other signal. `Data/LegacyMoneyToleranceTests` plants `Balance_Currency='ZZZ'`, a three-decimal USD
+amount and a fractional JPY balance by raw SQL and asserts each one materialises, each test first asserting
+that the validating path *would* have refused the same value so that it cannot pass vacuously.
+
+**The one read path that does run code was a real defect.** `Budget.Limit`'s currency is the only money
+column mapped with an explicit `HasConversion` (the TD-33 divergence), and its converter called the
+**validating** constructor. Left alone, this ticket would have made a vault holding a legacy budget currency
+unopenable. It now calls `CurrencyCode.FromStoredValue`. Falsification M5 is that line, and no other test in
+the suite catches it.
+
+No schema changed, so **no migration was generated**.
+
+#### Call sites whose behaviour changed
+
+Every `new Money(...)` in the solution now rounds. The ones where that is a real change of behaviour:
+
+- **`CsvImporter:137`** — the only site whose input is genuinely arbitrary. A statement row of `12.345` used
+  to be stored verbatim and is now stored as `12.34`. This is the intended fix and also the largest blast
+  radius in the ticket.
+- **`AddTransactionCommand:52,77,78`** and **`RecordTransactionCommand:36,42`** — a plugin or a future caller
+  passing an unrounded amount now has it rounded rather than persisted at full precision.
+- **`RecalculateAccountBalanceCommand:137,143`** — the ledger sum is added in exact .NET `decimal` (TD-31,
+  deliberately not pushed into SQL) and *then* wrapped in a `Money`, so a legacy vault of out-of-scale rows
+  now yields a **rounded** recalculated balance where it previously yielded an exact one. The sum itself is
+  unchanged; only the figure written back is normalised.
+- **`Account.OpeningBalance`** — now built with `Money.FromRounded`, because `OpeningBalanceAmount` is a bare
+  `decimal?` column that does not pass through `Money` on the way out. Without this, a legacy JPY account
+  with a fractional opening balance would have thrown *every time it was displayed*. A read-path projection
+  must not be able to break a screen. Recorded as TD-77.
+- **`CurrencyCode`'s membership rule** changes `CreateAccountCommand:28` and `CreateBudgetCommand:31` from
+  "accepts anything three letters long" to "throws `ArgumentException` from inside the handler". Neither has
+  a validator (TD-62 / TD-63), so this is a wrong-layer throw rendered verbatim by the view models — a
+  widening of TD-24 that this ticket created and did not fix. Recorded as **TD-78**.
+- **`CreateAccountViewModel.Currencies` offered `"BTC"`**, which is not an ISO 4217 code. After this change
+  that picker entry could not have succeeded: a shipped UI affordance that always fails. Removed. Pine has no
+  crypto-asset model — no divisibility, no rate source — so offering one was a promise the domain could not
+  keep. TD-76.
+- **Four hand-rolled negations** (`AddTransactionCommand:92`, `VoidTransactionCommand:168`, and two in
+  `TransferFundsCommand`) now use unary `-`. `TransferFundsCommandHandler` additionally derives all four of
+  its figures from one normalised `Money` instead of re-constructing from `request.Amount` four times, so
+  they cannot disagree about scale.
+- **`TransactionSplit.CopyOf` / `TransactionLineItem.CopyOf`** rebuilt the nested `CurrencyCode` with the
+  validating constructor. On a legacy aggregate that would have thrown while merely *copying* a value it had
+  just read. They now use `FromStoredValue`.
+
+#### Falsification
+
+Six mutations, each applied to green code, both suites re-run, then reverted and re-run green.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `MidpointRounding.ToEven` → `AwayFromZero`, in the constructor and in `Round` | ✅ **10 red** — 8 unit (incl. `Money_UsesBankersRounding_NotAwayFromZero`, `Money_RespectsAThreeDigitCurrency`, `Round_IsTheExplicitWay…`) + 2 integration (`AnAccountBalance_IsPersistedAlreadyNormalised`, `ALegacyRowAndANewRow_Coexist…`) |
+| M2 | Delete `Allocate`'s largest-remainder distribution loop | ✅ **11 red** — 10 unit including both property sweeps, + `ATransactionTotalAndItsSplits_ArePersistedAlreadyNormalised` |
+| M3 | Disable the ISO membership check in both the constructor and `TryCreate` | ✅ **8 red** — 4 unit (`CurrencyCode_Rejects_AWellShapedStringThatIsNotACurrency`, `TryCreate_AgreesWithTheConstructor…`) + 4 integration (all three `CurrencyMembershipValidationTests` rows, plus the legacy-tolerance test's own anti-vacuity guard) |
+| M4 | Remove the constructor's normalisation (`Amount = amount`) | ✅ **12 red** — 10 unit + 2 integration |
+| M5 | `Budget.Limit`'s EF converter back to the validating constructor | ✅ **1 red** — `ABudgetDenominatedInAnUnknownCurrency_StillMaterialises`. The only test that catches it, and the reason it was written |
+| M6 | `CurrencyCodeText.TryNormalise` back to its own copy of the shape rule | ✅ **3 red** — `AddTransaction_WithAWellShapedNonCurrency_IsRefusedByTheValidator` for all three codes. **Zero unit tests red**, which is the honest shape of TD-61: it is a wiring defect, visible only through the pipeline |
+
+**No mutant survived.** M5 and M6 were added precisely because M1–M4 left two seams untested; without them
+both would have been surviving mutants rather than killed ones.
+
+#### INCOMPLETE / NOT DONE
+
+1. **TD-19 (line-item reconciliation) is untouched**, by instruction. Phase 0 item 10 is therefore half
+   closed; TD-09 is narrowed, not closed.
+2. **`{0:N2}` in four `.axaml` files is still wrong for JPY and KWD.** Diagnosed, not fixed — there are no
+   Avalonia converters in the project, so fixing it means introducing that mechanism, which is a UI change
+   with no test harness behind it, inside a ticket about the domain. **TD-75.**
+3. **`CreateAccountCommand` / `CreateBudgetCommand` have no validator**, so this ticket made two paths throw
+   a domain exception where they previously accepted bad input silently. **TD-78.** The seam to fix it exists.
+4. **Android and iOS still cannot be compiled locally** (`NETSDK1147`). Unchanged since iteration 1.
+5. **No GUI was rendered.** The picker change and the formatting finding are unverified visually.
+6. **The ISO table is a point-in-time transcription** (list one, 2024-06-25) with no update mechanism and no
+   test that it matches the standard — only that it is internally consistent and that every member is
+   constructible. A code the standard adds later will be rejected until someone edits the file.
+7. **`Money` supports scales 0–4 only.** Anything else throws from `PowerOfTen` / `MinorUnit`. That covers the
+   whole ISO table today and is a deliberate closed set, not an oversight.
+8. **`Allocate` uses `long` minor units and `Int128` intermediates.** No test explores the overflow boundary;
+   the amounts involved are far outside any plausible vault, but the claim is untested rather than proven.
+9. **TD-74 was not investigated** by iteration 8. Both suites are green on this machine at this commit,
+   which does not by itself resolve §12.17's claim that a test was red at `19a1877`. **[Iteration 9
+   investigated it and found the claim false; see §12.20. The green suites iteration 8 observed were green
+   only because iteration 9's fake-repair had already landed in the working tree.]**
+10. **Nothing was committed or pushed.**
+
+#### Reconciliation pass
+
+- **TD-18 → ✅ closed.** TD-61 → ✅ closed; it could not have been left open, because membership validation
+  would have made the validator's private copy of the rule strictly weaker than the rule it stood in for.
+- **TD-09** — rounding and allocation are now covered, falsification-proven. Only TD-19 remains.
+- **TD-33** — unchanged in severity but newly load-bearing: `Budget.Limit`'s divergent `HasConversion` was
+  the single place where the read path executed domain validation, and it is now the single place where the
+  read path executes `FromStoredValue`. The divergence is covered by a test that goes red if it is
+  "unified" back onto the validating constructor.
+- **TD-31** — unchanged, and reinforced: `RecalculateAccountBalanceCommand` still sums in .NET rather than
+  SQL, and the new round-trip test has to read decimal columns as raw TEXT, which is only necessary because
+  of it. The round-trip test also documents that EF's `decimal` encoding drops trailing zeroes, so `10.00`
+  lands on disk as `10.0` — the absence of the third decimal, not the presence of the second, is what that
+  assertion actually discriminates.
+- **TD-24** — measurably worse on two paths; TD-78 records it rather than burying it.
+- **TD-12** — its validators are strictly stronger now: `"ZZZ"` was previously accepted by them.
+- **Rows re-checked and confirmed unchanged:** TD-02, TD-03, TD-06, TD-11, TD-13 … TD-17, TD-19, TD-20 …
+  TD-30, TD-32, TD-34 … TD-60, TD-62 … TD-74.
+
+### 12.20 Iteration 9 — Phase 0 item 10 closed (TD-19, TD-09), TD-74 reclassified
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-28 |
+| Scope | Phase 0 item **10** — TD-19 (line items unreconciled) and TD-09's remainder. Plus §12.17's prerequisite (port the TD-11 harness) and TD-74. |
+| Outcome | **TD-19 ✅ closed · TD-09 ✅ closed · TD-74 ✅ closed and reclassified · TD-11 covered.** Phase 0 item 10 is done; only item 11 remains. |
+| Tests | 240 → **429** (310 unit + 119 integration), 0 failed, 0 skipped. |
+| Schema | One migration, `20260828201103_AddTransactionLineItemKind` — a nullable `Kind` column on `TransactionLineItems`. Nullable is load-bearing, not laziness; see below. |
+| State | Working tree only — **not committed, not pushed**. |
+
+#### TD-74 was misdiagnosed, and the real defect was worse
+
+§12.16 recorded "98 passing, 1 failing" at `19a1877`. That could not have happened. `f691ba8` — iteration
+7's own commit — added `Locked`, `LastActivityUtc`, `ReportActivity()` and `Lock(VaultLockReason)` to
+`IVaultSession` and touched **no file under `tests/`**. The unit suite survived because its doubles are
+NSubstitute proxies that regenerate; the integration suite has two hand-written fakes — `TempVaultSession`
+in `AtomicityHost.cs` and `FakeVaultSession` in `ExportVaultBackupCommandHandlerTests.cs` — which stopped
+satisfying the interface. **`Pine.Tests.Integration` had not compiled since `f691ba8`: 8 × CS0535, zero
+tests executed.** Not a red test — no test at all.
+
+A clean worktree at `19a1877`, where the project still builds, runs 99/99 — confirmed over four full runs,
+including the named test in isolation, and four more at HEAD after the build was repaired.
+`AtomicityHost.cs:201` at that commit is `ExecuteScalar()` on a raw SQLCipher connection: the shape of a
+transient file lock, not of a failed assertion, which would have thrown at the test's own line. **The flake
+is not reproducible and is not resolved; what is resolved is the far larger defect hiding behind the
+report.** Both fakes now mirror the real `VaultSession`'s semantics, so a double cannot pass where
+production would fail. Falsification: stash the two files → 8 × CS0535; restore → 99/99.
+
+The lesson generalises past this row: **a suite that does not build reports no colour, and three iterations
+read the absence of red as green.** This is the same failure mode §12.12 exists to catch.
+
+#### TD-11's harness is now in the suite
+
+§12.17's first item. All 25 checks ported to `tests/Pine.Tests.Unit/Security/` (44 tests). Every value
+transcribed in §12.16 reproduced **exactly** — the bit scores, the `PasswordWeakness` sets, the idle-lock
+sequence on a `FakeTimeProvider` with no `Task.Delay`, the 32 zeroed bytes. Nothing needed relaxing, so
+TD-11's behaviour is now covered rather than merely witnessed. The zeroing needed no reflection: the getter
+on `IVaultSession.Key` returns the live buffer, so capturing it before `Lock()` observes the wipe in place.
+The two rows §12.16 marked NOT CHECKED — the Android/iOS heads and the strength meter's rendering — are
+still unchecked, and still belong to `61-Manual-Test-Plan` §9.
+
+#### TD-19 — the difference is represented, not tolerated
+
+A receipt's product lines almost never sum to what was paid: tax, tip, discounts, container deposits and
+cash rounding sit in between. Enforcing an exact sum naively would have made the scanner refuse most real
+receipts; tolerating a difference would not be an invariant. So every component of the total is a line, and
+`LineItemKind` says which kind: `Product`, `Tax`, `Tip`, `Discount`, `Deposit`, `Rounding`, `Unattributed`.
+The invariant stays **exact** and the receipt stays storable.
+
+**There is no tolerance constant, and the derivation is that none is available.** Every `Money` is
+normalised to a whole number of minor units by its own constructor (TD-18, §12.18), and the sum is taken
+over stored line totals rather than recomputed from quantity × unit price. A sum of exact multiples of the
+minor unit is an exact multiple of the minor unit, so the largest representable residue is **zero**. An
+epsilon here would not absorb arithmetic noise — there is none — it would absorb tax, one to four orders of
+magnitude larger, and an amount the user is entitled to see named. `Rounding` and `Unattributed` exist so
+nobody has to lie about what a charge was.
+
+**Sign is not part of the kind.** A `Discount` is a line whose amount runs opposite to the total's
+direction; the sum invariant is what makes that work. Encoding "subtract this one" in the kind would give
+two places that decide a line's contribution and let them disagree.
+
+**`Kind` is nullable, and null is not a member of the enum.** Null means "written before this model
+existed", and such a set is **not** validated. That data is incomplete, not contradictory, and the
+alternatives were to invent the missing adjustment line — fabricating evidence — or to refuse it, which
+would have made every pre-existing scanned receipt impossible to void or correct, silently undoing TD-02's
+correction path with a new invariant. The hole is as narrow as it can be made: `AddLineItem` takes a
+non-nullable kind, so the only way back into that state through the domain is to pass a null to
+`ReplaceLineItems` deliberately, and the only caller that does is the repository merge path preserving what
+it has just read.
+
+**The UI half.** `ScanReceiptViewModel` recomputes the difference as the grid is edited — through `Money`
+once an account is selected, so the figure the user sees is normalised to the same scale the validator
+compares against, and a receipt cannot look reconciled and then be refused.
+`RecordDifferenceAsAdjustment` inserts the outstanding amount as one adjustment line of a chosen kind:
+**the user chooses what to call it, never how much it is.** `Product` is absent from that picker — the
+difference between what was bought and what was paid is by definition not a product. Adjustment rows are
+exempt from the quantity × unit price auto-calculation, which would otherwise drive a tax line to zero the
+instant it was created.
+
+#### A pre-existing defect the invariant exposed
+
+`ScanReceiptViewModel.SaveTransactionAsync` sent line items **positive against a negative total**. That set
+could never have reconciled under any rule — which is precisely why nothing had ever checked it. Line items
+are now negated with the total, so they sum to it.
+
+#### Falsification — 5 mutations, 5 killed
+
+| # | Mutation | Red |
+|---|---|---|
+| M-A | Neuter the line-item sum invariant | 3 unit |
+| M-B | Delete the legacy null-kind exemption | 2 unit + 2 integration |
+| M-C | Delete the UI reconciliation guard | 1 unit (`ScanReceiptReconciliationTests`) |
+| M-D | Send line items unnegated — the pre-existing sign defect | 1 unit |
+| M8 | Drop `li.Kind` from the repository's **detached merge** | 2 integration — **survived until this iteration**; see below |
+
+**M8 is the hole this iteration found in its own work.** `SaveAsync` branches on
+`ReferenceEquals(existing, transaction)`. Every existing test loads through the repository inside the same
+context and gets the **tracked** instance, so none of them ever reached the branch that rebuilds a
+`LineItemDefinition` — the only place in the solution where a kind can be silently dropped, because it is
+the only place a line item is reconstructed from one that already exists. Dropping it flattens every line
+to `Product`, and worse, it flattens a legacy null — which asserts the transaction reconciles and turns a
+merge into a throw. A correction path that worked would start failing on exactly the data the legacy seam
+exists to protect. Two tests now cover it, both reading on one context and saving on another, with an
+explicit `ReferenceEquals(...).Should().BeFalse()` so the test cannot silently stop exercising the branch
+it names.
+
+`CS0162` is an error in this repository, so a mutation that leaves unreachable code does not compile. M-B
+and M-C delete their blocks rather than short-circuiting them. Green was restored and re-verified after
+every mutation.
+
+#### Verification actually executed
+
+| Check | Result |
+|---|---|
+| `dotnet build -c Release` × `Core`, `Application`, `Infrastructure`, `Ui.Avalonia`, `Ui.Windows`, `Ui.Macos`, `Ui.Web`, `Cli` | ✅ 0 errors, 0 warnings on all eight |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **310 passed**, 0 failed, 0 skipped |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **119 passed**, 0 failed, 0 skipped |
+| Android / iOS heads | ❌ **not compiled** — workloads absent (`NETSDK1147`), unchanged since iteration 1 |
+| Any GUI rendered | ❌ **not observed.** The reconciliation panel and the adjustment picker compile and are covered by view-model tests; they have never been displayed. `61-Manual-Test-Plan` needs a §10 for them. |
+
+#### INCOMPLETE — stated rather than buried
+
+1. **No GUI was rendered.** The reconciliation affordance is the entire argument for why this invariant is
+   liveable, and that argument currently rests on view-model tests and on reading.
+2. **The uncommitted work of this iteration was destroyed mid-verification and reconstructed.**
+   `git checkout -- <file>` was used to revert two falsification mutations. It restores from the index, and
+   this iteration was never staged, so it discarded the working-tree versions of `Transaction.cs` and
+   `ScanReceiptViewModel.cs` wholesale. Both were rebuilt by replaying the edit scripts recorded in the
+   implementing agent's transcript, then reconciled by hand where an abandoned intermediate design
+   (`MarkAsPredatingKinds`) had been captured instead of the final one. **The recovered files are a
+   reconstruction, not the original bytes.** What backs them: all eight heads build clean, both suites
+   return the exact pre-loss counts (310 / 119), and all five mutations above were run against the
+   reconstruction rather than against the lost original. What does not back them: nobody has diffed the
+   reconstruction against what was lost, because it no longer exists. **Falsification must use file copies,
+   never `git checkout`, on an unstaged tree.**
+3. **The flake behind TD-74's original report is unresolved** — not reproduced in eight full runs, and no
+   product defect found behind it. If it is real it is in test infrastructure: a raw reader opened against a
+   file EF still holds pooled connections on.
+4. **TD-19's extractor half is partial.** The OCR extractor already computed the line-items-to-total ratio
+   and spent it on a confidence score; it now feeds adjustment extraction, but no receipt corpus was run
+   through it. Its accuracy is unmeasured.
+5. **Nothing committed or pushed.**
+
+#### Reconciliation pass
+
+- **TD-19 → ✅ closed.** **TD-09 → ✅ closed** — rounding, allocation and line-item reconciliation were its
+  last two gaps, and both are now falsification-proven. Phase 0 item 10 is complete.
+- **TD-74 → ✅ closed and reclassified** — from "a red test" to "a suite that had not compiled for two
+  iterations". §12.16's baseline row is annotated in place rather than rewritten, per this document's
+  convention.
+- **TD-11 → ✅** for everything a test can reach; the manual rows stay in `61-Manual-Test-Plan` §9.
+- **TD-02** — newly load-bearing in a place iteration 6 could not have anticipated: the legacy null-kind
+  exemption is what keeps a pre-existing scanned receipt voidable. M-B is the test that would notice if it
+  were removed.
+- **TD-24 / TD-78** — unchanged, and this iteration adds a third wrong-layer throw: `ReplaceLineItems`
+  raises `InvalidOperationException` carrying user-facing prose in its message.
+- **TD-75** — sharper now. The receipt confirmation screen shows a difference figure formatted by the same
+  `{0:N2}` that ignores minor units, so a JPY receipt would display a reconciliation figure with two
+  decimals that cannot exist.
+- **Rows re-checked and confirmed unchanged:** TD-03, TD-06, TD-13 … TD-17, TD-20 … TD-23, TD-25 … TD-73,
+  TD-76, TD-77, TD-79.
+
+### 12.19 Next (after iteration 8) — superseded
+
+Phase 0 items **10** (remainder) and **11** remain. Item 10 was closed by iteration 9; see §12.20.
+
+- **10 — TD-19**: line-item reconciliation against the transaction total. Deliberately left out of
+  iteration 8, which touched `Money` and did not touch `Transaction.ReplaceLineItems`/`AddLineItem`.
+  It is now the ONLY money-path invariant with no test, and it lands on top of the two latent debts
+  iteration 6 avoided making load-bearing (TD-59, TD-60).
+- **11 — TD-47 / TD-48**: remove the seeded fictional $1,000 account in `SetupViewModel` and the
+  `CloudSync` setting nothing reads.
+- **TD-78, before it is a user-visible defect.** Iteration 8 created it: two commands now throw a
+  domain exception on a bad currency because they have no validator. The seam to fix it has existed
+  since iteration 4 and the fix is two small classes.
+- **TD-75**, the `{0:N2}` formatting. Iteration 8 gave the domain a correct answer for how many
+  decimals a currency has and the view still ignores it.
+- ~~**TD-74**, still undiagnosed and now four iterations old.~~ **Diagnosed and closed in iteration 9 — see §12.20. It was not a red test; it was a project that had not compiled since `f691ba8`.**
+
+### 12.21 Next (after iteration 9) — superseded
+
+Phase 0 has **one** item left. It was closed by iteration 10; see §12.22.
+
+- **11 — TD-47 / TD-48**: remove the seeded fictional $1,000 account — the
+  `CreateAccountCommand("My First Bank", "USD", AccountType.Bank, 1000m)` call in `SetupViewModel` — and
+  the `CloudSync` setting that nothing reads. Small, and the last thing standing between the tree and a
+  closed Phase 0.
+- **Commit this work.** Three iterations of unstaged changes now sit in one working tree, and §12.20's
+  INCOMPLETE 2 is the direct cost of that.
+- **TD-78**, before it is user-visible: `CreateAccountCommand` and `CreateBudgetCommand` still have no
+  validator, so an invalid currency throws a domain exception the view model renders verbatim. The seam has
+  existed since iteration 4 and the fix is two small classes.
+- **TD-75**, the `{0:N2}` formatting. The domain has known how many decimals a currency has since
+  iteration 8, and four views still do not ask.
+- **Re-arm CI (TD-07).** Every claim in §12.18 and §12.20 was verified on one machine, by hand. The
+  workflow that would re-run them on every push has had its triggers removed since `79c5364`.
+
+### 12.22 Iteration 10 — Phase 0 item 11 (TD-47, TD-48), and TD-80 found alongside
+
+| Field | Value |
+|---|---|
+| Date | 2026-08-28 |
+| Scope | Phase 0 item **11** — TD-47 (seeded fictional account) and TD-48 (dead `CloudSync` option). TD-80 was found while reading the same screen and closed in the same pass. |
+| Outcome | **TD-47 ✅ · TD-48 ✅ · TD-80 ✅ opened and closed · TD-81 🔴 opened.** The last Phase 0 item is done. |
+| Tests | 310 → **313** unit; integration unchanged at **119**. Total **432**. |
+| Schema | None. |
+| State | Working tree only — **not committed, not pushed**. |
+
+#### What was removed
+
+- `SetupViewModel.cs` — the `CreateAccountCommand("My First Bank", "USD", AccountType.Bank, 1000m)` send;
+  the `IsLocalOnly`, `IsCloudSync` and `TelemetryOptIn` properties; both `SaveSettingCommand` sends; and the
+  four usings that died with them.
+- `SetupView.axaml` — the "Local + Cloud Sync (Coming Soon)" radio with its border and caption, and the
+  telemetry consent checkbox.
+
+**The surviving "Local Only" radio became a `TextBlock`.** A radio button with a `GroupName` and no peer is
+a choice control with nothing to choose: permanently checked and impossible to uncheck. The block keeps its
+visual weight and its privacy sentence — which is true — without pretending a decision is being offered.
+
+#### TD-80 — the finding this ticket did not go looking for
+
+The audit records `CloudSync` (TD-48) but never recorded the checkbox sitting three lines below it. Pine had
+an **enabled** control asking the user to consent to "sending anonymous usage telemetry", wrote
+`System.Telemetry` on first run, and **contains no telemetry code at all** — nothing reads that setting and
+nothing transmits anything. That is the same defect class as TD-48 and a worse instance of it: the cloud
+radio was at least disabled, so it read as a roadmap promise; an enabled checkbox reads as a live choice,
+and a user who ticks it believes data is leaving their machine. In a product whose entire argument is that
+data never leaves the device, this was the worst possible place to be inaccurate. Removed, not deferred.
+
+#### The zero-account question, and why nothing was added
+
+Removing the seeded account leaves a fresh vault with **no accounts**, so the real risk in this ticket was
+turning honest emptiness into a dead end. It is not one, and the evidence was checked from both directions —
+independently by the reviewer before the implementing agent reported, so the conclusion is not one party's
+word:
+
+- `DashboardView.axaml:32` carries a `+ New Account` button bound to `ShowCreateAccountDialogCommand`,
+  **unconditional** — not gated on `Accounts.Count`. It is the first-account path, and it was already there.
+- `BalanceWidgetView.axaml:40` already renders "No accounts yet." on `IsVisible="{Binding !Accounts.Count}"`.
+- `AddTransactionViewModel.cs:108` and `ScanReceiptViewModel.cs:138` both guard `Accounts.First()` behind
+  `if (Accounts.Any())`; `ImportWizardViewModel.cs:146` uses `FirstOrDefault()` and null-checks before use.
+- `DashboardViewModel.LoadDataAsync` accumulates with `foreach` and never divides by a count;
+  `BudgetsViewModel.ProgressPercentage` guards `LimitAmount > 0`.
+
+**So no empty state was added.** The gap between "stop inventing data" and "redesign onboarding" is real,
+and this ticket stayed on the near side of it. What a fresh vault does *not* have is an empty state on the
+account pickers in the receipt, add-transaction and import screens — they render an empty combo box with no
+explanation. That is pre-existing, it is not a crash, and it is not TD-47; it is noted here so the next
+reader does not have to rediscover it.
+
+#### TD-81 — the reason these tests assert structure instead of behaviour
+
+The natural test is "completing setup sends no `CreateAccountCommand` and no `SaveSettingCommand`", written
+against a substituted `IMediator` with `DidNotReceive()`. It cannot be written. `InitializeVaultAsync`
+resolves `VaultManager` first, which is `sealed`, has no interface, hard-codes
+`LocalApplicationData/Pine` in its constructor, and writes `vaults.json` to the real disk — so the happy path
+cannot execute in a test without mutating the machine running the suite. **Verified directly, not taken on
+the implementing agent's word:** `VaultManager.cs:9` is `sealed class VaultManager` with no `IVaultManager`
+anywhere in `src/`, and lines 17–18, 58, 60 and 74 are the constructor's path and the real writes. Every
+pre-existing test of this view model stops at an early validation failure for the same reason.
+
+The three tests therefore assert **type-level dependency** via `NetArchTest`, the idiom already used in
+`ArchitectureTests.cs`. For "this command is never sent" that is strictly stronger than a `DidNotReceive()`
+on one execution: it proves the send is impossible by construction rather than absent on one path. What it
+does **not** prove is that setup still completes correctly — no test covers that, and none did before. The
+seam is TD-81.
+
+#### Falsification — 3 mutations, 3 killed, all re-run by the reviewer
+
+Each mutation was applied by the reviewer independently of the implementing agent, restored with `cp` from a
+backup (never `git checkout`, for the reason in §12.20 INCOMPLETE 2), and the file confirmed byte-identical
+afterwards.
+
+| # | Mutation | Red |
+|---|---|---|
+| M1 | Re-add the `CreateAccountCommand` send, with the usings it needs | `SetupViewModel_ShouldNot_HaveDependencyOnCreateAccountCommand` — and only it (1 failed, 312 passed) |
+| M2 | Re-add `SaveSettingCommand("System.StorageMode", "LocalOnly")` | `SetupViewModel_ShouldNot_HaveDependencyOnSaveSettingCommand` — and only it (1 failed, 312 passed) |
+| M3 | Re-add the `IsCloudSync` / `TelemetryOptIn` properties **alone**, with no command send | `SetupViewModel_ShouldNotExpose_CloudSyncOrTelemetryProperties` — and only it (1 failed, 312 passed) |
+
+M3 matters because it is the one mutation M2's test cannot see: a build that re-exposes the controls without
+re-adding the writes would put the promise back on screen while leaving the register looking closed.
+
+#### Verification actually executed — every row re-run by the reviewer
+
+| Check | Result |
+|---|---|
+| `"My First Bank"`, `"System.StorageMode"`, `"System.Telemetry"`, `IsCloudSync`, `TelemetryOptIn`, `"Coming Soon"` in `src/` | ✅ **0 occurrences each** |
+| `dotnet test tests/Pine.Tests.Unit` | ✅ **313 passed**, 0 failed, 0 skipped |
+| `dotnet test tests/Pine.Tests.Integration` | ✅ **119 passed**, 0 failed, 0 skipped |
+| `dotnet build -c Release` × 8 heads | ✅ 0 errors. 0 warnings on seven; `Ui.Web` carries its one pre-existing `NativeFileReference` warning |
+| M1 / M2 / M3 re-run by hand | ✅ each killed by exactly the named test, tree restored byte-identical, 313 green |
+| Android / iOS heads | ❌ **not compiled** — workloads absent (`NETSDK1147`) |
+| Any GUI rendered | ❌ **not observed.** The removals are claims about XAML markup, not about pixels. `61-Manual-Test-Plan` needs a first-run row: a fresh vault must reach the dashboard, show "No accounts yet.", and create an account through `+ New Account`. |
+
+#### INCOMPLETE — stated rather than buried
+
+1. **No GUI was rendered.** Nobody has seen the first-run screen without its cloud block and its telemetry
+   checkbox, nor a freshly created vault arriving at an empty dashboard.
+2. **No test covers that setup still completes** — see TD-81. The three new tests prove absence, not success.
+3. **The account pickers have no empty state.** Pre-existing, deliberately out of scope, recorded above.
+4. **Nothing committed or pushed.** Four iterations of work now sit unstaged in one tree.
+
+#### Reconciliation pass
+
+- **TD-47 → ✅. TD-48 → ✅. TD-80 → ✅ opened and closed. TD-81 → 🔴 opened.**
+- **Phase 0's roadmap is now fully worked, but Phase 0 is not clean.** Item 2's encrypted export still has
+  no UI and no restore path (TD-56), and **item 3 regressed after it was ticked**: `79c5364` removed the
+  workflow's `push`/`pull_request` triggers, so CI has never run and Android/iOS have never compiled. Every
+  claim in §12.18, §12.20 and §12.22 was verified on one machine, by hand. Ticking item 11 does not make the
+  phase green; it makes item 3 the only structural thing left in it.
+- **TD-24 / TD-78** — unchanged. `SetupViewModel` no longer sends the two commands whose validators were
+  missing, which narrows TD-78's blast radius by exactly one caller without fixing it.
+- **TD-29** — unchanged, but this ticket is a small argument for it: the settings written on first run were
+  duplicated nowhere, so removing them touched one file. The composition roots are not so lucky.
+- **Rows re-checked and confirmed unchanged:** TD-01 … TD-46, TD-49 … TD-79.
+
+### 12.23 Next
+
+Phase 0's list is worked through. What remains before this branch is defensible:
+
+- **Commit.** Four iterations, fifty files, nothing staged. §12.20 INCOMPLETE 2 is what that costs when it
+  goes wrong, and it already did once.
+- **TD-07 — re-arm CI.** Now the largest single risk on the branch. Everything above was verified on one
+  machine by hand; the workflow that would re-run it on every push has been disarmed since `79c5364`, and
+  the Android and iOS heads have never been compiled by anything.
+- **TD-74's sibling risk** — the integration suite silently stopped building for two iterations and nobody
+  noticed. CI is the control that would have caught it in minutes.
+- **TD-78**, then **TD-75**, then **TD-81**: a missing validator that turns a bad currency into a raw domain
+  exception on screen; four views that still format money without asking the domain how many decimals it
+  has; and the `VaultManager` seam that makes first-run behaviour testable.
+- Then **Phase 1** proper, whose first row — structured logging with redaction (TD-14, TD-25) — is the one
+  that makes everything after it debuggable.
