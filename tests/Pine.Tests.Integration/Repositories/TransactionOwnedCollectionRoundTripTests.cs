@@ -86,14 +86,19 @@ public class TransactionOwnedCollectionRoundTripTests
     }
 
     /// <summary>
-    /// The same proof for the second owned collection. <see cref="Transaction"/> exposes no way to
-    /// remove a line item, so only the growing direction is expressible through the domain; the
-    /// shrink and empty directions are covered by the split test above, which exercises the same EF
-    /// machinery.
+    /// The same grow / shrink / clear proof for the second owned collection.
     /// </summary>
+    /// <remarks>
+    /// This used to cover growth only, because the only way to change the line item set was
+    /// <c>AddLineItem</c> and there was no way to remove one. It now drives 2 -> 3 -> 1 -> 0 through
+    /// <see cref="Transaction.ReplaceLineItems"/>, which closes the gap §12.7 recorded as
+    /// INCOMPLETE. Every step also has to satisfy the TD-19 reconciliation invariant, so the sums
+    /// below are not decoration: a set that did not add up to 100 EUR would be refused at the
+    /// aggregate boundary before EF ever saw it.
+    /// </remarks>
     /// <returns>A task representing the test.</returns>
     [Fact]
-    public async Task LineItems_AddedToAnAlreadyPersistedTransaction_AreVisibleFromAFreshContext()
+    public async Task LineItems_GrowThenShrinkThenClear_AreEachVisibleFromAFreshContext()
     {
         using var vault = new TempVault();
         await MigrateAsync(vault);
@@ -101,16 +106,41 @@ public class TransactionOwnedCollectionRoundTripTests
         var id = await SeedAsync(vault);
         CountRows(vault, "TransactionLineItems").Should().Be(2, "the insert path must write both line items");
 
-        await MutateAsync(vault, id, transaction =>
-            transaction.AddLineItem("Coffee", 1m, Euros(10m), Euros(10m)));
+        // 2 -> 3 (grow), with the third line an adjustment: 45 + 45 + 10 = 100.
+        await MutateAsync(vault, id, transaction => transaction.ReplaceLineItems(
+        [
+            new LineItemDefinition("Bread", 2m, Euros(22.50m), Euros(45m)),
+            new LineItemDefinition("Milk", 1m, Euros(45m), Euros(45m)),
+            new LineItemDefinition("Tax", 1m, Euros(10m), Euros(10m), LineItemKind.Tax)
+        ]));
 
         CountRows(vault, "TransactionLineItems").Should().Be(3);
 
+        await using (var afterGrowth = new PineDbContext(vault.DatabasePath, vault.Key))
+        {
+            var grown = await afterGrowth.Transactions.AsNoTracking().SingleAsync(t => t.Id == id);
+            grown.LineItems.Select(li => li.Description).Should().BeEquivalentTo(["Bread", "Milk", "Tax"]);
+            grown.LineItems.Sum(li => li.TotalPrice.Amount).Should().Be(100m);
+            grown.LineItems.Single(li => li.Description == "Tax").Kind.Should().Be(LineItemKind.Tax,
+                "the kind must survive the round trip, or the adjustment is indistinguishable from a product");
+        }
+
+        // 3 -> 1 (shrink)
+        await MutateAsync(vault, id, transaction => transaction.ReplaceLineItems(
+        [
+            new LineItemDefinition("Weekly shop", 1m, Euros(100m), Euros(100m))
+        ]));
+
+        CountRows(vault, "TransactionLineItems").Should().Be(1, "the two removed line items must be deleted, not orphaned");
+
+        // 1 -> 0 (empty)
+        await MutateAsync(vault, id, transaction => transaction.ReplaceLineItems([]));
+
+        CountRows(vault, "TransactionLineItems").Should().Be(0);
+
         await using var fresh = new PineDbContext(vault.DatabasePath, vault.Key);
         var reloaded = await fresh.Transactions.AsNoTracking().SingleAsync(t => t.Id == id);
-        reloaded.LineItems.Select(li => li.Description)
-            .Should().BeEquivalentTo(["Bread", "Milk", "Coffee"]);
-        reloaded.LineItems.Sum(li => li.TotalPrice.Amount).Should().Be(110m);
+        reloaded.LineItems.Should().BeEmpty();
     }
 
     /// <summary>

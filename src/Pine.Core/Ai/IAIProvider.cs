@@ -7,11 +7,21 @@ namespace Pine.Core.Ai;
 /// <summary>
 /// Represents a single extracted line item from a receipt.
 /// </summary>
+/// <remarks>
+/// AMOUNTS ARE AS PRINTED ON THE RECEIPT -- positive for a charge -- not in the transaction sign.
+/// The extractor reads a document; it does not know whether the resulting transaction will be an
+/// expense or an income, so converting to the ledger sign is the job of whoever builds the command.
+/// <para>
+/// <c>Kind</c> exists so that the tax, tip and discount totals the extractor ALREADY parses can
+/// reach the reconciliation (TD-19) instead of being thrown away after nudging a confidence score.
+/// </para>
+/// </remarks>
 public record ReceiptLineItem(
     string Description,
     decimal Quantity,
     decimal UnitPrice,
-    decimal TotalPrice
+    decimal TotalPrice,
+    Pine.Core.Transactions.LineItemKind Kind = Pine.Core.Transactions.LineItemKind.Product
 );
 
 /// <summary>

@@ -154,6 +154,15 @@ public sealed class PineDbContext : DbContext
                 lineItem.WithOwner().HasForeignKey(li => li.TransactionId);
                 lineItem.HasKey(li => li.Id);
                 lineItem.ToTable("TransactionLineItems");
+
+                // Stored as a nullable string, matching how every other enum in this model is
+                // stored. NULL is the legacy marker (TD-19): rows written before the reconciliation
+                // model existed have no kind, and Transaction suspends the sum invariant for a set
+                // that contains one. The column is deliberately NOT given a default value -- a
+                // default would silently turn legacy rows into Product lines and make every
+                // pre-existing scanned receipt unsaveable.
+                lineItem.Property(li => li.Kind).HasConversion<string>().HasColumnName("Kind");
+
                 
                 lineItem.OwnsOne(li => li.UnitPrice, a =>
                 {
@@ -192,7 +201,7 @@ public sealed class PineDbContext : DbContext
                 limit.Property(m => m.Currency).HasColumnName("LimitCurrency")
                     .HasConversion(
                         c => c.Value,
-                        c => new Pine.Core.Common.ValueObjects.CurrencyCode(c)
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c)
                     );
             });
             // Category mapping

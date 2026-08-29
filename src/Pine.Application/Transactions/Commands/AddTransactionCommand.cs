@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -10,11 +11,29 @@ using Pine.Core.Transactions;
 
 namespace Pine.Application.Transactions.Commands;
 
+/// <summary>
+/// One line of the itemisation attached to an <see cref="AddTransactionCommand"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// AMOUNTS ARE IN THE TRANSACTION SIGN, NOT THE RECEIPT SIGN (TD-19). The whole point of the
+/// invariant is that the lines sum to <see cref="AddTransactionCommand.Amount"/>, and a sum can
+/// only equal a negative expense total if its terms are negative too. The caller that knows the
+/// document -- the receipt scanner -- performs that conversion, exactly as it already does for the
+/// total itself.
+/// </para>
+/// <para>
+/// Before this ticket the handler stored receipt line items as printed, i.e. POSITIVE, against a
+/// negative expense total. That set could never have reconciled under any sign convention, which is
+/// part of why nothing had ever compared the two.
+/// </para>
+/// </remarks>
 public record AddTransactionLineItemCommand(
     string Description,
     decimal Quantity,
     decimal UnitPrice,
-    decimal TotalPrice
+    decimal TotalPrice,
+    LineItemKind Kind = LineItemKind.Product
 );
 
 public record AddTransactionCommand(
@@ -68,14 +87,17 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
         {
             foreach (var li in request.LineItems)
             {
-                // In receipts, the line item prices are usually positive.
-                // If the transaction is an expense, should the line item totals be negative? 
-                // Line items are usually just recorded as positive values.
+                // Line item amounts arrive in the transaction sign (see AddTransactionLineItemCommand),
+                // because Transaction.EnsureValid requires them to sum to the total. The validator has
+                // already checked that sum, so this loop cannot be the first place a mismatch is seen --
+                // but AddLineItem stays deliberately incremental and the aggregate boundary remains the
+                // backstop for any caller that bypasses the pipeline.
                 transaction.AddLineItem(
-                    li.Description, 
-                    li.Quantity, 
-                    new Money(li.UnitPrice, moneyAmount.Currency), 
-                    new Money(li.TotalPrice, moneyAmount.Currency));
+                    li.Description,
+                    li.Quantity,
+                    new Money(li.UnitPrice, moneyAmount.Currency),
+                    new Money(li.TotalPrice, moneyAmount.Currency),
+                    li.Kind);
             }
         }
 
@@ -89,7 +111,7 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
         }
         else
         {
-            account.Withdraw(new Money(-moneyAmount.Amount, moneyAmount.Currency), _timeProvider);
+            account.Withdraw(-moneyAmount, _timeProvider);
         }
         
         await _accountRepository.SaveAsync(account, cancellationToken);
@@ -122,13 +144,14 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
 /// single-writer SQLCipher file -- work that is never begun cannot contend with work that is.
 /// </para>
 /// <para>
-/// WHY THE SHAPE CHECK IS HAND-ROLLED. Validating the currency by simply constructing a
+/// WHY THE CURRENCY CHECK IS NOT A CONSTRUCTOR CALL. Validating by simply constructing a
 /// <see cref="CurrencyCode"/> and catching the failure would reintroduce exactly the leak being
 /// removed: its constructor throws <see cref="ArgumentException"/> with a domain-phrased message.
-/// <see cref="CurrencyCodeText.TryNormalise"/> applies the same rule that constructor applies
-/// (trim, upper-case, then exactly three A-Z characters) without throwing. It is shared by all
-/// three transaction validators rather than copied into each, and its own remarks record that
-/// duplicating a domain rule outside the domain is debt (TD-61).
+/// <see cref="CurrencyCodeText.TryNormalise"/> is the non-throwing projection of that constructor.
+/// Since TD-18 it DELEGATES to <c>CurrencyCode.TryCreate</c> rather than restating the rule, so the
+/// validator now rejects a well-shaped non-currency such as <c>"ZZZ"</c> as well as a malformed one
+/// -- which closes TD-61, the debt that this helper's copy of the shape rule would drift from the
+/// domain's the moment the domain gained ISO 4217 membership validation.
 /// </para>
 /// <para>
 /// WHY THE NORMALISATION IS LOAD-BEARING. <see cref="CurrencyCode"/> trims and upper-cases its
@@ -196,6 +219,37 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
                     nameof(AddTransactionCommand.Currency),
                     $"Transaction currency {normalised} does not match account currency {accountCurrency}."),
             };
+        }
+
+        // TD-19, at the layer that can phrase it for a human. The aggregate enforces the same rule at
+        // the persistence boundary and would throw an InvalidOperationException carrying a
+        // domain-phrased message straight out to the view model (the TD-24 leak). Checking it here
+        // means the command is REJECTED before TransactionBehavior opens a database transaction, and
+        // the caller is told the size of the difference rather than that a sum is not equal to a total.
+        //
+        // The comparison runs over Money rather than the raw decimals so that it agrees with what the
+        // aggregate will actually compute: every figure is normalised to the minor units of its
+        // currency on construction (TD-18), so comparing unrounded inputs could reject a set the domain
+        // would accept, or -- worse -- accept one it would refuse.
+        if (request.LineItems is { Count: > 0 })
+        {
+            var currency = new CurrencyCode(normalised);
+            var lineItemSum = request.LineItems.Aggregate(
+                Money.Zero(currency),
+                (running, lineItem) => running + Money.FromRounded(lineItem.TotalPrice, currency));
+            var total = Money.FromRounded(request.Amount, currency);
+
+            if (lineItemSum != total)
+            {
+                return new[]
+                {
+                    new ValidationError(
+                        nameof(AddTransactionCommand.LineItems),
+                        $"The line items add up to {lineItemSum.Amount} but the transaction total is " +
+                        $"{total.Amount}. The {(total - lineItemSum).Amount} difference must be recorded " +
+                        "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed)."),
+                };
+            }
         }
 
         return Array.Empty<ValidationError>();

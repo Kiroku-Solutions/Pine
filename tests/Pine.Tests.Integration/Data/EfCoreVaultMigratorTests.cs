@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Pine.Core.Security;
 using Pine.Infrastructure.Data;
@@ -27,7 +27,7 @@ public class EfCoreVaultMigratorTests : IDisposable
     /// <c>Should().Contain(...)</c> is satisfied by an earlier id in the applied set. Corrected in
     /// iteration 6 (TD-02) along with the new head.
     /// </remarks>
-    private const string CurrentSchemaVersion = "20260828005910_AddTransactionVoidAndAccountOpeningBalance";
+    private const string CurrentSchemaVersion = "20260828201103_AddTransactionLineItemKind";
 
     private readonly TempVault _vault = new();
 

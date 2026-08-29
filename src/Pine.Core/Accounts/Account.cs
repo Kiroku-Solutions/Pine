@@ -53,8 +53,19 @@ public sealed class Account : AggregateRoot
     /// <see cref="OpeningBalanceAmount"/> denominated in the account's own currency, or
     /// <see langword="null"/> when no opening balance is on record. Derived, never stored.
     /// </summary>
+    /// <remarks>
+    /// <c>FromRounded</c>, not the plain constructor, and the difference is only visible on a legacy
+    /// vault. <see cref="OpeningBalanceAmount"/> is a bare <see cref="decimal"/> column that does NOT
+    /// pass through <see cref="Money"/> on the way out of the database, so a vault written before
+    /// TD-18 can hold a figure that is out of scale for its currency — in a zero-minor-unit currency
+    /// the validating constructor would REFUSE it, and this property would throw every time the
+    /// account was displayed. A read-path projection must not be able to break a screen, so it
+    /// rounds. Every WRITE still goes through <see cref="AdoptOpeningBalance"/>, which takes an
+    /// already-normalised <see cref="Money"/>, so nothing new can enter out of scale. The column's
+    /// lack of its own protection against a hand-written SQL update is TD-77.
+    /// </remarks>
     public Money? OpeningBalance =>
-        OpeningBalanceAmount is null ? null : new Money(OpeningBalanceAmount.Value, Balance.Currency);
+        OpeningBalanceAmount is null ? null : Money.FromRounded(OpeningBalanceAmount.Value, Balance.Currency);
 
 #pragma warning disable CS8618 // Required by Entity Framework Core
     private Account() { }

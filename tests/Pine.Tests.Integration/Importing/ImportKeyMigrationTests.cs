@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -66,6 +66,16 @@ public class ImportKeyMigrationTests
     /// </remarks>
     private const string VoidAndOpeningBalanceSchemaVersion =
         "20260828005910_AddTransactionVoidAndAccountOpeningBalance";
+
+    /// <summary>
+    /// The migration iteration 9 (TD-19) added, after both of the above. Named for the same reason.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a second time, exactly as intended. Re-confirmed by hand: this migration
+    /// adds a nullable <c>Kind</c> column to <c>TransactionLineItems</c>, rewrites no rows, and does
+    /// not touch the <c>ImportKey</c> column or the transaction rows this class inspects.
+    /// </remarks>
+    private const string LineItemKindSchemaVersion = "20260828201103_AddTransactionLineItemKind";
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
 
@@ -212,7 +222,7 @@ public class ImportKeyMigrationTests
         // names. Asserting the whole sequence rather than "contains" is what makes a newly added
         // migration fail here and be looked at, instead of sliding in unnoticed.
         // (Equal takes params string[], so the explanation cannot ride along as a "because".)
-        pending.Should().Equal(new[] { ImportKeySchemaVersion, VoidAndOpeningBalanceSchemaVersion });
+        pending.Should().Equal(new[] { ImportKeySchemaVersion, VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion });
     }
 
     /// <summary>

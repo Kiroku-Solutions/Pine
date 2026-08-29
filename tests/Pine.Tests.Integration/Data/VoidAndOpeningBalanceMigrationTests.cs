@@ -56,8 +56,21 @@ public class VoidAndOpeningBalanceMigrationTests
     private const string VoidAndOpeningBalanceSchemaVersion =
         "20260828005910_AddTransactionVoidAndAccountOpeningBalance";
 
+    /// <summary>
+    /// The migration that landed AFTER the one under test. Named only so the pending-set assertion
+    /// stays exact.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired again in iteration 9 (TD-19), which added a nullable <c>Kind</c> column to
+    /// <c>TransactionLineItems</c>. Confirmed by hand that the premise of this class still holds:
+    /// the new migration adds one nullable column to a table this class never reads, rewrites no
+    /// data, and sits after the migration under test.
+    /// </remarks>
+    private const string LineItemKindSchemaVersion = "20260828201103_AddTransactionLineItemKind";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
-    private static readonly string[] ExpectedPendingMigrations = [VoidAndOpeningBalanceSchemaVersion];
+    private static readonly string[] ExpectedPendingMigrations =
+        [VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion];
 
     private const decimal LegacyBalance = 1000.00m;
     private const decimal LegacyRent = -750.00m;

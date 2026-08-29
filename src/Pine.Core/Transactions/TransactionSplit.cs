@@ -30,5 +30,5 @@ public sealed class TransactionSplit : Entity
     /// would be tracked as a single owner and corrupt the write. Copying keeps every child distinct.
     /// </summary>
     private static Money CopyOf(Money amount) =>
-        new Money(amount.Amount, new CurrencyCode(amount.Currency.Value));
+        new Money(amount.Amount, CurrencyCode.FromStoredValue(amount.Currency.Value));
 }

@@ -210,21 +210,43 @@ public sealed class Transaction : AggregateRoot
         _splits.AddRange(staged);
     }
 
-    public void AddLineItem(string description, decimal quantity, Money unitPrice, Money totalPrice)
+    /// <summary>
+    /// Appends one line item. Only the per-line currency is checked here; the whole-set
+    /// reconciliation invariant (TD-19) is enforced at the aggregate boundary via
+    /// <see cref="EnsureValid"/>, so a multi-line set can be built up incrementally.
+    /// </summary>
+    /// <remarks>
+    /// The eager/deferred split is the TD-04 lesson applied to the second owned collection: a set
+    /// that does not yet reconcile is merely INCOMPLETE, and rejecting the first line of a receipt
+    /// because it is not yet the whole receipt makes the API unusable. The check therefore lives at
+    /// the one choke point every write passes through.
+    /// </remarks>
+    public void AddLineItem(string description, decimal quantity, Money unitPrice, Money totalPrice, LineItemKind kind = LineItemKind.Product)
     {
         if (unitPrice.Currency != TotalAmount.Currency || totalPrice.Currency != TotalAmount.Currency)
             throw new ArgumentException("Line item currency must match transaction currency.");
 
-        _lineItems.Add(new TransactionLineItem(Id, description, quantity, unitPrice, totalPrice));
+        _lineItems.Add(new TransactionLineItem(Id, description, quantity, unitPrice, totalPrice, kind));
     }
 
     /// <summary>
     /// Atomically replaces the entire line item set. The candidate set is staged and fully
-    /// validated first, so a rejected set leaves the aggregate completely unmutated.
-    /// An empty (or null) sequence clears the line items.
-    /// Validation matches <see cref="AddLineItem"/> exactly: currency only. Reconciling line item
-    /// totals against <see cref="TotalAmount"/> is deliberately not done here.
+    /// validated first — currency per line, then the whole-set reconciliation invariant — so a
+    /// rejected set leaves the aggregate completely unmutated. An empty (or null) sequence clears
+    /// the line items, which is a valid state.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the whole-set writer, so validating here is not eager in the TD-04 sense: the caller
+    /// has by definition finished describing the set. It mirrors <see cref="ReplaceSplits"/>
+    /// exactly.
+    /// </para>
+    /// <para>
+    /// A staged set containing a line whose <see cref="LineItemDefinition.Kind"/> is null is NOT
+    /// reconciled — see <see cref="ValidateLineItemSum"/> for why that hole exists and how narrow
+    /// it is.
+    /// </para>
+    /// </remarks>
     public void ReplaceLineItems(IEnumerable<LineItemDefinition> lineItems)
     {
         var staged = new List<TransactionLineItem>();
@@ -239,9 +261,11 @@ public sealed class Transaction : AggregateRoot
                 if (definition.UnitPrice.Currency != TotalAmount.Currency || definition.TotalPrice.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Line item currency must match transaction currency.", nameof(lineItems));
 
-                staged.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice));
+                staged.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind));
             }
         }
+
+        ValidateLineItemSum(staged);
 
         _lineItems.Clear();
         _lineItems.AddRange(staged);
@@ -303,10 +327,38 @@ public sealed class Transaction : AggregateRoot
     public void ValidateSplits() => ValidateSplitSum(_splits);
 
     /// <summary>
+    /// Validates the current line item set: zero line items is valid, otherwise every line —
+    /// products and adjustments alike — must together sum to <see cref="TotalAmount"/> (TD-19).
+    /// </summary>
+    public void ValidateLineItems() => ValidateLineItemSum(_lineItems);
+
+    /// <summary>
     /// Aggregate-boundary invariant check. Every write path must call this before persisting;
     /// it is the single entry point for whole-aggregate validation.
     /// </summary>
-    public void EnsureValid() => ValidateSplits();
+    public void EnsureValid()
+    {
+        ValidateSplits();
+        ValidateLineItems();
+    }
+
+    /// <summary>
+    /// How far the current line item set is from reconciling: <see cref="TotalAmount"/> minus the
+    /// sum of every line. Zero when the set reconciles, and zero for an empty set.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so that a caller can PRESENT the difference — and offer to record it as an
+    /// adjustment line — instead of only discovering, at save time, that it exists. The receipt
+    /// scanner is the reason: telling a user "this does not add up" without telling them by how much
+    /// is not a usable error.
+    /// </remarks>
+    public Money LineItemDifference() => TotalAmount - SumOfLineItems(_lineItems, TotalAmount.Currency);
+
+    /// <summary>
+    /// Whether any line in the current set predates <see cref="LineItemKind"/> and therefore
+    /// suspends the reconciliation invariant for the whole set.
+    /// </summary>
+    public bool HasLineItemsPredatingKinds => _lineItems.Exists(li => li.Kind is null);
 
     private void ValidateSplitSum(List<TransactionSplit> splits)
     {
@@ -319,4 +371,63 @@ public sealed class Transaction : AggregateRoot
             }
         }
     }
+
+    /// <summary>
+    /// The TD-19 invariant: a non-empty line item set must sum EXACTLY to
+    /// <see cref="TotalAmount"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THERE IS NO TOLERANCE, AND THE DERIVATION IS THAT NONE IS AVAILABLE. Every
+    /// <see cref="Money"/> is normalised to a whole number of its currency's minor units by its own
+    /// constructor (TD-18), and this sum is taken over the STORED line totals rather than
+    /// recomputed from quantity times unit price. A sum of exact multiples of the minor unit is an
+    /// exact multiple of the minor unit, so the largest representable residue is zero. An epsilon
+    /// here would not be absorbing arithmetic noise, because there is none to absorb; it would be
+    /// absorbing tax, a tip or a merchant's cash rounding — amounts one to four orders of magnitude
+    /// larger than any epsilon anybody would dare write down, and amounts the user is entitled to
+    /// see named. That is what <see cref="LineItemKind"/> is for.
+    /// </para>
+    /// <para>
+    /// AN EMPTY SET IS VALID, exactly as for splits. Most transactions have no line items at all,
+    /// and "I did not itemise this" is not a contradiction.
+    /// </para>
+    /// <para>
+    /// A SET CONTAINING A LINE WITH NO KIND IS NOT VALIDATED. Such a line can only have been
+    /// materialised from a vault written before this invariant existed, where a receipt's products
+    /// were stored without the tax and tip lines that would have made them add up. That data is
+    /// INCOMPLETE, not contradictory, and there are only three things to do with it: invent the
+    /// missing adjustment line, which fabricates evidence; refuse it, which would make every
+    /// pre-existing scanned receipt impossible to void or correct and would silently break the
+    /// TD-02 correction path; or leave it alone and say so. This does the third. The hole is as
+    /// narrow as it can be made: <see cref="AddLineItem"/> takes a non-nullable kind, so the only
+    /// way to re-enter this state through the domain is to pass a null kind to
+    /// <see cref="ReplaceLineItems"/> on purpose, and the only caller that does is the repository
+    /// merge path preserving what it just read.
+    /// </para>
+    /// </remarks>
+    private void ValidateLineItemSum(List<TransactionLineItem> lineItems)
+    {
+        if (lineItems.Count == 0)
+        {
+            return;
+        }
+
+        if (lineItems.Exists(li => li.Kind is null))
+        {
+            return;
+        }
+
+        var sum = SumOfLineItems(lineItems, TotalAmount.Currency);
+        if (sum != TotalAmount)
+        {
+            throw new InvalidOperationException(
+                $"The sum of the line items ({sum}) must equal the total transaction amount ({TotalAmount}). " +
+                $"Record the {TotalAmount - sum} difference as an adjustment line — tax, tip, discount, " +
+                "deposit, rounding or unattributed — rather than leaving it unexplained.");
+        }
+    }
+
+    private static Money SumOfLineItems(List<TransactionLineItem> lineItems, CurrencyCode currency) =>
+        lineItems.Aggregate(Money.Zero(currency), (current, lineItem) => current + lineItem.TotalPrice);
 }

@@ -47,8 +47,13 @@ public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
 
         var currency = new Pine.Core.Common.ValueObjects.CurrencyCode(request.CurrencyCode);
         
+        // The transferred amount, normalised once by Money's constructor. Both legs and both
+        // balance movements are derived from THIS instance rather than from request.Amount, so the
+        // four figures cannot disagree about the currency's scale.
+        var transferAmount = new Pine.Core.Common.ValueObjects.Money(request.Amount, currency);
+
         // 1. Create Outflow (Expense)
-        var outflowMoney = new Pine.Core.Common.ValueObjects.Money(-request.Amount, currency);
+        var outflowMoney = -transferAmount;
         var sourceTx = Transaction.Create(
             sourceAccount.Id,
             request.Date,
@@ -62,7 +67,7 @@ public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
         );
 
         // 2. Create Inflow (Income)
-        var inflowMoney = new Pine.Core.Common.ValueObjects.Money(request.Amount, currency);
+        var inflowMoney = transferAmount;
         var destTx = Transaction.Create(
             destAccount.Id,
             request.Date,
@@ -81,8 +86,8 @@ public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
             .SetValue(sourceTx, destTx.Id);
 
         // 3. Update account balances
-        sourceAccount.Withdraw(new Pine.Core.Common.ValueObjects.Money(request.Amount, currency), _timeProvider);
-        destAccount.Deposit(new Pine.Core.Common.ValueObjects.Money(request.Amount, currency), _timeProvider);
+        sourceAccount.Withdraw(transferAmount, _timeProvider);
+        destAccount.Deposit(transferAmount, _timeProvider);
 
         // 4. Stage both legs and both balances. All four writes land in the single transaction
         //    opened by TransactionBehavior for this command, so a half-finished transfer -- money

@@ -347,6 +347,10 @@ namespace Pine.Infrastructure.Data.Migrations
                                 .IsRequired()
                                 .HasColumnType("TEXT");
 
+                            b1.Property<string>("Kind")
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Kind");
+
                             b1.Property<decimal>("Quantity")
                                 .HasColumnType("TEXT");
 

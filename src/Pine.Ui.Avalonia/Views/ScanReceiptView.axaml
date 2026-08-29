@@ -122,6 +122,10 @@
                                     <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="50" />
                                     <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice}" Width="70" />
                                     <DataGridTextColumn Header="Item" Binding="{Binding Description}" Width="*" />
+                                    <!-- Read-only: a row changes kind through the reconciliation
+                                         panel below, which also fixes the amount, so editing the
+                                         label alone could only ever make the two disagree. -->
+                                    <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="72" IsReadOnly="True" />
                                     <DataGridTextColumn Header="Total" Binding="{Binding TotalPrice}" Width="70" IsReadOnly="True" />
                                     <DataGridTemplateColumn Width="40">
                                         <DataGridTemplateColumn.CellTemplate>
@@ -139,6 +143,52 @@
                                     </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
+
+                            <!-- Reconciliation (TD-19). The line items must add up to the total
+                                 exactly; on a real receipt they do not, because tax, tips,
+                                 discounts, deposits and cash rounding sit in between. Rather than
+                                 tolerating a difference, this panel names it and offers to record
+                                 it as a typed adjustment line. -->
+                            <Border IsVisible="{Binding HasLineItems}"
+                                    CornerRadius="8" Padding="12,10"
+                                    Background="{DynamicResource PineSurfaceElevated}"
+                                    BorderBrush="{DynamicResource PineBorder}" BorderThickness="1">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Grid.Column="0" Text="Items total" FontSize="13"
+                                                   Foreground="{DynamicResource PineTextMuted}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LineItemsTotal}" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Grid.Column="0" Text="Unexplained difference" FontSize="13"
+                                                   Foreground="{DynamicResource PineTextMuted}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding UnreconciledDifference}" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                                    </Grid>
+
+                                    <Border IsVisible="{Binding !IsReconciled}"
+                                            Background="{DynamicResource PineDangerContainer}"
+                                            CornerRadius="6" Padding="10,8">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="These items do not add up to the total. Attribute the difference before saving."
+                                                       TextWrapping="Wrap" FontSize="12"
+                                                       Foreground="{DynamicResource PineError}" />
+                                            <Grid ColumnDefinitions="*, 8, Auto">
+                                                <ComboBox Grid.Column="0" ItemsSource="{Binding AdjustmentKinds}"
+                                                          SelectedItem="{Binding SelectedAdjustmentKind}"
+                                                          HorizontalAlignment="Stretch"
+                                                          AutomationProperties.Name="Kind of adjustment"
+                                                          IsEnabled="{Binding !IsBusy}" />
+                                                <Button Grid.Column="2" Content="Record difference"
+                                                        Command="{Binding RecordDifferenceAsAdjustmentCommand}"
+                                                        Padding="10,4" FontSize="12"
+                                                        IsEnabled="{Binding !IsBusy}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

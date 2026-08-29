@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -13,6 +16,8 @@ using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
+using Pine.Core.Common.ValueObjects;
+using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.Services;
 
@@ -25,6 +30,9 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
+
+    partial void OnSelectedAccountChanged(Account? value) => RecomputeReconciliation();
+
 
     [ObservableProperty]
     public partial Bitmap? ReceiptImage { get; set; }
@@ -49,7 +57,7 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
-    
+
     [ObservableProperty]
     public partial double? ConfidenceScore { get; set; }
 
@@ -58,15 +66,61 @@ public partial class ScanReceiptViewModel : ObservableObject
     public partial bool IsImagePreviewOpen { get; set; }
 
     public ObservableCollection<Account> Accounts { get; } = new();
-    
+
     public ObservableCollection<ReceiptLineItemViewModel> LineItems { get; } = new();
+
+    /// <summary>The sum of every line item, in receipt sign.</summary>
+    [ObservableProperty]
+    public partial decimal LineItemsTotal { get; private set; }
+
+    /// <summary>
+    /// What the itemisation is missing: <see cref="Amount"/> minus <see cref="LineItemsTotal"/>.
+    /// Positive means the lines do not yet account for the whole bill -- the usual case, and usually
+    /// tax.
+    /// </summary>
+    [ObservableProperty]
+    public partial decimal UnreconciledDifference { get; private set; }
+
+    /// <summary>
+    /// Whether the itemisation may be saved: either there is none at all, or it adds up exactly.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsReconciled { get; private set; } = true;
+
+    /// <summary>True once there is at least one line item, i.e. once reconciliation applies.</summary>
+    [ObservableProperty]
+    public partial bool HasLineItems { get; private set; }
+
+    /// <summary>
+    /// The kinds a user can attribute an unexplained difference to. Products are absent on purpose:
+    /// the difference between what was bought and what was paid is by definition not a product.
+    /// </summary>
+    public IReadOnlyList<LineItemKind> AdjustmentKinds { get; } = new[]
+    {
+        LineItemKind.Tax,
+        LineItemKind.Tip,
+        LineItemKind.Discount,
+        LineItemKind.Deposit,
+        LineItemKind.Rounding,
+        LineItemKind.Unattributed,
+    };
+
+    /// <summary>Which kind the difference will be recorded as. Tax is the overwhelmingly common one.</summary>
+    [ObservableProperty]
+    public partial LineItemKind SelectedAdjustmentKind { get; set; } = LineItemKind.Tax;
 
     public ScanReceiptViewModel(IMediator mediator, INavigationService navigationService)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+
+        // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
+        // fixes a mistyped price and the difference must move with it. CollectionChanged catches
+        // rows appearing and disappearing; the per-row handler catches the amounts inside them.
+        LineItems.CollectionChanged += OnLineItemsChanged;
+
         _ = LoadAccountsAsync();
-        
+
         WeakReferenceMessenger.Default.Register<ReceiptCapturedMessage>(this, async (r, m) =>
         {
             await ProcessReceiptImageAsync(m.ImageStream, m.OcrImageStream);
@@ -83,6 +137,15 @@ public partial class ScanReceiptViewModel : ObservableObject
 
         if (Accounts.Any())
             SelectedAccount = Accounts.First();
+
+        // The account decides the currency, and therefore the scale everything is rounded to.
+        RecomputeReconciliation();
+
+        // The account decides the currency, and therefore the scale everything is rounded to.
+        RecomputeReconciliation();
+
+        // The account decides the currency, and therefore the scale everything is rounded to.
+        RecomputeReconciliation();
     }
 
     public async Task ProcessReceiptImageAsync(Stream imageStream, Stream? ocrImageStream = null)
@@ -100,14 +163,14 @@ public partial class ScanReceiptViewModel : ObservableObject
             // Use the OCR optimized image if available, else fallback to standard image
             var streamForOcr = ocrImageStream ?? imageStream;
             streamForOcr.Position = 0;
-            
+
             var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr));
 
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
             Date = result.Date ?? DateTimeOffset.Now;
             ConfidenceScore = result.ConfidenceScore;
-            
+
             LineItems.Clear();
             if (result.LineItems != null)
             {
@@ -115,6 +178,10 @@ public partial class ScanReceiptViewModel : ObservableObject
                 {
                     LineItems.Add(new ReceiptLineItemViewModel
                     {
+                        // Kind first: the setters below are watched, and a Quantity or UnitPrice
+                        // assignment on a row still marked Product would recompute an adjustment
+                        // amount out of existence.
+                        Kind = li.Kind,
                         Description = li.Description,
                         Quantity = li.Quantity,
                         UnitPrice = li.UnitPrice,
@@ -164,6 +231,39 @@ public partial class ScanReceiptViewModel : ObservableObject
             return;
         }
 
+        // TD-19 at the point of intent. The aggregate and the command validator both enforce this,
+        // but neither can offer the user a way out; refusing here, with the figure and the button
+        // that fixes it already on screen, is the difference between an invariant and an obstacle.
+        if (!IsReconciled)
+        {
+            ErrorMessage =
+                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
+                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
+            return;
+        }
+
+        // TD-19 at the point of intent. The aggregate and the command validator both enforce this,
+        // but neither can offer the user a way out; refusing here, with the figure and the button
+        // that fixes it already on screen, is the difference between an invariant and an obstacle.
+        if (!IsReconciled)
+        {
+            ErrorMessage =
+                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
+                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
+            return;
+        }
+
+        // TD-19 at the point of intent. The aggregate and the command validator both enforce this,
+        // but neither can offer the user a way out; refusing here, with the figure and the button
+        // that fixes it already on screen, is the difference between an invariant and an obstacle.
+        if (!IsReconciled)
+        {
+            ErrorMessage =
+                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
+                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
+            return;
+        }
+
         IsBusy = true;
         ErrorMessage = string.Empty;
 
@@ -173,11 +273,16 @@ public partial class ScanReceiptViewModel : ObservableObject
             decimal finalAmount = -Amount;
             var currency = SelectedAccount.Balance.Currency.Value;
 
+            // NEGATED, LIKE THE TOTAL. Line items are stored in the transaction sign so that they
+            // sum to it (TD-19); a receipt is an expense, so every line goes in negative. Before
+            // this ticket they were sent positive against a negative total, a set that could never
+            // have reconciled -- which is precisely why nothing had ever checked.
             var lineItemsCommands = LineItems.Select(li => new AddTransactionLineItemCommand(
                 li.Description,
                 li.Quantity,
-                li.UnitPrice,
-                li.TotalPrice
+                -li.UnitPrice,
+                -li.TotalPrice,
+                li.Kind
             )).ToList();
 
             await _mediator.Send(new AddTransactionCommand(
@@ -240,5 +345,95 @@ public partial class ScanReceiptViewModel : ObservableObject
         {
             LineItems.Remove(item);
         }
+    }
+
+    /// <summary>
+    /// Records the outstanding difference as a single adjustment line of the selected kind (TD-19).
+    /// </summary>
+    /// <remarks>
+    /// This is the affordance that makes the invariant liveable. A real receipt almost never has
+    /// products that add up to the total -- tax, tip, discounts, container deposits and cash
+    /// rounding all sit in between -- so demanding an exact sum without offering a one-click way to
+    /// name the difference would turn a working scanner into a dead end. The amount inserted is
+    /// exactly the difference, so the set reconciles the instant the row appears; the user chooses
+    /// what to CALL it, never how much it is.
+    /// </remarks>
+    [RelayCommand]
+    private void RecordDifferenceAsAdjustment()
+    {
+        if (UnreconciledDifference == 0m)
+        {
+            return;
+        }
+
+        var difference = UnreconciledDifference;
+        LineItems.Add(new ReceiptLineItemViewModel
+        {
+            Kind = SelectedAdjustmentKind,
+            Description = SelectedAdjustmentKind.ToString(),
+            Quantity = 1m,
+            UnitPrice = difference,
+            TotalPrice = difference,
+        });
+    }
+
+    partial void OnAmountChanged(decimal value) => RecomputeReconciliation();
+
+    private void OnLineItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var removed in e.OldItems?.OfType<ReceiptLineItemViewModel>() ?? Enumerable.Empty<ReceiptLineItemViewModel>())
+        {
+            removed.PropertyChanged -= OnLineItemPropertyChanged;
+        }
+
+        foreach (var added in e.NewItems?.OfType<ReceiptLineItemViewModel>() ?? Enumerable.Empty<ReceiptLineItemViewModel>())
+        {
+            added.PropertyChanged += OnLineItemPropertyChanged;
+        }
+
+        RecomputeReconciliation();
+    }
+
+    private void OnLineItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ReceiptLineItemViewModel.TotalPrice))
+        {
+            RecomputeReconciliation();
+        }
+    }
+
+    /// <summary>
+    /// Recomputes the itemisation total and the outstanding difference.
+    /// </summary>
+    /// <remarks>
+    /// THE ARITHMETIC GOES THROUGH <see cref="Money"/> WHEN AN ACCOUNT IS SELECTED. The domain and
+    /// the command validator both compare figures that have been normalised to the minor units of
+    /// the account currency (TD-18), so comparing raw decimals here could show the user a
+    /// reconciled receipt that the validator then refuses -- or, worse, an unreconciled one they
+    /// cannot clear. Falling back to plain decimals before an account is chosen is safe because
+    /// nothing can be saved in that state anyway.
+    /// </remarks>
+    private void RecomputeReconciliation()
+    {
+        HasLineItems = LineItems.Count > 0;
+
+        var currency = SelectedAccount?.Balance.Currency;
+        if (currency is null)
+        {
+            LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
+            UnreconciledDifference = Amount - LineItemsTotal;
+        }
+        else
+        {
+            var sum = LineItems.Aggregate(
+                Money.Zero(currency),
+                (running, li) => running + Money.FromRounded(li.TotalPrice, currency));
+            var total = Money.FromRounded(Amount, currency);
+
+            LineItemsTotal = sum.Amount;
+            UnreconciledDifference = (total - sum).Amount;
+        }
+
+        IsReconciled = !HasLineItems || UnreconciledDifference == 0m;
     }
 }

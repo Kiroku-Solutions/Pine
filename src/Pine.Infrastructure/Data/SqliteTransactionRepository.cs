@@ -66,7 +66,17 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
     /// Stages an insert or an update for the whole <see cref="Transaction"/> aggregate, owned
     /// collections included. Nothing is flushed here; see the remarks on this class.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The aggregate violates its split-sum invariant.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The aggregate violates its split-sum invariant, or its line item reconciliation invariant
+    /// (TD-19).
+    /// </exception>
+    /// <remarks>
+    /// THE KIND IS CARRIED THROUGH ON THE DETACHED PATH, INCLUDING WHEN IT IS NULL. This is the one
+    /// caller in the solution that legitimately passes a null <c>LineItemDefinition.Kind</c>: it is
+    /// re-describing children it has just materialised, and flattening a legacy row's absent kind
+    /// to <c>Product</c> here would assert the transaction reconciles when the data has never said
+    /// so, turning a merge into a throw.
+    /// </remarks>
     public async Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(transaction);
@@ -98,7 +108,7 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             existing.ReplaceSplits(transaction.Splits
                 .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes)));
             existing.ReplaceLineItems(transaction.LineItems
-                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice)));
+                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind)));
         }
 
         // Runs for the already-tracked case too: the caller mutated the very instance this context

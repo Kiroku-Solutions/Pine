@@ -165,7 +165,7 @@ public class VoidTransactionCommandHandler : IRequestHandler<VoidTransactionComm
         else if (amount.Amount < 0)
         {
             // The write path withdrew its magnitude; put that magnitude back.
-            account.Deposit(new Money(-amount.Amount, amount.Currency), _timeProvider);
+            account.Deposit(-amount, _timeProvider);
         }
     }
 }

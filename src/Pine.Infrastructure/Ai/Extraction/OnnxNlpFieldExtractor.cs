@@ -7,6 +7,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Tokenizers;
 using Pine.Core.Ai;
+using Pine.Core.Transactions;
 using Pine.Infrastructure.Ai.Vision;
 
 namespace Pine.Infrastructure.Ai.Extraction;
@@ -143,12 +144,27 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // ===== STEP 4: Extract fields using spatial anchors and Math Validation =====
         string merchant = ExtractMerchant(clusteredLines, zones);
-        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems);
+        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems, out var footerModifiers);
         DateTimeOffset? date = ExtractDate(clusteredLines);
         string currency = DetectCurrency(ocrWords);
 
         // ===== STEP 5: Compute confidence =====
         double confidence = ComputeConfidence(merchant, totalAmount, date, lineItems);
+
+        // ===== STEP 6: Promote the parsed footer modifiers to adjustment line items (TD-19) =====
+        // The tax, tip and discount totals below were already parsed to build the accounting
+        // equation this method validates the total against; before TD-19 they were then discarded,
+        // and the only trace they left was a 0.1 nudge to the confidence score. Emitting them as
+        // typed adjustment lines is what lets a taxed receipt reconcile -- products plus tax equals
+        // total -- instead of confronting the user with a difference they have to re-key by hand.
+        //
+        // Only lines that were actually READ are emitted. No residual "unattributed" line is
+        // invented here: a gap the extractor cannot explain is the user's to resolve, and silently
+        // closing it would make the reconciliation unfalsifiable.
+        if (lineItems.Count > 0)
+        {
+            lineItems = AppendParsedAdjustments(lineItems, footerModifiers);
+        }
 
         return new ReceiptExtractionResult(
             Merchant: merchant,
@@ -336,7 +352,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// against the sum of line items using the Universal Accounting Equation:
     /// Subtotal - Discounts + Taxes + Tips = Total
     /// </summary>
-    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items)
+    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items, out FooterModifiers modifiers)
     {
         decimal itemsSum = items.Sum(i => i.TotalPrice);
 
@@ -380,6 +396,10 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         decimal maxAmount = lines.SelectMany(l => AmountRegex().Matches(l.Text).Select(m => decimal.TryParse(NormalizeDecimalString(m.Groups[1].Value), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal v) ? v : 0m)).DefaultIfEmpty(0m).Max();
         if (maxAmount > 0 && !footerCandidates.Any(c => c.Amount == maxAmount))
             footerCandidates.Add((maxAmount, 0, 0, ""));
+
+        // Hand the parsed modifiers back to the caller. They are needed twice: here, to build the
+        // expected total, and by ExtractFields, to emit them as adjustment line items (TD-19).
+        modifiers = new FooterModifiers(sumTaxes, sumTips, sumDiscounts);
 
         // Evaluate candidates mathematically
         decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips;
@@ -427,6 +447,31 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             return footerCandidates.Max(c => c.Amount);
 
         return 0m;
+    }
+
+    /// <summary>
+    /// Appends one typed adjustment line per non-zero footer modifier the extractor managed to read.
+    /// </summary>
+    /// <remarks>
+    /// Amounts stay in RECEIPT SIGN, which is the convention of <see cref="ReceiptLineItem"/>: a tax
+    /// is a positive charge and a discount is a negative one, so that the whole set adds up to the
+    /// printed total. Converting to the ledger sign is the job of the caller that knows whether this
+    /// becomes an expense or an income.
+    /// </remarks>
+    private static List<ReceiptLineItem> AppendParsedAdjustments(List<ReceiptLineItem> items, FooterModifiers modifiers)
+    {
+        var withAdjustments = new List<ReceiptLineItem>(items);
+
+        if (modifiers.Taxes > 0)
+            withAdjustments.Add(new ReceiptLineItem("Tax", 1m, modifiers.Taxes, modifiers.Taxes, LineItemKind.Tax));
+
+        if (modifiers.Tips > 0)
+            withAdjustments.Add(new ReceiptLineItem("Tip", 1m, modifiers.Tips, modifiers.Tips, LineItemKind.Tip));
+
+        if (modifiers.Discounts > 0)
+            withAdjustments.Add(new ReceiptLineItem("Discount", 1m, -modifiers.Discounts, -modifiers.Discounts, LineItemKind.Discount));
+
+        return withAdjustments;
     }
 
     /// <summary>Extracts a decimal amount from a single line of text.</summary>
@@ -767,6 +812,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
     /// <summary>A reconstructed line of text with spatial metadata.</summary>
     private sealed record ClusteredLine(string Text, float Y, float MinX, float MaxX, List<OcrWord> Words);
+
+    /// <summary>
+    /// The tax, tip and discount totals read out of the footer zone. Positive magnitudes: the sign
+    /// each one contributes is decided where they are used, not here.
+    /// </summary>
+    private sealed record FooterModifiers(decimal Taxes, decimal Tips, decimal Discounts);
 
     /// <summary>Document zone boundaries (line indices).</summary>
     private sealed record DocumentZones(int TableHeaderIndex, int FirstTotalIndex);
