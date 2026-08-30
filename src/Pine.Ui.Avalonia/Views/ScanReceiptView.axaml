@@ -195,11 +195,6 @@
 
                 <!-- Pinned action bar — Save/Cancel always visible -->
                 <StackPanel Grid.Row="1" Margin="0,16,0,0" Spacing="10">
-                    <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding ConfidenceScore, Converter={x:Static ObjectConverters.IsNotNull}}">
-                        <TextBlock Text="AI Confidence:" Foreground="{DynamicResource PineTextMuted}" FontSize="12" />
-                        <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P1}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    </StackPanel>
-
                     <Grid ColumnDefinitions="*, 10, *">
                         <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                         <Button Grid.Column="2" Content="Save Transaction" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />

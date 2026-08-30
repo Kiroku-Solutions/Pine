@@ -72,9 +72,6 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial double? ConfidenceScore { get; set; }
-
     /// <summary>True while the full-size receipt lightbox is open.</summary>
     [ObservableProperty]
     public partial bool IsImagePreviewOpen { get; set; }
@@ -177,7 +174,6 @@ public partial class ScanReceiptViewModel : ObservableObject
     {
         IsBusy = true;
         ErrorMessage = string.Empty;
-        ConfidenceScore = null;
         StatusMessage = "Loading the image...";
 
         try
@@ -202,7 +198,6 @@ public partial class ScanReceiptViewModel : ObservableObject
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
             Date = result.Date ?? DateTimeOffset.Now;
-            ConfidenceScore = result.ConfidenceScore;
 
             LineItems.Clear();
             if (result.LineItems != null)
@@ -454,6 +449,16 @@ public partial class ScanReceiptViewModel : ObservableObject
         var currency = SelectedAccount?.Balance.Currency;
         if (currency is null)
         {
+            // NO ACCOUNT YET, SO NO SCALE TO ROUND TO — and this branch is deliberately NOT unified
+            // with the one below. Rounding needs a currency, and the only way to have one here would
+            // be to guess, which would show the user a difference computed against a scale their
+            // account may not have.
+            //
+            // It is safe because the verdict is not load-bearing until an account exists:
+            // SaveTransactionAsync refuses with "Please select an account" before it ever consults
+            // IsReconciled, so every save is judged by the Money path below. What this branch feeds
+            // is the figure on screen while the user is still filling the form, and computing that
+            // exactly — no rounding at all — is the most honest thing to show without a currency.
             LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
             UnreconciledDifference = Amount - LineItemsTotal;
         }

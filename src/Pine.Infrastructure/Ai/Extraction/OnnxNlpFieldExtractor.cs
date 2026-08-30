@@ -63,10 +63,6 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
     // ===== COMPILED REGEX PATTERNS =====
 
-    // Date patterns: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD with optional time
-    [GeneratedRegex(@"\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})(?:\s+\d{2}:\d{2}(?::\d{2})?)?\b", RegexOptions.Compiled)]
-    private static partial Regex DateRegex();
-
     // Amount pattern: numbers with exactly 2 decimal places (prices)
     [GeneratedRegex(@"(?:\$|€|£)?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:\$|€|£|EUR|USD)?", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex AmountRegex();
@@ -166,7 +162,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     public ReceiptExtractionResult ExtractFields(IReadOnlyList<OcrWord> ocrWords)
     {
         if (ocrWords == null || ocrWords.Count == 0)
-            return new ReceiptExtractionResult("Unknown", 0m, "USD", DateTimeOffset.UtcNow, 0.0);
+            return new ReceiptExtractionResult("Unknown", 0m, "USD", null, ReceiptConfidence.None);
 
         // ===== STEP 1: Build spatial line clusters =====
         var clusteredLines = ClusterIntoLines(ocrWords);
@@ -175,16 +171,24 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         var zones = DetectZones(clusteredLines);
 
         // ===== STEP 3: Extract Line Items FIRST (Needed for math validation) =====
-        var lineItems = ExtractLineItems(clusteredLines, zones);
+        var lineItemResults = ExtractLineItems(clusteredLines, zones);
+        var lineItems = lineItemResults.Select(r => r.Item).ToList();
+        var lineItemWords = lineItemResults.Select(r => r.Words).ToList();
 
         // ===== STEP 4: Extract fields using spatial anchors and Math Validation =====
-        string merchant = ExtractMerchant(clusteredLines, zones);
-        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems, out var footerModifiers);
-        DateTimeOffset? date = ExtractDate(clusteredLines);
+        string merchant = ExtractMerchant(clusteredLines, zones, out var merchantWords);
+        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems, out var footerModifiers, out var totalWords);
+        ReceiptDateCandidate? dateCandidate = ExtractDate(clusteredLines, out var dateWords);
         string currency = DetectCurrency(ocrWords);
 
-        // ===== STEP 5: Compute confidence =====
-        double confidence = ComputeConfidence(merchant, totalAmount, date, lineItems);
+        // ===== STEP 5: Compute per-field confidence from the words each field actually consumed
+        // (TD-22). No extraction logic is re-run here -- these are the exact word lists that
+        // produced the values above, not a second pass that could disagree with the first. =====
+        var confidence = new ReceiptConfidence(
+            Merchant: FieldConfidence.FromWordScores(Scores(merchantWords)),
+            Total: FieldConfidence.FromWordScores(Scores(totalWords)),
+            Date: FieldConfidence.FromWordScores(Scores(dateWords)),
+            LineItems: lineItemWords.Select(words => FieldConfidence.FromWordScores(Scores(words))).ToList());
 
         // ===== STEP 6: Promote the parsed footer modifiers to adjustment line items (TD-19) =====
         // The tax, tip and discount totals below were already parsed to build the accounting
@@ -205,9 +209,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             Merchant: merchant,
             TotalAmount: totalAmount,
             CurrencyCode: currency,
-            Date: date,
-            ConfidenceScore: confidence,
-            LineItems: lineItems
+            Date: dateCandidate?.Value,
+            Confidence: confidence,
+            LineItems: lineItems,
+            DateIsAmbiguous: dateCandidate?.IsAmbiguous ?? false,
+            AlternativeDate: dateCandidate?.Alternative
         );
     }
 
@@ -336,7 +342,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// 2. First valid text line that isn't noise is the merchant
     /// 3. Truncate (don't discard) lines that contain noise keywords mid-text
     /// </summary>
-    private static string ExtractMerchant(List<ClusteredLine> lines, DocumentZones zones)
+    private static string ExtractMerchant(List<ClusteredLine> lines, DocumentZones zones, out List<OcrWord> merchantWords)
     {
         // Only search within the header zone
         int searchLimit = Math.Min(zones.TableHeaderIndex, 10);
@@ -344,7 +350,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         foreach (var line in lines.Take(searchLimit))
         {
             // Skip date/time lines
-            if (DateRegex().IsMatch(line.Text)) continue;
+            if (ReceiptDateParser.Parse(line.Text) is not null) continue;
             if (line.Text.Contains(':') && line.Text.Any(char.IsDigit) &&
                 !line.Text.Contains("MATRIZ", StringComparison.OrdinalIgnoreCase)) continue;
 
@@ -374,9 +380,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
             if (cleanedLine.Length < 3 || !cleanedLine.Any(char.IsLetter)) continue;
 
+            merchantWords = line.Words;
             return cleanedLine;
         }
 
+        merchantWords = [];
         return "Unknown Merchant";
     }
 
@@ -387,11 +395,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// against the sum of line items using the Universal Accounting Equation:
     /// Subtotal - Discounts + Taxes + Tips = Total
     /// </summary>
-    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items, out FooterModifiers modifiers)
+    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items, out FooterModifiers modifiers, out List<OcrWord> totalWords)
     {
         decimal itemsSum = items.Sum(i => i.TotalPrice);
 
-        var footerCandidates = new List<(decimal Amount, float X, float Y, string LineText)>();
+        var footerCandidates = new List<(decimal Amount, float X, float Y, string LineText, List<OcrWord> Words)>();
         decimal sumTaxes = 0m;
         decimal sumDiscounts = 0m;
         decimal sumTips = 0m;
@@ -410,7 +418,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
                 {
                     // Approximation of X coordinate for this specific match using interpolation
                     float xPos = line.MinX + (line.MaxX - line.MinX) * (match.Index / (float)line.Text.Length);
-                    footerCandidates.Add((val, xPos, line.Y, upper));
+                    footerCandidates.Add((val, xPos, line.Y, upper, line.Words));
                 }
             }
 
@@ -428,9 +436,21 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         }
 
         // Add the last fallback candidate (largest amount on receipt) in case footer zone detection was completely wrong
-        decimal maxAmount = lines.SelectMany(l => AmountRegex().Matches(l.Text).Select(m => decimal.TryParse(NormalizeDecimalString(m.Groups[1].Value), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal v) ? v : 0m)).DefaultIfEmpty(0m).Max();
+        decimal maxAmount = 0m;
+        List<OcrWord> maxAmountWords = [];
+        foreach (var l in lines)
+        {
+            foreach (Match m in AmountRegex().Matches(l.Text))
+            {
+                if (decimal.TryParse(NormalizeDecimalString(m.Groups[1].Value), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal v) && v > maxAmount)
+                {
+                    maxAmount = v;
+                    maxAmountWords = l.Words;
+                }
+            }
+        }
         if (maxAmount > 0 && !footerCandidates.Any(c => c.Amount == maxAmount))
-            footerCandidates.Add((maxAmount, 0, 0, ""));
+            footerCandidates.Add((maxAmount, 0, 0, "", maxAmountWords));
 
         // Hand the parsed modifiers back to the caller. They are needed twice: here, to build the
         // expected total, and by ExtractFields, to emit them as adjustment line items (TD-19).
@@ -441,11 +461,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         
         // 1. Math Exact Match (Epsilon 0.02)
         var exactMatch = footerCandidates.FirstOrDefault(c => Math.Abs(c.Amount - expectedTotal) <= 0.02m);
-        if (exactMatch != default) return exactMatch.Amount;
+        if (exactMatch != default) { totalWords = exactMatch.Words; return exactMatch.Amount; }
 
         // 2. Math Simple Match (Sum Items == Candidate, ignoring parsed taxes/discounts)
         var simpleMatch = footerCandidates.FirstOrDefault(c => Math.Abs(c.Amount - itemsSum) <= 0.02m);
-        if (simpleMatch != default) return simpleMatch.Amount;
+        if (simpleMatch != default) { totalWords = simpleMatch.Words; return simpleMatch.Amount; }
 
         // 3. Fallback: Euclidean Distance to "TOTAL" keyword
         var totalKeywordsFound = new List<(float X, float Y)>();
@@ -473,14 +493,20 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             var bestCandidate = footerCandidates
                 .OrderBy(c => Math.Sqrt(Math.Pow(c.X - bestKeyword.X, 2) + Math.Pow(c.Y - bestKeyword.Y, 2)))
                 .First();
-                
+
+            totalWords = bestCandidate.Words;
             return bestCandidate.Amount;
         }
 
         // 4. Last Resort: Highest amount in footer
         if (footerCandidates.Count > 0)
-            return footerCandidates.Max(c => c.Amount);
+        {
+            var highest = footerCandidates.OrderByDescending(c => c.Amount).First();
+            totalWords = highest.Words;
+            return highest.Amount;
+        }
 
+        totalWords = [];
         return 0m;
     }
 
@@ -537,7 +563,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// 1. Look for lines containing "FECHA" and extract the date from that line
     /// 2. Fallback: find the first date-like pattern anywhere
     /// </summary>
-    private static DateTimeOffset? ExtractDate(List<ClusteredLine> lines)
+    private static ReceiptDateCandidate? ExtractDate(List<ClusteredLine> lines, out List<OcrWord> dateWords)
     {
         // Strategy 1: Keyword-anchored — find "FECHA" and extract date from same line
         foreach (var keyword in DateKeywords)
@@ -546,8 +572,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             {
                 if (line.Text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 {
-                    var dateResult = ParseDateFromText(line.Text);
-                    if (dateResult.HasValue) return dateResult;
+                    var dateResult = ReceiptDateParser.Parse(line.Text);
+                    if (dateResult.HasValue)
+                    {
+                        dateWords = line.Words;
+                        return dateResult;
+                    }
                 }
             }
         }
@@ -555,38 +585,15 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // Strategy 2: Find any date pattern in the document
         foreach (var line in lines)
         {
-            var dateResult = ParseDateFromText(line.Text);
-            if (dateResult.HasValue) return dateResult;
-        }
-
-        return null;
-    }
-
-    /// <summary>Parses a date from a text string using multiple culture fallbacks.</summary>
-    private static DateTimeOffset? ParseDateFromText(string text)
-    {
-        var match = DateRegex().Match(text);
-        if (!match.Success) return null;
-
-        string dateStr = match.Groups[0].Value;
-
-        // SOTA: Multi-culture cascade — try ISO, then LatAm (dd/MM), then US (MM/dd)
-        CultureInfo[] cultures =
-        [
-            CultureInfo.InvariantCulture,
-            new CultureInfo("es-EC"),
-            new CultureInfo("en-US")
-        ];
-
-        foreach (var culture in cultures)
-        {
-            if (DateTimeOffset.TryParse(dateStr, culture, DateTimeStyles.AssumeLocal, out var parsed))
+            var dateResult = ReceiptDateParser.Parse(line.Text);
+            if (dateResult.HasValue)
             {
-                if (parsed.Year > 2000 && parsed.Year <= DateTimeOffset.Now.Year + 1)
-                    return parsed;
+                dateWords = line.Words;
+                return dateResult;
             }
         }
 
+        dateWords = [];
         return null;
     }
 
@@ -627,9 +634,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Extracts line items ONLY from the Product Zone (between table header and first total).
     /// This eliminates false positives from header/footer metadata.
     /// </summary>
-    private static List<ReceiptLineItem> ExtractLineItems(List<ClusteredLine> lines, DocumentZones zones)
+    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> ExtractLineItems(List<ClusteredLine> lines, DocumentZones zones)
     {
-        var lineItems = new List<ReceiptLineItem>();
+        var lineItems = new List<(ReceiptLineItem Item, List<OcrWord> Words)>();
 
         // Only process lines within the product zone
         int start = zones.TableHeaderIndex + 1; // Skip the header row itself
@@ -640,7 +647,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             var item = TryParseLineItem(lines[i].Text);
             if (item != null)
             {
-                lineItems.Add(item);
+                lineItems.Add((item, lines[i].Words));
             }
         }
 
@@ -820,27 +827,23 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     }
 
     /// <summary>
-    /// Computes an overall confidence score based on how many fields were successfully extracted.
+    /// Reads the per-word OCR confidences for the words that produced one field, clamped to the
+    /// 0..1 range <see cref="FieldConfidence.FromWordScores"/> requires.
     /// </summary>
-    private static double ComputeConfidence(string merchant, decimal total, DateTimeOffset? date, List<ReceiptLineItem> items)
+    /// <remarks>
+    /// The engine's reported confidence is not contractually bounded, and <c>FromWordScores</c>
+    /// throws outside 0..1; clamping at the boundary keeps a rogue engine value from crashing a
+    /// scan instead of silently misrepresenting it.
+    /// </remarks>
+    private static float[] Scores(List<OcrWord> words)
     {
-        double score = 0.1; // Base
-
-        if (merchant != "Unknown Merchant") score += 0.2;
-        if (total > 0) score += 0.25;
-        if (date.HasValue) score += 0.2;
-        if (items.Count > 0) score += 0.15;
-
-        // Bonus: if line items sum ≈ total, high confidence
-        if (items.Count > 0 && total > 0)
+        var scores = new float[words.Count];
+        for (var i = 0; i < words.Count; i++)
         {
-            decimal itemsSum = items.Sum(i => i.TotalPrice);
-            double ratio = (double)(itemsSum / total);
-            if (ratio > 0.8 && ratio < 1.3) // Sum is within 20% of total
-                score += 0.1;
+            scores[i] = Math.Clamp(words[i].Confidence, 0f, 1f);
         }
 
-        return Math.Min(score, 1.0);
+        return scores;
     }
 
     // ===== INTERNAL MODELS =====
