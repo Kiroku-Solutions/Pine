@@ -200,8 +200,6 @@
                         <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P1}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     </StackPanel>
 
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
-
                     <Grid ColumnDefinitions="*, 10, *">
                         <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                         <Button Grid.Column="2" Content="Save Transaction" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
@@ -209,6 +207,55 @@
                 </StackPanel>
             </Grid>
         </Grid>
+    </Border>
+
+    <!--
+      Busy overlay.
+
+      IT COVERS THE CARD ON PURPOSE, and not only to look deliberate: while a scan runs, every
+      control underneath is already disabled, and a scrim says so in one glance instead of asking
+      the user to notice eight greyed-out fields. It also swallows clicks, so an impatient second
+      press cannot queue behind the first.
+
+      ZIndex sits below ImageLightbox's 100, so opening the full-size preview still wins.
+
+      This overlay is only honest because the scan no longer runs on the UI thread. Rendered over a
+      blocked UI thread it would be a frozen picture of a spinner, which reads worse than a plain
+      unresponsive window — it looks broken rather than busy.
+    -->
+    <Border IsVisible="{Binding IsBusy}"
+            ZIndex="50"
+            Background="{DynamicResource PineScrim}"
+            IsHitTestVisible="True">
+      <Border Background="{DynamicResource PineSurface}"
+              BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+              CornerRadius="12" Padding="28,24"
+              HorizontalAlignment="Center" VerticalAlignment="Center"
+              MinWidth="300"
+              BoxShadow="0 8 24 0 #40000000">
+        <StackPanel Spacing="14" HorizontalAlignment="Center">
+
+          <ProgressBar IsIndeterminate="True" Width="220" Height="4"
+                       Foreground="{DynamicResource PinePrimary}" />
+
+          <!-- The stage, in words. Never colour alone (40-Accessibility). -->
+          <TextBlock Text="{Binding StatusMessage}"
+                     FontSize="15" FontWeight="SemiBold"
+                     Foreground="{DynamicResource PineText}"
+                     HorizontalAlignment="Center"
+                     TextWrapping="Wrap" TextAlignment="Center"
+                     AutomationProperties.LiveSetting="Polite" />
+
+          <!-- Sets the expectation. The complaint this whole change answers was not "it is slow",
+               it was "it looks broken" — and saying up front that seconds are normal is what
+               separates the two. -->
+          <TextBlock Text="This can take a few seconds on large photos."
+                     FontSize="12"
+                     Foreground="{DynamicResource PineTextMuted}"
+                     HorizontalAlignment="Center"
+                     TextWrapping="Wrap" TextAlignment="Center" />
+        </StackPanel>
+      </Border>
     </Border>
 
     <!-- Reusable full-size receipt viewer (zoom + pan) -->

@@ -18,7 +18,17 @@ namespace Pine.Application.Transactions.Commands;
 /// <c>IAIProvider</c> and performs no repository writes, so there is nothing to commit. Wrapping
 /// it would hold a database transaction open for the whole (slow) inference run for no benefit.
 /// </remarks>
-public record ScanReceiptCommand(Stream ImageStream) : IRequest<ReceiptExtractionResult>;
+/// <param name="ImageStream">The image to scan. The handler rewinds it between stages.</param>
+/// <param name="Progress">
+/// Optional stage reporter. OPTIONAL ON PURPOSE: the scan is correct without it, and a caller with
+/// nowhere to display progress (a test, a future batch import) should not be forced to invent a
+/// sink. When supplied, the handler reports each stage as it begins -- so the report is "this is
+/// what is happening now", never "this is what just finished", which is the one that leaves a user
+/// staring at a finished-sounding message while the slow part runs.
+/// </param>
+public record ScanReceiptCommand(
+    Stream ImageStream,
+    IProgress<ScanReceiptStage>? Progress = null) : IRequest<ReceiptExtractionResult>;
 
 public sealed class ScanReceiptCommandHandler : IRequestHandler<ScanReceiptCommand, ReceiptExtractionResult>
 {
@@ -32,6 +42,7 @@ public sealed class ScanReceiptCommandHandler : IRequestHandler<ScanReceiptComma
     public async Task<ReceiptExtractionResult> Handle(ScanReceiptCommand request, CancellationToken cancellationToken)
     {
         // 1. Image -> Receipt Detection
+        request.Progress?.Report(ScanReceiptStage.DetectingReceipt);
         bool isReceipt = await _aiProvider.DetectReceiptAsync(request.ImageStream, cancellationToken);
         if (!isReceipt)
         {
@@ -42,6 +53,7 @@ public sealed class ScanReceiptCommandHandler : IRequestHandler<ScanReceiptComma
         request.ImageStream.Position = 0;
 
         // 2. Extract Data (OCR -> Layout -> Fields)
+        request.Progress?.Report(ScanReceiptStage.ExtractingText);
         var result = await _aiProvider.ExtractReceiptDataAsync(request.ImageStream, cancellationToken);
         
         // 3. Validation / Suggestion (Return to UI for user confirmation)

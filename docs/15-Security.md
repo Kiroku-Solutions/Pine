@@ -89,6 +89,25 @@ them is a per-platform engineering decision and is owned by
 > §18's checklist entry "OD-03 and OD-10 are closed" therefore remains **overstated** for OD-03
 > until TD-86 and TD-87 land.
 
+> **Amended 2026-08-29 (TD-16, audit §12.29) — what "the local store" includes.** The clause above
+> says *the local store* is encrypted, and until this iteration that was read as *the database*.
+> It is now read as **every file Pine derives from the user's data**, because the gap between those
+> two readings was a real one: the ML categorisation model, trained on real payees and real amounts,
+> was written in plaintext outside every vault and shared between them.
+>
+> | Artefact | Where | Encrypted under |
+> |---|---|---|
+> | `pine.db` | the vault directory | the data key, by SQLCipher |
+> | `backups/pine-*.db` | the vault directory | the data key, by SQLCipher (`VACUUM INTO` on the keyed connection) |
+> | `ai/categorizer.model` | the vault directory | `HKDF-SHA256(data key, "pine:file-cipher:v1:ai.categorizer.model")`, AES-256-GCM |
+> | `pine.vault.json` | the vault directory | **not encrypted, by design** — it is the header that makes decryption possible, and it carries no plaintext key |
+> | the JSONL logs (TD-14) | outside the vault | **not encrypted. TD-82, still open.** |
+>
+> The derived key is deliberately *not* the database key: one key with two independent nonce spaces
+> is how GCM nonce reuse happens, and a reused nonce is a catastrophic failure rather than a
+> degraded one. The seam is `IVaultFileCipher`, and the last row of that table is the remaining
+> hole in this clause.
+
 ## 5. Closing OD-10 — Telemetry Policy
 
 OD-10 from `00-Vision` §14 is **closed by this document** as follows:

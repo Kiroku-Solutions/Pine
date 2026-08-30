@@ -498,7 +498,7 @@ any other single change.
 | TD-13 | `CurrentValues.SetValues` drops owned collections | 🔴 | Latent silent data loss on edit | Tracked-graph updates | P0 | ✅ **Done** |
 | TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | ✅ **Done** — iteration 11, §12.24. One `AddPineLogging()` in all five roots writing JSONL to `%LOCALAPPDATA%/Pine/logs`; every `Console.WriteLine` and `File.AppendAllText` outside `Pine.Cli` is gone, and a NetArchTest forbids `Pine.Infrastructure` from depending on `System.Console` so they cannot come back |
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | ✅ **Done** — iteration 12, §12.25. Every value on the page is now measured: `ILogTailReader` over the TD-14 JSONL files, `IDatabaseHealthProbe` over the keyed connection, `IRuntimeInfoProvider` for version/OS/heap. The two dishonest buttons (`Export DIB`, `Seed Demo Data`) are removed rather than reimplemented. Seven falsification mutations, all killed |
-| TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🔴 **Open** |
+| TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🟢 **Closed** (§12.29) |
 | TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
 | TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | ✅ **Closed** — iteration 8, §12.18. `Money` normalises in its constructor to the currency's ISO 4217 minor units (`ToEven`), rejects a fractional amount in a zero-minor-unit currency, and gains `Allocate`/`Multiply`/`Negate`/`Round`/`Scale`. `CurrencyCode` validates membership and offers `TryCreate`. Six falsification mutations, all killed |
 | TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | `LineItemKind` represents the difference instead of tolerating it; the invariant is enforced at the persistence boundary and the receipt confirmation UI offers a one-click adjustment | P1 | ✅ **Closed** — iteration 9, §12.20 |
@@ -624,7 +624,7 @@ a day of work now and an impossible migration later.
 - [x] ✅ **1.** Structured file logging with redaction at the boundary; delete the OCR content trace (TD-14, TD-25) — **DONE.** A hand-rolled JSONL sink (`Pine.Infrastructure/Diagnostics/`, zero new NuGet packages) with `LogRedactor` as the single boundary every string crosses, size rotation and retention per `30-Observability` §4.4, one `AddPineLogging()` replacing five different ways of logging nothing, and a container-free `PineCrashLogger` for the two `Main` catch blocks. The OCR content trace is **deleted, not redacted**. Four falsification mutations, all killed. 313 → 367 tests. Log **encryption at rest** is deliberately out of scope (TD-82) and §4.4 is annotated accordingly. See §12.24.
 - [x] ✅ **2.** Real diagnostics or no diagnostics (TD-15) — **DONE, THE "REAL" HALF.** The panel keeps its place and every value on it is now measured rather than asserted: a `ILogTailReader` reading the TD-14 JSONL files back (bounded 200-record tail, `FileShare.ReadWrite` so the live file the sink holds open is still readable), a singleton `IDatabaseHealthProbe` that answers `Locked` without touching the database and otherwise reports `Healthy`/`PendingMigrations`/`Unreachable`/`Faulted` as a closed status set carrying no exception text (TD-23), and an `IRuntimeInfoProvider` whose `AppVersion` is *the same resolution* the sink stamps into every record. The `Export DIB` and `Seed Demo Data` buttons are **removed, not reimplemented** (TD-84; the second was TD-47's defect class writing fiction into a real vault). Seven falsification mutations, all killed. 367 → 423 tests. See §12.25.
 - [x] ✅ **3.** Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06) — **DONE FOR PASSWORD CHANGE; BIOMETRIC IS POSSIBLE, NOT BUILT.** Header version 2 carries a `keyWrap` (AES-256-GCM, 12-byte nonce, 16-byte tag) whose associated data binds every other header field, so splicing a wrap between vaults or editing the vault id fails the tag check. The Argon2id derivation is byte-for-byte unchanged — its output is now the *auth* key — and the pre-TD-05 known-answer vector still passes. `ChangeVaultPasswordCommand` re-wraps under a fresh salt without touching the database or closing the session, gated by the same entropy floor setup enforces. Pre-envelope vaults (v1, `pine.salt`) are **refused, not adopted**: a deliberate breaking change taken while no vault exists outside a developer machine, which deletes the second key path instead of carrying it. Nine falsification mutations, all killed. 423 → 474 unit, 119 → 150 integration. See §12.27. Three rows registered: **TD-86** (the data key is re-wrapped, never rotated), **TD-87** (no platform secure storage, so no biometric), **TD-88** (WASM has no AES-GCM, so the Browser head can open nothing).
-- [ ] Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16)
+- [x] ✅ **4.** Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16) — **DONE.** The model moved from a relative plaintext path shared by every vault to `{vault}/ai/categorizer.model`, sealed with AES-256-GCM under `HKDF-SHA256(data key, "pine:file-cipher:v1:ai.categorizer.model")` — a purpose-separated key, deliberately not the database key. `IVaultFileCipher` is a general seam Phase 3's encrypted attachments can reuse. The categoriser stopped loading in its constructor (which runs before any vault is open) and now compares the store's vault fingerprint at every use, so a previous vault's model cannot answer. A second defect TD-16 does not mention was closed as a consequence: **two categoriser instances existed, so training never reached predictions until the process restarted**. 11 falsification mutations, 9 killed, 2 surviving individually by genuine redundancy (see §12.29). 474 → 536 unit, 150 → 156 integration. Three rows registered: **TD-89** (training is not the opt-in `32-AI-Training` §12.2 promises), **TD-90** (the AI stack is registered in one head of five), **TD-91** (train/serve text skew).
 - [ ] Row versions; indexes on `Date` and `AccountId`; FK transaction→account; scaled-integer money converter (TD-17, TD-30, TD-31)
 - [ ] Money scale + rounding + `Allocate`; line-item reconciliation in the confirmation UI (TD-18, TD-19)
 - [ ] Receipt duplicate detection; locale-driven date parsing; honest confidence labelling (TD-20, TD-21, TD-22)
@@ -2424,7 +2424,7 @@ every mutation.
 | `dotnet test tests/Pine.Tests.Unit` | ✅ **310 passed**, 0 failed, 0 skipped |
 | `dotnet test tests/Pine.Tests.Integration` | ✅ **119 passed**, 0 failed, 0 skipped |
 | Android / iOS heads | ❌ **not compiled** — workloads absent (`NETSDK1147`), unchanged since iteration 1 |
-| Any GUI rendered | ❌ **not observed.** The reconciliation panel and the adjustment picker compile and are covered by view-model tests; they have never been displayed. `61-Manual-Test-Plan` needs a §10 for them. |
+| Any GUI rendered | ❌ **not observed.** The reconciliation panel and the adjustment picker compile and are covered by view-model tests; they have never been displayed. `61-Manual-Test-Plan` needs a section of its own for them; §10 was taken by TD-16 in iteration 14. |
 
 #### INCOMPLETE — stated rather than buried
 
@@ -2718,7 +2718,7 @@ rather than by branch.
 #### INCOMPLETE — stated rather than buried
 
 1. **No running application has written a log record.** The sink is proven by tests, not by use.
-   Nobody has seen a real `<date>.log.jsonl`, and `61-Manual-Test-Plan` needs a §10 row: launch the
+   Nobody has seen a real `<date>.log.jsonl`, and `61-Manual-Test-Plan` needs a row of its own (§10 was taken by TD-16 in iteration 14): launch the
    Windows head, force an OCR failure, confirm a redacted record appears and that no receipt text
    does.
 2. **Nothing prevents a head from silently dropping logging again — TD-83.** `AddPineLogging` is
@@ -3070,3 +3070,250 @@ The row this iteration closed is struck from §12.26's list. In order:
 - **TD-83**, which folds naturally into TD-29.
 - Then **TD-78**, **TD-75**, **TD-81** — carried over from §12.23.
 - **TD-84** last: the DIB cannot be honestly built until metrics, SLOs and a plugin host exist.
+
+### 12.29 Iteration 14 — Phase 1, item 4 (TD-16)
+
+**Ticket:** the ML categorisation model was trained on real payees and real amounts, written in
+plaintext to a path relative to the process working directory, and shared by every vault. The one
+finding in §4 that actively contradicts the product's central privacy promise.
+
+**Two defects were found while mapping it that the register did not know about, and one of them
+changes what the feature was.** `DefaultLocalAiProvider` ran `new MlNetCategorizer()` in its
+constructor while the container registered a *separate* `MlNetCategorizer` as
+`ICategorizationTrainer`. Training rebuilt the prediction engine on the container's instance; every
+prediction went through the provider's private one. **Categorisation therefore never improved from
+training at all** — not slowly, not partially: the trained model reached nothing until the process
+restarted, at which point the constructor loaded whatever file happened to sit beside the
+executable. Fixing TD-16 forces the two into one object, so this closed as a consequence rather
+than as an extra.
+
+#### What the encryption boundary now includes
+
+- **`{vault}/ai/categorizer.model`**, sealed with AES-256-GCM. The file key is
+  `HKDF-SHA256(data key, info: "pine:file-cipher:v1:ai.categorizer.model")` — **deliberately not
+  the database key**. One key with two independent nonce spaces is how GCM nonce reuse happens, and
+  a reused nonce under one key leaks the authentication subkey rather than one plaintext. One hash
+  removes the question.
+- **`IVaultFileCipher` is a general seam, not a model-specific one.** Blob layout is
+  `PINEFC1\0` ‖ nonce(12) ‖ tag(16) ‖ ciphertext, with the magic and the length-prefixed purpose as
+  associated data — `VaultHeaderBinding`'s "bind everything as a rule" precedent. Phase 3's
+  encrypted receipt attachments are the next consumer, and the port states plainly that its
+  whole-array shape is wrong for large files.
+- **`IVaultDataKeyAccessor`, and the honest cost of it.** `Pine.Infrastructure` references only
+  `Pine.Core`, so it could not see the vault key. `Key` and `DbPath` were **moved down** from
+  `IVaultSession` into a new `Pine.Core.Security` interface — same names, same contracts, so no
+  implementation and no call site changed, and the widening is visible in the type graph instead of
+  smuggled in as a new capability. `IVaultLockState`'s doc comment claimed infrastructure could see
+  "exactly one bit"; that claim is now false, and the comment was amended rather than left standing.
+- **Staleness is prevented by comparison, not by notification.** The categoriser compares the
+  store's vault fingerprint at the moment it is about to answer. Subscribing to
+  `IVaultSession.Locked` would have bought a delivery window plus an undisposed subscription on a
+  singleton — TD-34's problem class.
+- **A model that will not decrypt is discarded and retrained, never surfaced.** It is derived data,
+  reproducible from the ledger. The alternative lets one corrupt cache file stop a user opening
+  their own vault.
+- **Registration moved into `AddPineCategorisation()` in `Pine.Infrastructure`** specifically so
+  that the one-instance relationship could be *asserted*. The two-instance defect survived the
+  project's entire life because a composition root is a `static void ConfigureServices` inside a
+  `WinExe` and no test can reach one.
+- **A duplicate type was found and merged, not renamed.** A first pass added
+  `Pine.Core.Security.VaultLockedException` without noticing that
+  `Pine.Application.Security.VaultLockedException` already existed. The compiler caught it as an
+  ambiguity in an *existing* test. Two types with one name and one meaning is a landmine — a
+  `catch` clause would silently depend on which `using` was in scope — so the existing type was
+  moved down and there is now exactly one.
+
+#### Verification actually executed
+
+Every number below was produced on this machine by the orchestrating session. The agents were
+forbidden from building or testing anything and were told so explicitly; the test-writing agent's
+report states in its own words that it makes no claim about compilation. Each load-bearing claim
+from the research agent — the model path, the DI registrations, the absence of any tracked model
+file, the absence of any test — was re-checked by hand with `grep` and `git ls-files` before being
+used, and one of its findings (that only `Pine.Ui.Windows` registers AI) became TD-90.
+
+| | |
+|---|---|
+| `dotnet build` | `Pine.Core`, `Pine.Application`, `Pine.Infrastructure`, `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli` — **0 errors, 0 warnings each** |
+| `Pine.Ui.Web` | **0 errors, 1 warning** — the pre-existing `NativeFileReference` wasm-linking warning, unrelated to this change |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED.** `NETSDK1147`: the workloads are not installed on this machine. Neither was edited this iteration, which is the first time in four iterations that is true |
+| `dotnet test` — unit | **536 passed, 0 failed**, from a 474 baseline measured before any change |
+| `dotnet test` — integration | **156 passed, 0 failed**, from a 150 baseline measured before any change — but see the flake note below: one earlier run failed 1 of 156 and was never reproduced |
+| Falsification mutations | **11 applied, 9 killed, 2 survived.** Every one reverted and byte-compared against its backup with `cmp` afterwards; both suites re-run green at the end |
+
+#### One integration failure that could not be reproduced, and is not being written off
+
+Recorded because the alternative is a green table that quietly omits it.
+
+On **one** full-suite integration run, **1 of 156 tests failed**. That run was invoked without a
+per-test logger, so **the failing test was never identified** — the only surviving evidence is the
+summary line. It has not recurred since:
+
+| What was run | Result |
+|---|---|
+| Full integration suite, 7 further runs (5 of them with a `trx` logger) | **156 passed, 0 failed** every time; the five logged runs contain zero `outcome="Failed"` entries |
+| `VaultScopedCategorizerModelTests` alone, 5 consecutive runs | **6 passed, 0 failed** every time |
+
+So the six tests this iteration added are not the flaky ones, and whatever failed is very likely
+pre-existing. The plausible mechanism is resource contention rather than a defect in this change:
+this iteration's integration tests fit real ML.NET models, which pushed the suite from 51 seconds to
+roughly 2 minutes 10 and saturates the CPU while the rest of the suite runs beside it. A test that
+was quietly timing-sensitive would start failing occasionally under exactly that pressure.
+
+**That is a hypothesis, not a finding.** It was not proven, the failing test was not named, and no
+code was changed on the strength of it. What is certain is only this: a roughly 1-in-8 intermittent failure
+exists somewhere in the integration suite, and this iteration made the suite slower and more
+CPU-hungry, which is the kind of change that surfaces one. Anyone who sees an unexplained
+integration failure on this branch should suspect that before suspecting their own change, and
+should run with `--logger trx` so the next occurrence names itself.
+
+#### The mutations, including the two that lived
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `Decrypt` swallows the tag mismatch and returns the buffer anyway | **6 tests failed** |
+| 2 | Drop the purpose from the HKDF `info`, so every purpose shares one file key | **SURVIVED** |
+| 3 | Remove the associated data from `Encrypt` and `Decrypt` | **SURVIVED** |
+| 4 | Remove **both** of the above at once | 1 test failed |
+| 5 | Constant nonce instead of `RandomNumberGenerator.Fill` | 1 test failed |
+| 6 | The store writes the model in the clear — the pre-TD-16 behaviour | 3 tests failed |
+| 7 | The categoriser never notices that the vault changed | 1 test failed |
+| 8 | Training writes its result without re-checking which vault is open | 1 test failed |
+| 9 | Re-register `ICategorizationTrainer` instead of forwarding — the two-instance defect | 3 tests failed |
+| 10 | The store rethrows instead of discarding an unauthenticable model | 3 tests failed |
+| 11 | Restore the constructor-time model load | 2 tests failed |
+
+**Mutations 2 and 3 survived, and saying why is worth more than a green row would have been.**
+Purpose separation is enforced twice over — by a distinct derived key *and* by the authenticated
+associated data — so removing either one alone leaves the observable behaviour correct. Mutation 4
+removes both and dies, which is what proves the property is genuinely tested rather than
+accidentally true. This is defence in depth working as intended. Reporting it as "11 of 11 killed"
+would have been false; reporting it as an untested claim would have been equally false.
+
+Mutation 1 remains the one to keep in mind, for the reason §12.27 gave: "fail open" is a one-line
+edit that turns the entire cipher into decoration while every round-trip test keeps passing.
+
+#### INCOMPLETE — stated rather than buried
+
+1. **The AI stack is registered in one head of five.** `Pine.Ui.Macos`, `Android`, `iOS`, `Web` and
+   `Cli` register no `IAIProvider` at all, while `ImportTransactionsCommandHandler` ctor-injects
+   one — so importing transactions is unresolvable on four heads. Found while mapping this ticket,
+   **not fixed, by product-owner decision**, because it is a "what is each head for" question that
+   belongs with TD-85, and because closing it would ship ML.NET registrations into two heads that
+   cannot be compiled here. New row **TD-90**.
+2. **Training is not opt-in, and `32-AI-Training` §12.2 says it must be.**
+   `CategorizationTrainingBackgroundService` trains unconditionally every five minutes, with no
+   consent gate and no setting to disable it. The spec clause is unambiguous and the code
+   contradicts it. New row **TD-89**. §12.2 has been annotated clause by clause rather than left to
+   read as met.
+3. **Train/serve skew.** Training builds its text from `Payee` alone; import categorises on
+   `Payee + Notes`. A genuine model-quality defect, unrelated to encryption, registered rather than
+   quietly fixed inside a security ticket. New row **TD-91**.
+4. **No default model ships.** `32-AI-Training` §6.1 says Pine ships one; nothing is tracked,
+   LFS-covered or copied to output, and nothing ever was. Every vault starts empty and trains its
+   own. Annotated in place.
+5. **Nothing here has been seen running.** Every claim is a compiler claim or a test claim. No
+   screen was opened; the categoriser's behaviour inside a live application is a manual row.
+6. **The model is not backed up.** `VaultBackupService` copies `pine.db` via `VACUUM INTO` and
+   touches nothing else, so a restored backup starts with no model and retrains. That is the right
+   default for derived data, and it is stated here so that it is a decision rather than an omission.
+7. **The key is still a managed `byte[]`**, with exactly the caveat §12.27 item 6 records. The file
+   keys derived from it are zeroed on every path including the failing ones; the data key itself is
+   the session's problem and remains unsolved.
+8. **`IVaultLockState`'s narrowness is genuinely reduced.** §12.25's design rationale for that
+   interface no longer holds in full. `PineDatabaseHealthProbe` still depends on the one-bit
+   interface and still should — but "infrastructure cannot see the key" stopped being true this
+   iteration, and that is a real, if small, loss of a property the codebase used to have.
+
+#### Rows the register gains
+
+| ID | Debt | Sev | Impact | Fix | Priority | Status |
+|---|---|---|---|---|---|---|
+| TD-89 | Categoriser trains with no opt-in, contradicting `32-AI-Training` §12.2 | 🟠 | Derived personal data is produced from every user's ledger with no consent gate and no off switch; the spec promises opt-in per profile | A consent setting the background service checks before training, defaulting to off | P1 | 🔴 Open |
+| TD-90 | The AI stack is registered in one composition root of five | 🟠 | `ImportTransactionsCommandHandler` ctor-injects `IAIProvider`, so import cannot resolve on Macos, Android, iOS, Web or Cli | Call `AddPineCategorisation()` per head, once TD-85 settles the per-head inventory | P1 | 🔴 Open |
+| TD-91 | Train/serve text skew: training uses `Payee`, import categorises on `Payee + Notes` | 🟡 | The model is served inputs shaped unlike those it was fitted on, degrading accuracy in the path that uses it most | One shared function building the categorisation text, called by both | P2 | 🔴 Open |
+
+### 12.30 Next
+
+The row this iteration closed is struck from §12.28's list. In order:
+
+- **TD-07 — re-arm CI.** Unchanged as the largest single risk, though this is the first iteration in
+  four that did not edit `Pine.Ui.Android` or `Pine.Ui.Ios` blind.
+- **TD-93 — a way to test for UI-thread blocking.** Added by §12.31. TD-92 froze the app on every
+  receipt scan, shipped, and was fixed without one automated test ever changing colour. Until this
+  exists, every responsiveness claim in this codebase is a manual claim.
+- **TD-89 — make training opt-in.** New, and the sharpest thing found this iteration: putting the
+  derived model inside the encryption boundary made it much more obvious that nobody ever agreed to
+  its being produced in the first place.
+- **TD-86 — rotate the data key.** Still carrying its deadline: cheap while no real vault exists,
+  expensive the moment one does.
+- **TD-90 and TD-85 together** — they are the same unanswered question about what each head is for.
+- **TD-83**, which folds into TD-29 — now marginally smaller, since `AddPineCategorisation()` is one
+  more shared registration that used to be inline in a root.
+- Then **TD-78**, **TD-75**, **TD-81**, and **TD-91**.
+- **TD-84** last, unchanged.
+
+### 12.31 Out-of-band fix — the receipt scan froze the UI thread (TD-92)
+
+Not a roadmap row. Reported directly by the product owner: *"al añadir una foto aparece como que
+Windows no responde durante unos segundos"*, with the request to cover it up with a loading
+indicator.
+
+**The request could not be granted as stated, and saying so was the useful part.** A loading
+indicator already existed — `ScanReceiptView.axaml` bound an indeterminate `ProgressBar` to an
+`IsBusy` flag the view model set correctly. It never appeared to work because **the entire scan ran
+on the UI thread**, and a blocked UI thread does not animate a spinner any more than it repaints a
+window. Adding more indicators would have produced a *frozen* spinner, which reads as broken rather
+than as busy — strictly worse than the bare hang it replaced.
+
+| Where the UI thread was blocked | Fix |
+|---|---|
+| `ReceiptDetector.DetectReceiptConfidenceAsync` — JPEG decode, letterbox, pixel loop, ONNX run | CPU half split into a private sync method, called via `Task.Run` |
+| `ReceiptDetector.AnalyzeAndCropReceiptAsync` — the above plus perspective warp, denoise, sharpen | same |
+| `PaddleOcrEngine.ExtractTextAsync` — detection + recognition networks, the slowest stage | inference moved to `Task.Run` |
+| `ScanReceiptViewModel` — `new Bitmap(stream)` decoding a multi-megapixel photo | decoded on the thread pool, assigned on the UI thread |
+
+Every one of these was an `async Task` method whose signature promised to yield and whose body did
+not: after the opening `await`, which completed synchronously against a `MemoryStream`, the rest ran
+inline on the caller's thread. `OpenCvImageProcessor` had already been given `Task.Run` treatment at
+some earlier point; the other three never were.
+
+**The UX, once the indicator could actually run.** `ScanReceiptCommand` gained an optional
+`IProgress<ScanReceiptStage>`; the stage enum lives in `Pine.Core.Ai` and carries **no text**, so the
+words stay in the view model where localisation (TD-45) will need them. The thin progress bar was
+replaced by a scrim overlay carrying the stage sentence and the line *"This can take a few seconds
+on large photos"* — the expectation-setting half, which is what actually answers "so the user isn't
+frightened". The picked photo is now shown **before** the scan starts rather than after it finishes.
+
+**Found in passing and cleaned up:** `RecomputeReconciliation()` was called three times in a row in
+`LoadAccountsAsync`, and the entire `if (!IsReconciled)` guard block was duplicated **three times**
+in `SaveTransactionAsync`. Accidental copy-paste, harmless, removed.
+
+#### Verification
+
+| | |
+|---|---|
+| Builds | Core, Application, Infrastructure, **Ui.Avalonia**, Ui.Windows, Ui.Macos, Cli — 0 errors, 0 warnings each; Web 1 pre-existing wasm warning |
+| `dotnet test` — unit | **540 passed, 0 failed**, from 536 |
+| Mutations | 3 applied: 1 killed, **2 survived**, and the survivors are the point — see below |
+
+**The first mutation exposed a hole in my own test, which is why it is recorded rather than
+smoothed over.** Moving both `Progress.Report` calls to *after* their provider call — the exact
+defect of announcing a stage once it is already finished — left the original two tests green,
+because the observed order was unchanged. A third test was added asserting on **when**: each
+substitute snapshots what had been reported at the instant it was invoked. The mutation then failed,
+as it should have from the start.
+
+**The second survivor cannot be closed here, and must not be reported as if it were.** Putting the
+bitmap decode back on the UI thread leaves all 540 tests green. Nothing in this repository can
+observe "this ran on the UI thread" — it needs a live Avalonia dispatcher painting real frames.
+**The entire threading fix is therefore a code-inspection claim, not a tested one.** It is verified
+by `61-Manual-Test-Plan` §11 and nowhere else; §11.1 and §11.2 are the two rows that matter, and
+until someone runs them the honest status of this fix is "believed correct, unobserved".
+
+#### Rows the register gains
+
+| ID | Debt | Sev | Impact | Fix | Priority | Status |
+|---|---|---|---|---|---|---|
+| TD-92 | Async methods in the AI pipeline did CPU work inline, blocking the UI thread | 🟠 | The window stopped painting for seconds on every receipt scan and Windows marked the app "not responding"; the existing busy indicator could not animate | `Task.Run` around the CPU-bound halves of `ReceiptDetector` and `PaddleOcrEngine` | P1 | 🟢 **Fixed** (§12.31) — **untested by any automated test**, see `61-Manual-Test-Plan` §11 |
+| TD-93 | No test can detect UI-thread blocking anywhere in the app | 🟡 | TD-92 was shipped, lived and was fixed without a single test changing state; the same regression can return silently at any time | A UI-thread harness (an Avalonia headless dispatcher) asserting that view-model entry points yield | P2 | 🔴 Open |

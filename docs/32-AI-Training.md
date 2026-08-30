@@ -258,6 +258,21 @@ A model is promoted to ship only if:
 - A user may export the fine-tune for personal use.
 - A user may donate the fine-tune (anonymised) to the corpus.
 
+> **Implementation status, added 2026-08-29 (TD-16, audit §12.29).** Stated clause by clause,
+> because three of these five were false when this section was written and one still is.
+>
+> | Clause | Status |
+> |---|---|
+> | Local fine-tuning runs on-device | ✅ **Implemented.** `MlNetCategorizer` trains in-process with ML.NET; no code path calls a remote service. |
+> | The fine-tune is per-profile (no cross-user sharing) | ✅ **Implemented by TD-16, and it was false before it.** The model now lives at `{vault}/ai/categorizer.model`, encrypted under a key derived from that vault's data key, and the categoriser drops its in-memory engine when the open vault changes. Previously one plaintext file next to the executable served every vault. |
+> | The fine-tune is opt-in per profile | ❌ **Not implemented.** `CategorizationTrainingBackgroundService` trains unconditionally, every five minutes, with no consent gate and no setting to turn it off. This section says opt-in; the code says always. **TD-89.** |
+> | A user may export the fine-tune for personal use | ❌ **Not implemented.** There is no export path, and after TD-16 the file is not usable outside its vault anyway. |
+> | A user may donate the fine-tune (anonymised) to the corpus | ❌ **Not implemented**, and correctly so while §12.3's k-anonymity aggregation does not exist either. |
+>
+> §6.1's "Pine ships with a *default* model" is also **not implemented**: no categoriser model is
+> tracked in the repository, covered by Git LFS, or copied to output. Every vault starts with no
+> model and trains its own.
+
 ### 12.3 Aggregation to the Project
 
 - Donated corrections are aggregated at the project.

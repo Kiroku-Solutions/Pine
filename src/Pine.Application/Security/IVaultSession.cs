@@ -31,27 +31,16 @@ namespace Pine.Application.Security;
 /// See <c>VaultSession</c> for exactly what that guarantees and, honestly, what it does not.
 /// </para>
 /// </remarks>
-public interface IVaultSession : Pine.Core.Security.IVaultLockState
+public interface IVaultSession : Pine.Core.Security.IVaultDataKeyAccessor
 {
-    /// <summary>
-    /// The vault encryption key, or <c>null</c> when locked.
-    /// </summary>
-    /// <remarks>
-    /// The returned array is the session's own buffer, not a copy. <see cref="Lock()"/> zeroes it,
-    /// so a caller that captures this reference and reads it AFTER a lock reads zeroes - which
-    /// fails closed (SQLCipher refuses to open) rather than leaking anything. Callers should use it
-    /// immediately and never cache it.
-    /// </remarks>
-    byte[]? Key { get; }
-
-    /// <summary>The directory of the open vault, or <c>null</c> when locked.</summary>
-    string? DbPath { get; }
-
-    // IsUnlocked is INHERITED from Pine.Core.Security.IVaultLockState, not declared here.
-    // This interface extends it so that Pine.Infrastructure components -- which reference only
-    // Pine.Core -- can read the lock state without an adapter (see PineDatabaseHealthProbe, TD-15).
-    // Re-declaring it with `new` would HIDE the base member rather than inherit it, leaving two
-    // members on the type; inheriting keeps one.
+    // IsUnlocked, Key and DbPath are all INHERITED, not declared here. IsUnlocked comes from
+    // Pine.Core.Security.IVaultLockState; Key and DbPath were declared on THIS interface until
+    // TD-16 relocated them, unchanged, down to Pine.Core.Security.IVaultDataKeyAccessor so that
+    // Pine.Infrastructure -- which references only Pine.Core -- can encrypt a file of its own with
+    // the vault key without an adapter (see AesGcmVaultFileCipher). The move was deliberately a
+    // MOVE: same names, same contracts, so no implementation and no call site had to change.
+    // Re-declaring any of them with `new` would HIDE the base member rather than inherit it,
+    // leaving two members on the type; inheriting keeps one.
 
     /// <summary>
     /// When user activity was last reported, or <c>null</c> when locked. Read from the session's

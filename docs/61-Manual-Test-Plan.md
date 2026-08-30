@@ -540,7 +540,191 @@ Android and iOS have never been compiled. Test on Windows and record that as the
 
 ---
 
-## 10. What a failure means
+## 10. Per-vault categorisation model — Phase 1 item 4, TD-16
+
+**Scope.** Windows only. `Pine.Ui.Macos`, `Web`, `Android` and `Cli` register no AI subsystem at
+all (**TD-90**), so there is nothing on those heads to exercise. Record that as the scope rather
+than as a failure.
+
+**Why any of this is manual.** 62 unit tests and 6 integration tests cover the cipher, the store and
+the categoriser, and none of them has ever run inside the application. What follows is the part that
+only a running Pine can answer: whether the model is produced at all, where it lands, and whether
+the vault it belongs to is the vault that gets it.
+
+**Setup.** You need **two** vaults. Create `Personal` and `Business` with different passwords, and
+know where each directory is. You will need a file explorer alongside Pine.
+
+### The model is produced, and lands inside the vault
+
+**10.1 [M] A fresh vault has no model.**
+Create `Personal`, unlock it, and look in its directory.
+*Expected:* no `ai` sub-directory. Pine ships no default model (`32-AI-Training` §6.1 says it does;
+it does not — audit §12.29 INCOMPLETE item 4).
+
+**10.2 [M] Training produces a model after enough categorised splits.**
+Record at least **10** transactions with a category on a split, then leave Pine running and
+unlocked. The trainer waits one minute after start, then polls every five, and needs ten *new*
+categorised splits past its watermark.
+*Expected:* within roughly six minutes, `Personal/ai/categorizer.model` appears.
+*If it does not:* check the JSONL log for `ai.model_store.*` events before filing anything.
+
+**10.3 [M] The model is not readable.**
+Open `Personal/ai/categorizer.model` in a hex viewer, or just a text editor.
+*Expected:* it begins with the ASCII bytes `PINEFC1` followed by a NUL. It must **not** begin with
+`PK` — that would be a plaintext ML.NET zip, which is precisely the pre-TD-16 defect. Search it for
+one of the payees you typed; you must not find it.
+
+**10.4 [M] No model file appears next to the executable.**
+Look in Pine's install directory for `Assets/Ai/categorizer_model.zip`.
+*Expected:* it does not exist and is never created. That path was the defect.
+
+**10.5 [M] No stray temporary file survives.**
+Look in `Personal/ai/` after a training cycle.
+*Expected:* exactly one file, `categorizer.model`. A leftover `.tmp` means the write-then-move path
+failed halfway.
+
+### The model belongs to one vault
+
+**10.6 [M] Suggestions reflect what THIS vault learned.**
+In `Personal`, start recording a transaction with a payee you have categorised many times.
+*Expected:* the category is suggested.
+
+**10.7 [M] The other vault does not inherit them.** *(the central row)*
+Lock `Personal`. Unlock `Business`. Record a transaction with **the same payee**.
+*Expected:* **no suggestion.** Business has never seen that payee. A suggestion here means one
+vault's learned spending is leaking into the other through the categoriser, without either database
+being decrypted — the exact failure TD-16 exists to prevent, and the most important row on this page.
+
+**10.8 [M] Copying the file between vaults does not transplant the model.**
+With Pine closed, copy `Personal/ai/categorizer.model` over `Business/ai/categorizer.model`
+(create the directory if needed). Open `Business` and try 10.7 again.
+*Expected:* still no suggestion, and the app behaves normally. The file is sealed under a key
+derived from Personal's data key, so Business authenticates it, fails, discards it and carries on.
+Check the log for `ai.model_store.authentication_failed`.
+
+**10.9 [M] A corrupt model is survivable, not fatal.**
+With Pine closed, flip a byte in `Personal/ai/categorizer.model` (or replace it with random bytes).
+Open `Personal`.
+*Expected:* the vault opens **normally**. Categorisation simply stops suggesting until the next
+training cycle rebuilds the model. If the vault refuses to open, or an error dialog appears, that is
+a real failure — a damaged derived cache must never block access to a user's own data.
+
+**10.10 [M] Locking the vault stops categorisation without an error.**
+Unlock `Personal`, wait for the ten-minute idle lock (or lock manually), and leave Pine running past
+the next five-minute training tick.
+*Expected:* no error dialog, no error in the log. At most a debug line saying the cycle was skipped.
+
+### Known gaps — confirm, do not report
+
+**10.11 [G] Training is not opt-in and cannot be turned off.**
+Look in **Settings** for any control over AI training or categorisation.
+*Expected:* **there is none.** Training runs unconditionally every five minutes on every unlocked
+vault. `32-AI-Training` §12.2 says the fine-tune is opt-in per profile; it is not. This is **TD-89**,
+registered in audit §12.29. Confirm and do not file it.
+
+**10.12 [G] The model is not included in backups.**
+Export or trigger a backup and inspect `Personal/backups/`.
+*Expected:* only `pine-*.db`. The model is derived data and is deliberately not backed up; a
+restored vault retrains. Audit §12.29 INCOMPLETE item 6. Do not file it.
+
+**10.13 [G] Suggestions may be poorer than the training data implies.**
+Training learns from the payee alone, while the import path asks about payee *and* notes. The model
+is therefore served text shaped unlike what it was fitted on. This is **TD-91**. Do not file it.
+
+**10.14 [G] There is no way to inspect, export or delete the model from inside Pine.**
+Deleting the file by hand is the only mechanism, and it simply retrains. No export path exists, and
+after TD-16 the file would be useless outside its vault anyway. Do not file it.
+
+---
+
+## 11. Receipt scan responsiveness — UX fix, not an audit item
+
+**Scope.** Windows only, `Receipt Scanner` screen. This section is not tied to a `60-Audit` roadmap
+row; it covers a defect reported directly by the product owner: **adding a photo froze the window
+and Windows drew its "not responding" ghost over it for several seconds.**
+
+**Why every row here is manual.** The cause was that the scan pipeline ran on the UI thread. No
+automated test in this repository can observe that — detecting it needs a real Avalonia dispatcher
+with a real window painting real frames, and the unit suite has none. A falsification mutation
+confirmed this directly: putting the image decode back on the UI thread leaves all 540 unit tests
+green. **The threading fix is a code-inspection claim until the rows below are executed.** Treat
+them as the actual verification, not as a formality.
+
+### The freeze is gone
+
+**11.1 [M] The window keeps painting during a scan.** *(the row this whole change exists for)*
+Open **Receipt Scanner**, click **Select Image...**, and choose a **large** photo — a real phone
+photo, 4000×3000 or bigger, not a small test file. While it processes, drag the Pine window around
+the screen and move the mouse over its buttons.
+*Expected:* the window **moves normally and keeps redrawing**. The title bar must not grey out, and
+Windows must never append "(No responde)" / "(Not Responding)" to the title.
+*This failing is the original bug, unfixed.*
+
+**11.2 [M] The spinner actually spins.**
+During the same scan, watch the progress bar in the overlay.
+*Expected:* it animates continuously. A **frozen** bar is worse than the old behaviour — it means
+the UI thread is blocked again and the overlay is now lying about it.
+
+**11.3 [M] The photo appears immediately.**
+Watch the moment the file dialog closes.
+*Expected:* the receipt image appears in the left panel **straight away**, before any text is
+extracted. Previously nothing appeared until the whole pipeline finished.
+
+### The overlay says what is happening
+
+**11.4 [M] The stage messages advance in order.**
+Watch the text under the spinner through a full scan.
+*Expected, in this order:* `Loading the image...` → `Looking for the receipt...` →
+`Reading the text...` → `Filling in the details...` → (if a merchant was found)
+`Suggesting a category...`.
+Each must appear **before** its slow step, never after it. `Reading the text...` is the long one.
+
+**11.5 [M] The overlay blocks the form underneath.**
+While the overlay is up, try clicking the Merchant box, the account dropdown and **Save
+Transaction**.
+*Expected:* nothing responds; clicks land on the scrim. The point is that an impatient second click
+cannot queue up behind the first.
+
+**11.6 [M] The overlay disappears on failure too, and says why.**
+Select an image that is clearly not a receipt (a screenshot, a photo of a wall).
+*Expected:* the overlay closes, the form becomes usable again, and the red error strip reads
+*"Failed to process receipt: The provided image does not appear to be a receipt."* The app must not
+be left permanently covered.
+
+**11.7 [M] Saving shows the overlay too.**
+Complete a scan, fill in the account, and press **Save Transaction**.
+*Expected:* the overlay appears with `Saving the transaction...` — not a blank scrim with no
+sentence under it.
+
+**11.8 [M] Text, not colour alone.**
+Screenshot the overlay and desaturate it.
+*Expected:* the stage is still readable from the **words** (`40-Accessibility`).
+
+### Known gaps — confirm, do not report
+
+**11.9 [G] A scan cannot be cancelled.**
+There is no Cancel button on the overlay. Once a scan starts it runs to completion. This was
+scoped out deliberately: cancelling means threading a `CancellationToken` through ONNX and
+PaddleOCR and proving both actually honour it between stages, which is a separate piece of work.
+Do not file it.
+
+**11.10 [G] The live camera scanner is a different code path.**
+`LiveScannerViewModel` already ran its loop off the UI thread and was not changed. If the **camera**
+view stutters, that is a separate defect from this one — record it as such rather than as a
+regression of §11.
+
+**11.11 [G] One status string is still in Spanish.**
+`ReceiptDetector` returns `"¡Captura perfecta!"` while every other string on these screens is
+English. Pre-existing, and it belongs with localisation (**TD-45**), which does not exist yet. Do
+not file it.
+
+**11.12 [G] The stage list is coarse.**
+There are two reported pipeline stages, not five. The pipeline genuinely has two steps; inventing
+finer granularity would be showing the user precision that does not exist. Do not file it.
+
+---
+
+## 12. What a failure means
 
 | Where it fails | Severity |
 |---|---|
@@ -561,7 +745,7 @@ Android and iOS have never been compiled. Test on Windows and record that as the
 
 ---
 
-## 11. Not covered here
+## 13. Not covered here
 
 - **Android and iOS.** Not compilable locally; workloads absent. Nothing about those heads has ever
   been compiled, let alone run.
