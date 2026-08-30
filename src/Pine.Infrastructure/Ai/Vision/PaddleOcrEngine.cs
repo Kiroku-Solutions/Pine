@@ -93,12 +93,22 @@ public sealed partial class PaddleOcrEngine : IDisposable
             using var ms = new MemoryStream();
             await imageStream.CopyToAsync(ms, cancellationToken);
             byte[] imageBytes = ms.ToArray();
-            
-            // Sdcb uses OpenCvSharp Mat natively
-            using Mat mat = Cv2.ImDecode(imageBytes, ImreadModes.Color);
-            
-            // Run inference
-            PaddleOcrResult ocrResult = _engine.Run(mat);
+
+            // OFF THE CALLER'S THREAD. Detection and recognition are two more neural networks, and
+            // on a full-page receipt they are the slowest stage of the whole scan -- comfortably
+            // longer than the YOLO pass before them. Running them inline is what made the window
+            // stop painting: this method is awaited from a view model, so its continuation was the
+            // UI thread. The scan screen's busy indicator existed all along and could not animate,
+            // because a blocked UI thread does not run animations either.
+            var engine = _engine;
+            PaddleOcrResult ocrResult = await Task.Run(
+                () =>
+                {
+                    // Sdcb uses OpenCvSharp Mat natively
+                    using Mat mat = Cv2.ImDecode(imageBytes, ImreadModes.Color);
+                    return engine.Run(mat);
+                },
+                cancellationToken).ConfigureAwait(false);
 
             if (ocrResult?.Regions != null)
             {

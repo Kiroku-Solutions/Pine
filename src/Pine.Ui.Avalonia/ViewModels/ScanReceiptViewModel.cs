@@ -55,6 +55,20 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    /// <summary>
+    /// What the scan is doing right now, shown beside the spinner while <see cref="IsBusy"/> holds.
+    /// </summary>
+    /// <remarks>
+    /// THE SPINNER ALONE WAS NEVER THE PROBLEM, AND IS NOT THE FIX. A busy indicator already existed
+    /// on this screen and was already bound to <see cref="IsBusy"/>; what it could not do was
+    /// animate, because the whole scan ran on the UI thread and a blocked UI thread paints nothing.
+    /// Windows drew its "not responding" overlay over the top. The pipeline now does its CPU work on
+    /// the thread pool, which is what makes any of this visible -- this property only decides what
+    /// the now-working indicator SAYS.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string StatusMessage { get; set; } = string.Empty;
+
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
 
@@ -140,31 +154,50 @@ public partial class ScanReceiptViewModel : ObservableObject
 
         // The account decides the currency, and therefore the scale everything is rounded to.
         RecomputeReconciliation();
-
-        // The account decides the currency, and therefore the scale everything is rounded to.
-        RecomputeReconciliation();
-
-        // The account decides the currency, and therefore the scale everything is rounded to.
-        RecomputeReconciliation();
     }
 
+    /// <summary>
+    /// Runs the full scan over a chosen image and fills the form from what it finds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE ORDER OF THE FIRST TWO STEPS IS THE WHOLE USER EXPERIENCE. The preview bitmap is decoded
+    /// and shown BEFORE the scan starts, so the instant the file dialog closes the user sees their
+    /// photo. Previously nothing appeared until the entire pipeline had finished, so a five-second
+    /// scan looked like a five-second hang followed by everything arriving at once.
+    /// </para>
+    /// <para>
+    /// DECODING IS ITSELF OFF-THREAD. A photo from a modern phone is tens of megapixels, and
+    /// <c>new Bitmap(stream)</c> decodes it synchronously -- easily long enough to drop frames on
+    /// its own, quite apart from the neural networks afterwards. The decode happens on the thread
+    /// pool and only the ASSIGNMENT happens here, back on the UI thread where the await resumes.
+    /// </para>
+    /// </remarks>
     public async Task ProcessReceiptImageAsync(Stream imageStream, Stream? ocrImageStream = null)
     {
         IsBusy = true;
         ErrorMessage = string.Empty;
         ConfidenceScore = null;
+        StatusMessage = "Loading the image...";
 
         try
         {
-            // Load the image for preview (sharpened color image)
+            // Show the picked image immediately, decoded off the UI thread.
             imageStream.Position = 0;
-            ReceiptImage = new Bitmap(imageStream);
+            ReceiptImage = await Task.Run(() => new Bitmap(imageStream));
 
             // Use the OCR optimized image if available, else fallback to standard image
             var streamForOcr = ocrImageStream ?? imageStream;
             streamForOcr.Position = 0;
 
-            var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr));
+            // Progress arrives on the UI thread: MediatR reports it from whichever thread the
+            // pipeline happens to be on, and Progress<T> captures the SynchronizationContext at
+            // construction -- which is this one, because the view model is built on the UI thread.
+            var progress = new Progress<ScanReceiptStage>(stage => StatusMessage = Describe(stage));
+
+            var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr, progress));
+
+            StatusMessage = "Filling in the details...";
 
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
@@ -193,6 +226,7 @@ public partial class ScanReceiptViewModel : ObservableObject
             // Suggest category if merchant is known
             if (!string.IsNullOrWhiteSpace(Merchant))
             {
+                StatusMessage = "Suggesting a category...";
                 var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Merchant, Amount));
                 if (!string.IsNullOrWhiteSpace(categoryName))
                 {
@@ -207,8 +241,26 @@ public partial class ScanReceiptViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            StatusMessage = string.Empty;
         }
     }
+
+    /// <summary>
+    /// Turns a pipeline stage into the sentence shown under the spinner.
+    /// </summary>
+    /// <remarks>
+    /// THE WORDS LIVE HERE, NOT IN THE HANDLER. <see cref="ScanReceiptStage"/> deliberately carries
+    /// no text, so that the same stage can be worded for this screen and worded differently for the
+    /// live camera view, and so that translating them later (TD-45) touches presentation only.
+    /// Each is phrased as something still happening, because it is: the stage is reported as it
+    /// BEGINS.
+    /// </remarks>
+    private static string Describe(ScanReceiptStage stage) => stage switch
+    {
+        ScanReceiptStage.DetectingReceipt => "Looking for the receipt...",
+        ScanReceiptStage.ExtractingText => "Reading the text...",
+        _ => "Working...",
+    };
 
     [RelayCommand]
     private async Task SaveTransactionAsync()
@@ -242,30 +294,11 @@ public partial class ScanReceiptViewModel : ObservableObject
             return;
         }
 
-        // TD-19 at the point of intent. The aggregate and the command validator both enforce this,
-        // but neither can offer the user a way out; refusing here, with the figure and the button
-        // that fixes it already on screen, is the difference between an invariant and an obstacle.
-        if (!IsReconciled)
-        {
-            ErrorMessage =
-                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
-                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
-            return;
-        }
-
-        // TD-19 at the point of intent. The aggregate and the command validator both enforce this,
-        // but neither can offer the user a way out; refusing here, with the figure and the button
-        // that fixes it already on screen, is the difference between an invariant and an obstacle.
-        if (!IsReconciled)
-        {
-            ErrorMessage =
-                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
-                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
-            return;
-        }
-
         IsBusy = true;
         ErrorMessage = string.Empty;
+        // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
+        // user gets a scrim with no sentence under it.
+        StatusMessage = "Saving the transaction...";
 
         try
         {
@@ -306,6 +339,7 @@ public partial class ScanReceiptViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            StatusMessage = string.Empty;
         }
     }
 

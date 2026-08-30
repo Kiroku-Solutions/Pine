@@ -637,7 +637,94 @@ after TD-16 the file would be useless outside its vault anyway. Do not file it.
 
 ---
 
-## 11. What a failure means
+## 11. Receipt scan responsiveness — UX fix, not an audit item
+
+**Scope.** Windows only, `Receipt Scanner` screen. This section is not tied to a `60-Audit` roadmap
+row; it covers a defect reported directly by the product owner: **adding a photo froze the window
+and Windows drew its "not responding" ghost over it for several seconds.**
+
+**Why every row here is manual.** The cause was that the scan pipeline ran on the UI thread. No
+automated test in this repository can observe that — detecting it needs a real Avalonia dispatcher
+with a real window painting real frames, and the unit suite has none. A falsification mutation
+confirmed this directly: putting the image decode back on the UI thread leaves all 540 unit tests
+green. **The threading fix is a code-inspection claim until the rows below are executed.** Treat
+them as the actual verification, not as a formality.
+
+### The freeze is gone
+
+**11.1 [M] The window keeps painting during a scan.** *(the row this whole change exists for)*
+Open **Receipt Scanner**, click **Select Image...**, and choose a **large** photo — a real phone
+photo, 4000×3000 or bigger, not a small test file. While it processes, drag the Pine window around
+the screen and move the mouse over its buttons.
+*Expected:* the window **moves normally and keeps redrawing**. The title bar must not grey out, and
+Windows must never append "(No responde)" / "(Not Responding)" to the title.
+*This failing is the original bug, unfixed.*
+
+**11.2 [M] The spinner actually spins.**
+During the same scan, watch the progress bar in the overlay.
+*Expected:* it animates continuously. A **frozen** bar is worse than the old behaviour — it means
+the UI thread is blocked again and the overlay is now lying about it.
+
+**11.3 [M] The photo appears immediately.**
+Watch the moment the file dialog closes.
+*Expected:* the receipt image appears in the left panel **straight away**, before any text is
+extracted. Previously nothing appeared until the whole pipeline finished.
+
+### The overlay says what is happening
+
+**11.4 [M] The stage messages advance in order.**
+Watch the text under the spinner through a full scan.
+*Expected, in this order:* `Loading the image...` → `Looking for the receipt...` →
+`Reading the text...` → `Filling in the details...` → (if a merchant was found)
+`Suggesting a category...`.
+Each must appear **before** its slow step, never after it. `Reading the text...` is the long one.
+
+**11.5 [M] The overlay blocks the form underneath.**
+While the overlay is up, try clicking the Merchant box, the account dropdown and **Save
+Transaction**.
+*Expected:* nothing responds; clicks land on the scrim. The point is that an impatient second click
+cannot queue up behind the first.
+
+**11.6 [M] The overlay disappears on failure too, and says why.**
+Select an image that is clearly not a receipt (a screenshot, a photo of a wall).
+*Expected:* the overlay closes, the form becomes usable again, and the red error strip reads
+*"Failed to process receipt: The provided image does not appear to be a receipt."* The app must not
+be left permanently covered.
+
+**11.7 [M] Saving shows the overlay too.**
+Complete a scan, fill in the account, and press **Save Transaction**.
+*Expected:* the overlay appears with `Saving the transaction...` — not a blank scrim with no
+sentence under it.
+
+**11.8 [M] Text, not colour alone.**
+Screenshot the overlay and desaturate it.
+*Expected:* the stage is still readable from the **words** (`40-Accessibility`).
+
+### Known gaps — confirm, do not report
+
+**11.9 [G] A scan cannot be cancelled.**
+There is no Cancel button on the overlay. Once a scan starts it runs to completion. This was
+scoped out deliberately: cancelling means threading a `CancellationToken` through ONNX and
+PaddleOCR and proving both actually honour it between stages, which is a separate piece of work.
+Do not file it.
+
+**11.10 [G] The live camera scanner is a different code path.**
+`LiveScannerViewModel` already ran its loop off the UI thread and was not changed. If the **camera**
+view stutters, that is a separate defect from this one — record it as such rather than as a
+regression of §11.
+
+**11.11 [G] One status string is still in Spanish.**
+`ReceiptDetector` returns `"¡Captura perfecta!"` while every other string on these screens is
+English. Pre-existing, and it belongs with localisation (**TD-45**), which does not exist yet. Do
+not file it.
+
+**11.12 [G] The stage list is coarse.**
+There are two reported pipeline stages, not five. The pipeline genuinely has two steps; inventing
+finer granularity would be showing the user precision that does not exist. Do not file it.
+
+---
+
+## 12. What a failure means
 
 | Where it fails | Severity |
 |---|---|
@@ -658,7 +745,7 @@ after TD-16 the file would be useless outside its vault anyway. Do not file it.
 
 ---
 
-## 12. Not covered here
+## 13. Not covered here
 
 - **Android and iOS.** Not compilable locally; workloads absent. Nothing about those heads has ever
   been compiled, let alone run.

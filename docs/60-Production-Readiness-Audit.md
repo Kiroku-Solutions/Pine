@@ -3239,6 +3239,9 @@ The row this iteration closed is struck from §12.28's list. In order:
 
 - **TD-07 — re-arm CI.** Unchanged as the largest single risk, though this is the first iteration in
   four that did not edit `Pine.Ui.Android` or `Pine.Ui.Ios` blind.
+- **TD-93 — a way to test for UI-thread blocking.** Added by §12.31. TD-92 froze the app on every
+  receipt scan, shipped, and was fixed without one automated test ever changing colour. Until this
+  exists, every responsiveness claim in this codebase is a manual claim.
 - **TD-89 — make training opt-in.** New, and the sharpest thing found this iteration: putting the
   derived model inside the encryption boundary made it much more obvious that nobody ever agreed to
   its being produced in the first place.
@@ -3249,3 +3252,68 @@ The row this iteration closed is struck from §12.28's list. In order:
   more shared registration that used to be inline in a root.
 - Then **TD-78**, **TD-75**, **TD-81**, and **TD-91**.
 - **TD-84** last, unchanged.
+
+### 12.31 Out-of-band fix — the receipt scan froze the UI thread (TD-92)
+
+Not a roadmap row. Reported directly by the product owner: *"al añadir una foto aparece como que
+Windows no responde durante unos segundos"*, with the request to cover it up with a loading
+indicator.
+
+**The request could not be granted as stated, and saying so was the useful part.** A loading
+indicator already existed — `ScanReceiptView.axaml` bound an indeterminate `ProgressBar` to an
+`IsBusy` flag the view model set correctly. It never appeared to work because **the entire scan ran
+on the UI thread**, and a blocked UI thread does not animate a spinner any more than it repaints a
+window. Adding more indicators would have produced a *frozen* spinner, which reads as broken rather
+than as busy — strictly worse than the bare hang it replaced.
+
+| Where the UI thread was blocked | Fix |
+|---|---|
+| `ReceiptDetector.DetectReceiptConfidenceAsync` — JPEG decode, letterbox, pixel loop, ONNX run | CPU half split into a private sync method, called via `Task.Run` |
+| `ReceiptDetector.AnalyzeAndCropReceiptAsync` — the above plus perspective warp, denoise, sharpen | same |
+| `PaddleOcrEngine.ExtractTextAsync` — detection + recognition networks, the slowest stage | inference moved to `Task.Run` |
+| `ScanReceiptViewModel` — `new Bitmap(stream)` decoding a multi-megapixel photo | decoded on the thread pool, assigned on the UI thread |
+
+Every one of these was an `async Task` method whose signature promised to yield and whose body did
+not: after the opening `await`, which completed synchronously against a `MemoryStream`, the rest ran
+inline on the caller's thread. `OpenCvImageProcessor` had already been given `Task.Run` treatment at
+some earlier point; the other three never were.
+
+**The UX, once the indicator could actually run.** `ScanReceiptCommand` gained an optional
+`IProgress<ScanReceiptStage>`; the stage enum lives in `Pine.Core.Ai` and carries **no text**, so the
+words stay in the view model where localisation (TD-45) will need them. The thin progress bar was
+replaced by a scrim overlay carrying the stage sentence and the line *"This can take a few seconds
+on large photos"* — the expectation-setting half, which is what actually answers "so the user isn't
+frightened". The picked photo is now shown **before** the scan starts rather than after it finishes.
+
+**Found in passing and cleaned up:** `RecomputeReconciliation()` was called three times in a row in
+`LoadAccountsAsync`, and the entire `if (!IsReconciled)` guard block was duplicated **three times**
+in `SaveTransactionAsync`. Accidental copy-paste, harmless, removed.
+
+#### Verification
+
+| | |
+|---|---|
+| Builds | Core, Application, Infrastructure, **Ui.Avalonia**, Ui.Windows, Ui.Macos, Cli — 0 errors, 0 warnings each; Web 1 pre-existing wasm warning |
+| `dotnet test` — unit | **540 passed, 0 failed**, from 536 |
+| Mutations | 3 applied: 1 killed, **2 survived**, and the survivors are the point — see below |
+
+**The first mutation exposed a hole in my own test, which is why it is recorded rather than
+smoothed over.** Moving both `Progress.Report` calls to *after* their provider call — the exact
+defect of announcing a stage once it is already finished — left the original two tests green,
+because the observed order was unchanged. A third test was added asserting on **when**: each
+substitute snapshots what had been reported at the instant it was invoked. The mutation then failed,
+as it should have from the start.
+
+**The second survivor cannot be closed here, and must not be reported as if it were.** Putting the
+bitmap decode back on the UI thread leaves all 540 tests green. Nothing in this repository can
+observe "this ran on the UI thread" — it needs a live Avalonia dispatcher painting real frames.
+**The entire threading fix is therefore a code-inspection claim, not a tested one.** It is verified
+by `61-Manual-Test-Plan` §11 and nowhere else; §11.1 and §11.2 are the two rows that matter, and
+until someone runs them the honest status of this fix is "believed correct, unobserved".
+
+#### Rows the register gains
+
+| ID | Debt | Sev | Impact | Fix | Priority | Status |
+|---|---|---|---|---|---|---|
+| TD-92 | Async methods in the AI pipeline did CPU work inline, blocking the UI thread | 🟠 | The window stopped painting for seconds on every receipt scan and Windows marked the app "not responding"; the existing busy indicator could not animate | `Task.Run` around the CPU-bound halves of `ReceiptDetector` and `PaddleOcrEngine` | P1 | 🟢 **Fixed** (§12.31) — **untested by any automated test**, see `61-Manual-Test-Plan` §11 |
+| TD-93 | No test can detect UI-thread blocking anywhere in the app | 🟡 | TD-92 was shipped, lived and was fixed without a single test changing state; the same regression can return silently at any time | A UI-thread harness (an Avalonia headless dispatcher) asserting that view-model entry points yield | P2 | 🔴 Open |

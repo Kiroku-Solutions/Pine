@@ -56,6 +56,20 @@ public sealed class ReceiptDetector : IReceiptDetector
         return conf > 0.5f;
     }
 
+    /// <summary>
+    /// Scores how confidently the image contains a receipt.
+    /// </summary>
+    /// <remarks>
+    /// THE ONLY WORK DONE ON THE CALLER'S THREAD HERE IS READING THE STREAM. Everything after it --
+    /// JPEG decode, letterbox resize, the pixel loop, and the ONNX session run -- is several seconds
+    /// of pure CPU, and it used to run inline. Because this method is awaited from an Avalonia view
+    /// model, "inline" meant the UI thread: the window stopped painting and Windows drew its "not
+    /// responding" ghost over it. The busy indicator on the scan screen could not help, because a
+    /// blocked UI thread cannot animate a spinner either.
+    ///
+    /// So the CPU half is pushed to the thread pool. That is what <c>OpenCvImageProcessor</c>
+    /// already did, and this type simply never got the same treatment.
+    /// </remarks>
     public async Task<float> DetectReceiptConfidenceAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -69,7 +83,13 @@ public sealed class ReceiptDetector : IReceiptDetector
         using var memoryStream = new MemoryStream();
         await imageStream.CopyToAsync(memoryStream, cancellationToken);
         var bytes = memoryStream.ToArray();
-        
+
+        return await Task.Run(() => ScoreReceiptConfidence(_session, bytes), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The CPU-bound half of <see cref="DetectReceiptConfidenceAsync"/>. Never call this on the UI thread.</summary>
+    private float ScoreReceiptConfidence(InferenceSession session, byte[] bytes)
+    {
         using var mat = Cv2.ImDecode(bytes, ImreadModes.Color);
         if (mat.Empty()) return 0f;
 
@@ -114,11 +134,11 @@ public sealed class ReceiptDetector : IReceiptDetector
             }
         }
 
-        var inputName = _session.InputMetadata.Keys.First();
+        var inputName = session.InputMetadata.Keys.First();
         var inputs = new[] { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
 
         // 3. ONNX Inference
-        using var results = _session.Run(inputs);
+        using var results = session.Run(inputs);
         
         // 4. Process YOLOv8 output (typically [1, 4+classes, 8400] or [1, 4+classes+32, 8400] for seg)
         var outputTensor = results[0].AsTensor<float>();
@@ -162,6 +182,16 @@ public sealed class ReceiptDetector : IReceiptDetector
         return maxConfidence;
     }
 
+    /// <summary>
+    /// Detects the receipt, corrects its perspective and returns both a display image and an
+    /// OCR-optimised one.
+    /// </summary>
+    /// <remarks>
+    /// OFF THE CALLER'S THREAD, for the reason given on <see cref="DetectReceiptConfidenceAsync"/>.
+    /// This method is the heavier of the two -- it runs the same inference and then a perspective
+    /// warp, a denoise and a sharpen on top -- so it is the one that produced the multi-second
+    /// freeze the scan screen was showing.
+    /// </remarks>
     public async Task<Pine.Core.Ai.ReceiptAnalysisResult> AnalyzeAndCropReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -175,7 +205,13 @@ public sealed class ReceiptDetector : IReceiptDetector
         using var memoryStream = new MemoryStream();
         await imageStream.CopyToAsync(memoryStream, cancellationToken);
         var bytes = memoryStream.ToArray();
-        
+
+        return await Task.Run(() => AnalyzeAndCrop(_session, bytes), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The CPU-bound half of <see cref="AnalyzeAndCropReceiptAsync"/>. Never call this on the UI thread.</summary>
+    private static Pine.Core.Ai.ReceiptAnalysisResult AnalyzeAndCrop(InferenceSession session, byte[] bytes)
+    {
         using var mat = Cv2.ImDecode(bytes, ImreadModes.Color);
         if (mat.Empty()) return new Pine.Core.Ai.ReceiptAnalysisResult(0f, false, "Invalid image format", null);
 
@@ -220,11 +256,11 @@ public sealed class ReceiptDetector : IReceiptDetector
             }
         }
 
-        var inputName = _session.InputMetadata.Keys.First();
+        var inputName = session.InputMetadata.Keys.First();
         var inputs = new[] { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
 
         // 3. ONNX Inference
-        using var results = _session.Run(inputs);
+        using var results = session.Run(inputs);
         
         // 4. Process YOLOv8 output
         var outputTensor = results[0].AsTensor<float>();
