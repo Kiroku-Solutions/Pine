@@ -24,6 +24,16 @@ namespace Pine.Core.Security;
 /// <c>IVaultSession</c> extends this interface, so there is one implementation and no adapter. The
 /// binding from this interface to that session is made once, in <c>AddPineApplication</c>.
 /// </para>
+/// <para>
+/// AMENDED BY TD-16, AND THE AMENDMENT MATTERS. The paragraphs above describe this interface as
+/// carrying "exactly one bit" of the session, and that is no longer the whole story:
+/// <see cref="IVaultDataKeyAccessor"/> extends it with the data key and the vault directory,
+/// because the ML categoriser must encrypt its model under that key and lives in
+/// <c>Pine.Infrastructure</c>. THIS interface still carries one bit and components that need only
+/// the bit -- <c>PineDatabaseHealthProbe</c> is still one -- should still depend on it rather than
+/// on the accessor. But it is no longer true that infrastructure can see nothing else, and this
+/// comment says so rather than reading as a guarantee the type graph stopped making.
+/// </para>
 /// </remarks>
 public interface IVaultLockState
 {

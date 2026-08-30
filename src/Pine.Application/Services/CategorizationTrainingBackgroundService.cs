@@ -44,9 +44,20 @@ public class CategorizationTrainingBackgroundService : BackgroundService
             {
                 await ProcessBatchAsync(stoppingToken);
             }
+            catch (Pine.Core.Security.VaultLockedException)
+            {
+                // The typed form (TD-16). Anything reached through IVaultFileCipher or the model
+                // store reports a locked vault as this rather than as a string to be sniffed.
+                _logger.LogDebug("Skipping training cycle: Vault is locked.");
+            }
             catch (InvalidOperationException ex) when (ex.Message.Contains("Vault"))
             {
-                // Vault is still locked, skip this cycle silently
+                // The UNTYPED form, still reachable: the PineDbContext factory in each composition
+                // root throws InvalidOperationException("Cannot access database: Vault is locked.")
+                // and the repositories resolved above go through it. This clause is TD-23's example
+                // of message sniffing and it stays until that factory throws a type instead --
+                // deleting it now would turn "the user locked up and went home" back into an Error
+                // logged every five minutes.
                 _logger.LogDebug("Skipping training cycle: Vault is locked.");
             }
             catch (Exception ex)

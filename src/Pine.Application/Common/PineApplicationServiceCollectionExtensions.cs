@@ -85,6 +85,16 @@ public static class PineApplicationServiceCollectionExtensions
         services.TryAddSingleton<Pine.Core.Security.IVaultLockState>(
             sp => sp.GetRequiredService<Pine.Application.Security.IVaultSession>());
 
+        // 5. IVaultDataKeyAccessor -> the same IVaultSession singleton (TD-16). Bound beside the
+        //    line above, for the same reason and with the same laziness: AesGcmVaultFileCipher
+        //    lives in Pine.Infrastructure and needs the vault's data key to seal the categoriser's
+        //    model file, and Pine.Infrastructure cannot reference IVaultSession. Forwarding rather
+        //    than registering a second implementation is what keeps "the open vault" a single
+        //    object -- two implementations would be two answers to "is it locked", and the whole
+        //    point of the accessor is that its answer is the session's.
+        services.TryAddSingleton<Pine.Core.Security.IVaultDataKeyAccessor>(
+            sp => sp.GetRequiredService<Pine.Application.Security.IVaultSession>());
+
         return services;
     }
 

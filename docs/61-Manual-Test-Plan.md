@@ -540,7 +540,104 @@ Android and iOS have never been compiled. Test on Windows and record that as the
 
 ---
 
-## 10. What a failure means
+## 10. Per-vault categorisation model — Phase 1 item 4, TD-16
+
+**Scope.** Windows only. `Pine.Ui.Macos`, `Web`, `Android` and `Cli` register no AI subsystem at
+all (**TD-90**), so there is nothing on those heads to exercise. Record that as the scope rather
+than as a failure.
+
+**Why any of this is manual.** 62 unit tests and 6 integration tests cover the cipher, the store and
+the categoriser, and none of them has ever run inside the application. What follows is the part that
+only a running Pine can answer: whether the model is produced at all, where it lands, and whether
+the vault it belongs to is the vault that gets it.
+
+**Setup.** You need **two** vaults. Create `Personal` and `Business` with different passwords, and
+know where each directory is. You will need a file explorer alongside Pine.
+
+### The model is produced, and lands inside the vault
+
+**10.1 [M] A fresh vault has no model.**
+Create `Personal`, unlock it, and look in its directory.
+*Expected:* no `ai` sub-directory. Pine ships no default model (`32-AI-Training` §6.1 says it does;
+it does not — audit §12.29 INCOMPLETE item 4).
+
+**10.2 [M] Training produces a model after enough categorised splits.**
+Record at least **10** transactions with a category on a split, then leave Pine running and
+unlocked. The trainer waits one minute after start, then polls every five, and needs ten *new*
+categorised splits past its watermark.
+*Expected:* within roughly six minutes, `Personal/ai/categorizer.model` appears.
+*If it does not:* check the JSONL log for `ai.model_store.*` events before filing anything.
+
+**10.3 [M] The model is not readable.**
+Open `Personal/ai/categorizer.model` in a hex viewer, or just a text editor.
+*Expected:* it begins with the ASCII bytes `PINEFC1` followed by a NUL. It must **not** begin with
+`PK` — that would be a plaintext ML.NET zip, which is precisely the pre-TD-16 defect. Search it for
+one of the payees you typed; you must not find it.
+
+**10.4 [M] No model file appears next to the executable.**
+Look in Pine's install directory for `Assets/Ai/categorizer_model.zip`.
+*Expected:* it does not exist and is never created. That path was the defect.
+
+**10.5 [M] No stray temporary file survives.**
+Look in `Personal/ai/` after a training cycle.
+*Expected:* exactly one file, `categorizer.model`. A leftover `.tmp` means the write-then-move path
+failed halfway.
+
+### The model belongs to one vault
+
+**10.6 [M] Suggestions reflect what THIS vault learned.**
+In `Personal`, start recording a transaction with a payee you have categorised many times.
+*Expected:* the category is suggested.
+
+**10.7 [M] The other vault does not inherit them.** *(the central row)*
+Lock `Personal`. Unlock `Business`. Record a transaction with **the same payee**.
+*Expected:* **no suggestion.** Business has never seen that payee. A suggestion here means one
+vault's learned spending is leaking into the other through the categoriser, without either database
+being decrypted — the exact failure TD-16 exists to prevent, and the most important row on this page.
+
+**10.8 [M] Copying the file between vaults does not transplant the model.**
+With Pine closed, copy `Personal/ai/categorizer.model` over `Business/ai/categorizer.model`
+(create the directory if needed). Open `Business` and try 10.7 again.
+*Expected:* still no suggestion, and the app behaves normally. The file is sealed under a key
+derived from Personal's data key, so Business authenticates it, fails, discards it and carries on.
+Check the log for `ai.model_store.authentication_failed`.
+
+**10.9 [M] A corrupt model is survivable, not fatal.**
+With Pine closed, flip a byte in `Personal/ai/categorizer.model` (or replace it with random bytes).
+Open `Personal`.
+*Expected:* the vault opens **normally**. Categorisation simply stops suggesting until the next
+training cycle rebuilds the model. If the vault refuses to open, or an error dialog appears, that is
+a real failure — a damaged derived cache must never block access to a user's own data.
+
+**10.10 [M] Locking the vault stops categorisation without an error.**
+Unlock `Personal`, wait for the ten-minute idle lock (or lock manually), and leave Pine running past
+the next five-minute training tick.
+*Expected:* no error dialog, no error in the log. At most a debug line saying the cycle was skipped.
+
+### Known gaps — confirm, do not report
+
+**10.11 [G] Training is not opt-in and cannot be turned off.**
+Look in **Settings** for any control over AI training or categorisation.
+*Expected:* **there is none.** Training runs unconditionally every five minutes on every unlocked
+vault. `32-AI-Training` §12.2 says the fine-tune is opt-in per profile; it is not. This is **TD-89**,
+registered in audit §12.29. Confirm and do not file it.
+
+**10.12 [G] The model is not included in backups.**
+Export or trigger a backup and inspect `Personal/backups/`.
+*Expected:* only `pine-*.db`. The model is derived data and is deliberately not backed up; a
+restored vault retrains. Audit §12.29 INCOMPLETE item 6. Do not file it.
+
+**10.13 [G] Suggestions may be poorer than the training data implies.**
+Training learns from the payee alone, while the import path asks about payee *and* notes. The model
+is therefore served text shaped unlike what it was fitted on. This is **TD-91**. Do not file it.
+
+**10.14 [G] There is no way to inspect, export or delete the model from inside Pine.**
+Deleting the file by hand is the only mechanism, and it simply retrains. No export path exists, and
+after TD-16 the file would be useless outside its vault anyway. Do not file it.
+
+---
+
+## 11. What a failure means
 
 | Where it fails | Severity |
 |---|---|
@@ -561,7 +658,7 @@ Android and iOS have never been compiled. Test on Windows and record that as the
 
 ---
 
-## 11. Not covered here
+## 12. Not covered here
 
 - **Android and iOS.** Not compilable locally; workloads absent. Nothing about those heads has ever
   been compiled, let alone run.

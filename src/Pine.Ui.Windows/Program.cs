@@ -14,6 +14,7 @@ using Pine.Infrastructure.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Categorisation;
 using Pine.Infrastructure.Diagnostics;
+using Pine.Infrastructure.Security;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Services;
@@ -99,9 +100,16 @@ sealed class Program
         services.AddTransient<LiveScannerViewModel>();
         services.AddTransient<CropReceiptViewModel>();
 
-        // AI Subsystem
+        // AI Subsystem.
+        //
+        // AddPineCategorisation() (TD-16) registers the vault-scoped categoriser, the model store
+        // and the file cipher, with ICategorizationTrainer FORWARDING to the same instance as
+        // IMlNetCategorizer. It lives in Pine.Infrastructure rather than inline here so that the
+        // one-instance relationship is assertable by a test -- a composition root inside a WinExe
+        // is not reachable from one, which is why the two-instance defect it replaces went
+        // unnoticed. MUST come after AddPineApplication(), which forwards IVaultDataKeyAccessor.
+        services.AddPineCategorisation();
         services.AddSingleton<IAIProvider, DefaultLocalAiProvider>();
-        services.AddSingleton<ICategorizationTrainer, MlNetCategorizer>();
         services.AddSingleton<IImageProcessor, OpenCvImageProcessor>();
         services.AddSingleton<IHostedService, CategorizationTrainingBackgroundService>();
 
