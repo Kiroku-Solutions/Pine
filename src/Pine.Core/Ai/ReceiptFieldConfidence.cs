@@ -44,6 +44,11 @@ public readonly record struct FieldConfidence(double Score, ConfidenceBand Band)
     public static FieldConfidence NotFound { get; } = new(0.0, ConfidenceBand.NotFound);
 
     /// <summary>Maps a raw score to its band.</summary>
+    /// <remarks>
+    /// This method performs no validation. It maps whatever it is given to a band. Rejecting
+    /// out-of-range and non-finite input is <see cref="FromWordScores"/>'s job at the boundary
+    /// where untrusted engine output enters; <see cref="BandFor"/> is a pure lookup function.
+    /// </remarks>
     public static ConfidenceBand BandFor(double score) => score switch
     {
         >= HighThreshold => ConfidenceBand.High,
@@ -69,7 +74,7 @@ public readonly record struct FieldConfidence(double Score, ConfidenceBand Band)
         var lowest = double.MaxValue;
         foreach (var score in scores)
         {
-            if (score < 0f || score > 1f)
+            if (!float.IsFinite(score) || score < 0f || score > 1f)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(scores), score, "An OCR word confidence must lie between 0 and 1.");

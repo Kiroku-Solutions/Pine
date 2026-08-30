@@ -60,4 +60,20 @@ public class ReceiptFieldConfidenceTests
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Fact]
+    public void A_negative_score_is_rejected()
+    {
+        var act = () => FieldConfidence.FromWordScores([-0.1f]);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void A_NaN_score_is_rejected()
+    {
+        var act = () => FieldConfidence.FromWordScores([float.NaN]);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }
