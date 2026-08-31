@@ -76,6 +76,44 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsImagePreviewOpen { get; set; }
 
+    /// <summary>How much the OCR engine stands behind the extracted merchant name (TD-22).</summary>
+    [ObservableProperty]
+    public partial ConfidenceBand MerchantConfidence { get; private set; }
+
+    /// <summary>How much the OCR engine stands behind the extracted total (TD-22).</summary>
+    [ObservableProperty]
+    public partial ConfidenceBand TotalConfidence { get; private set; }
+
+    /// <summary>How much the OCR engine stands behind the extracted date (TD-22).</summary>
+    [ObservableProperty]
+    public partial ConfidenceBand DateConfidence { get; private set; }
+
+    /// <summary>
+    /// True when the extracted date has an equally plausible alternative reading (TD-21), e.g. a
+    /// receipt dated 05/03/2026 could be 5 March or 3 May depending on locale.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsDateAmbiguous { get; private set; }
+
+    /// <summary>
+    /// The other plausible reading of <see cref="Date"/> when <see cref="IsDateAmbiguous"/> holds.
+    /// </summary>
+    [ObservableProperty]
+    public partial DateTimeOffset? AlternativeDate { get; private set; }
+
+    /// <summary>
+    /// The sentence shown next to the date field while it is ambiguous, or null otherwise. Notified
+    /// from both halves of the ambiguity state so the binding tracks either one changing.
+    /// </summary>
+    public string? DateAmbiguityMessage =>
+        IsDateAmbiguous && AlternativeDate.HasValue
+            ? $"This could also be {AlternativeDate:d MMMM yyyy}. Check the receipt."
+            : null;
+
+    partial void OnIsDateAmbiguousChanged(bool value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
+
+    partial void OnAlternativeDateChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
+
     public ObservableCollection<Account> Accounts { get; } = new();
 
     public ObservableCollection<ReceiptLineItemViewModel> LineItems { get; } = new();
@@ -176,6 +214,15 @@ public partial class ScanReceiptViewModel : ObservableObject
         ErrorMessage = string.Empty;
         StatusMessage = "Loading the image...";
 
+        // A second scan must not inherit the first scan's confidence bands or ambiguity: without
+        // this reset, a clean re-scan after a weak one would keep showing the old warnings until
+        // new ones happened to overwrite every field.
+        MerchantConfidence = ConfidenceBand.NotFound;
+        TotalConfidence = ConfidenceBand.NotFound;
+        DateConfidence = ConfidenceBand.NotFound;
+        IsDateAmbiguous = false;
+        AlternativeDate = null;
+
         try
         {
             // Show the picked image immediately, decoded off the UI thread.
@@ -198,6 +245,12 @@ public partial class ScanReceiptViewModel : ObservableObject
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
             Date = result.Date ?? DateTimeOffset.Now;
+
+            MerchantConfidence = result.Confidence.Merchant.Band;
+            TotalConfidence = result.Confidence.Total.Band;
+            DateConfidence = result.Confidence.Date.Band;
+            IsDateAmbiguous = result.DateIsAmbiguous;
+            AlternativeDate = result.AlternativeDate;
 
             LineItems.Clear();
             if (result.LineItems != null)
@@ -360,6 +413,22 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     [RelayCommand]
     private void CloseImagePreview() => IsImagePreviewOpen = false;
+
+    /// <summary>
+    /// Swaps <see cref="Date"/> and <see cref="AlternativeDate"/> (TD-21). The extraction cannot
+    /// tell which reading is correct, so this never resolves the ambiguity -- it only lets the user
+    /// pick the other one, and leaves <see cref="IsDateAmbiguous"/> set so they can swap back.
+    /// </summary>
+    [RelayCommand]
+    private void UseAlternativeDate()
+    {
+        if (!AlternativeDate.HasValue)
+        {
+            return;
+        }
+
+        (Date, AlternativeDate) = (AlternativeDate.Value, Date);
+    }
 
     [RelayCommand]
     private void AddLineItem()
