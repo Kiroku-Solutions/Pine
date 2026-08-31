@@ -35,7 +35,7 @@ public class ScanReceiptCommandTests
         mockAiProvider.DetectReceiptAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
-        var extractionResult = new ReceiptExtractionResult("Test Merchant", 10.0m, "USD", DateTimeOffset.UtcNow, 0.9);
+        var extractionResult = new ReceiptExtractionResult("Test Merchant", 10.0m, "USD", DateTimeOffset.UtcNow, ReceiptConfidence.None);
         mockAiProvider.ExtractReceiptDataAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(extractionResult));
 
@@ -67,7 +67,7 @@ public class ScanReceiptCommandTests
         provider.DetectReceiptAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
         provider.ExtractReceiptDataAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ReceiptExtractionResult("M", 1m, "USD", DateTimeOffset.UtcNow, 0.5)));
+            .Returns(Task.FromResult(new ReceiptExtractionResult("M", 1m, "USD", DateTimeOffset.UtcNow, ReceiptConfidence.None)));
 
         var stages = new List<ScanReceiptStage>();
         var handler = new ScanReceiptCommandHandler(provider);
@@ -116,7 +116,7 @@ public class ScanReceiptCommandTests
             .Returns(_ =>
             {
                 reportedWhenExtractRan = stages.ToArray();
-                return Task.FromResult(new ReceiptExtractionResult("M", 1m, "USD", DateTimeOffset.UtcNow, 0.5));
+                return Task.FromResult(new ReceiptExtractionResult("M", 1m, "USD", DateTimeOffset.UtcNow, ReceiptConfidence.None));
             });
 
         var handler = new ScanReceiptCommandHandler(provider);
@@ -166,7 +166,7 @@ public class ScanReceiptCommandTests
         provider.DetectReceiptAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
         provider.ExtractReceiptDataAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ReceiptExtractionResult("M", 2m, "USD", DateTimeOffset.UtcNow, 0.5)));
+            .Returns(Task.FromResult(new ReceiptExtractionResult("M", 2m, "USD", DateTimeOffset.UtcNow, ReceiptConfidence.None)));
 
         var handler = new ScanReceiptCommandHandler(provider);
 

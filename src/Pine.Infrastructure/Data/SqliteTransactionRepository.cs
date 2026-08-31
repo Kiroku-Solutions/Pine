@@ -54,7 +54,11 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         var totalCount = await query.CountAsync(cancellationToken);
         
         var items = await query
-            .OrderByDescending(t => t.Date)
+            // DateUtc, not Date. Date carries the user's offset and this provider stores it as text
+            // with that offset appended, so ordering it compares local wall clocks: a purchase at
+            // 23:00+02:00 sorts after one at 18:00-05:00 that happened two hours later. DateUtc is
+            // the same instant with no offset in its text form, and it is indexed descending.
+            .OrderByDescending(t => t.DateUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -197,6 +201,30 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         // Ordinal, so the caller's lookups cannot be re-interpreted by the machine's culture; an
         // import key is an opaque token, never a word to be compared linguistically.
         return new HashSet<string>(matches, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Returns the transaction on the given account carrying the given import key, if one exists.
+    /// Read-only; nothing is staged or flushed.
+    /// </summary>
+    /// <remarks>
+    /// The comparison runs IN SQL against the same <c>(AccountId, ImportKey)</c> index
+    /// <see cref="GetExistingImportKeysAsync"/> relies on — the migration that added it
+    /// (<c>20260827141109</c>) already covers this shape of query, so no new index is needed here.
+    /// </remarks>
+    /// <param name="accountId">The account being checked.</param>
+    /// <param name="importKey">The key to look up.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching transaction, or null when the account holds none with that key.</returns>
+    public async Task<Transaction?> GetByImportKeyAsync(
+        Guid accountId,
+        string importKey,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+            .Include(t => t.Splits)
+            .FirstOrDefaultAsync(t => t.AccountId == accountId && t.ImportKey == importKey, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

@@ -724,7 +724,217 @@ finer granularity would be showing the user precision that does not exist. Do no
 
 ---
 
-## 12. What a failure means
+## 12. The transaction list opens at all — Phase 1 item 5a, TD-94
+
+**Read this before running it.** Until iteration 15, `GetPagedAsync` ordered by a `DateTimeOffset`,
+which the EF SQLite provider refuses to translate: it throws rather than sorting. The transaction
+list screen and the dashboard's recent-transactions widget are its only two callers, so **both threw
+every time they loaded** — through an unknown number of releases, under a fully green test suite. An
+automated test now executes that query against a real encrypted vault, which did not exist before,
+but no automated test opens a window. These rows are the only thing that confirms the screen works.
+
+### 12.1 The list loads
+
+1. Open a vault with at least three transactions.
+2. Navigate to **Transactions**.
+3. **Expected:** the list renders. No error dialog, no blank pane, no "not responding".
+4. **If it throws here, stop.** The fix did not work and nothing below is meaningful.
+
+### 12.2 The dashboard widget loads
+
+1. Navigate to the dashboard.
+2. **Expected:** the recent-transactions widget shows rows rather than an empty or errored state.
+
+### 12.3 Newest first, and correct across a time-zone change
+
+This is the half an index alone would not have fixed.
+
+1. Add a transaction and let the date default to now. Note the time shown.
+2. Change the machine's time zone by several hours in a direction that moves the wall clock
+   *backwards* (for example Madrid to a US zone).
+3. Add a second transaction, again letting the date default to now. It is genuinely later in real
+   time, but its wall clock reads earlier.
+4. Open **Transactions**.
+5. **Expected:** the second transaction appears **above** the first. Ordering is by instant.
+6. **If the older one is on top**, ordering has fallen back to wall-clock text — the defect
+   `Repositories/TransactionOrderingTests` pins.
+7. Restore the machine's time zone.
+
+### 12.4 Amounts still read correctly after the storage change
+
+Money is now stored as an integer count of ten-thousandths rather than as decimal text, and
+`Money.ToString()` was changed so that this cannot show through.
+
+1. Look at any transaction list, the balance widget and an account's balance.
+2. **Expected:** amounts show their currency's normal number of decimals — `12.00 USD`, not
+   `12 USD` and not `12.3400 USD`. A JPY account shows no decimals at all.
+3. **Expected:** no amount has changed value. Compare against what the same vault showed before
+   upgrading, if you have it.
+
+### 12.5 An existing vault upgrades
+
+1. Take a copy of a vault created before this release. **Keep the copy** — the migrator makes its
+   own backup, but a second one costs nothing.
+2. Open it.
+3. **Expected:** it opens, every balance is unchanged to the cent, and the transaction list renders.
+4. **If it refuses to open with a message naming `pine_migration_refuses_...`**, that is the
+   migration declining to damage data — an amount beyond four decimals, or a transaction whose
+   account is missing. Report the message; do not work around it.
+
+### Known gaps — confirm, do not report
+
+- **Deleting an account with transactions now fails** rather than orphaning them. There is no delete
+  button in the UI, so this is unreachable by hand today.
+- **Sub-millisecond ordering for rows migrated from an older vault.** The backfill resolves to the
+  millisecond. Two transactions in the same millisecond may tie; new rows carry full precision.
+
+## 13. Receipt reconciliation, and money at its own scale — Phase 1 item 6, TD-19 / TD-75
+
+**Read this first.** Iteration 9 built the reconciliation panel and wrote, in audit §12.20, that it
+had *never been rendered* and needed a manual section of its own. Seven iterations later that section
+did not exist. This is it. Everything below is covered by view-model tests and by nothing that draws
+a pixel — and TD-94, a primary screen that threw on every load under a fully green suite, is what
+that gap looks like when it goes unwatched.
+
+### 13.1 The panel appears, and the difference is live
+
+1. Open **Scan Receipt** and pick a photo, or add line items by hand with **+ Add Item**.
+2. Select an account.
+3. Enter a transaction total of `100.00` and one line item priced `60.00`.
+4. **Expected:** a reconciliation panel appears showing "Items total" `60.00` and an unexplained
+   difference of `40.00`.
+5. Edit the line's price to `100.00`.
+6. **Expected:** the difference falls to `0.00` **as you type**, and the error sub-panel disappears.
+
+### 13.2 Saving is refused while a difference is outstanding
+
+1. Leave a difference of `40.00` on screen.
+2. Press **Save Transaction**.
+3. **Expected:** it refuses, with a message naming both figures — the items total and the shortfall.
+4. **If it saves**, the invariant is not being enforced at the point of intent and this is a defect.
+
+### 13.3 The one-click adjustment closes it exactly
+
+1. With `40.00` outstanding, choose a kind from the picker — **Tax**, **Tip**, **Discount**,
+   **Deposit**, **Rounding** or **Unattributed**.
+2. Press **Record difference**.
+3. **Expected:** one new line appears for exactly `40.00`, described by the kind you chose, and the
+   difference becomes `0.00`.
+4. **Expected:** editing that line's quantity does **not** recompute its total — an adjustment is not
+   a quantity times a price.
+5. Save. **Expected:** it succeeds.
+
+### 13.4 Money is written at its currency's scale
+
+This is TD-75. Use three accounts if you can: one **USD**, one **JPY**, one **KWD**.
+
+1. Look at the balance widget, the recent-transactions widget, the budgets screen and the dashboard
+   total.
+2. **Expected — USD:** two decimals, e.g. `1,234.56`.
+3. **Expected — JPY:** **no** decimals at all, e.g. `1,500`. A yen has no minor unit; `1,500.00` is
+   the defect.
+4. **Expected — KWD:** **three** decimals, e.g. `12.345`. A trailing digit dropped is the defect.
+5. **Expected everywhere:** thousands are grouped, using your machine's separators.
+
+### 13.5 The dashboard does not invent a total
+
+The defect this replaced showed a number that was not a quantity of anything.
+
+1. With a USD account holding `1000` and a EUR account holding `900`, look at the dashboard's
+   headline balance.
+2. **Expected:** two figures, one per currency — `900.00 EUR · 1,000.00 USD`.
+3. **If you see a single figure near `1900`**, currencies are being added together again.
+4. **Expected:** no currency symbol that belongs to your machine's locale rather than to the money.
+   On a Spanish-locale machine a dollar balance must **not** read `1.234,56 € USD`.
+
+### Known gaps — confirm, do not report
+
+- **The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
+  hardcoded to zero. The *formatting* of those figures is what §13.4 checks; the figures themselves
+  are not yet real.
+- **The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
+  identifier, not a name.
+- **The difference shown before an account is selected** may differ slightly from the one shown after
+  (TD-100). Only the second decides whether a save is allowed.
+
+### 13.6 An ambiguous date is asked about, never guessed — TD-21
+
+Scan a receipt whose date is printed as an ambiguous `dd/MM` vs `MM/dd` string, for example
+`05/03/2026`. Any value where both components are 12 or below will do.
+
+**Expect:** the date field is filled with the reading your machine's locale implies — day-first on
+`es-EC` or `en-GB`, month-first on `en-US` — and a warning row appears beneath it reading *"This could
+also be 3 May 2026. Check the receipt."* with a **Use this date instead** button.
+
+**Then press the button.** The two readings swap. The warning stays on screen, and pressing the button
+again swaps them back.
+
+**This is the point of the test:** the warning does not disappear once you have answered it. The
+question stays open and the swap stays reversible, because nothing in this pipeline decides a date on
+the user's behalf. If the warning vanishes after one press, that is a regression.
+
+Now scan a receipt dated `23/03/2026` — a day above 12 has only one reading. **Expect no warning at
+all.** A prompt on an unambiguous date is noise, and noise trains users to dismiss the prompt that
+matters.
+
+### 13.7 Weak OCR fields are flagged, and "not found" reads differently from "misread" — TD-22
+
+Scan a receipt where at least one field reads poorly — a creased, faded or partly shadowed total works;
+so does photographing at a steep angle.
+
+**Expect:** a hint in the warning colour beneath the affected field. There is **no percentage anywhere
+on the screen** — if you see one, the old fabricated score has come back.
+
+Two wordings exist and they are not interchangeable:
+
+- *"Low confidence — please check this."* — the OCR read something, badly. You are being asked to
+  **verify** a value that is already in the box.
+- *"Not found — please fill this in."* — no text produced this field at all. You are being asked to
+  **supply** a value.
+
+**Check both appear in the right circumstances.** Scan a receipt with no recognisable merchant line and
+confirm the merchant field says *not found*, not *low confidence*. Collapsing those two into one
+message is the original defect this row closed, so seeing the same sentence in both cases is a failure,
+not a cosmetic difference.
+
+A well-lit, flat receipt should show **no hints at all**.
+
+### 13.8 A duplicate receipt is warned about, and can still be saved — TD-20
+
+Scan a receipt and save it. Then scan the same receipt again, against the same account.
+
+**Expect:** on pressing Save, the transaction is **not** written. A warning appears reading *"This looks
+like a duplicate of 24.50 to ACME on 2026-03-05. Save again to add it anyway."*
+
+**Press Save a second time without changing anything.** The transaction **is** written and you are
+taken to the transaction list.
+
+That second press is the requirement, not a convenience: two identical coffees on the same day are two
+real purchases, and this feature is a warning, never a silent drop. If the second press is refused, the
+feature is destroying data.
+
+**Then test that an edit re-arms the check.** Scan the duplicate again, get the warning, and this time
+change the date by one day before pressing Save. Expect the transaction to be written with no second
+warning — it is genuinely a different transaction now.
+
+**And the reverse.** Get the warning, change the date, change it *back*, then press Save. Expect the
+warning again, because you are once more about to write the duplicate.
+
+Finally, confirm the amount in the warning is shown as `24.50` and not `24,50`, whatever your machine's
+locale — the figure is deliberately not localised, so that a support conversation and this document
+describe the same string.
+
+### Known gaps for §13.6–13.8 — confirm, do not report
+
+- **No per-line-item confidence is shown** (TD-101), only merchant, total and date. The line items
+  table carries no bands at all; that is deliberate for now.
+- **A correctly-read total sitting on the same printed line as a badly-read neighbour will show a low
+  band** (audit §12.38). Confidence is attributed at the line level, not the word level.
+- **The duplicate check compares merchant, calendar date, signed amount, currency and account.** Two
+  genuinely different purchases identical in all five will warn. That is the intended trade: a false
+  warning is visible and dismissible, a false "not a duplicate" double-counts money.
+
+## 14. What a failure means
 
 | Where it fails | Severity |
 |---|---|
@@ -745,7 +955,15 @@ finer granularity would be showing the user precision that does not exist. Do no
 
 ---
 
-## 13. Not covered here
+## 15. Not covered here
+
+- **Concurrency conflicts (TD-17).** Every aggregate now carries a version, and a write against a row
+  that changed after it was read is refused rather than silently overwriting. There is deliberately
+  **no manual row for it**: producing a conflict needs two overlapping writes to the same row, and
+  the UI offers no way to arrange that by hand. It is covered by `Data/ConcurrencyTokenTests`, which
+  drives two contexts over one vault file. What a user would see if one ever happened is **not**
+  covered anywhere — nothing catches the exception yet (TD-98).
+
 
 - **Android and iOS.** Not compilable locally; workloads absent. Nothing about those heads has ever
   been compiled, let alone run.

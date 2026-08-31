@@ -50,6 +50,9 @@ public static class ImportKeyFactory
     /// <summary>The scheme prefix for keys derived by hashing the content of an imported row.</summary>
     public const string DerivedSchemePrefix = "h1:";
 
+    /// <summary>The scheme prefix for keys derived from a scanned receipt.</summary>
+    public const string ReceiptSchemePrefix = "s1:";
+
     /// <summary>The maximum length a key may have, matching the persisted column width.</summary>
     public const int MaxLength = 128;
 
@@ -155,6 +158,61 @@ public static class ImportKeyFactory
             .ToString();
 
         return DerivedSchemePrefix + Hash(canonical);
+    }
+
+    /// <summary>
+    /// Derives the key of a scanned receipt, so a second scan of the same purchase can be recognised
+    /// (TD-20).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY A SEPARATE SCHEME. A receipt has no external reference and no row index, so neither
+    /// <see cref="FromReference"/> nor <see cref="Derive"/> describes it. Giving it its own prefix
+    /// keeps the two namespaces from ever answering for each other, which is the rule this type's
+    /// VERSION PREFIXES remark already sets out.
+    /// </para>
+    /// <para>
+    /// WHY THE ACCOUNT IS IN THE KEY. The same purchase posted to two accounts is two transactions.
+    /// The lookup is already scoped by account, so this is belt and braces — but it makes the key
+    /// self-describing rather than only meaningful next to the query that used it.
+    /// </para>
+    /// <para>
+    /// THE AMOUNT IS THE SIGNED LEDGER AMOUNT, not the printed one. The caller converts a receipt to
+    /// an expense before it ever reaches a command; deriving the key from the printed positive figure
+    /// would produce a key that never matches anything the vault stores. The amount is formatted with
+    /// fixed-point notation at 4 decimal places so two numerically equal amounts always produce the same
+    /// key regardless of their scale representation. (Bare <see cref="decimal.ToString()"/> leaks the
+    /// value's scale into the string, so <c>-24.50m</c> and <c>-24.5m</c> would hash differently despite
+    /// being equal.)
+    /// </para>
+    /// <para>
+    /// Only the calendar date participates: the same purchase re-scanned carries a re-read timestamp,
+    /// and a receipt's meaningful granularity is the day.
+    /// </para>
+    /// </remarks>
+    public static string FromReceipt(
+        Guid accountId,
+        DateTimeOffset date,
+        decimal amount,
+        string currencyCode,
+        string merchant)
+    {
+        if (string.IsNullOrWhiteSpace(currencyCode))
+            throw new ArgumentException("Currency code is required.", nameof(currencyCode));
+
+        var canonical = new StringBuilder()
+            .Append(accountId.ToString("D", CultureInfo.InvariantCulture))
+            .Append(FieldSeparator)
+            .Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+            .Append(FieldSeparator)
+            .Append(amount.ToString("F4", CultureInfo.InvariantCulture))
+            .Append(FieldSeparator)
+            .Append(Normalise(currencyCode))
+            .Append(FieldSeparator)
+            .Append(Normalise(merchant))
+            .ToString();
+
+        return ReceiptSchemePrefix + Hash(canonical);
     }
 
     /// <summary>

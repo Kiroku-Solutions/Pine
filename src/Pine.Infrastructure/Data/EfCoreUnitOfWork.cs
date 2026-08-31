@@ -43,8 +43,29 @@ public sealed class EfCoreUnitOfWork : IUnitOfWork, IDisposable, IAsyncDisposabl
     public bool HasActiveTransaction => _transaction is not null;
 
     /// <inheritdoc />
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-        => _dbContext.SaveChangesAsync(cancellationToken);
+    /// <exception cref="Pine.Core.Common.ConcurrencyConflictException">
+    /// A row this unit of work is updating was changed by someone else after it was read (TD-17).
+    /// </exception>
+    /// <remarks>
+    /// The translation is here because this is where persistence stops. <c>Pine.Application</c> and
+    /// the view models cannot reference <c>DbUpdateConcurrencyException</c> — they do not know EF
+    /// exists — so letting it travel outwards would either leak the ORM into every layer or, more
+    /// likely, be caught by nothing at all and surfaced to the user as a raw provider message.
+    ///
+    /// The original is kept as the inner exception so a log still has EF's own account of which
+    /// entries failed; only the message the user might see is replaced.
+    /// </remarks>
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw Pine.Core.Common.ConcurrencyConflictException.From(ex);
+        }
+    }
 
     /// <inheritdoc />
     /// <exception cref="InvalidOperationException">A transaction is already open on this unit of work.</exception>

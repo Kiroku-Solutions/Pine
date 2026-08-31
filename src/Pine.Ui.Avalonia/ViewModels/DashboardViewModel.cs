@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
+using Pine.Core.Common.ValueObjects;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels;
@@ -20,9 +22,51 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
     public partial string Greeting { get; set; } = "Welcome to Pine";
 
     [ObservableProperty]
-    public partial string TotalBalance { get; set; } = "$0.00 USD";
+    public partial string TotalBalance { get; set; } = "0.00 USD";
 
     public ObservableCollection<Account> Accounts { get; } = new();
+
+    /// <summary>
+    /// Renders the headline balance: one total per currency, each summed through <see cref="Money"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT THIS REPLACED WAS A FABRICATED NUMBER. The previous version added every account's
+    /// <c>Balance.Amount</c> into one bare <see cref="decimal"/> and then labelled the result with
+    /// whichever currency the LAST account in the loop happened to carry. A user holding 1 000 USD
+    /// and 900 EUR was shown "1900 EUR" — a figure that is not a quantity of anything.
+    /// <see cref="Money.Add"/> forbids exactly this; the old code got past it by never using
+    /// <c>Money</c>, adding raw decimals instead.
+    /// </para>
+    /// <para>
+    /// SO THE FIX IS TO SUM THROUGH THE DOMAIN, which makes the defect unrepresentable rather than
+    /// merely absent: accounts are grouped by currency first, and each group is folded with
+    /// <see cref="Money.Add"/>, so a cross-currency addition would now throw here instead of
+    /// producing a plausible-looking wrong answer. Pine has no exchange-rate source, so there is no
+    /// honest single number to show for a multi-currency vault, and inventing one is what the old
+    /// code did.
+    /// </para>
+    /// <para>
+    /// The previous format string was <c>{0:C2}</c>, which renders the CURRENT MACHINE's currency
+    /// symbol. On a Spanish-locale machine a dollar balance came out as "1.234,56 € USD" — a euro
+    /// sign next to the code USD. Each figure is now written by <see cref="Money.ToString"/>, at its
+    /// own currency's scale, with its own code and no borrowed symbol.
+    /// </para>
+    /// </remarks>
+    private static string SummariseBalances(IEnumerable<Account> accounts)
+    {
+        var totals = accounts
+            .GroupBy(a => a.Balance.Currency)
+            .Select(group => group.Aggregate(
+                Money.Zero(group.Key),
+                (running, account) => running + account.Balance))
+            .OrderBy(total => total.Currency.Value, StringComparer.Ordinal)
+            .ToList();
+
+        return totals.Count == 0
+            ? Money.Zero(new CurrencyCode("USD")).ToString()
+            : string.Join("  ·  ", totals);
+    }
 
     public ObservableCollection<Pine.Ui.Avalonia.ViewModels.Widgets.IDashboardWidgetViewModel> Widgets { get; } = new();
 
@@ -99,17 +143,12 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
             var accounts = await _mediator.Send(new GetAccountsQuery());
             Accounts.Clear();
             
-            decimal totalAmount = 0m;
-            string currency = "USD";
-
             foreach (var account in accounts)
             {
                 Accounts.Add(account);
-                totalAmount += account.Balance.Amount;
-                currency = account.Balance.Currency.Value;
             }
 
-            TotalBalance = $"{totalAmount:C2} {currency}";
+            TotalBalance = SummariseBalances(accounts);
         }
         catch (Exception ex)
         {

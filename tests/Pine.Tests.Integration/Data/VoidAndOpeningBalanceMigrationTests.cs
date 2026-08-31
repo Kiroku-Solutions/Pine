@@ -13,6 +13,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Security;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Data;
+using Pine.Infrastructure.Data.Converters;
 using Xunit;
 
 namespace Pine.Tests.Integration.Data;
@@ -68,9 +69,32 @@ public class VoidAndOpeningBalanceMigrationTests
     /// </remarks>
     private const string LineItemKindSchemaVersion = "20260828201103_AddTransactionLineItemKind";
 
+    /// <summary>
+    /// The migration that landed after that one, later still. Named for the same reason.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a third time (TD-31, TD-79, TD-30). Re-confirmed by hand, and this one
+    /// needed more than a glance: it rewrites every money column from a decimal stored as TEXT to an
+    /// INTEGER count of ten-thousandths, adds <c>Transactions.DateUtc</c>, and adds the
+    /// <c>Transactions.AccountId</c> foreign key. The premise of this class still holds — the void
+    /// columns and the opening balance are still added by the migration under test, and this one
+    /// still backfills no opening balance — but two things in here had to move with it: the raw read
+    /// of <c>OpeningBalanceAmount</c> is now an integer read, and the drifted balance planted after
+    /// the migration is now written in the scaled integer form. The legacy rows planted BEFORE the
+    /// migration keep the decimal-text form, because that is the schema they are written against.
+    /// </remarks>
+    private const string ScaledMoneySchemaVersion = "20260830161855_AddScaledMoneyAndUtcDateOrdering";
+
+    /// <summary>
+    /// TD-17's migration: a concurrency token column on every aggregate root. Listed here for the
+    /// same reason as the ones above — the pending set is asserted exactly, so a migration added
+    /// without a thought about this file turns it red rather than sliding past.
+    /// </summary>
+    private const string ConcurrencyTokenSchemaVersion = "20260830200447_AddConcurrencyTokens";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
-        [VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion];
+        [VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion, ScaledMoneySchemaVersion, ConcurrencyTokenSchemaVersion];
 
     private const decimal LegacyBalance = 1000.00m;
     private const decimal LegacyRent = -750.00m;
@@ -214,7 +238,12 @@ public class VoidAndOpeningBalanceMigrationTests
         // THIRD RUN, after corruption: this is what the anchor buys. Damage that the first run was
         // structurally unable to see is now reported exactly.
         const decimal DriftedBalance = 1500.00m;
-        vault.ExecuteSql($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = '{Text(DriftedBalance)}';");
+        // Written in the SCALED INTEGER form, not the decimal text one: this statement runs after the
+        // migration, when Balance_Amount is an INTEGER count of ten-thousandths (TD-31, TD-79).
+        // Planting '1500.0' here would give SQLite's affinity a string to truncate and the account
+        // would come back holding 0.15, which is drift the test never asked for.
+        vault.ExecuteSql(
+            $@"UPDATE ""Accounts"" SET ""Balance_Amount"" = {Scaled(DriftedBalance)};");
 
         var third = await RecalculateAsync(vault, accountId);
 
@@ -367,8 +396,19 @@ public class VoidAndOpeningBalanceMigrationTests
     private static string Text(Guid value)
         => value.ToString("D", CultureInfo.InvariantCulture).ToUpperInvariant();
 
+    /// <summary>
+    /// Renders a decimal the way the PREVIOUS build wrote money into a SQLite TEXT column. Only for
+    /// rows planted before the scaled-money migration runs; see <see cref="Scaled"/> for after.
+    /// </summary>
     private static string Text(decimal value)
         => value.ToString("0.0###########################", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Renders a decimal the way the CURRENT build writes money into a SQLite INTEGER column: a
+    /// count of ten-thousandths. Production's own converter does the arithmetic, so a change to the
+    /// storage scale cannot leave this test agreeing with a stale copy of the rule.
+    /// </summary>
+    private static long Scaled(decimal value) => ScaledMoneyConverter.ToStorage(value);
 
     /// <summary>Reads (payee, VoidedAt, VoidReason) for every transaction row straight out of the file.</summary>
     private static List<(string Payee, string? VoidedAt, string? VoidReason)> ReadTransactionVoidStateRaw(
@@ -393,19 +433,28 @@ public class VoidAndOpeningBalanceMigrationTests
     }
 
     /// <summary>
-    /// Reads the only account's <c>OpeningBalanceAmount</c> straight out of the file, as raw TEXT.
+    /// Reads the only account's <c>OpeningBalanceAmount</c> straight out of the file, as the raw
+    /// INTEGER count of ten-thousandths the column now holds.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Raw, because the assertion is specifically about a database NULL. Through EF this column is a
     /// <c>decimal?</c> either way, and "no opening balance on record" would be indistinguishable from
     /// a backfilled zero — which is the exact mistake the migration was written to avoid.
+    /// </para>
+    /// <para>
+    /// It reads a <see cref="long"/> and not a string because every caller reads it AFTER the
+    /// scaled-money migration has run, by which point the column is an INTEGER (TD-31, TD-79). The
+    /// old <c>as string</c> would have quietly returned null for a stored integer, turning the "the
+    /// anchor was persisted" assertion into one that could never pass.
+    /// </para>
     /// </remarks>
-    private static string? ReadAccountOpeningBalanceRaw(TempVault vault)
+    private static long? ReadAccountOpeningBalanceRaw(TempVault vault)
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText = @"SELECT ""OpeningBalanceAmount"" FROM ""Accounts"" ORDER BY rowid;";
-        return command.ExecuteScalar() as string;
+        return command.ExecuteScalar() as long?;
     }
 
     /// <summary>Lists a table's columns as SQLite itself reports them.</summary>

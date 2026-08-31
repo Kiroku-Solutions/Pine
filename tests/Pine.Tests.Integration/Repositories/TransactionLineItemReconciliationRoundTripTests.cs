@@ -1,9 +1,11 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Data;
@@ -122,10 +124,12 @@ public class TransactionLineItemReconciliationRoundTripTests
         using var vault = new TempVault();
         await MigrateAsync(vault);
 
+        var accountId = await SeedAccountAsync(vault);
+
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var repository = new SqliteTransactionRepository(context);
 
-        var transaction = NewReceipt();
+        var transaction = NewReceipt(accountId);
         transaction.AddLineItem("Bread", 1m, Euros(-100m), Euros(-100m));
 
         var act = async () => await repository.SaveAsync(transaction);
@@ -248,21 +252,41 @@ public class TransactionLineItemReconciliationRoundTripTests
         voided.IsVoided.Should().BeTrue();
     }
 
-    private static Transaction NewReceipt() => Transaction.Create(
-        Guid.NewGuid(),
+    private static Transaction NewReceipt(Guid accountId) => Transaction.Create(
+        accountId,
         DateTimeOffset.UtcNow.AddDays(-1),
         "Supermarket",
         Euros(-121m),
         TransactionType.Expense,
         TimeProvider.System);
 
+    /// <summary>
+    /// Writes the account every receipt in this file belongs to, and hands back its identifier.
+    /// </summary>
+    /// <remarks>
+    /// <c>Transactions.AccountId</c> is a real foreign key with <c>DeleteBehavior.Restrict</c>
+    /// (TD-30), so a receipt naming an account that was never written is refused by SQLite itself.
+    /// The account is denominated in the same currency as the receipt, which is the only shape
+    /// production can reach.
+    /// </remarks>
+    private static async Task<Guid> SeedAccountAsync(TempVault vault)
+    {
+        await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
+        var account = Account.Create("Current", AccountType.Bank, Euros(0m), TimeProvider.System);
+        context.Accounts.Add(account);
+        await context.SaveChangesAsync(CancellationToken.None);
+        return account.Id;
+    }
+
     private static async Task<Guid> SeedTaxedReceiptAsync(TempVault vault)
     {
+        var accountId = await SeedAccountAsync(vault);
+
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var repository = new SqliteTransactionRepository(context);
         await using var unitOfWork = new EfCoreUnitOfWork(context);
 
-        var transaction = NewReceipt();
+        var transaction = NewReceipt(accountId);
         transaction.AddSplit(Euros(-121m), "Groceries");
         transaction.AddLineItem("Bread", 2m, Euros(-25m), Euros(-50m));
         transaction.AddLineItem("Milk", 1m, Euros(-50m), Euros(-50m));

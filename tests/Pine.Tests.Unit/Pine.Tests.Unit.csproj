@@ -14,6 +14,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Headless Skia platform: ScanReceiptViewModel.ProcessReceiptImageAsync decodes the picked
+         image into an Avalonia Bitmap before anything else, which needs a registered
+         IPlatformRenderInterface. Pine.Ui.Avalonia itself never configures one, only the OS heads
+         (Pine.Ui.Windows, Pine.Ui.Macos) do, via Avalonia.Desktop, so a plain xunit host throws
+         "Unable to locate 'Avalonia.Platform.IPlatformRenderInterface'" the moment a test reaches
+         that line. TestAppInitializer registers a headless Skia platform once per test run. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
     <PackageReference Include="Bogus" Version="35.6.5" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />

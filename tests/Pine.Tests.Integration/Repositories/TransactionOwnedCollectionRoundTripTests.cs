@@ -1,9 +1,11 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Data;
@@ -158,6 +160,8 @@ public class TransactionOwnedCollectionRoundTripTests
         using var vault = new TempVault();
         await MigrateAsync(vault);
 
+        var accountId = await SeedAccountAsync(vault);
+
         Guid id;
         await using (var context = new PineDbContext(vault.DatabasePath, vault.Key))
         {
@@ -165,7 +169,7 @@ public class TransactionOwnedCollectionRoundTripTests
             await using var unitOfWork = new EfCoreUnitOfWork(context);
 
             var transaction = Transaction.Create(
-                Guid.NewGuid(),
+                accountId,
                 DateTimeOffset.UtcNow.AddDays(-1),
                 "Supermarket",
                 Euros(100m),
@@ -228,11 +232,13 @@ public class TransactionOwnedCollectionRoundTripTests
         using var vault = new TempVault();
         await MigrateAsync(vault);
 
+        var accountId = await SeedAccountAsync(vault);
+
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var repository = new SqliteTransactionRepository(context);
 
         var transaction = Transaction.Create(
-            Guid.NewGuid(),
+            accountId,
             DateTimeOffset.UtcNow.AddDays(-1),
             "Supermarket",
             Euros(100m),
@@ -258,6 +264,26 @@ public class TransactionOwnedCollectionRoundTripTests
     }
 
     /// <summary>
+    /// Writes the account every transaction in this file belongs to, and hands back its identifier.
+    /// </summary>
+    /// <remarks>
+    /// <c>Transactions.AccountId</c> is a real foreign key with <c>DeleteBehavior.Restrict</c>
+    /// (TD-30), so a transaction naming an account that was never written is refused by SQLite
+    /// itself. The account is denominated in the same currency as the amounts below, which is the
+    /// only shape production can reach.
+    /// </remarks>
+    /// <param name="vault">The throwaway encrypted vault under test.</param>
+    /// <returns>The identifier of the persisted account.</returns>
+    private static async Task<Guid> SeedAccountAsync(TempVault vault)
+    {
+        await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
+        var account = Account.Create("Current", AccountType.Bank, Euros(0m), TimeProvider.System);
+        context.Accounts.Add(account);
+        await context.SaveChangesAsync(CancellationToken.None);
+        return account.Id;
+    }
+
+    /// <summary>
     /// Writes a 100 EUR transaction with two splits and two line items through one production-shaped
     /// unit of work, then lets the context go so nothing it tracked can leak into an assertion.
     /// </summary>
@@ -265,12 +291,14 @@ public class TransactionOwnedCollectionRoundTripTests
     /// <returns>The identifier of the persisted transaction.</returns>
     private static async Task<Guid> SeedAsync(TempVault vault)
     {
+        var accountId = await SeedAccountAsync(vault);
+
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var repository = new SqliteTransactionRepository(context);
         await using var unitOfWork = new EfCoreUnitOfWork(context);
 
         var transaction = Transaction.Create(
-            Guid.NewGuid(),
+            accountId,
             DateTimeOffset.UtcNow.AddDays(-1),
             "Supermarket",
             Euros(100m),

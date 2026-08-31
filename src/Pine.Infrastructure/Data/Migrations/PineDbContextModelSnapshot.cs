@@ -31,8 +31,8 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal?>("OpeningBalanceAmount")
-                        .HasColumnType("TEXT");
+                    b.Property<long?>("OpeningBalanceAmount")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -41,12 +41,16 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Balance", "Pine.Core.Accounts.Account.Balance#Money", b1 =>
                         {
                             b1.IsRequired();
 
-                            b1.Property<decimal>("Amount")
-                                .HasColumnType("TEXT")
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
                                 .HasColumnName("Balance_Amount");
 
                             b1.ComplexProperty(typeof(Dictionary<string, object>), "Currency", "Pine.Core.Accounts.Account.Balance#Money.Currency#CurrencyCode", b2 =>
@@ -88,6 +92,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Attachments");
@@ -112,12 +120,16 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("StartDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Limit", "Pine.Core.Budgets.Budget.Limit#Money", b1 =>
                         {
                             b1.IsRequired();
 
-                            b1.Property<decimal>("Amount")
-                                .HasColumnType("TEXT")
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
                                 .HasColumnName("LimitAmount");
 
                             b1.Property<string>("Currency")
@@ -148,6 +160,10 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ParentCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -188,6 +204,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("ImportProfiles");
@@ -209,6 +229,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid?>("TargetTagId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Rules");
@@ -226,6 +250,10 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -250,6 +278,10 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Tags");
@@ -268,6 +300,9 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DateUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ImportKey")
@@ -289,6 +324,10 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("VoidReason")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
@@ -300,8 +339,8 @@ namespace Pine.Infrastructure.Data.Migrations
                         {
                             b1.IsRequired();
 
-                            b1.Property<decimal>("Amount")
-                                .HasColumnType("TEXT")
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
                                 .HasColumnName("TotalAmount_Amount");
 
                             b1.ComplexProperty(typeof(Dictionary<string, object>), "Currency", "Pine.Core.Transactions.Transaction.TotalAmount#Money.Currency#CurrencyCode", b2 =>
@@ -316,6 +355,9 @@ namespace Pine.Infrastructure.Data.Migrations
                         });
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DateUtc")
+                        .IsDescending();
 
                     b.HasIndex("LinkedTransactionId");
 
@@ -337,6 +379,12 @@ namespace Pine.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("Pine.Core.Transactions.Transaction", b =>
                 {
+                    b.HasOne("Pine.Core.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.OwnsMany("Pine.Core.Transactions.TransactionLineItem", "LineItems", b1 =>
                         {
                             b1.Property<Guid>("Id")
@@ -371,8 +419,8 @@ namespace Pine.Infrastructure.Data.Migrations
                                     b2.Property<Guid>("TransactionLineItemId")
                                         .HasColumnType("TEXT");
 
-                                    b2.Property<decimal>("Amount")
-                                        .HasColumnType("TEXT")
+                                    b2.Property<long>("Amount")
+                                        .HasColumnType("INTEGER")
                                         .HasColumnName("TotalPrice_Amount");
 
                                     b2.HasKey("TransactionLineItemId");
@@ -409,8 +457,8 @@ namespace Pine.Infrastructure.Data.Migrations
                                     b2.Property<Guid>("TransactionLineItemId")
                                         .HasColumnType("TEXT");
 
-                                    b2.Property<decimal>("Amount")
-                                        .HasColumnType("TEXT")
+                                    b2.Property<long>("Amount")
+                                        .HasColumnType("INTEGER")
                                         .HasColumnName("UnitPrice_Amount");
 
                                     b2.HasKey("TransactionLineItemId");
@@ -480,8 +528,8 @@ namespace Pine.Infrastructure.Data.Migrations
                                     b2.Property<Guid>("TransactionSplitId")
                                         .HasColumnType("TEXT");
 
-                                    b2.Property<decimal>("Amount")
-                                        .HasColumnType("TEXT")
+                                    b2.Property<long>("Amount")
+                                        .HasColumnType("INTEGER")
                                         .HasColumnName("Amount_Amount");
 
                                     b2.HasKey("TransactionSplitId");

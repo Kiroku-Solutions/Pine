@@ -5,6 +5,7 @@
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:core="using:Pine.Core.Accounts"
              xmlns:controls="using:Pine.Ui.Avalonia.Controls"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.ScanReceiptView"
              x:DataType="vm:ScanReceiptViewModel">
@@ -71,6 +72,11 @@
                                     Background="{DynamicResource PineDangerContainer}" CornerRadius="8" Padding="12,8">
                                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" TextWrapping="Wrap" FontSize="13" />
                             </Border>
+                            <!-- Non-blocking (TD-20): a second press with unchanged inputs still saves. -->
+                            <Border IsVisible="{Binding DuplicateWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                                <TextBlock Text="{Binding DuplicateWarning}" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" FontSize="13" />
+                            </Border>
                         </StackPanel>
 
                         <StackPanel Spacing="5">
@@ -87,6 +93,12 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <TextBox Text="{Binding Merchant}" PlaceholderText="Extracted merchant..." IsEnabled="{Binding !IsBusy}" />
+                            <!-- Weak-read hint (TD-22): shown for Low and NotFound alike, but worded
+                                 differently by ConfidenceHintText, one asks the user to check a
+                                 value, the other to supply one. -->
+                            <TextBlock Text="{Binding MerchantConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
+                                       IsVisible="{Binding MerchantConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <!-- Stacked vertically: the Fluent DatePicker has a 296px MinWidth
@@ -94,11 +106,36 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
+                            <TextBlock Text="{Binding DateConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
+                                       IsVisible="{Binding DateConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+
+                            <!-- Date ambiguity (TD-21). A locale-ambiguous date like 05/03/2026 is
+                                 never resolved on the user's behalf: both readings are shown, and
+                                 the button only offers to swap which one is in Date, leaving
+                                 IsDateAmbiguous set so the swap is reversible. -->
+                            <Border IsVisible="{Binding IsDateAmbiguous}"
+                                    Background="{DynamicResource PineSurfaceElevated}"
+                                    BorderBrush="{DynamicResource PineWarning}" BorderThickness="1"
+                                    CornerRadius="6" Padding="10,8">
+                                <Grid ColumnDefinitions="*, 8, Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding DateAmbiguityMessage}"
+                                               TextWrapping="Wrap" FontSize="12"
+                                               Foreground="{DynamicResource PineText}" />
+                                    <Button Grid.Column="2" Content="Use this date instead"
+                                            Command="{Binding UseAlternativeDateCommand}"
+                                            Padding="8,4" FontSize="12"
+                                            IsEnabled="{Binding !IsBusy}" />
+                                </Grid>
+                            </Border>
                         </StackPanel>
 
                         <StackPanel Spacing="5">
                             <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
+                            <TextBlock Text="{Binding TotalConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
+                                       IsVisible="{Binding TotalConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Spacing="5">
@@ -195,11 +232,6 @@
 
                 <!-- Pinned action bar — Save/Cancel always visible -->
                 <StackPanel Grid.Row="1" Margin="0,16,0,0" Spacing="10">
-                    <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding ConfidenceScore, Converter={x:Static ObjectConverters.IsNotNull}}">
-                        <TextBlock Text="AI Confidence:" Foreground="{DynamicResource PineTextMuted}" FontSize="12" />
-                        <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P1}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    </StackPanel>
-
                     <Grid ColumnDefinitions="*, 10, *">
                         <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                         <Button Grid.Column="2" Content="Save Transaction" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />

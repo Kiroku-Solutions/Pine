@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Security;
@@ -77,6 +78,28 @@ public class ImportKeyMigrationTests
     /// </remarks>
     private const string LineItemKindSchemaVersion = "20260828201103_AddTransactionLineItemKind";
 
+    /// <summary>
+    /// The migration added after all three of the above, later still. Named for the same reason.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a third time, and this time it earned its keep. That migration (TD-31,
+    /// TD-79, TD-30) rewrites every money column from a decimal stored as TEXT to an INTEGER count
+    /// of ten-thousandths, adds <c>Transactions.DateUtc</c>, and adds a foreign key from
+    /// <c>Transactions.AccountId</c> to <c>Accounts.Id</c>. Two consequences for this class, both
+    /// confirmed by hand: the legacy rows are still planted in the old decimal-text form, because
+    /// they are written against the old schema and the migration is what converts them; and every
+    /// transaction planted here now needs a real <c>Accounts</c> row to point at, because the
+    /// migration refuses to run over an orphan rather than creating a foreign key it would violate.
+    /// Nothing this class asserts is about a money column's stored form, so the conversion itself is
+    /// invisible here — it is <c>ImportKey</c> that is still under test.
+    /// </remarks>
+    private const string ScaledMoneySchemaVersion = "20260830161855_AddScaledMoneyAndUtcDateOrdering";
+
+    /// <summary>TD-17's concurrency token column, the migration after the scaled-money one.</summary>
+    private const string ConcurrencyTokenSchemaVersion = "20260830200447_AddConcurrencyTokens";
+
+    private const decimal LegacyBalance = 1650.00m;
+
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
 
     /// <summary>
@@ -94,6 +117,7 @@ public class ImportKeyMigrationTests
         ColumnNames(vault, "Transactions").Should().NotContain("ImportKey",
             "the premise of this test is a vault that genuinely predates the column");
 
+        InsertLegacyAccount(vault, accountId, "Legacy Current", LegacyBalance);
         InsertLegacyTransaction(vault, accountId, "Rent", -750.00m, LegacyDate);
         InsertLegacyTransaction(vault, accountId, "Salary", 2400.00m, LegacyDate.AddDays(1));
 
@@ -146,6 +170,7 @@ public class ImportKeyMigrationTests
         using var vault = new TempVault();
         var accountId = Guid.NewGuid();
         await MigrateToPreviousSchemaAsync(vault);
+        InsertLegacyAccount(vault, accountId, "Legacy Current", LegacyBalance);
         InsertLegacyTransaction(vault, accountId, "Rent", -750.00m, LegacyDate);
 
         await using (var context = new PineDbContext(vault.DatabasePath, vault.Key))
@@ -222,7 +247,47 @@ public class ImportKeyMigrationTests
         // names. Asserting the whole sequence rather than "contains" is what makes a newly added
         // migration fail here and be looked at, instead of sliding in unnoticed.
         // (Equal takes params string[], so the explanation cannot ride along as a "because".)
-        pending.Should().Equal(new[] { ImportKeySchemaVersion, VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion });
+        pending.Should().Equal(new[]
+        {
+            ImportKeySchemaVersion,
+            VoidAndOpeningBalanceSchemaVersion,
+            LineItemKindSchemaVersion,
+            ScaledMoneySchemaVersion,
+            ConcurrencyTokenSchemaVersion
+        });
+    }
+
+    /// <summary>
+    /// Writes the account the legacy transactions belong to, over a raw SQLCipher connection, as the
+    /// previous build would have.
+    /// </summary>
+    /// <remarks>
+    /// This row is not decoration. Since TD-30 there is a foreign key from
+    /// <c>Transactions.AccountId</c> to <c>Accounts.Id</c>, and the migration that adds it refuses to
+    /// run at all over a transaction whose account does not exist. A legacy transaction pointing at
+    /// an invented account id is therefore no longer a vault that any real user could have, and the
+    /// migration would abort before this class could assert anything about import keys. The encodings
+    /// are the same ones described on <see cref="InsertLegacyTransaction"/>, upper-cased Guid
+    /// included, and the balance is written as decimal text because that is what this schema stores.
+    /// </remarks>
+    private static void InsertLegacyAccount(TempVault vault, Guid accountId, string name, decimal balance)
+    {
+        using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO "Accounts"
+                ("Id", "Name", "Type", "CreatedAt", "UpdatedAt", "Balance_Amount", "Balance_Currency")
+            VALUES ($id, $name, $type, $createdAt, $updatedAt, $balance, 'USD');
+            """;
+        command.Parameters.AddWithValue("$id", accountId.ToString().ToUpperInvariant());
+        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue("$type", nameof(AccountType.Bank));
+        command.Parameters.AddWithValue("$createdAt", Text(LegacyDate));
+        command.Parameters.AddWithValue("$updatedAt", Text(LegacyDate));
+        command.Parameters.AddWithValue(
+            "$balance", balance.ToString("0.0###########################", CultureInfo.InvariantCulture));
+        command.ExecuteNonQuery();
     }
 
     /// <summary>

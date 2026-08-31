@@ -27,7 +27,7 @@
                                 <!-- Amount -->
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
                                     <!-- Use a converter in real app, here we just show it -->
-                                    <TextBlock Text="{Binding TotalAmount.Amount, StringFormat=\{0:N2\}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding TotalAmount, Converter={x:Static conv:Converters.MoneyAmount}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
                                     <TextBlock Text="{Binding TotalAmount.Currency.Value}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
                                 </StackPanel>
                             </Grid>

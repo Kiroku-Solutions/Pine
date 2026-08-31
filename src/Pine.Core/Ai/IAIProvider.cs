@@ -25,15 +25,33 @@ public record ReceiptLineItem(
 );
 
 /// <summary>
-/// Contains the extracted data and confidence scores from a receipt.
+/// Contains the extracted data and per-field confidence from a receipt.
 /// </summary>
+/// <remarks>
+/// <para>
+/// WHY THERE IS NO AGGREGATE SCORE (TD-22). The score this record used to carry was a tally of
+/// which fields were populated, never consulted the OCR engine's own per-word confidences, and
+/// rated a fully-populated, entirely wrong extraction at roughly 0.9. <see cref="Confidence"/>
+/// carries a real, per-field <c>FieldConfidence</c> instead, built from the words that actually
+/// produced each value -- a single percentage cannot tell the user which field to check, which is
+/// the only thing they can act on.
+/// </para>
+/// <para>
+/// WHY THE DATE CARRIES AN ALTERNATIVE (TD-21). A date like <c>05/03/2026</c> has two equally
+/// plausible readings depending on locale, and no amount of parsing skill can pick the right one.
+/// <see cref="DateIsAmbiguous"/> and <see cref="AlternativeDate"/> surface the other reading instead
+/// of silently guessing, so the person holding the receipt can make the call the parser cannot.
+/// </para>
+/// </remarks>
 public record ReceiptExtractionResult(
     string? Merchant,
     decimal? TotalAmount,
     string? CurrencyCode,
     System.DateTimeOffset? Date,
-    double ConfidenceScore,
-    System.Collections.Generic.IReadOnlyList<ReceiptLineItem>? LineItems = null
+    ReceiptConfidence Confidence,
+    System.Collections.Generic.IReadOnlyList<ReceiptLineItem>? LineItems = null,
+    bool DateIsAmbiguous = false,
+    System.DateTimeOffset? AlternativeDate = null
 );
 
 /// <summary>

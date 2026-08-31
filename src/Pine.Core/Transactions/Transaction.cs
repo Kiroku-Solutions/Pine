@@ -14,6 +14,34 @@ public sealed class Transaction : AggregateRoot
 {
     public Guid AccountId { get; private set; }
     public DateTimeOffset Date { get; private set; }
+
+    /// <summary>
+    /// The same instant as <see cref="Date"/>, in UTC. This is the column the store sorts and
+    /// indexes on; <see cref="Date"/> remains the value shown to the user.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Date"/> is a <see cref="DateTimeOffset"/> and the SQLite provider persists it as
+    /// text with the offset appended — <c>2026-08-20 23:00:00+02:00</c>. Ordering that text
+    /// lexicographically orders by local wall clock, not by instant, and Pine writes both kinds of
+    /// offset: the add-transaction screen defaults to <c>DateTimeOffset.Now</c> and the CSV importer
+    /// parses without one, while other paths write UTC. Two transactions two hours apart were
+    /// therefore returned in the wrong order by the only server-side <c>ORDER BY</c> in the
+    /// application, which is the transaction list's.
+    /// </para>
+    /// <para>
+    /// Storing the instant separately fixes the ordering without changing any date a user sees.
+    /// Normalising <see cref="Date"/> to UTC instead would have been simpler and wrong: it moves a
+    /// 23:00 purchase in Madrid to 21:00, and a 22:00 purchase in Santiago onto the following day.
+    /// The offset is information about when the money was actually spent, and discarding it to make
+    /// a sort work is the wrong trade.
+    /// </para>
+    /// <para>
+    /// It is derived here, in the only place <see cref="Date"/> is ever assigned, so the two cannot
+    /// drift apart. There is no edit path that could change one without the other (TD-68).
+    /// </para>
+    /// </remarks>
+    public DateTime DateUtc { get; private set; }
     public string Payee { get; private set; }
     public Money TotalAmount { get; private set; }
     public TransactionType Type { get; private set; }
@@ -33,14 +61,16 @@ public sealed class Transaction : AggregateRoot
     /// </para>
     /// <para>
     /// WHY IT LIVES HERE AND NOT IN A SEPARATE TABLE: a dedicated <c>ImportedRow</c> table would need
-    /// its own repository, its own write path, and a foreign key the schema does not currently have
-    /// (TD-30 records the missing foreign keys), and would buy no guarantee this does not already
-    /// give — the transaction itself is the thing that either is or is not a duplicate.
+    /// its own repository, its own write path and its own foreign key, and would buy no guarantee
+    /// this does not already give — the transaction itself is the thing that either is or is not a
+    /// duplicate.
     /// </para>
     /// <para>
-    /// WHY IT IS A STRING: SQLite stores <see cref="decimal"/> as TEXT (TD-31), so any comparison that
-    /// reaches SQL is lexicographic. A string key can safely be pushed down into a SQL predicate and
-    /// compares identically in memory and in the database; a numeric one could not.
+    /// WHY IT IS A STRING: when this was written SQLite stored every <see cref="decimal"/> as TEXT,
+    /// so a numeric key pushed into a SQL predicate would have compared lexicographically and matched
+    /// the wrong rows. TD-31 has since moved money to scaled integers, so that particular hazard is
+    /// gone — but the reason to keep a string stands on its own: the key is an identity, not a
+    /// quantity, and it compares identically in memory and in the database.
     /// </para>
     /// <para>
     /// NO BACKFILL, DELIBERATELY: transactions imported before this property existed keep
@@ -113,6 +143,7 @@ public sealed class Transaction : AggregateRoot
             throw new ArgumentException("Transaction date cannot be in the future.", nameof(date));
         
         Date = date;
+        DateUtc = date.UtcDateTime;
         Payee = payee;
         
         // Validate Amount vs Type
