@@ -200,6 +200,30 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
     }
 
     /// <summary>
+    /// Returns the transaction on the given account carrying the given import key, if one exists.
+    /// Read-only; nothing is staged or flushed.
+    /// </summary>
+    /// <remarks>
+    /// The comparison runs IN SQL against the same <c>(AccountId, ImportKey)</c> index
+    /// <see cref="GetExistingImportKeysAsync"/> relies on — the migration that added it
+    /// (<c>20260827141109</c>) already covers this shape of query, so no new index is needed here.
+    /// </remarks>
+    /// <param name="accountId">The account being checked.</param>
+    /// <param name="importKey">The key to look up.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching transaction, or null when the account holds none with that key.</returns>
+    public async Task<Transaction?> GetByImportKeyAsync(
+        Guid accountId,
+        string importKey,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+            .Include(t => t.Splits)
+            .FirstOrDefaultAsync(t => t.AccountId == accountId && t.ImportKey == importKey, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Returns the signed amount of every transaction on the account that is still in force.
     /// Read-only; nothing is staged or flushed.
     /// </summary>

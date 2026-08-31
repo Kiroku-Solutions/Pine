@@ -72,6 +72,11 @@
                                     Background="{DynamicResource PineDangerContainer}" CornerRadius="8" Padding="12,8">
                                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" TextWrapping="Wrap" FontSize="13" />
                             </Border>
+                            <!-- Non-blocking (TD-20): a second press with unchanged inputs still saves. -->
+                            <Border IsVisible="{Binding DuplicateWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                                <TextBlock Text="{Binding DuplicateWarning}" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" FontSize="13" />
+                            </Border>
                         </StackPanel>
 
                         <StackPanel Spacing="5">

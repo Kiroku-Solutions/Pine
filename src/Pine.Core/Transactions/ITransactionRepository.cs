@@ -36,6 +36,26 @@ public interface ITransactionRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the transaction on the given account carrying the given import key, if one exists.
+    /// </summary>
+    /// <remarks>
+    /// This is the single-key counterpart to <see cref="GetExistingImportKeysAsync"/>, used where a
+    /// caller needs the matched transaction itself rather than just a yes/no on a batch of candidate
+    /// keys — the scanned-receipt duplicate check (TD-20) reports the date, amount and payee of the
+    /// transaction it collided with. A null <paramref name="importKey"/> never matches: transactions
+    /// with no import key of their own are excluded, exactly as in the batch lookup, and a caller with
+    /// no key to check should not call this method at all.
+    /// </remarks>
+    /// <param name="accountId">The account being checked.</param>
+    /// <param name="importKey">The key to look up.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching transaction, or null when the account holds none with that key.</returns>
+    Task<Transaction?> GetByImportKeyAsync(
+        Guid accountId,
+        string importKey,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the signed amount of every transaction on the given account that is still in force —
     /// that is, every transaction except the voided ones.
     /// </summary>

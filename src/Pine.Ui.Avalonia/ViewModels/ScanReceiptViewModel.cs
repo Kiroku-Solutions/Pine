@@ -14,9 +14,11 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
+using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
+using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.Services;
@@ -31,7 +33,11 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
 
-    partial void OnSelectedAccountChanged(Account? value) => RecomputeReconciliation();
+    partial void OnSelectedAccountChanged(Account? value)
+    {
+        RecomputeReconciliation();
+        ClearDuplicateAcknowledgement();
+    }
 
 
     [ObservableProperty]
@@ -40,11 +46,15 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial string Merchant { get; set; } = string.Empty;
 
+    partial void OnMerchantChanged(string value) => ClearDuplicateAcknowledgement();
+
     [ObservableProperty]
     public partial decimal Amount { get; set; }
 
     [ObservableProperty]
     public partial DateTimeOffset Date { get; set; } = DateTimeOffset.Now;
+
+    partial void OnDateChanged(DateTimeOffset value) => ClearDuplicateAcknowledgement();
 
     [ObservableProperty]
     public partial string Category { get; set; } = string.Empty;
@@ -71,6 +81,25 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Set when the receipt about to be saved matches one already on the account (TD-20). Non-empty
+    /// while unacknowledged; the user can still press save again to write it anyway -- two identical
+    /// coffees on one day are two legitimate transactions, so this is a warning, never a block.
+    /// </summary>
+    [ObservableProperty]
+    public partial string DuplicateWarning { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The import key of the last duplicate the user chose to save past. Compared against the key of
+    /// the transaction about to be saved: a match means "the user already saw this warning and pressed
+    /// save again", so the second press proceeds. Cleared by any edit to the fields the key is derived
+    /// from -- see the <c>On&lt;Property&gt;Changed</c> partial methods above -- because those edits
+    /// mean the warning the user acknowledged was about a different transaction.
+    /// </summary>
+    private string? _acknowledgedDuplicateKey;
+
+    private void ClearDuplicateAcknowledgement() => _acknowledgedDuplicateKey = null;
 
     /// <summary>True while the full-size receipt lightbox is open.</summary>
     [ObservableProperty]
@@ -344,6 +373,7 @@ public partial class ScanReceiptViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = string.Empty;
+        DuplicateWarning = string.Empty;
         // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
         // user gets a scrim with no sentence under it.
         StatusMessage = "Saving the transaction...";
@@ -353,6 +383,38 @@ public partial class ScanReceiptViewModel : ObservableObject
             // For a receipt, it's typically an expense (negative amount in the DB)
             decimal finalAmount = -Amount;
             var currency = SelectedAccount.Balance.Currency.Value;
+
+            // THE SIGNED LEDGER AMOUNT, NOT THE PRINTED ONE (TD-20). This has to be finalAmount, not
+            // Amount: the key stored on the saved transaction is derived from the value actually
+            // written below, and a key derived from the positive printed figure would never match it
+            // on a later scan.
+            var importKey = ImportKeyFactory.FromReceipt(SelectedAccount.Id, Date, finalAmount, currency, Merchant);
+
+            // Re-checked here rather than trusted from the extraction-time check (TD-20): the user may
+            // have edited the date, amount, merchant or account since then, and this is the check that
+            // actually gates the write. A key equal to the one the user already saved past means this
+            // is a second press with unchanged inputs, so the check is skipped and the save proceeds --
+            // duplicate detection is a warning, never a silent drop, and two identical purchases on one
+            // day are two legitimate transactions.
+            if (!string.Equals(importKey, _acknowledgedDuplicateKey, StringComparison.Ordinal))
+            {
+                var duplicate = await _mediator.Send(
+                    new CheckReceiptDuplicateQuery(SelectedAccount.Id, Date, finalAmount, currency, Merchant));
+
+                if (duplicate is not null)
+                {
+                    // Invariant culture: the figure has to contain "24.50", not a locale-dependent
+                    // "24,50", both because that is what tests (and support conversations) can rely
+                    // on, and because the receipt total shown elsewhere on this screen is never
+                    // localised either.
+                    DuplicateWarning = string.Format(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        "This looks like a duplicate of {0:0.00} to {1} on {2:yyyy-MM-dd}. Save again to add it anyway.",
+                        Math.Abs(duplicate.Amount), duplicate.Payee, duplicate.Date);
+                    _acknowledgedDuplicateKey = importKey;
+                    return;
+                }
+            }
 
             // NEGATED, LIKE THE TOTAL. Line items are stored in the transaction sign so that they
             // sum to it (TD-19); a receipt is an expense, so every line goes in negative. Before
@@ -374,7 +436,8 @@ public partial class ScanReceiptViewModel : ObservableObject
                 currency,
                 Notes,
                 Category,
-                lineItemsCommands
+                lineItemsCommands,
+                importKey
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
@@ -475,7 +538,11 @@ public partial class ScanReceiptViewModel : ObservableObject
         });
     }
 
-    partial void OnAmountChanged(decimal value) => RecomputeReconciliation();
+    partial void OnAmountChanged(decimal value)
+    {
+        RecomputeReconciliation();
+        ClearDuplicateAcknowledgement();
+    }
 
     private void OnLineItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

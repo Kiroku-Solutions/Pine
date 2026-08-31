@@ -44,7 +44,8 @@ public record AddTransactionCommand(
     string Currency,
     string Notes,
     string Category,
-    System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null
+    System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null,
+    string? ImportKey = null
 ) : IRequest<Guid>, ITransactionalRequest;
 
 public class AddTransactionCommandHandler : IRequestHandler<AddTransactionCommand, Guid>
@@ -82,6 +83,13 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
 
         // Add a single split for the whole amount to the specified category
         transaction.AddSplit(moneyAmount, request.Category, request.Notes);
+
+        // Same mechanism as the file importer (ImportTransactionsCommand): the receipt scanner is
+        // just another source of an import key, and a transaction is meant to carry at most one.
+        if (!string.IsNullOrWhiteSpace(request.ImportKey))
+        {
+            transaction.AssignImportKey(request.ImportKey);
+        }
 
         if (request.LineItems != null && request.LineItems.Count > 0)
         {
