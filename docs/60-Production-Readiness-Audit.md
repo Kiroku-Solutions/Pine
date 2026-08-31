@@ -10,8 +10,8 @@
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Iteration 8 closed the TD-18 half of item 10 — see §12.18. Iteration 9 closed the TD-19 half, ported the TD-11 harness into `tests/`, and reclassified TD-74 — see §12.20. **Every Phase 0 item has now been worked, and items 1, 4–11 are ✅. Phase 0 is NOT clean: item 2's export is still unreachable and item 3 regressed — CI has had its triggers removed since `79c5364` and has never run.** Test suite 28 → **432** (313 unit + 119 integration), both suites green at this commit. See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14, §12.16, §12.18, §12.20 and §12.22 repeat it as standing practice. |
-| Last updated | 2026-08-28 |
+| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Iteration 8 closed the TD-18 half of item 10 — see §12.18. Iteration 9 closed the TD-19 half, ported the TD-11 harness into `tests/`, and reclassified TD-74 — see §12.20. **Every Phase 0 item has now been worked, and items 1, 4–11 are ✅. Phase 0 is NOT clean: item 2's export is still unreachable and item 3 regressed — CI has had its triggers removed since `79c5364` and has never run.** **Phase 1 items 5 and 6 are closed**: 5a (TD-30, TD-31, TD-79) by iteration 15, 5b (TD-17) by iteration 16, and item 6 was found **already closed** by iterations 8 and 9 — it duplicated Phase 0 item 10. Iteration 17 did what item 6 had actually left undone: carry the money scale policy into the UI, and stop the dashboard adding different currencies together. See §12.32, §12.34 and §12.36. That iteration also found **TD-94**, a shipped crash on the transaction list screen, under a fully green suite. Test suite 28 → **769** (582 unit + 187 integration), both suites green at this commit. See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14, §12.16, §12.18, §12.20, §12.22, §12.32, §12.34 and §12.36 repeat it as standing practice. **Iteration 18 closed Phase 1 item 7 (TD-20, TD-21, TD-22)** — receipt duplicate detection on an `s1:` key reusing the import index, locale-ordered date parsing that flags ambiguity instead of guessing, and per-field confidence bands taken from the OCR engine's own word scores in place of a literal tally. Eleven mutations, 10 killed, 1 survived by genuine redundancy. **Two `NaN` defects were found in that iteration's own new code, one of which crashed the scan and lived in the seam between two tasks under two green suites** — recorded in §12.38 as the clearest evidence yet that a green suite is not evidence of correctness. Suite 769 → **833** (643 unit + 190 integration), both green. **Phase 1 now has three rows left: items 8, 9 and 10.** New rows: TD-101, TD-102, TD-103. See **§12.38**. |
+| Last updated | 2026-08-30 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
 > **Purpose of this document.** This is the working backlog for a dedicated
@@ -280,9 +280,9 @@ EF Core 10 over SQLCipher, migration-managed (a recent, correct fix —
 enums as strings, unique index on `Setting.Key`. Right calls.
 
 - 🔴 **P0** Owned collections silently dropped on update (TD-13). `SqliteTransactionRepository.SaveAsync` on an existing row does `_dbContext.Entry(existing).CurrentValues.SetValues(transaction);`. `SetValues` copies scalars and complex properties only — it does **not** touch `OwnsMany` collections, and `Splits` and `LineItems` are exactly that. Same pattern in the account, budget, category and setting repositories. Latent only because no update path exists yet.
-- 🟠 **P1** No optimistic concurrency token anywhere (TD-17). No `IsRowVersion()`, no `IsConcurrencyToken()`. The background trainer contends with user saves; last-write-wins, undetected.
-- 🟠 **P1** SQLite has no native decimal (TD-31). All `Money.Amount` columns are `decimal` with no explicit column type; the EF SQLite provider maps to **TEXT**, so any server-evaluated comparison or `ORDER BY` is lexicographic. Nothing is broken today because filtering happens in memory — the first `.Where(t => t.Amount > 100)` or `.OrderBy(t => t.Amount)` that reaches SQL returns wrong results, and it will look right on small test data.
-- 🟠 **P2** Missing indexes on the actual query paths (TD-30). Only `Transaction.LinkedTransactionId` and unique `Setting.Key` are indexed. `GetPagedAsync` sorts by `Date` descending; `GetByAccountIdAsync` filters on an unindexed `AccountId` with **no FK to `Account.Id`** — deleting an account orphans its entire ledger.
+- 🟢 ~~**P1** No optimistic concurrency token anywhere (TD-17).~~ **Fixed, §12.34.** Every aggregate root carries one. The reason this finding originally gave — the background trainer — was false, and is corrected there.
+- 🟢 ~~**P1** SQLite has no native decimal (TD-31).~~ **Fixed, §12.32.** Money is a scaled integer; the comparison hazard is removed rather than documented.
+- 🟢 ~~**P2** Missing indexes on the actual query paths (TD-30).~~ **Fixed, §12.32** — with a correction the original finding missed entirely. `GetPagedAsync` did not merely sort by an unindexed `Date`: the provider **refuses** to translate an `ORDER BY` over a `DateTimeOffset`, so that method threw every time the transaction list opened (TD-94).
 - 🟠 **P0** No backup before migration, no recovery, no audit trail (TD-10) — see §4.7.
 - 🔵 **P3** `PineDbContextFactory` uses a fixed all-`0x01` key and writes `design_time.db` into the CWD. Correctly scoped to design time and clearly commented — but worth a `.gitignore` entry and a guard.
 
@@ -499,12 +499,12 @@ any other single change.
 | TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | ✅ **Done** — iteration 11, §12.24. One `AddPineLogging()` in all five roots writing JSONL to `%LOCALAPPDATA%/Pine/logs`; every `Console.WriteLine` and `File.AppendAllText` outside `Pine.Cli` is gone, and a NetArchTest forbids `Pine.Infrastructure` from depending on `System.Console` so they cannot come back |
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | ✅ **Done** — iteration 12, §12.25. Every value on the page is now measured: `ILogTailReader` over the TD-14 JSONL files, `IDatabaseHealthProbe` over the keyed connection, `IRuntimeInfoProvider` for version/OS/heap. The two dishonest buttons (`Export DIB`, `Seed Demo Data`) are removed rather than reimplemented. Seven falsification mutations, all killed |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🟢 **Closed** (§12.29) |
-| TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🔴 **Open** |
+| TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🟢 **Fixed** (§12.34) — a `Version` shadow property on all nine non-owned entities, assigned a fresh GUID by `PineDbContext` on every insert and update, and translated at the persistence boundary into `ConcurrencyConflictException` so EF does not leak upwards. A change to an owned collection promotes its owner, because the aggregate is the unit of concurrency. **The cause this row used to give was false** and was corrected in iteration 15: the background trainer only reads, and its one write is a `Setting` watermark. The real contention is two `ScopedMediator` sends read-modify-writing the same row. No automatic retry — see §12.34 |
 | TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | ✅ **Closed** — iteration 8, §12.18. `Money` normalises in its constructor to the currency's ISO 4217 minor units (`ToEven`), rejects a fractional amount in a zero-minor-unit currency, and gains `Allocate`/`Multiply`/`Negate`/`Round`/`Scale`. `CurrencyCode` validates membership and offers `TryCreate`. Six falsification mutations, all killed |
 | TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | `LineItemKind` represents the difference instead of tolerating it; the invariant is enforced at the persistence boundary and the receipt confirmation UI offers a one-click adjustment | P1 | ✅ **Closed** — iteration 9, §12.20 |
-| TD-20 | No receipt duplicate detection | 🟠 | Double-counted expenses | Content-hash check | P1 | 🔴 **Open** |
-| TD-21 | Ambiguous dd/MM vs MM/dd parsing — and the OCR "multi-culture cascade" tries `InvariantCulture` (MM/dd) **first**, so its `es-EC` leg is unreachable for any ambiguous date while its comment claims dd/MM is tried first | 🟠 | Silently misdated transactions, now behind code that reads as if it handled them | Locale-driven order; flag ambiguity | P1 | 🔴 **Open** — severity understated, see §12.12 |
-| TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | 🔴 **Open** |
+| TD-20 | No receipt duplicate detection | 🟠 | Double-counted expenses | Content-hash check | P1 | ✅ **Closed** — `s1:` receipt key on the existing `(AccountId, ImportKey)` index; non-blocking warning re-checked immediately before the write. See §12.38 |
+| TD-21 | Ambiguous dd/MM vs MM/dd parsing — and the OCR "multi-culture cascade" tries `InvariantCulture` (MM/dd) **first**, so its `es-EC` leg is unreachable for any ambiguous date while its comment claims dd/MM is tried first | 🟠 | Silently misdated transactions, now behind code that reads as if it handled them | Locale-driven order; flag ambiguity | P1 | ✅ **Closed** — `ReceiptDateParser` matches explicit formats with `TryParseExact`, ISO first, then the culture's own day/month order; an ambiguous date is flagged and both readings are shown. The real cause was `TryParse`, not the ordering. See §12.38 |
+| TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | ✅ **Closed** — the tally is deleted; per-field bands are built from the OCR engine's own word confidences, with `NotFound` distinct from `Low`. No aggregate score. See §12.38 |
 | TD-23 | Migration failure reported as wrong password | 🟠 | Undiagnosable support cases | Split auth and schema phases | P1 | ✅ **Done** |
 | TD-24 | Raw `ex.Message` surfaced in UI | 🟡 | Path/internals leakage | Map to user-facing messages | P2 | 🔴 **Open** |
 | TD-25 | Unredacted crash.log / OCR text to console | 🟡 | Sensitive data outside vault | Redact and relocate | P1 | ✅ **Done** — iteration 11, §12.24. The OCR content trace is deleted outright (a receipt cannot be usefully redacted); `crash.log` and `ocr_init_error.log` are replaced by redacted JSONL records. The log files are still **plaintext on disk** — see TD-82 |
@@ -512,8 +512,8 @@ any other single change.
 | TD-27 | No configuration system | 🟠 | Nothing tunable; no env separation | `IOptions` + appsettings | P1 | 🔴 **Open** |
 | TD-28 | Service locator in view models | 🟠 | Hidden deps; UI touches EF | Typed VM factories | P1 | 🔴 **Open** |
 | TD-29 | Five duplicated composition roots | 🟠 | Divergent lifetimes per platform | `AddPine*()` extensions | P1 | 🔴 **Open** |
-| TD-30 | No index on `Date`; no FK transaction→account. `AccountId` gained a leading-column index in iteration 5's `(AccountId, ImportKey)`; a Budget→Category FK **already exists** | 🟠 | Scans at scale; orphan risk | Add the `Date` index + the transaction FK | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
-| TD-31 | Decimal stored as TEXT in SQLite | 🟠 | Wrong results when comparison reaches SQL | Scaled-integer converter | P1 | 🔴 **Open** |
+| TD-30 | No index on `Date`; no FK transaction→account | 🟠 | Scans at scale; orphan risk | The FK, and an index on a column that can actually be ordered | P2 | 🟢 **Fixed** (§12.32) — FK `Restrict`, no navigation property, matching Budget→Category. **The "index on `Date`" half could not be done as written**: ordering that column is wrong (TD-94), so the index is on the new `DateUtc`. Indexing `Date` would have made a wrong order fast |
+| TD-31 | Decimal stored as TEXT in SQLite | 🟠 | Wrong results when comparison reaches SQL | Scaled-integer converter | P1 | 🟢 **Fixed** (§12.32) — every money column is an `INTEGER` count of ten-thousandths. The scale is **fixed at 4, not per-currency**: a value converter sees one column and cannot read the sibling currency column, so a per-currency scale was unavailable, not merely awkward. 4 is free — it is the ISO 4217 maximum (`CLF`, `UYW`) and already `Money.PowerOfTen`'s ceiling |
 | TD-32 | `TransactionSplit.Category` is a free string, not a FK (`Budget` already uses a real `CategoryId` FK) | 🟡 | Rename orphans history | Store `CategoryId` on the split | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-33 | Domain events raised, never dispatched | 🟡 | Misleading scaffolding | Dispatch or remove | P2 | 🔴 **Open** |
 | TD-34 | Messenger subscriptions never unregistered | 🟡 | Stale VMs act on messages | `IDisposable` view models | P2 | 🔴 **Open** |
@@ -557,11 +557,11 @@ any other single change.
 | TD-72 | `ShellViewModel` lifetime diverges: `Transient` on Windows, `Singleton` on the other four heads | 🟡 | One view model means two different things depending on platform; a singleton shell outlives the vault it was opened for | Pick one lifetime, in the shared registration TD-29 already calls for | P2 | 🔴 **Open** — iteration 7 |
 | TD-73 | `PasswordStrengthPolicy` has no natural-language word list, so multi-word passphrases are over-estimated | 🟡 | The estimator accepts a passphrase weaker than the bits it reports; the 60-bit floor's `2^6` margin is what covers this | Embed a word list in `Pine.Core` — needs the BCL-only rule relaxed to permit an embedded resource | P2 | 🔴 **Open** — iteration 7 |
 | TD-74 | ~~One integration test is red at `19a1877`~~ **The whole integration project stopped compiling at `f691ba8` and nobody noticed for two iterations** | 🟠 | The reported symptom was wrong. `Pine.Tests.Integration` was not 98/99; it was **0 tests executed**, 8 × CS0535. A suite that does not build reports no colour at all | Fixed in iteration 9 — the two hand-written `IVaultSession` fakes now track the interface; see §12.20 | P1 | ✅ **Closed — reclassified**, iteration 9 |
-| TD-75 | Every money figure in the UI is formatted `{0:N2}` — `BudgetsView.axaml:57,59`, `RecentTransactionsWidgetView.axaml:30`, `BalanceWidgetView.axaml:29` | 🟡 | Two decimals is now provably wrong for a JPY account (0 minor units) and a KWD one (3). The domain knows the right number since TD-18; the view hardcodes the wrong one. There are no Avalonia converters in the project, so there is nowhere to put the rule today | A value converter reading `Money.Scale`, or a formatted string on the view model | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-75 | Every money figure in the UI was formatted `{0:N2}` | 🟡 | Two decimals is provably wrong for a JPY account (0 minor units) and a KWD one (3). The domain has known the right number since TD-18; the view hardcoded the wrong one | `Money.ToAmountString()` plus a shared converter | P2 | 🟢 **Fixed** (§12.36) — the rule lives once, in `Money`, and the four bindings now go through it. **This row's own reasoning was wrong**: it said "there are no Avalonia converters in the project, so there is nowhere to put the rule today". `Utils/Converters.cs:9,16` already held an `IValueConverter`. The obstacle it described did not exist |
 | TD-76 | The account-creation currency picker is a seven-item hardcoded list (`CreateAccountViewModel.Currencies`) | 🔵 | `"BTC"` was in it and could not have succeeded once TD-18 landed; it was removed. The remaining list is arbitrary and excludes ~170 real currencies a user may hold | A searchable picker over `IsoCurrencies.Codes` | P3 | 🔴 **Open** — opened by iteration 8 |
 | TD-77 | `Account.OpeningBalanceAmount` is a bare `decimal?` column with no `Money` around it (`PineDbContext:77`) | 🟡 | TD-18's scale policy lives in `Money`'s constructor, so a column that does not pass through `Money` on the way out is outside it. Writes are covered transitively (`AdoptOpeningBalance` takes a `Money`); a raw SQL update or a legacy row is not, and `Account.OpeningBalance` now rounds on projection rather than throwing | Store it as a `Money` complex property, or keep the projection and document it (done) | P2 | 🔴 **Open** — opened by iteration 8 |
 | TD-78 | `CreateAccountCommand` and `CreateBudgetCommand` still have no validator, so an unknown currency now throws `ArgumentException` from inside the handler | 🟡 | TD-18 made `CurrencyCode` reject `"ZZZ"`, which turned two previously-silent paths into wrong-layer throws rendered verbatim by `catch (Exception)` view models. Same class as TD-12, and a direct widening of TD-24's blast radius. The validator seam already exists; nothing was added because the rows are TD-62/TD-63 | An `IRequestValidator<T>` for each, using `CurrencyCodeText.TryNormalise` | P2 | 🔴 **Open** — opened by iteration 8 |
-| TD-79 | `PineDbContext` declares no `HasPrecision()` and no `HasColumnType()` anywhere; every `decimal` is stored as SQLite `TEXT` | 🟡 | The store has no scale of its own, so TD-18's policy is enforced only by the domain. Anything writing that file outside Pine — a migration, a repair script, another tool — can plant an out-of-scale amount, and the read path is deliberately tolerant of exactly that | Related to TD-31; at minimum a `CHECK` constraint or an explicit column type | P2 | 🔴 **Open** — opened by iteration 8 |
+| TD-79 | `PineDbContext` declared no `HasPrecision()` and no `HasColumnType()`; every `decimal` was stored as SQLite `TEXT` | 🟡 | The store had no scale of its own, so TD-18's policy was enforced only by the domain | Closed by TD-31's converter | P2 | 🟡 **Mostly fixed** (§12.32) — the store now has a scale of its own: an `INTEGER` of ten-thousandths cannot hold an out-of-scale amount, so the read path's tolerance became automatic rather than deliberate. **`TransactionLineItems.Quantity` is still `TEXT`** and is deliberately untouched — it is not money and the domain gives it no scale policy to enforce. Carried as TD-95 |
 | TD-80 | Onboarding asked consent for telemetry that does not exist | 🟠 | Worse than TD-48: the cloud radio was disabled, this checkbox was **enabled** and asked for real consent. No telemetry code exists anywhere in the repository and nothing read `System.Telemetry`. In a product whose argument is local privacy, this is the worst place to be inaccurate | Checkbox, `TelemetryOptIn` and the setting write removed | P1 | ✅ **Opened and closed** — iteration 10, §12.22 |
 | TD-81 | `SetupViewModel`'s happy path cannot be tested | 🟠 | `VaultManager` is `sealed`, has no interface, hard-codes `LocalApplicationData/Pine` in its constructor and writes `vaults.json` to the real disk, so `InitializeVaultAsync` cannot run under test without mutating the developer's machine. Every existing test of this view model stops at an early validation failure; iteration 10's tests had to assert type-level dependencies instead of behaviour | Extract `IVaultManager`, or inject the data directory | P2 | 🔴 **Open** — iteration 10 |
 | TD-82 | Log files are not encrypted at rest | 🟡 | `30-Observability` §4.4 requires logs to be encrypted with the data-store key. They are not: iteration 11 writes plaintext JSONL to `%LOCALAPPDATA%/Pine/logs`. The reason is structural — the records that matter most (startup, KDF failure, crash, every pre-unlock error) exist precisely when no vault key is available — so the honest posture is redaction plus a location outside the vault, not a half-encrypted log. Residual exposure is whatever `LogRedactor` misses | Either a post-unlock encrypted sink alongside the plaintext pre-unlock one, or amend §4.4 to match reality | P2 | 🔴 **Open** — iteration 11 |
@@ -625,9 +625,10 @@ a day of work now and an impossible migration later.
 - [x] ✅ **2.** Real diagnostics or no diagnostics (TD-15) — **DONE, THE "REAL" HALF.** The panel keeps its place and every value on it is now measured rather than asserted: a `ILogTailReader` reading the TD-14 JSONL files back (bounded 200-record tail, `FileShare.ReadWrite` so the live file the sink holds open is still readable), a singleton `IDatabaseHealthProbe` that answers `Locked` without touching the database and otherwise reports `Healthy`/`PendingMigrations`/`Unreachable`/`Faulted` as a closed status set carrying no exception text (TD-23), and an `IRuntimeInfoProvider` whose `AppVersion` is *the same resolution* the sink stamps into every record. The `Export DIB` and `Seed Demo Data` buttons are **removed, not reimplemented** (TD-84; the second was TD-47's defect class writing fiction into a real vault). Seven falsification mutations, all killed. 367 → 423 tests. See §12.25.
 - [x] ✅ **3.** Envelope encryption: random data key wrapped by the Argon2 key → password change and biometric unlock become ordinary features (TD-06) — **DONE FOR PASSWORD CHANGE; BIOMETRIC IS POSSIBLE, NOT BUILT.** Header version 2 carries a `keyWrap` (AES-256-GCM, 12-byte nonce, 16-byte tag) whose associated data binds every other header field, so splicing a wrap between vaults or editing the vault id fails the tag check. The Argon2id derivation is byte-for-byte unchanged — its output is now the *auth* key — and the pre-TD-05 known-answer vector still passes. `ChangeVaultPasswordCommand` re-wraps under a fresh salt without touching the database or closing the session, gated by the same entropy floor setup enforces. Pre-envelope vaults (v1, `pine.salt`) are **refused, not adopted**: a deliberate breaking change taken while no vault exists outside a developer machine, which deletes the second key path instead of carrying it. Nine falsification mutations, all killed. 423 → 474 unit, 119 → 150 integration. See §12.27. Three rows registered: **TD-86** (the data key is re-wrapped, never rotated), **TD-87** (no platform secure storage, so no biometric), **TD-88** (WASM has no AES-GCM, so the Browser head can open nothing).
 - [x] ✅ **4.** Per-vault encrypted ML model; scope the categoriser to the vault session (TD-16) — **DONE.** The model moved from a relative plaintext path shared by every vault to `{vault}/ai/categorizer.model`, sealed with AES-256-GCM under `HKDF-SHA256(data key, "pine:file-cipher:v1:ai.categorizer.model")` — a purpose-separated key, deliberately not the database key. `IVaultFileCipher` is a general seam Phase 3's encrypted attachments can reuse. The categoriser stopped loading in its constructor (which runs before any vault is open) and now compares the store's vault fingerprint at every use, so a previous vault's model cannot answer. A second defect TD-16 does not mention was closed as a consequence: **two categoriser instances existed, so training never reached predictions until the process restarted**. 11 falsification mutations, 9 killed, 2 surviving individually by genuine redundancy (see §12.29). 474 → 536 unit, 150 → 156 integration. Three rows registered: **TD-89** (training is not the opt-in `32-AI-Training` §12.2 promises), **TD-90** (the AI stack is registered in one head of five), **TD-91** (train/serve text skew).
-- [ ] Row versions; indexes on `Date` and `AccountId`; FK transaction→account; scaled-integer money converter (TD-17, TD-30, TD-31)
-- [ ] Money scale + rounding + `Allocate`; line-item reconciliation in the confirmation UI (TD-18, TD-19)
-- [ ] Receipt duplicate detection; locale-driven date parsing; honest confidence labelling (TD-20, TD-21, TD-22)
+- [x] 🟡 **5a.** Indexes and ordering; FK transaction→account; scaled-integer money converter (TD-30, TD-31, TD-79) — **DONE.** Every money column is a SQLite `INTEGER` count of ten-thousandths, at a scale fixed at 4 because a value converter cannot see the sibling currency column and 4 is the ISO maximum anyway. The migration converts existing amounts by splitting the stored text at the decimal point and doing integer arithmetic on the halves, never letting a value touch IEEE-754, and it **refuses** a vault holding an amount beyond four decimals rather than rounding stored history. The FK is `Restrict` with no navigation property. The "index on `Date`" could not be built as written — see **TD-94**, the shipped crash this ticket walked into. 540 → 564 unit, 156 → 179 integration. Eight falsification mutations, 7 killed, **1 survived and is recorded** (§12.32). Rows registered: **TD-94**, **TD-95**, **TD-96**, **TD-97**.
+- [x] ✅ **5b.** Row versions on the aggregates (TD-17) — **DONE.** A `Version` shadow property on all nine non-owned entities — shadow, because optimistic concurrency is a fact about the store and not about money — assigned a fresh GUID by `PineDbContext` on every insert and update, with the store's `DbUpdateConcurrencyException` translated into `ConcurrencyConflictException` at the persistence boundary. A change confined to an owned collection promotes its owner, so the aggregate rather than the row is the unit of concurrency; that promotion is the one thing a surviving mutation proved was untested, and it is now covered by the case that would otherwise corrupt a transaction. No automatic retry, deliberately. 564 → 567 unit, 179 → 187 integration. Five mutations, 4 killed, **1 survived and led to a real correction** (§12.34). Row registered: **TD-98**.
+- [x] ✅ **6.** Money scale + rounding + `Allocate`; line-item reconciliation in the confirmation UI (TD-18, TD-19) — **ALREADY DONE WHEN THIS ROW WAS REACHED, AND THAT IS THE FINDING.** This row duplicates Phase 0 item 10: iteration 8 closed TD-18 and iteration 9 closed TD-19, the UI half included. Verified against the code rather than against the register — `Money`'s constructor rounds half-to-even (`:102`), rejects a fractional amount in a zero-minor-unit currency (`:94`), and `Allocate` distributes by largest remainder in `Int128` (`:236-247`); the reconciliation panel and its one-click adjustment are live at `ScanReceiptView.axaml:152-191` with 9 view-model tests. **What had NOT happened is that the scale policy never reached the rest of the UI**, and iteration 17 did that: TD-75 closed, plus a dashboard that was adding different currencies together. 567 → 582 unit. Five falsification mutations, all killed. See §12.36. Rows registered: **TD-99**, **TD-100**.
+- [x] ✅ **7.** Receipt duplicate detection; locale-driven date parsing; honest confidence labelling (TD-20, TD-21, TD-22) — **DONE.** `ReceiptDateParser` replaces a cascade whose real defect was `TryParse` (which accepts far more than a culture's short pattern, making the `es-EC` leg unreachable by construction, not merely by ordering); ambiguous dates are carried and shown, never resolved on the user's behalf. `ComputeConfidence`'s literal tally is deleted and replaced by per-field bands taken from `OcrWord.Confidence`, which the engine had always produced and the extractor had always discarded; `NotFound` is a distinct band from `Low`. An `s1:` receipt key reuses the import path's lookup and index — no new migration — and the duplicate warning is non-blocking and re-checked immediately before the write. Eleven falsification mutations, **10 killed, 1 survived by genuine redundancy** (§12.38). Two `NaN` defects were found in this iteration's *own* new code, one of which crashed the scan and lived in the seam between two tasks under two green suites. 582 → **643** unit, 187 → **190** integration. Rows registered: **TD-101**, **TD-102**, **TD-103**.
 - [ ] Exception taxonomy; split unlock auth and schema phases; stop surfacing `ex.Message` (TD-23, TD-24)
 - [ ] Packaging, code signing, update channel (TD-49)
 - [ ] Reconcile the docs: mark every unimplemented spec `Status: Aspirational`; write ADR-0012/0013 or drop the citations (TD-39, TD-40)
@@ -3233,7 +3234,7 @@ edit that turns the entire cipher into decoration while every round-trip test ke
 | TD-90 | The AI stack is registered in one composition root of five | 🟠 | `ImportTransactionsCommandHandler` ctor-injects `IAIProvider`, so import cannot resolve on Macos, Android, iOS, Web or Cli | Call `AddPineCategorisation()` per head, once TD-85 settles the per-head inventory | P1 | 🔴 Open |
 | TD-91 | Train/serve text skew: training uses `Payee`, import categorises on `Payee + Notes` | 🟡 | The model is served inputs shaped unlike those it was fitted on, degrading accuracy in the path that uses it most | One shared function building the categorisation text, called by both | P2 | 🔴 Open |
 
-### 12.30 Next
+### 12.30 Next — superseded
 
 The row this iteration closed is struck from §12.28's list. In order:
 
@@ -3317,3 +3318,532 @@ until someone runs them the honest status of this fix is "believed correct, unob
 |---|---|---|---|---|---|---|
 | TD-92 | Async methods in the AI pipeline did CPU work inline, blocking the UI thread | 🟠 | The window stopped painting for seconds on every receipt scan and Windows marked the app "not responding"; the existing busy indicator could not animate | `Task.Run` around the CPU-bound halves of `ReceiptDetector` and `PaddleOcrEngine` | P1 | 🟢 **Fixed** (§12.31) — **untested by any automated test**, see `61-Manual-Test-Plan` §11 |
 | TD-93 | No test can detect UI-thread blocking anywhere in the app | 🟡 | TD-92 was shipped, lived and was fixed without a single test changing state; the same regression can return silently at any time | A UI-thread harness (an Avalonia headless dispatcher) asserting that view-model entry points yield | P2 | 🔴 Open |
+| TD-94 | `GetPagedAsync` ordered by `Transaction.Date`, a `DateTimeOffset`, which the EF SQLite provider **refuses to translate** — it throws `NotSupportedException` rather than sorting | 🔴 | **The transaction list screen and the recent-transactions dashboard widget threw every time they loaded.** A shipped, user-facing crash on a primary screen. No test caught it because no test had ever executed `GetPagedAsync` against a real SQLite database; the one unit test naming the method asserts, with a substitute, that it is *not* called | A `DateUtc` column carrying the same instant, indexed descending, ordered on instead | P1 | 🟢 **Fixed** (§12.32) — pinned by `Repositories/TransactionOrderingTests` |
+| TD-95 | `TransactionLineItems.Quantity` is still a `decimal` stored as `TEXT` | 🟡 | The residue of TD-79. It is not money and has no scale policy in the domain, so scaling it to 4 would silently round a five-decimal quantity; leaving it means one column can still hold a value the store cannot compare correctly. Nothing orders or filters it today | Give quantity a domain scale policy first, then a column type | P3 | 🔴 **Open** — opened by iteration 15 |
+| TD-96 | `Budget.StartDate` / `EndDate` are `DateTimeOffset` columns with the same offset-in-the-text defect as `Transaction.Date` | 🟡 | Any future `ORDER BY` or range predicate over a budget period will either throw, exactly as TD-94 did, or compare local wall clocks. Neither column reaches SQL today | The same treatment as TD-94, if and when a query needs it | P3 | 🔴 **Open** — opened by iteration 15 |
+| TD-97 | `Importing/ImportKeyMigrationTests` fails intermittently under the full integration run and passes in isolation | 🟡 | A flaky test is a test nobody trusts, and this suite's whole value is that a red result means something. At this rate it will be re-run rather than read. Observed **three times, in three DIFFERENT tests** — iteration 15 (`ImportKeyMigrationTests`, 18 s against a 2 s norm), iteration 16 (name not captured before the re-run passed), iteration 17 (`BalanceRecalculationTests.Recalculate_OfALedgerADoubleWouldGetWrong_IsExactToTheCent`, 10 s, passing in isolation immediately afterwards). That it moves between tests is the diagnosis: this is not a flaky assertion anywhere, it is file contention between `TempVault` directories under xUnit's default per-class parallelism. Roughly one full run in four | Serialise the vault-backed classes into one xUnit collection, or give `TempVault` a retry on the lock | P2 | 🔴 **Open** — opened by iteration 15 |
+| TD-98 | Nothing catches `ConcurrencyConflictException`; a refused write reaches the user as an unhandled exception | 🟡 | TD-17 turned a silent lost update into a loud refusal, which is strictly better — but the loudness currently lands wherever an unhandled exception lands. The user is told something failed without being told to reload, which is the one instruction that resolves it | Handle it in the view models as part of TD-24's exception taxonomy (Phase 1 item 8) | P2 | 🔴 **Open** — opened by iteration 16 |
+| TD-99 | The budgets screen is a mock wearing a real screen's clothes | 🟠 | `BudgetsViewModel:149` sets `SpentAmount = 0m` with the comment "Will be calculated from transactions", so the progress bar is **always** at 0% and `IsExceeded` is **never** true — a budget can be blown wide open and the screen says nothing. `:146` renders `CategoryName` as `"Category " + b.CategoryId.ToString()[..4]`, a fragment of a GUID where a category name belongs. Both are visible on a shipped screen and neither is a placeholder the user can recognise as one | A query summing non-voided transactions per category over the budget's period, and a real category lookup | P1 | 🔴 **Open** — opened by iteration 17 |
+| TD-100 | `ScanReceiptViewModel.RecomputeReconciliation` computes the difference two ways | 🔵 | With an account selected the arithmetic goes through `Money` and rounds each line to the currency's scale; without one it sums raw decimals. Iteration 17 verified the divergence is **not** load-bearing — `SaveTransactionAsync` refuses with "Please select an account" before it ever consults `IsReconciled`, so every save is judged by the `Money` path — but the figure shown on screen while the form is being filled can still differ from the one that will decide the save | Nothing, until an account can be defaulted; the branch is commented rather than unified, because unifying it means guessing a currency | P3 | 🔴 **Open** — opened by iteration 17 |
+
+### 12.32 Iteration 15 — Phase 1, item 5a (TD-31, TD-30, TD-79)
+
+**Ticket:** scaled-integer money, the missing foreign key, and an index on the column the transaction
+list orders by. Row versions (TD-17) were split out as item 5b before any code was written, because
+they are a different problem — a conflict policy and a question about what the user sees — and
+folding them into a migration that rewrites every money column would have made the migration
+unreviewable.
+
+#### Three things the ticket said that the code did not support
+
+Research came first, and all three of these were confirmed by hand with `grep` before being used.
+None of them are quibbles; each one changed what got built.
+
+- **"Scaled-integer converter" could not mean what it says.** `Money` is mapped as a
+  `ComplexProperty` on `Account`/`Transaction`/`Budget` and as an `OwnsOne` on splits and line items,
+  so `Amount` and `Currency` are two separate columns. An EF `ValueConverter` sees one column. It
+  therefore **cannot** read the currency of the amount it is converting, which makes a per-currency
+  scale unavailable rather than merely inconvenient. The scale is fixed at **4**, and that costs
+  nothing: 4 is the ISO 4217 maximum (`CLF`, `UYW`) and already the ceiling `Money.PowerOfTen` throws
+  above, so the store's scale is greater than or equal to every currency's.
+- **TD-31's stated impact was hypothetical, and the real one was worse.** The row warns that "the
+  first `.Where(t => t.Amount > 100)` that reaches SQL returns wrong results". Verified: **no money
+  column is filtered or ordered in SQL anywhere in `src/`** — they are only projected. So that hazard
+  was latent. What was *not* latent was TD-94, below.
+- **TD-17's stated cause is false.** "The background trainer contends with user saves" —
+  `CategorizationTrainingBackgroundService` only reads (`:92`); its single write is a
+  `SaveSettingCommand` for one watermark key (`:132`). It never touches `Account` or `Transaction`.
+  The debt survives for a different reason and the register now says so.
+
+#### TD-94 — the defect this ticket walked into
+
+"Add an index on `Date`" turns out to be un-buildable, and finding out why exposed a shipped crash.
+
+`Transaction.Date` is a `DateTimeOffset`. The EF SQLite provider **refuses to translate an ORDER BY
+over one** and throws `NotSupportedException`. `GetPagedAsync` ordered by exactly that. Its only two
+callers are `TransactionsViewModel:86` — the transaction list screen — and
+`DashboardWidgetsPart3:68`. **Both threw every time they loaded.**
+
+Nothing caught it because nothing had ever run `GetPagedAsync` against a real database. The single
+unit test that names the method asserts, with an NSubstitute substitute, that it is *not* called.
+A suite of 156 green tests sat on top of a primary screen that could not open.
+
+Underneath that there is a second, quieter defect, which is what an index would have cemented. The
+provider stores a `DateTimeOffset` as text with the offset appended — measured, not assumed:
+`2026-08-20 23:00:00+02:00`. Sorting that text sorts by **local wall clock**, and Pine writes both
+kinds of offset (`AddTransactionViewModel:28` defaults to `DateTimeOffset.Now`; `CsvImporter:81`
+parses without one; other paths write UTC). A raw-SQL probe returned a purchase two hours *later*
+in second place. So `Date` is not a column to index — it is a column not to order by.
+
+The fix is a `DateUtc` column carrying the same instant, derived in the one place `Date` is assigned,
+indexed descending, ordered on. `Date` keeps the user's offset untouched, because normalising it to
+UTC moves a 23:00 purchase in Madrid to 21:00 and a 22:00 purchase in Santiago onto the next day.
+The product owner chose this shape over the simpler normalisation for that reason.
+
+#### The migration, and why it is written by hand
+
+The scaffolded migration was seven bare `AlterColumn` calls. Each makes EF rebuild the table and copy
+the old column with a plain `SELECT`, at which point SQLite's type affinity turns the TEXT `'12.34'`
+into the INTEGER `12`. **Every amount in the vault would have become whole units, and nothing would
+have thrown.** On the round numbers a hand test uses it would have looked perfect.
+
+So the conversion runs first, in place, while the column is still TEXT: each amount is rewritten as
+its integer count of ten-thousandths, still as text, by splitting the string at the decimal point and
+doing integer arithmetic on the halves. EF's rebuild then copies `'123400'` into an INTEGER column,
+which SQLite converts exactly. Schema stays EF's job; only the values are ours.
+
+Two guards abort the migration rather than damaging data: an amount beyond four decimals is
+**refused, not rounded** (rounding stored history is destroying evidence — the position §12.18 already
+took), and a transaction whose account does not exist is refused, because the new foreign key cannot
+be created over an orphan. `RAISE` is trigger-only in SQLite, so each guard is a *named* CHECK
+constraint on a scratch table, the name being the error message. The first attempt named the table
+instead of the constraint and produced `CHECK constraint failed: violations`, which says nothing; the
+test caught it.
+
+#### One user-visible consequence, found by measurement and fixed properly
+
+Decimal division normalises trailing zeros, so a stored `12.00` reads back with scale 0. Five views
+bind a whole `Money` and render `Money.ToString()`, which interpolated the amount directly — so
+`12.00 USD` would have started displaying as `12 USD`. Rather than accept that, `ToString()` now
+formats to the **currency's** scale, which also settles a pre-existing inconsistency where the same
+amount rendered with or without decimals depending on how it was typed. An amount carrying *more*
+decimals than its currency is still shown in full, because rounding it for display would hide the
+discrepancy worth seeing.
+
+#### Verification actually executed
+
+Every number below was produced on this machine by the orchestrating session. Three research agents
+and three repair agents were used; **none was permitted to build or test anything** — they share this
+solution and would have raced on build output — so no agent's claim about a compile or a test result
+was, or could have been, taken at face value. Every load-bearing claim they made was re-checked with
+`grep` before use, and one agent's uncertainty ("is the FK actually in a migration?") was answered by
+reading the migration rather than by reassurance.
+
+| | |
+|---|---|
+| Builds | `Pine.Core`, `Pine.Application`, `Pine.Infrastructure`, `Pine.Ui.Avalonia`, `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli` — **0 errors, 0 warnings each** |
+| `Pine.Ui.Web` | **0 errors, 1 warning** — the pre-existing `NativeFileReference` wasm-linking warning, unrelated |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED.** `NETSDK1147`, workloads absent. Re-confirmed by running both builds, not carried over from a previous iteration. Neither head was edited |
+| `dotnet test` — unit | **564 passed, 0 failed**, from a 540 baseline measured at the start |
+| `dotnet test` — integration | **179 passed, 0 failed**, from a 156 baseline measured at the start |
+| Falsification mutations | **8 applied, 7 killed, 1 survived** — see below. Each reverted and byte-compared against its backup afterwards; both suites re-run green at the end |
+
+#### The mutations, including the one that survived
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Drop the hand-written conversion, leaving EF's plain `AlterColumn` to copy the values | **12 tests failed** |
+| 2 | Replace the string conversion with `CAST(ROUND(col * 10000) AS INTEGER)` — the floating-point path | **SURVIVED.** See below |
+| 3 | Drop the sign handling, so negatives lose their direction | 3 tests failed |
+| 4 | `ScaledMoneyConverter.ToStorage` rounds instead of throwing | 1 test failed |
+| 5 | `GetPagedAsync` orders by `Date` again — i.e. restore TD-94 | 4 tests failed |
+| 6 | `DateUtc = date.DateTime`, the local wall clock, instead of `date.UtcDateTime` | 3 tests failed |
+| 7 | Remove the foreign key from the model | 4 tests failed |
+| 8 | Remove the beyond-four-decimals guard | 1 test failed |
+
+**Mutation 2 survived, and it falsified a claim this iteration had written into its own source.** The
+migration's remarks asserted that the obvious `ROUND(col * 10000)` conversion was wrong because it
+goes through IEEE-754. The mutation passed all eighteen tests. Measured afterwards: for any amount
+whose scaled value fits inside a double's 53-bit integer range, multiply-then-`ROUND` recovers the
+exact figure, and `8.20`, `1.005` and `0.29` — the values the test file called "classic binary64
+casualties" — are all recovered. They only defeat a conversion that *truncates*. The two paths first
+diverge at `1234567890123.4567`, whose scaled value is 1.23e16, where the float path lands one
+ten-thousandth away.
+
+That value is now in the theory and the mutation dies. **The prose in both the migration and the test
+file was corrected rather than left standing**: the string conversion is not chosen because the float
+one is visibly broken on ordinary money, it is chosen because it has no threshold to be right about.
+Recording this is the point — a mutation that survives is the only thing that would have caught an
+overclaim written with complete confidence.
+
+#### What is NOT done, stated plainly
+
+- **TD-17 is untouched.** That is item 5b, and it was split out deliberately, not forgotten.
+- **`SUM` is still computed in .NET.** `RecalculateAccountBalanceCommand` sums the ledger in process,
+  and its stated reason — that a pushed-down `SUM` would coerce TEXT to REAL — **is no longer true**;
+  an INTEGER column sums exactly in SQLite. Pushing it down is now possible and was out of scope. The
+  comment in that file still says the old thing and should be revisited when someone takes it on.
+- **`Quantity` is still TEXT** (TD-95), and `Budget`'s date columns still carry offsets (TD-96).
+- **Nothing on any screen has been seen running.** TD-94 was a crash on a primary screen that a green
+  suite did not notice; the fix is proven by a test that executes `GetPagedAsync` against a real
+  encrypted vault, which is strictly more than existed before, but it is still not the same as
+  opening the app. `61-Manual-Test-Plan` is where that gap lives.
+- **One test is flaky** (TD-97), observed once in three full runs and passing in isolation.
+
+### 12.33 Next — superseded
+
+The rows this iteration closed are struck from §12.30's list. In order:
+
+- **TD-94 is fixed, but its lesson is not absorbed.** A primary screen threw on every load, for an
+  unknown number of releases, under a green suite. Nothing else in the application is covered by an
+  integration test that actually executes the query path a screen uses. That is a bigger hole than any
+  single row in this register.
+- **TD-07 — re-arm CI.** Unchanged as the largest single risk.
+- **Phase 1 item 5b — row versions (TD-17)**, now with an accurate cause to work from.
+- **TD-97 — the flaky test**, before it trains anyone to re-run a red suite instead of reading it.
+- **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85** together, **TD-83**, and then **TD-78**,
+  **TD-75**, **TD-81**, **TD-91**, **TD-95**, **TD-96**.
+- **TD-84** last, unchanged.
+
+### 12.34 Iteration 16 — Phase 1, item 5b (TD-17), and item 5 closes
+
+**Ticket:** optimistic concurrency tokens, the half of item 5 that iteration 15 split out. With this,
+**Phase 1 item 5 is complete**.
+
+#### The debt was real and its recorded cause was not
+
+Iteration 15 already corrected the register; this iteration is what the correction was for. TD-17
+said "the background trainer contends with user saves". It does not:
+`CategorizationTrainingBackgroundService` only reads, and its single write is a `SaveSettingCommand`
+against one watermark key. Had that been the actual problem, the fix would have been a token on
+`Setting` and nothing else.
+
+The real contention is structural and much wider. Every request goes through `ScopedMediator`, which
+opens its own DI scope, its own `PineDbContext` and its own database transaction. Two requests in
+flight therefore read, mutate and write the same row with no knowledge of each other, and the second
+write wins silently. A deposit and a withdrawal that overlap leave the account holding whichever
+balance was computed last, while both transaction rows sit in the ledger — a balance that disagrees
+with its own history, produced without an error anywhere.
+
+#### What was built, and three choices worth stating
+
+- **A shadow property, not a domain one.** `Version` is declared on the model and is invisible to
+  `Pine.Core`. Nothing in the domain carries a version field, no repository changed, and there is no
+  property for a caller to set by accident.
+- **Applied uniformly to all nine non-owned entities**, rather than to the ones that look like they
+  need it. `Account` has the obvious lost-update surface, but choosing per type means re-deciding
+  every time an entity gains a write path, and the Phase 3 sync work needs a version on everything
+  anyway. Owned types are excluded because they are not roots.
+- **A GUID, not a counter, because SQLite has no `rowversion`.** There is no native type and no
+  automatic bump, so `PineDbContext` assigns the value on insert and update. A counter would have to
+  be read before being incremented, and two writers that read the same counter increment it to the
+  same number.
+- **No automatic retry, deliberately.** Re-running the request would re-read the row and recompute
+  from a newer value, which is right for an idempotent write and wrong for the read-modify-write this
+  exists to catch: the retry would apply the change on top of a state the caller never saw, which is
+  the lost update again with extra steps.
+- **`ConcurrencyConflictException` lives in `Pine.Core`** and the translation happens in
+  `EfCoreUnitOfWork`, where persistence stops. The application layer and the view models cannot
+  reference `DbUpdateConcurrencyException`, so letting EF's own type travel outwards would either
+  leak the ORM into every layer or, more likely, be caught by nothing and shown to the user as a raw
+  provider message. The original is kept as the inner exception for the log; the message names no
+  entity, no id and no amount, because it can reach a dialog.
+
+#### The mutation that survived, and the correction it forced
+
+Five mutations, four killed. The fifth is the useful one.
+
+| # | Mutation | Result |
+|---|---|---|
+| 9 | Never bump the token | 3 tests failed |
+| 10 | Overwrite `OriginalValues` as well as `CurrentValues` — the classic mistake, which makes the WHERE clause compare the row against the value being written | 5 tests failed |
+| 11 | Remove the owner-promotion step | **SURVIVED.** See below |
+| 12 | Stop translating `DbUpdateConcurrencyException` | 4 tests failed |
+| 13 | Give owned types their own token too | 5 tests failed |
+
+**Mutation 11 survived, and it exposed a test that passed for the wrong reason.** The test meant to
+prove that a change confined to an owned collection still bumps its owner's token used
+`ReplaceSplits`, which *discards* the existing splits — so the second writer issued a DELETE for a
+row the first had already deleted, that DELETE affected zero rows, and EF reported a conflict on the
+CHILD. The owner's token was never consulted. The test was green, the claim in its name was false,
+and removing the mechanism it was supposedly testing changed nothing.
+
+The case that actually needs the owner's token is two writers each **adding** a line item. Nothing is
+deleted, so there is no child-level conflict to fall back on, and — this is why it matters — the
+result would be genuinely corrupt. Each writer's own set is internally valid, one line of 100 against
+a total of 100, so `Transaction.EnsureValid` passes for both. Land them both and the transaction
+holds two line items summing to 200 against a total of 100: a state the aggregate forbids, reached
+with no error anywhere. That test was added, it kills mutation 11, and the split test was **kept but
+renamed and re-described** so it stops claiming credit for a mechanism it does not exercise.
+
+#### Verification actually executed
+
+| | |
+|---|---|
+| Builds | Core, Application, Infrastructure, Ui.Avalonia, Ui.Windows, Ui.Macos, Cli — **0 errors, 0 warnings each** |
+| `Pine.Ui.Web` | **0 errors, 1 warning** — the pre-existing wasm `NativeFileReference` warning |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED**, `NETSDK1147`. Neither head was edited |
+| `dotnet test` — unit | **567 passed, 0 failed**, from 564 |
+| `dotnet test` — integration | **187 passed, 0 failed**, from 179 |
+| Mutations | **5 applied, 4 killed, 1 survived** and produced the correction above. Each reverted and byte-compared against its backup |
+
+#### What is NOT done
+
+- **Nothing in the UI catches `ConcurrencyConflictException`.** It will reach the user as whatever
+  the view models do with an unhandled exception today, which is TD-24's territory. Registered as
+  **TD-98**; it is a real gap and the exception's message was written to be readable precisely
+  because that gap exists.
+- **No test proves the trainer and a user save now coexist safely**, because that was never the
+  defect — see above. What is proven is the structural case, with two contexts over one vault file.
+- **Concurrency is unobservable by hand.** There is no manual row for it: producing a conflict needs
+  two overlapping writes, which the UI gives no way to arrange. A note was added to
+  `61-Manual-Test-Plan` §14 saying so rather than inventing a procedure nobody can follow.
+
+### 12.35 Next — superseded
+
+Phase 1 item 5 is closed. §12.33's list stands, minus the row this iteration took:
+
+- **TD-94's lesson**, still the largest one on this branch: a primary screen threw on every load under
+  a green suite, and almost nothing else is covered by a test that executes the query path a screen
+  actually uses.
+- **TD-07 — re-arm CI.**
+- **TD-98** — surface the concurrency conflict as something a user can act on, which folds naturally
+  into TD-24's exception taxonomy (Phase 1 item 8).
+- **TD-97** — the flaky test.
+- **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85** together, **TD-83**, then **TD-78**,
+  **TD-75**, **TD-81**, **TD-91**, **TD-95**, **TD-96**.
+- **TD-84** last, unchanged.
+
+### 12.36 Iteration 17 — Phase 1, item 6: the row was already closed, and what was actually missing
+
+**Ticket:** Phase 1 item 6, "Money scale + rounding + `Allocate`; line-item reconciliation in the
+confirmation UI (TD-18, TD-19)".
+
+#### The row duplicated Phase 0 item 10, and the code says so
+
+Before any work, the two debts were checked against the source rather than against the register —
+the register having been wrong twice already in this phase (TD-17's cause, TD-30's index).
+
+- **TD-18 is genuinely implemented.** `Money`'s constructor rounds half-to-even (`Money.cs:102`),
+  refuses a fractional amount in a zero-minor-unit currency (`:94`), and `Allocate` partitions whole
+  minor units in `Int128` with leftovers going to the largest remainders (`:236-247`). 46 tests
+  across the four core files, counted.
+- **TD-19's UI half is genuinely implemented**, which is the half most likely to have been claimed
+  and not built. The reconciliation panel is at `ScanReceiptView.axaml:152-191`, the one-click
+  adjustment is `RecordDifferenceAsAdjustmentCommand` bound at `:184`, and
+  `ScanReceiptReconciliationTests` covers it with 9 tests.
+
+So the row was bookkeeping, not work: iterations 8 and 9 closed it under Phase 0 item 10 and nobody
+struck it from Phase 1. It is now ticked with that explanation rather than silently.
+
+#### What had genuinely not happened
+
+**The scale policy never left the domain.** TD-18 taught `Money` that JPY has no minor unit and KWD
+has three; every view went on printing `{0:N2}`. A yen balance was shown with two decimals it cannot
+be spent in, and a KWD amount had its third digit dropped on screen while the database kept it.
+
+TD-75 recorded this and gave a reason that was **false**: "there are no Avalonia converters in the
+project, so there is nowhere to put the rule today". `Utils/Converters.cs:9,16` already held an
+`IValueConverter`. The row had been open partly against an obstacle that did not exist.
+
+**And the dashboard was showing a fabricated number**, which no row recorded at all.
+`DashboardViewModel` added every account's `Balance.Amount` into one bare `decimal` and labelled the
+result with whichever currency the **last account in the loop** carried. A vault holding 1 000 USD
+and 900 EUR displayed "1900 EUR" — not an inaccurate total, but a quantity of nothing. `Money.Add`
+forbids adding across currencies; this got past it by never using `Money`. It also formatted with
+`{0:C2}`, which emits the *machine's* currency symbol: on a Spanish-locale machine a dollar balance
+read `1.234,56 € USD`.
+
+#### What was built
+
+- **`Money.ToAmountString()`** — the amount alone, at its currency's scale, in the current culture.
+  `ToString()` is now that plus the code, so one rule serves both shapes. Group separators are
+  included, because the `{0:N2}` bindings being replaced already grouped and dropping them would have
+  traded a fix for a regression at exactly the magnitudes where a figure is hardest to read.
+- **A `MoneyAmount` converter** in the existing `Converters` class; the two widget bindings now pass
+  a whole `Money` through it instead of formatting `.Amount` in markup.
+- **The budgets row formats in its view model**, because it carries a `decimal` and a currency code
+  rather than a `Money` and is the only place that knows both halves. It uses the non-throwing
+  `FromStoredValue`/`FromRounded` pair: a budget in a code no longer in the ISO table (TD-63 permits
+  one) must render, not take the page down.
+- **The dashboard groups by currency and folds each group with `Money.Add`**, so a cross-currency
+  addition would now throw rather than produce a plausible wrong answer — the defect is
+  unrepresentable rather than merely absent. One figure per currency; no borrowed symbol.
+
+#### A change proposed in the design and then NOT made
+
+The design said the two branches of `RecomputeReconciliation` would be unified, because one rounds
+through `Money` and the other sums raw decimals. Verification said otherwise:
+`SaveTransactionAsync:269-272` refuses without a selected account **before** it consults
+`IsReconciled`, so every save is judged by the `Money` path, and the raw branch only feeds the figure
+shown while the form is still being filled. Unifying it would have required inventing a currency to
+round to. It is commented instead, and carried as **TD-100**. Making the change anyway, to match a
+plan the checking had already contradicted, would have been the wrong kind of consistency.
+
+#### Verification actually executed
+
+Two research agents were used and **neither was permitted to build or test anything**; both of their
+verdicts — that TD-18 and TD-19 really are implemented — were re-checked by hand with `grep` before
+being acted on, including counting the tests they cited.
+
+| | |
+|---|---|
+| Builds | Core, Application, Infrastructure, Ui.Avalonia, Ui.Windows, Ui.Macos, Cli — 0 errors, 0 warnings each; Web 1 pre-existing wasm warning |
+| `Pine.Ui.Android`, `Pine.Ui.Ios` | **NOT COMPILED**, `NETSDK1147`. Neither head was edited |
+| `dotnet test` — unit | **582 passed, 0 failed**, from 567 |
+| `dotnet test` — integration | **187 passed, 0 failed**, unchanged |
+| Falsification mutations | **5 applied, 5 killed** |
+
+| # | Mutation | Result |
+|---|---|---|
+| 14 | Restore the raw-decimal cross-currency sum with the last account's currency | 2 tests failed |
+| 15 | Format at a hardcoded 2 decimals instead of the currency's scale | 5 tests failed |
+| 16 | Drop the group separators (`F` for `N`) | 9 tests failed |
+| 17 | Budgets row back to a hardcoded `N2` | 2 tests failed |
+| 18 | Remove the change notification for the rendered budget text | 1 test failed |
+
+**No mutation survived this time**, which is worth stating only because the previous two iterations
+each had one that did — and both survivors produced corrections to claims already written down with
+complete confidence.
+
+#### What is NOT done
+
+- **The budgets screen is a mock** (**TD-99**, new). `SpentAmount = 0m` with a "will be calculated"
+  comment, so the progress bar never moves and an exceeded budget is never flagged; the category name
+  is four characters of a GUID. This iteration formatted those figures correctly and **deliberately
+  did not make them true** — computing real spend is a new query and a ticket of its own, and folding
+  it in here would have turned a formatting fix into a feature.
+- **Nothing was seen running.** Every claim above is a compiler or test claim. The reconciliation
+  panel iteration 9 built has still never been rendered by anyone, which §12.20 flagged and no
+  iteration has answered; `61-Manual-Test-Plan` §13 is written for it now, but writing the procedure
+  is not running it.
+- **TD-97 got worse, not better.** A third intermittent failure, in a third different test. That it
+  moves between tests is the diagnosis: it is `TempVault` file contention under xUnit's default
+  parallelism, not a flaky assertion. The row now says so.
+
+### 12.37 Next
+
+- **TD-99 — make the budgets screen true or take it down.** New, and the sharpest thing found this
+  iteration: it is TD-94's shape again — a shipped screen that looks like it works.
+- **TD-94's lesson**, unchanged and still the largest: almost nothing is covered by a test that
+  executes the query path a screen actually uses.
+- **TD-07 — re-arm CI.**
+- **TD-97 — the flaky suite**, now diagnosed.
+- **TD-98** — surface the concurrency conflict, which folds into TD-24 (Phase 1 item 8).
+- **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85**, **TD-83**, then **TD-78**, **TD-75**'s
+  siblings **TD-95**, **TD-96**, **TD-100**, and **TD-81**, **TD-91**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.38 Iteration 18 — Phase 1, item 7 (TD-20, TD-21, TD-22)
+
+**Ticket:** Phase 1 item 7, "Receipt duplicate detection; locale-driven date parsing; honest
+confidence labelling."
+
+All three rows are the same defect class, which is why they were worked as one ticket: the receipt
+pipeline told the user something it had not earned the right to say. It said "this is a new
+transaction" without looking (TD-20), it said "5 March" when the paper said 3 May (TD-21), and it
+said "90% confident" from a tally that had never touched the OCR engine's own confidences (TD-22).
+
+#### What was true at the start, read from the code rather than the register
+
+| Claim | Verified against |
+|---|---|
+| The receipt write path performs no duplicate lookup at all | `AddTransactionCommand.cs:63` — the handler loads the account and writes |
+| Import de-duplication already existed and was indexed | `ITransactionRepository.GetExistingImportKeysAsync`; index `IX_Transactions_AccountId_ImportKey` (migration `20260827141109`) |
+| **TD-21's severity was still understated**, beyond §12.12's correction | The cascade used `TryParse`, not `TryParseExact`. A culture's `TryParse` accepts far more than that culture's own short pattern, so `InvariantCulture` swallowed every ambiguous date and the `es-EC` leg was unreachable *by construction*, not merely by ordering |
+| The date regex could not match a single-digit day or month | `OnnxNlpFieldExtractor.cs:67` — `\d{2}[/-]\d{2}[/-]\d{4}` |
+| **Real per-word OCR confidence already existed and was discarded** | `Pine.Core/Ai/OcrWord.cs:19` carries `float Confidence`; the extractor never read it |
+
+That last row is the finding worth keeping: TD-22's remedy was not "invent a confidence model", it was
+"stop throwing away the one the engine already produces".
+
+#### What was built
+
+- **`Pine.Core/Ai/ReceiptDateParser`** — explicit format lists matched with `TryParseExact`, ISO first
+  because it cannot be read two ways, then the day/month order implied by
+  `CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern`, then the other. Returns
+  `ReceiptDateCandidate(Value, IsAmbiguous, Alternative)`. An ambiguous date is **carried, not
+  resolved**: the confirmation screen shows both readings and a one-click swap that leaves the
+  question open.
+- **`Pine.Core/Ai/ReceiptFieldConfidence`** — `FieldConfidence.FromWordScores` takes the **minimum**
+  of a field's words, because a field is worth what its worst-read word is worth. Bands are
+  `High >= 0.90`, `Medium >= 0.70`, else `Low`, with `NotFound` a **distinct band** rather than a
+  score of zero — the old tally could not tell a misread merchant from one that was never on the page,
+  and those two need different words on screen. `ComputeConfidence` is **deleted**, and
+  `ReceiptExtractionResult.ConfidenceScore` with it. There is deliberately no aggregate score: a single
+  percentage cannot tell the user which field to check, which is the only thing they can act on.
+- **`ImportKeyFactory.FromReceipt`**, scheme `s1:` — reusing the import path's existing lookup and
+  index. No new migration. `Derive` (`h1:`) and `FromReference` (`r1:`) were deliberately **not**
+  touched; see the debt row below.
+- **`CheckReceiptDuplicateQuery`** returning a projection, not the aggregate, run twice: at extraction
+  and again immediately before the write. The warning is **non-blocking** — two identical coffees on
+  one day are two transactions, and a second press saves.
+
+#### Falsification mutations
+
+Eleven mutations, run by the controller against committed code, ten killed.
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Invert the culture's day/month preference | Killed (4 tests) |
+| 2 | `IsAmbiguous` always false | Killed (1) |
+| 3 | `TryParse` instead of `TryParseExact` — TD-21's original cause | Killed (5) |
+| 4 | Maximum instead of minimum across a field's word confidences | Killed (1) |
+| 5 | `Low` instead of `NotFound` for an empty word list | Killed (1) |
+| 6 | Let a non-finite confidence through `Scores()` | Killed (2) |
+| 7 | Revert the `F4` scale pin in the receipt key | Killed (1) |
+| 8 | `Math.Abs` on the key's amount — strip the ledger sign | Killed (1) |
+| 9 | Return `h1:` instead of `s1:` | Killed (2) |
+| 10 | Make the pre-save duplicate gate never fire | Killed (4) |
+| 11 | Stop clearing the duplicate acknowledgement when the date is edited | **SURVIVED** |
+
+**Mutation 11 survived by genuine redundancy, not by missing coverage**, and the difference was
+established by reading the code rather than assumed: `SaveTransactionAsync` recomputes the import key
+from the *current* date, amount, merchant and account on every press, and all four of those fields are
+inputs to the key — so a date edit changes the key and the re-check fires whether or not the
+acknowledgement was cleared. `ClearDuplicateAcknowledgement` is belt-and-braces. It is kept, because a
+future change to the key's inputs would make it load-bearing again, but it should be documented as
+redundant so that no later maintainer weakens the key comparison believing the clearing covers it.
+This is the same category as the two survivors recorded in §12.29.
+
+#### Two defects found in this iteration's own new code
+
+Both were `NaN`, and neither appeared in a green suite.
+
+1. **`FromWordScores` reported an all-`NaN` word list as `High` confidence.** Every IEEE-754
+   comparison against `NaN` is false, so the `0..1` guard passed it, `lowest` kept its
+   `double.MaxValue` seed, and `BandFor(double.MaxValue)` returned `High`. Garbage scored as
+   trustworthy — TD-22 reproduced inside the code written to close it. Found by review, not by tests.
+2. **A `NaN` confidence then crashed the entire scan.** `Math.Clamp` does **not** neutralise `NaN`
+   (its comparisons are false too), so once fix 1 made non-finite input throw, a single `NaN` on a word
+   backing a selected field raised `ArgumentOutOfRangeException` out of the pipeline. This one lived in
+   the seam *between* two tasks: each task's own suite was green and each task's own review approved.
+   Fixed by mapping non-finite to `0f` in `Scores()` — the throw at the boundary was kept, because a
+   confidence the engine could not compute is not evidence of a good reading, and `Low` tells the user
+   to check the field while a crash tells them nothing.
+
+#### Test counts
+
+| Suite | Before | After |
+|---|---:|---:|
+| `Pine.Tests.Unit` | 582 | **643** |
+| `Pine.Tests.Integration` | 187 | **190** |
+
+Both green at this commit, verified by the controller's own runs rather than taken from any report.
+TD-97 did not reproduce in these runs, which is consistent with it being intermittent rather than fixed.
+
+#### Deliberately not done
+
+- **Per-line-item confidence is not surfaced.** `Confidence.LineItems` is built from product lines
+  before the extractor appends synthesized tax/tip/discount rows, so `LineItems.Count` can exceed
+  `Confidence.LineItems.Count` on a taxed receipt. Pairing them positionally would show the wrong
+  line's band and throw on a taxed receipt. Registered as **TD-101**.
+- **`Derive`'s identical scale defect is untouched.** Registered as **TD-102**.
+- **Nothing was seen running.** Every claim here is a compiler, test or mutation claim. The ambiguity
+  prompt, the weak-field hints and the duplicate warning have never been rendered by a human;
+  `61-Manual-Test-Plan` §13.6-13.8 is written for them now, but writing a procedure is not running it. This is
+  the fourth consecutive iteration to say so.
+
+#### New debt
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-101 | `ReceiptConfidence.LineItems` is indexed against product lines only, while `ReceiptExtractionResult.LineItems` also carries appended adjustment rows | 🟡 | Any consumer pairing them positionally shows the wrong band and throws on a taxed receipt | Thread word provenance through `AppendParsedAdjustments`, or key the confidences by line identity | P2 | 🔴 **Open** |
+| TD-102 | `ImportKeyFactory.Derive` (`h1:`) formats its amount with a bare `decimal.ToString`, so the value's scale leaks into the key | 🟡 | A statement re-exported with `10.5` where it once wrote `10.50` produces different keys, and its rows are re-imported as new transactions | Not fixable in place — the versioning discipline requires an `h2:` scheme | P2 | 🔴 **Open** |
+| TD-103 | `Pine.Tests.Unit` is no longer platform-free: a `[ModuleInitializer]` registers headless Skia for the whole assembly so the scan view model's `Bitmap` decode works | 🟢 | A CI image without native Skia binaries fails the unit suite | Either accept and document as a CI requirement, or make the image decode a seam the view model can be tested without | P3 | 🔴 **Open** |
+
+### 12.39 Next
+
+- **TD-99 — make the budgets screen true or take it down.** Still the sharpest open row, and unchanged
+  by this iteration.
+- **TD-94's lesson**, unchanged and still the largest: almost nothing is covered by a test that
+  executes the query path a screen actually uses.
+- **TD-07 — re-arm CI.** Now four iterations old.
+- **Phase 1 item 8** — the exception taxonomy (TD-23, TD-24), which **TD-98** folds into.
+- **TD-101**, then **TD-102**, then **TD-103**.
+- **TD-97 — the flaky suite**, diagnosed, not fixed.
+- **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85**, **TD-83**, then **TD-78**, **TD-75**'s
+  siblings **TD-95**, **TD-96**, **TD-100**, and **TD-81**, **TD-91**.
+- **TD-84** last, unchanged.

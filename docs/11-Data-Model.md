@@ -533,8 +533,8 @@ instants in UTC; the user's timezone is supplied separately.
 |-------------|--------------------------------------------------------------------------------------------------------|
 | DA-A-1      | The encryption envelope is applied at the database level (OD-03) and is transparent to the schema.      |
 | DA-A-2      | UUID v7 is used for all entity identifiers (sortable, collision-resistant).                            |
-| DA-A-3      | Money is a decimal string; no floating point is persisted.                                             |
-| DA-A-4      | Timestamps are stored as ISO 8601 strings in UTC; conversion to the user's timezone is a presentation concern. |
+| DA-A-3      | ~~Money is a decimal string; no floating point is persisted.~~ **Superseded by TD-31.** Money is persisted as a SQLite `INTEGER` count of ten-thousandths — a fixed scale of 4, which is the largest number of minor units ISO 4217 defines. The "no floating point" half stands and is stronger than before: an integer column compares and sorts correctly in SQL, whereas the decimal string it replaced compared lexicographically. The scale is fixed rather than per-currency because an EF value converter sees a single column and cannot read the sibling currency column. |
+| DA-A-4      | ~~Timestamps are stored as ISO 8601 strings in UTC~~ **Partly false, and the correction matters.** `Transaction.Date` is a `DateTimeOffset` persisted with the user's own offset appended, because the offset records when the money was actually spent and normalising it away moves displayed dates across a day boundary. Ordering therefore uses a separate `DateUtc` column holding the same instant in UTC (TD-94). Other timestamp columns are written in UTC by the domain. Conversion to the user's timezone remains a presentation concern. |
 | DA-A-5      | Soft delete is the default for user data; hard delete is reserved for GDPR / right-to-erasure flows.   |
 
 ## 9. Deferred Data Decisions
