@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-34-API-GUIDELINES`                                                         |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — governs an API surface that does not exist                            |
+| Reconciled       | 2026-08-31 · These are guidelines for the plugin SDK, whose project contains no source files (TD-37). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

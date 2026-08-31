@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-50-TEST-SCENARIOS`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the process is not in use                                             |
+| Reconciled       | 2026-08-31 · The scenario artefact tree does not exist. Its `TD-NNNN` reference (:65) means Test Data, not technical debt. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

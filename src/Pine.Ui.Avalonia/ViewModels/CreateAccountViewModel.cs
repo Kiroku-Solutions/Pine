@@ -9,6 +9,8 @@ using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Core.Accounts;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -18,6 +20,8 @@ public partial class CreateAccountViewModel : ObservableObject
     
     // Action to call when creation is complete (to close the dialog/return)
     private readonly Action _onComplete;
+
+    private readonly ILogger<CreateAccountViewModel>? _logger;
 
     [ObservableProperty]
     public partial string AccountName { get; set; } = string.Empty;
@@ -50,10 +54,14 @@ public partial class CreateAccountViewModel : ObservableObject
     /// </remarks>
     public ObservableCollection<string> Currencies { get; } = new(new[] { "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD" });
 
-    public CreateAccountViewModel(IMediator mediator, Action onComplete)
+    public CreateAccountViewModel(
+        IMediator mediator,
+        Action onComplete,
+        ILogger<CreateAccountViewModel>? logger = null)
     {
         _mediator = mediator;
         _onComplete = onComplete;
+        _logger = logger;
     }
 
     [RelayCommand]
@@ -81,7 +89,15 @@ public partial class CreateAccountViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error: {ex.Message}";
+            // WAS: $"Error: {ex.Message}" (TD-24). CreateAccountCommand still has no validator
+            // (TD-78), so an unknown currency arrives here as a raw ArgumentException from inside
+            // CurrencyCode naming its own parameter. That is exactly the class of text this stops
+            // showing; giving the command a validator is TD-78 and would turn it into a sentence.
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "create-account",
+                "The account could not be created. Nothing was changed.");
         }
         finally
         {

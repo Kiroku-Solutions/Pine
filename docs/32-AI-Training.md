@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-32-AI-TRAINING`                                                            |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — see the clause-by-clause table already in §12                |
+| Reconciled       | 2026-08-31 · Reconciled in place on 2026-08-29 for TD-16 (:261-269). The fine-tune is per-vault and encrypted; it is not opt-in and cannot be exported (TD-89). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

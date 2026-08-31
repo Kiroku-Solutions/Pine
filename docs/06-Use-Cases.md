@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-06-USE-CASES`                                                              |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — normative for behaviour; several flows do not exist          |
+| Reconciled       | 2026-08-31 · The vault, transaction, import and scan flows are implemented. Anything touching sync, plugins or rules is not. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

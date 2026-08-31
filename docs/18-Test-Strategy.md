@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-18-TEST-STRATEGY`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the suite is real; none of the named toolchain is            |
+| Reconciled       | 2026-08-31 · 876 automated tests exist (686 unit + 190 integration) against the 28 this document was written beside. But FsCheck, Stryker, Testcontainers, Appium, SpecFlow, k6, ZAP and axe have zero references in the repository, and the accessibility, performance and mutation projects are empty templates (TD-38). Mutation testing is performed by hand, per iteration, and recorded in the audit. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

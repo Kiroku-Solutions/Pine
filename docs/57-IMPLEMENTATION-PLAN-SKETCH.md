@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-57-IMPLEMENTATION-PLAN-SKETCH`                                             |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — historical sketch                                                    |
+| Reconciled       | 2026-08-31 · Superseded by `56-IMPLEMENTATION-PLAN` and by the audit's own roadmap. |
 | Owner            | Engineering Review Board & PM Office                                                 |
 | Created          | 2026-08-24                                                                           |
 | Last Updated     | 2026-08-25                                                                           |

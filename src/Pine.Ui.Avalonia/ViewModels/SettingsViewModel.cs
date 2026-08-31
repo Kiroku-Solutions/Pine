@@ -18,6 +18,8 @@ using Pine.Core.Accounts;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -70,12 +72,14 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool IsRecalculating { get; set; }
 
     private readonly ISender _sender;
+    private readonly ILogger<SettingsViewModel>? _logger;
     private bool _isInitializing = true;
 
-    public SettingsViewModel(ISender sender)
+    public SettingsViewModel(ISender sender, ILogger<SettingsViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _sender = sender;
+        _logger = logger;
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -194,16 +198,20 @@ public partial class SettingsViewModel : ObservableObject
 
             await LoadAccountsAsync();
         }
-        catch (RequestValidationException ex)
+        catch (Exception ex)
         {
+            // Two catch blocks were merged into one here. The first caught RequestValidationException
+            // and showed its message; the second showed a fixed sentence for everything else. That IS
+            // the taxonomy, hand-rolled, and UserFacingError now expresses it once for every screen --
+            // with the difference that a ConcurrencyConflictException and a locked vault also carry
+            // their own instructions through it now, where before both were flattened into "The
+            // balance could not be checked" and the user was never told to reload or unlock (TD-98).
             RecalculationNeedsAttention = true;
-            RecalculationReport = ex.Message;
-        }
-        catch (Exception)
-        {
-            // Not ex.Message: this path does not add to TD-24.
-            RecalculationNeedsAttention = true;
-            RecalculationReport = "The balance could not be checked. Nothing was changed.";
+            RecalculationReport = UserFacingError.Report(
+                _logger,
+                ex,
+                "recalculate-balance",
+                "The balance could not be checked. Nothing was changed.");
         }
         finally
         {
@@ -522,24 +530,26 @@ public partial class SettingsViewModel : ObservableObject
             PasswordChangeFailed = true;
             PasswordChangeMessage = "The current password is incorrect. Your master password was not changed.";
         }
-        catch (RequestValidationException ex)
+        catch (Exception ex)
         {
-            // Validation messages are written as complete, user-facing sentences and never contain
-            // the submitted values, so they can be shown verbatim. The errors are read rather than
-            // ex.Message so that nothing but those sentences can ever reach the screen.
-            var detail = string.Join(" ", ex.Errors.Select(static e => e.Message));
+            // The RequestValidationException block that used to sit here joined ex.Errors by hand to
+            // avoid trusting ex.Message. RequestValidationException.Compose builds ex.Message from
+            // exactly those same error messages, and the type now opts in to being shown by
+            // implementing IUserFacingFailure, so the hand-join was a longer spelling of the same
+            // string and is gone. The fallback is unchanged and still true for the same reason: the
+            // header write is atomic, so a failure anywhere leaves the OLD header intact and the old
+            // password working.
+            //
+            // VaultKeyUnwrapException is still caught above this, and must stay there: it does not
+            // implement IUserFacingFailure (it carries no detail at all, deliberately), so reaching
+            // here it would produce the generic sentence and a mistyped current password would look
+            // like a broken feature.
             PasswordChangeFailed = true;
-            PasswordChangeMessage = string.IsNullOrWhiteSpace(detail)
-                ? "The new password was rejected. Your master password was not changed."
-                : detail;
-        }
-        catch (Exception)
-        {
-            // Not ex.Message: this path does not add to TD-24. The header write is atomic, so a
-            // failure anywhere in the change leaves the OLD header intact and the old password
-            // working -- which is what makes this reassurance true rather than hopeful.
-            PasswordChangeFailed = true;
-            PasswordChangeMessage = "Your master password could not be changed. Your vault is unchanged and your current password still works.";
+            PasswordChangeMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "change-vault-password",
+                "Your master password could not be changed. Your vault is unchanged and your current password still works.");
         }
         finally
         {

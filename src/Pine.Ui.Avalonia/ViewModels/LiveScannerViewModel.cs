@@ -12,6 +12,8 @@ using OpenCvSharp;
 using Pine.Core.Ai;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -25,6 +27,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
 {
     private readonly IAIProvider _aiProvider;
     private readonly INavigationService _navigationService;
+    private readonly ILogger<LiveScannerViewModel>? _logger;
     private readonly object _captureLock = new();
     private int _consecutiveDetections;
     private VideoCapture? _capture;
@@ -45,10 +48,14 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = "Press Start to activate camera";
 
-    public LiveScannerViewModel(IAIProvider aiProvider, INavigationService navigationService)
+    public LiveScannerViewModel(
+        IAIProvider aiProvider,
+        INavigationService navigationService,
+        ILogger<LiveScannerViewModel>? logger = null)
     {
         _aiProvider = aiProvider;
         _navigationService = navigationService;
+        _logger = logger;
 
         // Populate mock cameras (OpenCV index based)
         for (int i = 0; i < 4; i++)
@@ -222,7 +229,15 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            PostToUI(() => StatusMessage = $"Camera error: {ex.Message}");
+            // WAS: $"Camera error: {ex.Message}" (TD-24). OpenCV and the DirectShow backend report
+            // failures as native strings naming device paths and library entry points; none of it is
+            // actionable and all of it is now in the log instead.
+            var message = UserFacingError.Report(
+                _logger,
+                ex,
+                "camera-capture-loop",
+                "The camera could not be read. Check that it is connected and not in use by another application, then try again.");
+            PostToUI(() => StatusMessage = message);
         }
         finally
         {
@@ -305,7 +320,15 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             // If detection fails for any reason, keep scanning
-            PostToUI(() => StatusMessage = $"AI Error: {ex.Message}");
+            // WAS: $"AI Error: {ex.Message}" (TD-24). A per-frame detection failure is not the
+            // user's problem to diagnose, and the frame loop keeps running, so the sentence says what
+            // it costs them rather than which model threw.
+            var message = UserFacingError.Report(
+                _logger,
+                ex,
+                "camera-detect-receipt",
+                "Pine could not find a receipt in the camera image. Move the receipt into frame, or take the photo manually.");
+            PostToUI(() => StatusMessage = message);
             return null;
         }
     }

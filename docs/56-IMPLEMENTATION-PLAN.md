@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-56-IMPLEMENTATION-PLAN`                                                    |
-| Status           | Draft — pending review                                                              |
+| Status           | Non-normative — historical plan, substantially overtaken                            |
+| Reconciled       | 2026-08-31 · A plan written before implementation. Its claim at :1097 that "the 15 gates of `16-Quality-Attributes` §4 are not aspirational - they are CI-enforced" is false: `.github/workflows/dotnet-ci.yml` has build and test jobs only, and runs on `workflow_dispatch` alone (:20-21, TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Author           | Mavis (MiniMax), commissioned by the project team                                    |
 | Created          | 2026-07-08                                                                           |

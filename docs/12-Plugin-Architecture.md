@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-12-PLUGIN-ARCHITECTURE`                                                    |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no plugin host exists                                                 |
+| Reconciled       | 2026-08-31 · `src/Pine.Plugins.Host` and `src/Pine.Plugins.Sdk` contain zero `.cs` files (TD-37). Nothing loads, sandboxes or trusts a plugin. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

@@ -8,6 +8,8 @@
 | Automated baseline | 141 unit + 99 integration = **240**, currently **239 passing / 1 failing** (TD-74, pre-existing). **§9 has no automated coverage at all** — unlike every other section here, it is the only evidence TD-11 has. |
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
+| Status | Non-normative — manual test procedures |
+| Reconciled | 2026-08-31 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.

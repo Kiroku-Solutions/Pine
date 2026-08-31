@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-01-BUSINESS-REQUIREMENTS`                                                 |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — business context and objectives                                      |
+| Reconciled       | 2026-08-31 · Business objectives and success measures. Nothing here can be implemented or unimplemented by code. |
 | Owner            | Engineering Review Board (acting on behalf of Project Lead)                          |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-53-RELEASE-CHECKLIST`                                                       |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — several gates cannot currently be satisfied                           |
+| Reconciled       | 2026-08-31 · It requires green CI (no automatic trigger exists), performance, mutation and accessibility gates (all three projects are empty templates), and sign-off from a Trust team and a Maintainer Council that do not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

@@ -11,12 +11,15 @@ using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class DashboardViewModel : ObservableObject, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
+    private readonly ILogger<DashboardViewModel>? _logger;
 
     [ObservableProperty]
     public partial string Greeting { get; set; } = "Welcome to Pine";
@@ -82,9 +85,10 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
     [ObservableProperty]
     public partial Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel? ImportWizardVm { get; set; }
 
-    public DashboardViewModel(IMediator mediator)
+    public DashboardViewModel(IMediator mediator, ILogger<DashboardViewModel>? logger = null)
     {
         _mediator = mediator;
+        _logger = logger;
         InitializeWidgets();
         WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((DashboardViewModel)r).Receive(m));
         _ = LoadDataAsync();
@@ -152,7 +156,16 @@ public partial class DashboardViewModel : ObservableObject, IRecipient<DataChang
         }
         catch (Exception ex)
         {
-            Greeting = "Error loading data: " + ex.Message;
+            // WAS: "Error loading data: " + ex.Message (TD-24). This is a READ path, so there is
+            // nothing to reassure the user about having been written; what they need is to know the
+            // figures on screen are not theirs. The sentence still lands in Greeting because that is
+            // the only bound text this screen has -- giving the dashboard a dedicated error surface
+            // is a view change and is not this ticket.
+            Greeting = UserFacingError.Report(
+                _logger,
+                ex,
+                "dashboard-load",
+                "Your dashboard could not be loaded, so the figures below may be incomplete. Try again.");
         }
     }
 }

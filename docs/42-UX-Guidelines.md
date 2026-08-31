@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-42-UX-GUIDELINES`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — not verified against any screen                                       |
+| Reconciled       | 2026-08-31 · No test, review step or manual pass checks a view against these guidelines. The manual plan (`61`) covers behaviour, not visual or interaction conformance. |
 | Owner            | Design + Engineering Review Board                                                   |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

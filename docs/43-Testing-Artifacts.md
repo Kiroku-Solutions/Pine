@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-43-TESTING-ARTIFACTS`                                                       |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the artefact workflow is not in use                                   |
+| Reconciled       | 2026-08-31 · The `docs/49-test-cases/`, `docs/50-test-scenarios/` and `docs/51-test-data/` trees it specifies do not exist. Note also that its `TD-NNNN` identifier for Test Data (:63) collides with the audit's `TD-NN` technical-debt ids. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

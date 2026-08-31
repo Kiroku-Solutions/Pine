@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-39-PERFORMANCE`                                                             |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no performance measurement exists                                     |
+| Reconciled       | 2026-08-31 · `tests/Pine.Tests.Performance` contains one empty template file and is compile-checked, never run (TD-38). Documents `pine perf bench` (:184), which the CLI does not implement. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

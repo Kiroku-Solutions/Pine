@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-38-THREAT-MODEL`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — several mitigations are real; the model is not maintained    |
+| Reconciled       | 2026-08-31 · At-rest encryption, the Argon2id KDF, the key envelope and the absence of any network egress are implemented and are this document's strongest mitigations. Nothing re-runs the analysis when the architecture changes, and the plugin-trust and sync sections model subsystems that do not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

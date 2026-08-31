@@ -10,12 +10,15 @@ using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class TransactionsViewModel : ObservableObject, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
+    private readonly ILogger<TransactionsViewModel>? _logger;
 
     [ObservableProperty]
     public partial bool IsAddTransactionDialogVisible { get; set; }
@@ -54,9 +57,10 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [ObservableProperty]
     public partial bool IsVoiding { get; set; }
 
-    public TransactionsViewModel(IMediator mediator)
+    public TransactionsViewModel(IMediator mediator, ILogger<TransactionsViewModel>? logger = null)
     {
         _mediator = mediator;
+        _logger = logger;
         WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((TransactionsViewModel)r).Receive(m));
         _ = LoadDataAsync();
     }
@@ -164,11 +168,13 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     /// that, and every money-showing view model already listens for it.
     /// </para>
     /// <para>
-    /// <see cref="RequestValidationException"/> is caught separately and its message shown verbatim,
-    /// because its messages are written as complete user-facing sentences and are the whole point of
-    /// the validator. Every other exception gets a fixed sentence instead of
-    /// <c>ex.Message</c> — this path deliberately does not add to TD-24, whose defect is precisely
-    /// that view models render internal exception text at the user.
+    /// Failures go through <see cref="UserFacingError"/>, which shows an exception's own words only
+    /// when it implements <see cref="Pine.Core.Common.IUserFacingFailure"/> and otherwise shows the
+    /// sentence written here. <see cref="RequestValidationException"/> does implement it — its
+    /// messages are complete user-facing sentences and are the whole point of the validator — and so
+    /// does <see cref="Pine.Core.Common.ConcurrencyConflictException"/>, which this screen can
+    /// genuinely provoke: voiding a transfer moves two balances, and a concurrent write to either of
+    /// them now tells the user to reload rather than disappearing into "could not be voided" (TD-98).
     /// </para>
     /// </remarks>
     [RelayCommand]
@@ -189,13 +195,13 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
             await LoadDataAsync();
         }
-        catch (RequestValidationException ex)
+        catch (Exception ex)
         {
-            VoidError = ex.Message;
-        }
-        catch (Exception)
-        {
-            VoidError = "The transaction could not be voided. Nothing was changed.";
+            VoidError = UserFacingError.Report(
+                _logger,
+                ex,
+                "void-transaction",
+                "The transaction could not be voided. Nothing was changed.");
         }
         finally
         {

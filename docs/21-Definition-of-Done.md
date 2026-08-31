@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-21-DEFINITION-OF-DONE`                                                     |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the definition is not applied by any gate                             |
+| Reconciled       | 2026-08-31 · Its criteria are not checked by CI, by a PR template (none exists) or by any script. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

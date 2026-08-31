@@ -7,4 +7,33 @@
     <!-- Common settings across all projects -->
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!--
+    VERSION IDENTITY (TD-49).
+
+    WHAT WAS WRONG. Nothing anywhere set a version, so MSBuild used its default and every build Pine
+    has ever produced stamped `1.0.0`. That string is what `PineRuntimeInfoProvider.AppVersion` shows
+    on the diagnostics panel and what `PineLogRecordFormatter` writes into the `version` field of
+    every log record. A build number that is the same for every build is not a build number: two
+    users on two different binaries filing two different bug reports were indistinguishable, and the
+    panel that iteration 12 built specifically so that its figures would be measured rather than
+    asserted was, in this one field, displaying a constant.
+
+    WHY 0.1.0-alpha. `22-Release-Plan` 5 defines the Alpha channel as "Unstable; data loss
+    possible", tagged `0.Y.0-alpha.N`. That is a description of this software as the audit currently
+    finds it, so it is what the version says. `1.0.0` claimed a stable release; the literal that
+    preceded it in the UI claimed `1.0.0-beta.1`. Both were fiction, in the direction that flatters.
+
+    VersionSuffix is overridable so a release build can drop it (`-p:VersionSuffix=`) or move the
+    channel on (`-p:VersionSuffix=beta.1`) without editing this file. AssemblyVersion is pinned to
+    the prefix only, deliberately: it participates in assembly binding, and a value that moves with
+    every pre-release build would churn binding identity for no benefit.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">alpha.1</VersionSuffix>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+    <Product>Pine</Product>
+  </PropertyGroup>
 </Project>

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-55-FUTURE-VISION`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — long-horizon sketch, self-declared aspirational                      |
+| Reconciled       | 2026-08-31 · The document already labels its own content aspirational (:21, :29, :178). No change of substance; the header now says what §11 always did. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

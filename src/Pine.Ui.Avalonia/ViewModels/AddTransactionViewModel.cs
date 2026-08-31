@@ -10,6 +10,8 @@ using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -17,6 +19,7 @@ public partial class AddTransactionViewModel : ObservableObject
 {
     private readonly IMediator _mediator;
     private readonly Action _onComplete;
+    private readonly ILogger<AddTransactionViewModel>? _logger;
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
@@ -90,10 +93,14 @@ public partial class AddTransactionViewModel : ObservableObject
 
     public ObservableCollection<Account> Accounts { get; } = new();
 
-    public AddTransactionViewModel(IMediator mediator, Action onComplete)
+    public AddTransactionViewModel(
+        IMediator mediator,
+        Action onComplete,
+        ILogger<AddTransactionViewModel>? logger = null)
     {
         _mediator = mediator;
         _onComplete = onComplete;
+        _logger = logger;
         _ = LoadAccountsAsync();
     }
 
@@ -175,7 +182,16 @@ public partial class AddTransactionViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error: {ex.Message}";
+            // WAS: $"Error: {ex.Message}" (TD-24). On this exact path that rendered Money's
+            // "Cannot add money of different currencies" and, once the store was reached, SQLite
+            // error text carrying the vault file path. A refused write also reaches here as a
+            // ConcurrencyConflictException, which nothing used to catch (TD-98) and which now
+            // arrives with its own sentence and its "Reload and try again." instruction intact.
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "add-transaction",
+                "The transaction could not be saved. Nothing was changed.");
         }
         finally
         {

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-15-SECURITY`                                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — see the clause-by-clause table already in §4                 |
+| Reconciled       | 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-08-29                                                                           |

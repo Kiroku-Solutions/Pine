@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-33-PLUGIN-SDK`                                                              |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no SDK exists                                                         |
+| Reconciled       | 2026-08-31 · Same two empty projects (TD-37). Documents `pine plugin submit` (:69), which the CLI does not implement. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-49-TEST-CASES`                                                              |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the process is not in use                                             |
+| Reconciled       | 2026-08-31 · Documents `pine tc new|run|coverage` (:212-214); the CLI implements none of them. Test cases live as xUnit facts, not as the artefacts this specifies. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

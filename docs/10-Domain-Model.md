@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-10-DOMAIN-MODEL`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the money aggregates are real; three entities are shells     |
+| Reconciled       | 2026-08-31 · `Account`, `Transaction`, `Money`, `Budget` and their invariants are implemented and tested. `Attachment`, `Rule` and `Tag` exist as entities with no behaviour and no consumer (TD-36). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

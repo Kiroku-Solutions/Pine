@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Pine.Core.Common;
 
 namespace Pine.Application.Common;
 
@@ -35,7 +36,7 @@ namespace Pine.Application.Common;
 /// a handler failure there is no rollback to perform and none is attempted.
 /// </para>
 /// </remarks>
-public sealed class RequestValidationException : Exception
+public sealed class RequestValidationException : Exception, IUserFacingFailure
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="RequestValidationException"/> class from the
@@ -86,6 +87,15 @@ public sealed class RequestValidationException : Exception
     /// Gets every reason the request was refused, in the order the validators reported them.
     /// </summary>
     public IReadOnlyList<ValidationError> Errors { get; }
+
+    /// <summary>
+    /// Gets the sentence shown to the user (TD-24). Every <see cref="ValidationError.Message"/> is
+    /// required by this type's contract to be a complete, user-facing sentence, and
+    /// <see cref="Compose"/> is what joins them into <see cref="Exception.Message"/> — so the two
+    /// coincide here by construction rather than by accident, and this exception is one of the few
+    /// that opts in to being rendered verbatim.
+    /// </summary>
+    public string UserFacingMessage => Message;
 
     private static string Compose(IReadOnlyList<ValidationError> errors)
     {

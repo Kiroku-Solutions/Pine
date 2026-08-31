@@ -22,6 +22,8 @@ using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.Services;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -29,6 +31,7 @@ public partial class ScanReceiptViewModel : ObservableObject
 {
     private readonly IMediator _mediator;
     private readonly INavigationService _navigationService;
+    private readonly ILogger<ScanReceiptViewModel>? _logger;
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
@@ -187,10 +190,14 @@ public partial class ScanReceiptViewModel : ObservableObject
     [ObservableProperty]
     public partial LineItemKind SelectedAdjustmentKind { get; set; } = LineItemKind.Tax;
 
-    public ScanReceiptViewModel(IMediator mediator, INavigationService navigationService)
+    public ScanReceiptViewModel(
+        IMediator mediator,
+        INavigationService navigationService,
+        ILogger<ScanReceiptViewModel>? logger = null)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+        _logger = logger;
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
         // fixes a mistyped price and the difference must move with it. CollectionChanged catches
@@ -313,7 +320,13 @@ public partial class ScanReceiptViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to process receipt: {ex.Message}";
+            // WAS: $"Failed to process receipt: {ex.Message}" (TD-24). The OCR stack throws through
+            // PaddleInference and Skia, whose messages name native library paths and model files.
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-process",
+                "The receipt could not be read. Try a clearer photo, or enter the transaction manually.");
         }
         finally
         {
@@ -445,7 +458,15 @@ public partial class ScanReceiptViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error: {ex.Message}";
+            // WAS: $"Error: {ex.Message}" (TD-24). Same write path as AddTransactionViewModel, so
+            // the same guarantee: ScanReceiptCommand runs inside TransactionBehavior's transaction,
+            // and a ConcurrencyConflictException now arrives with its "Reload and try again."
+            // instruction intact instead of being flattened (TD-98).
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-save-transaction",
+                "The transaction could not be saved. Nothing was changed.");
         }
         finally
         {

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-35-GIT-WORKFLOW`                                                            |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — Conventional Commits hold; the review model does not         |
+| Reconciled       | 2026-08-31 · Every one of the last fifteen commits follows Conventional Commits. DCO sign-off appears in 1 of the last 30 commits, and there are no pull requests, reviewers or approvers - the roles at :44-45 and the rules at :146 and :180 describe a process that is not in use. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

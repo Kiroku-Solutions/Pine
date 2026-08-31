@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | 📋 Open — to be addressed |
+| **Status** | Non-normative — technical-debt record |
+| **Reconciled** | 2026-08-31 · A working record of one defect (TD-34/TD-35). The audit's §6.12 assessed it as accurate. |
 | **Type** | Technical debt / correctness |
 | **Area** | `Pine.Ui.Avalonia` (shared UI, all OS heads) |
 | **Severity** | Medium (correctness bug hiding behind weak references, not a hard leak) |
