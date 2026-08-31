@@ -834,13 +834,27 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// The engine's reported confidence is not contractually bounded, and <c>FromWordScores</c>
     /// throws outside 0..1; clamping at the boundary keeps a rogue engine value from crashing a
     /// scan instead of silently misrepresenting it.
+    ///
+    /// Non-finite confidences (NaN, +∞, -∞) are mapped to 0f because a confidence the engine could
+    /// not compute is not evidence of a good reading. Mapping to 0f lands the field in the Low band,
+    /// which tells the user to check that field, whereas crashing the scan tells them nothing, and
+    /// silently trusting it would reproduce the defect (TD-22) this ticket exists to close.
     /// </remarks>
     private static float[] Scores(List<OcrWord> words)
     {
         var scores = new float[words.Count];
         for (var i = 0; i < words.Count; i++)
         {
-            scores[i] = Math.Clamp(words[i].Confidence, 0f, 1f);
+            var confidence = words[i].Confidence;
+            // Map non-finite values to 0f, then clamp the result
+            if (!float.IsFinite(confidence))
+            {
+                scores[i] = 0f;
+            }
+            else
+            {
+                scores[i] = Math.Clamp(confidence, 0f, 1f);
+            }
         }
 
         return scores;

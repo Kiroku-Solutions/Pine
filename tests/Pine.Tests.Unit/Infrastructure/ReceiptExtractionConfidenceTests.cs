@@ -66,4 +66,28 @@ public class ReceiptExtractionConfidenceTests
         result.AlternativeDate.Should().NotBeNull();
         result.AlternativeDate!.Value.Date.Should().NotBe(result.Date!.Value.Date);
     }
+
+    [Fact]
+    public void A_NaN_confidence_on_the_total_does_not_throw_and_reports_low_band()
+    {
+        var result = Extract(
+            Word("ACME", 0, 0, 0.99f),
+            Word("TOTAL", 0, 100, 0.98f),
+            Word("24.50", 100, 100, float.NaN));
+
+        result.Confidence.Total.Band.Should().Be(ConfidenceBand.Low);
+        result.Confidence.Total.Score.Should().BeApproximately(0.0, 0.01);
+    }
+
+    [Fact]
+    public void An_infinite_confidence_on_the_total_does_not_throw_and_reports_low_band()
+    {
+        var result = Extract(
+            Word("ACME", 0, 0, 0.99f),
+            Word("TOTAL", 0, 100, 0.98f),
+            Word("24.50", 100, 100, float.PositiveInfinity));
+
+        result.Confidence.Total.Band.Should().Be(ConfidenceBand.Low);
+        result.Confidence.Total.Score.Should().BeApproximately(0.0, 0.01);
+    }
 }
