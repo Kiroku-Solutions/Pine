@@ -78,9 +78,10 @@ public class VaultBackupServiceTests : IDisposable
         // Deliberate tripwire: this is the HEAD migration id, spelled out so that adding a migration
         // without deciding what the backup record should say turns this test red instead of letting
         // the recorded schema version drift silently away from the schema that was backed up.
-        // Retargeted in iteration 6 (TD-02) from 20260827141109_AddTransactionImportKey, and again
-        // in iteration 9 (TD-19), which added the nullable line item Kind column.
-        backup.SchemaVersionBefore.Should().Be("20260828201103_AddTransactionLineItemKind");
+        // Retargeted in iteration 6 (TD-02) from 20260827141109_AddTransactionImportKey, again in
+        // iteration 9 (TD-19), which added the nullable line item Kind column, and again for the
+        // scaled-money/UTC-ordering migration (TD-31, TD-79, TD-30), which is now the head.
+        backup.SchemaVersionBefore.Should().Be("20260830200447_AddConcurrencyTokens");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

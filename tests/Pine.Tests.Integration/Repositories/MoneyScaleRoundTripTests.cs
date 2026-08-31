@@ -25,14 +25,15 @@ namespace Pine.Tests.Integration.Repositories;
 /// wrote proves nothing — EF's identity map hands back the in-memory graph whatever SQL ran. Every
 /// assertion here is either made through a brand-new <see cref="PineDbContext"/> with an empty change
 /// tracker, or read straight out of the encrypted file over a raw SQLCipher connection. The raw read
-/// is the one that matters: it is the only way to see the TEXT that is genuinely on disk, and
+/// is the one that matters: it is the only way to see the integer that is genuinely on disk, and
 /// therefore the only way to distinguish "normalised on the way in" from "normalised again on the
 /// way out".
 /// </para>
 /// <para>
-/// THE COLUMNS ARE TEXT (TD-31). SQLite has no exact numeric type, so EF writes a
-/// <see cref="decimal"/> as its invariant string. That makes the assertion below unusually direct:
-/// an unnormalised write would leave <c>10.005</c> visible in the cell.
+/// THE COLUMNS ARE INTEGER (TD-31). SQLite has no exact numeric type, so a
+/// <see cref="decimal"/> amount is stored as its count of ten-thousandths -- the scale is fixed at
+/// 4, so 10.00 is the integer <c>100000</c>. That makes the assertion below unusually direct: an
+/// unnormalised write would leave <c>100050</c>, the ten-thousandths of 10.005, visible in the cell.
 /// </para>
 /// </remarks>
 public class MoneyScaleRoundTripTests
@@ -60,16 +61,16 @@ public class MoneyScaleRoundTripTests
 
         // The file itself, with EF removed from the picture entirely.
         //
-        // EF's SQLite decimal encoding is the format string "0.0###########################", which
-        // drops trailing zeroes -- so a normalised 10.00 lands as the TEXT "10.0". The trailing
-        // zero is therefore NOT the discriminator here; the absence of the third decimal is. Both
-        // assertions are made, because the second one is the one that would go red if the
-        // constructor stopped normalising.
-        var stored = ReadScalar(vault, @"SELECT ""Balance_Amount"" FROM ""Accounts"" LIMIT 1;");
+        // Money is encoded as a count of ten-thousandths at a fixed scale of 4 (TD-31), so a
+        // normalised 10.00 lands as the INTEGER 100000 while the unnormalised 10.005 would land as
+        // 100050. The magnitude is therefore NOT the discriminator here; the non-zero
+        // ten-thousandths are. Both assertions are made, because the second one is the one that
+        // would go red if the constructor stopped normalising.
+        var stored = ReadInteger(vault, @"SELECT ""Balance_Amount"" FROM ""Accounts"" LIMIT 1;");
 
-        stored.Should().Be("10.0");
-        stored.Should().NotBe("10.005", "the write path must store a normalised amount, not round on read");
-        decimal.Parse(stored, CultureInfo.InvariantCulture).Should().Be(10.00m);
+        stored.Should().Be(100_000L);
+        stored.Should().NotBe(100_050L, "the write path must store a normalised amount, not round on read");
+        (stored / 10_000m).Should().Be(10.00m);
 
         // ...and a fresh context agrees.
         await using var reader = new PineDbContext(vault.DatabasePath, vault.Key);
@@ -116,11 +117,11 @@ public class MoneyScaleRoundTripTests
             await writer.SaveChangesAsync(CancellationToken.None);
         }
 
-        ReadScalar(vault, @"SELECT ""TotalAmount_Amount"" FROM ""Transactions"" LIMIT 1;")
-            .Should().Be("-10.0");
+        ReadInteger(vault, @"SELECT ""TotalAmount_Amount"" FROM ""Transactions"" LIMIT 1;")
+            .Should().Be(-100_000L);
 
-        var splitAmounts = ReadAll(vault, @"SELECT ""Amount_Amount"" FROM ""TransactionSplits"";")
-            .Select(text => decimal.Parse(text, CultureInfo.InvariantCulture))
+        var splitAmounts = ReadAllIntegers(vault, @"SELECT ""Amount_Amount"" FROM ""TransactionSplits"";")
+            .Select(tenThousandths => tenThousandths / 10_000m)
             .OrderBy(amount => amount)
             .ToArray();
 
@@ -128,7 +129,7 @@ public class MoneyScaleRoundTripTests
         splitAmounts.Sum().Should().Be(-10.00m, "no cent may be lost or invented on the way to disk");
 
         // Re-materialise through a new context and re-run the aggregate's own invariant against
-        // values that have been through SQLite's TEXT round trip.
+        // values that have been through SQLite's scaled-integer round trip.
         await using var reader = new PineDbContext(vault.DatabasePath, vault.Key);
         var reloaded = await reader.Transactions
             .Include(t => t.Splits)
@@ -150,25 +151,32 @@ public class MoneyScaleRoundTripTests
         await context.Database.MigrateAsync(CancellationToken.None);
     }
 
-    private static string ReadScalar(TempVault vault, string sql)
+    /// <summary>
+    /// Reads one money column straight out of the encrypted file as the scaled INTEGER it has been
+    /// stored as since TD-31: the amount's count of ten-thousandths, at a fixed scale of 4.
+    /// </summary>
+    private static long ReadInteger(TempVault vault, string sql)
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToString(command.ExecuteScalar(), CultureInfo.InvariantCulture)!;
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
-    private static string[] ReadAll(TempVault vault, string sql)
+    /// <summary>
+    /// The multi-row form of <see cref="ReadInteger"/>, in the same scaled-integer encoding.
+    /// </summary>
+    private static long[] ReadAllIntegers(TempVault vault, string sql)
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText = sql;
 
-        var values = new System.Collections.Generic.List<string>();
+        var values = new System.Collections.Generic.List<long>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            values.Add(Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture)!);
+            values.Add(Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture));
         }
 
         return values.ToArray();

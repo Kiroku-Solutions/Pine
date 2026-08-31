@@ -26,7 +26,7 @@
                                 
                                 <!-- Balance -->
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                    <TextBlock Text="{Binding Balance.Amount, StringFormat=\{0:N2\}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding Balance, Converter={x:Static conv:Converters.MoneyAmount}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
                                     <TextBlock Text="{Binding Balance.Currency.Value}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
                                 </StackPanel>
                             </Grid>

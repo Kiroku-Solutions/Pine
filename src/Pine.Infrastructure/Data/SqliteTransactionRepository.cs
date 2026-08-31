@@ -54,7 +54,11 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         var totalCount = await query.CountAsync(cancellationToken);
         
         var items = await query
-            .OrderByDescending(t => t.Date)
+            // DateUtc, not Date. Date carries the user's offset and this provider stores it as text
+            // with that offset appended, so ordering it compares local wall clocks: a purchase at
+            // 23:00+02:00 sorts after one at 18:00-05:00 that happened two hours later. DateUtc is
+            // the same instant with no offset in its text form, and it is indexed descending.
+            .OrderByDescending(t => t.DateUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);

@@ -217,7 +217,7 @@ public class BalanceRecalculationTests
         // The vault holds exactly one account, so no WHERE clause is needed — and leaving it out
         // keeps the statement independent of how EF happens to encode a Guid as TEXT.
         const decimal DriftedBalance = 900m;
-        host.ExecuteSqlRaw($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = '{Text(DriftedBalance)}';");
+        host.ExecuteSqlRaw($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = {TenThousandths(DriftedBalance)};");
         (await host.ReadBalanceAsync(account)).Should().Be(DriftedBalance,
             "the premise of this test is a balance that no longer agrees with its ledger");
 
@@ -258,13 +258,16 @@ public class BalanceRecalculationTests
     /// gets right, this test stops proving anything and says so instead of passing quietly.
     /// </para>
     /// <para>
-    /// THIS IS PRECISELY WHAT A PUSHED-DOWN <c>SUM</c> WOULD FAIL. SQLite has no exact numeric type,
-    /// so these decimals are stored as TEXT (TD-31) and coerced to REAL — IEEE-754 double — the
-    /// moment SQL is asked to add them. <c>GetAmountsInForceAsync</c> therefore PROJECTS the amounts
-    /// and the handler adds them as <see cref="decimal"/> in .NET. Rewriting that as
-    /// <c>SumAsync</c> would read as a harmless optimisation, would keep every other test in this
-    /// suite green, and would quietly write a floating-point approximation into the one number the
-    /// user checks their money against.
+    /// THIS IS PRECISELY WHAT A PUSHED-DOWN <c>SUM</c> WOULD PUT AT RISK. SQLite has no exact
+    /// numeric type. Since TD-31 these amounts are stored as INTEGER counts of ten-thousandths, so
+    /// the raw column adds exactly — but an amount only becomes money again once it is divided by
+    /// 10 000, and the moment SQL is asked to do that, or to evaluate anything else it types as
+    /// REAL, the arithmetic is IEEE-754 double. <c>GetAmountsInForceAsync</c> therefore PROJECTS
+    /// the amounts and the handler adds them as <see cref="decimal"/> in .NET, where neither the
+    /// scale nor the total is ever entrusted to a binary float. Rewriting that as <c>SumAsync</c>
+    /// would read as a harmless optimisation, would keep every other test in this suite green, and
+    /// would hand the one number the user checks their money against to whatever type SQLite
+    /// happened to pick.
     /// </para>
     /// </remarks>
     /// <returns>A task representing the test.</returns>
@@ -343,7 +346,7 @@ public class BalanceRecalculationTests
             account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
 
         const decimal DriftedBalance = 900m;
-        host.ExecuteSqlRaw($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = '{Text(DriftedBalance)}';");
+        host.ExecuteSqlRaw($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = {TenThousandths(DriftedBalance)};");
 
         var repairedInsideTransaction = decimal.MinValue;
 
@@ -471,9 +474,11 @@ public class BalanceRecalculationTests
     }
 
     /// <summary>
-    /// Renders a decimal the way EF Core writes one into a SQLite TEXT column (TD-31), so a planted
-    /// value is indistinguishable from one the application wrote.
+    /// Scales a decimal the way a money column is written into SQLite since TD-31 -- an INTEGER
+    /// holding the amount's count of ten-thousandths, at a fixed scale of 4 -- so a planted value is
+    /// indistinguishable from one the application wrote.
     /// </summary>
-    private static string Text(decimal value)
-        => value.ToString("0.0###########################", CultureInfo.InvariantCulture);
+    private static string TenThousandths(decimal value)
+        => ((long)decimal.Round(value * 10_000m, 0, MidpointRounding.ToEven))
+            .ToString(CultureInfo.InvariantCulture);
 }

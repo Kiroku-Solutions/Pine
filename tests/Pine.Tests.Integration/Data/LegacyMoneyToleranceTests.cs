@@ -41,8 +41,20 @@ namespace Pine.Tests.Integration.Data;
 /// exactly that reason.
 /// </para>
 /// <para>
-/// EVERY ROW HERE IS PLANTED WITH RAW SQL over a keyed SQLCipher connection, using EF's own text
+/// EVERY ROW HERE IS PLANTED WITH RAW SQL over a keyed SQLCipher connection, using EF's own
 /// encodings, so nothing about the seed can have been laundered by the model that is under test.
+/// </para>
+/// <para>
+/// WHERE TD-31 MOVED THE BOUNDARY, AND WHERE IT DID NOT. Money is now stored as an INTEGER count of
+/// ten-thousandths rather than as decimal text, so these rows are planted as scaled integers — the
+/// old text would not reproduce a legacy vault, it would produce a row no version of Pine ever
+/// wrote. The tolerance this file exists to pin is UNCHANGED, and that is the point worth stating:
+/// the store's fixed scale of 4 is coarser than "any number of decimals" but finer than every
+/// currency's own scale, so a three-decimal USD balance and a fractional yen are still perfectly
+/// representable and still materialise unrounded. What is genuinely no longer representable is an
+/// amount beyond FOUR decimals. Such a value cannot be planted here at all, and the migration that
+/// introduced the format refuses to convert a vault containing one rather than rounding it away —
+/// that refusal is pinned in the migration's own tests, not here.
 /// </para>
 /// </remarks>
 public class LegacyMoneyToleranceTests
@@ -201,7 +213,7 @@ public class LegacyMoneyToleranceTests
         command.Parameters.AddWithValue("$name", name);
         command.Parameters.AddWithValue("$type", nameof(AccountType.Bank));
         command.Parameters.AddWithValue("$date", Text(LegacyDate));
-        command.Parameters.AddWithValue("$balance", Text(balance));
+        command.Parameters.AddWithValue("$balance", Scaled(balance));
         command.Parameters.AddWithValue("$currency", currency);
         command.ExecuteNonQuery();
     }
@@ -215,9 +227,9 @@ public class LegacyMoneyToleranceTests
             """
             INSERT INTO "Transactions"
                 ("Id", "AccountId", "Date", "Payee", "Notes", "Type", "LinkedTransactionId",
-                 "CreatedAt", "ImportKey", "VoidedAt", "VoidReason",
+                 "CreatedAt", "ImportKey", "VoidedAt", "VoidReason", "DateUtc",
                  "TotalAmount_Amount", "TotalAmount_Currency")
-            VALUES ($id, $accountId, $date, $payee, '', $type, NULL, $date, NULL, NULL, NULL,
+            VALUES ($id, $accountId, $date, $payee, '', $type, NULL, $date, NULL, NULL, NULL, $dateUtc,
                     $amount, $currency);
             """;
         command.Parameters.AddWithValue("$id", Text(transactionId));
@@ -225,7 +237,8 @@ public class LegacyMoneyToleranceTests
         command.Parameters.AddWithValue("$date", Text(LegacyDate));
         command.Parameters.AddWithValue("$payee", payee);
         command.Parameters.AddWithValue("$type", nameof(TransactionType.Income));
-        command.Parameters.AddWithValue("$amount", Text(amount));
+        command.Parameters.AddWithValue("$dateUtc", TextUtc(LegacyDate));
+        command.Parameters.AddWithValue("$amount", Scaled(amount));
         command.Parameters.AddWithValue("$currency", currency);
         command.ExecuteNonQuery();
     }
@@ -259,7 +272,7 @@ public class LegacyMoneyToleranceTests
         command.Parameters.AddWithValue("$categoryId", Text(categoryId));
         command.Parameters.AddWithValue("$period", "Monthly");
         command.Parameters.AddWithValue("$date", Text(LegacyDate));
-        command.Parameters.AddWithValue("$limit", Text(limit));
+        command.Parameters.AddWithValue("$limit", Scaled(limit));
         command.Parameters.AddWithValue("$currency", currency);
         command.ExecuteNonQuery();
     }
@@ -270,6 +283,16 @@ public class LegacyMoneyToleranceTests
     private static string Text(Guid value)
         => value.ToString("D", CultureInfo.InvariantCulture).ToUpperInvariant();
 
-    private static string Text(decimal value)
-        => value.ToString("0.0###########################", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// EF's encoding for a UTC ordering column: a DateTime, so no offset is appended.
+    /// </summary>
+    private static string TextUtc(DateTimeOffset value)
+        => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A money column's stored form since TD-31: the amount's count of ten-thousandths, as an
+    /// INTEGER. Planting the old decimal text here would no longer reproduce a legacy vault — it
+    /// would produce a row no version of Pine ever wrote.
+    /// </summary>
+    private static long Scaled(decimal value) => (long)decimal.Truncate(value * 10_000m);
 }
