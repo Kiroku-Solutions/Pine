@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-52-RISK-MATRIX`                                                             |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — operational risk register                                            |
+| Reconciled       | 2026-08-31 · Documents `pine risk new|review|report` (:201-203), which the CLI does not implement. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

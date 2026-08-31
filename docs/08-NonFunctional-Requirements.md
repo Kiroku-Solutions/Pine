@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-08-NONFUNCTIONAL-REQUIREMENTS`                                             |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — several NFR classes have no measurement at all               |
+| Reconciled       | 2026-08-31 · Security and observability are substantially real (TD-06, TD-14, TD-15). Performance, accessibility, internationalisation and portability have no measurement: the three test projects that would provide it are empty templates (TD-38). Documents `pine mailbox` (:104), which does not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

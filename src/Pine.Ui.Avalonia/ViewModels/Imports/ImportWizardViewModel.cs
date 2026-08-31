@@ -14,6 +14,8 @@ using Pine.Core.Accounts;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Importing;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels.Importing;
 
@@ -22,6 +24,7 @@ public partial class ImportWizardViewModel : ObservableObject
     private readonly IMediator _mediator;
     private readonly Action _onClose;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<ImportWizardViewModel>? _logger;
 
     private int _stepIndex;
     public int StepIndex
@@ -128,11 +131,16 @@ public partial class ImportWizardViewModel : ObservableObject
 
     public bool HasUncheckedRows => UncheckedCount > 0;
 
-    public ImportWizardViewModel(IMediator mediator, TimeProvider timeProvider, Action onClose)
+    public ImportWizardViewModel(
+        IMediator mediator,
+        TimeProvider timeProvider,
+        Action onClose,
+        ILogger<ImportWizardViewModel>? logger = null)
     {
         _mediator = mediator;
         _timeProvider = timeProvider;
         _onClose = onClose;
+        _logger = logger;
         _ = LoadAccountsAsync();
     }
 
@@ -182,7 +190,15 @@ public partial class ImportWizardViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = "Failed to read headers: " + ex.Message;
+            // WAS: "Failed to read headers: " + ex.Message (TD-24). This path opens a file the user
+            // chose, so its exceptions are precisely the ones that name a filesystem path -- and the
+            // user already knows which file they picked, so the path adds nothing they did not have
+            // and everything an over-the-shoulder reader did not.
+            StatusMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "import-read-headers",
+                "That file's columns could not be read. Check that it is a CSV file and try again.");
         }
     }
 
@@ -266,7 +282,14 @@ public partial class ImportWizardViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Preview error: {ex.Message}";
+            // WAS: $"Preview error: {ex.Message}" (TD-24). Nothing is written on the preview path,
+            // so the sentence says so: a user who reads "preview error" has no way to know whether
+            // the wizard has already started touching their ledger.
+            StatusMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "import-preview",
+                "The preview could not be built from that file and column mapping. Nothing was imported.");
         }
         finally
         {
@@ -320,7 +343,15 @@ public partial class ImportWizardViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Import failed: {ex.Message}";
+            // WAS: $"Import failed: {ex.Message}" (TD-24). "No transactions were imported" is a
+            // claim, and it is true because ImportTransactionsCommand runs inside TransactionBehavior's
+            // single database transaction: a throw anywhere in the handler rolls the whole batch back.
+            // If that ever stops being true, this sentence becomes a lie and must change with it.
+            StatusMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "import-execute",
+                "The import failed and was stopped. No transactions were imported.");
         }
         finally
         {

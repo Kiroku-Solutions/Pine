@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-40-ACCESSIBILITY`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no accessibility verification exists                                  |
+| Reconciled       | 2026-08-31 · `tests/Pine.Tests.Accessibility` contains one empty template file and is compile-checked, never run (TD-38). No axe, no automated audit, no manual pass on record. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

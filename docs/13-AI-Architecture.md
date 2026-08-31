@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-13-AI-ARCHITECTURE`                                                        |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the receipt pipeline is real; the rest is not                |
+| Reconciled       | 2026-08-31 · Detection, OCR, field extraction and the encrypted per-vault categoriser exist (TD-16, TD-20, TD-21, TD-22). The assistant, forecasting, anomaly detection, recommendation engine and model registry do not. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

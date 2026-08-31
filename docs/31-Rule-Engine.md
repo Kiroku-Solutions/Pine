@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-31-RULE-ENGINE`                                                            |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — an entity, not an engine                                              |
+| Reconciled       | 2026-08-31 · `src/Pine.Core/Rules/Rule.cs` and its table exist; nothing evaluates a rule. TD-36 records the entity as possibly-dead code. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

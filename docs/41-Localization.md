@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-41-LOCALIZATION`                                                            |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no localisation infrastructure exists                                 |
+| Reconciled       | 2026-08-31 · There is not one `.resx` file in `src/`. Every user-facing string is a literal in code or XAML (TD-45). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

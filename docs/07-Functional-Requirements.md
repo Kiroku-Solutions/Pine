@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-07-FUNCTIONAL-REQUIREMENTS`                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — no FR-to-code traceability exists                            |
+| Reconciled       | 2026-08-31 · Some requirements are met and some are not, and nothing links an `FR-*` id to the code or the test that would show which (`19-Traceability-Matrix` is aspirational). Read requirement by requirement, not as a whole. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

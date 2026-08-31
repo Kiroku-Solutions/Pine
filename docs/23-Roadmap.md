@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-23-ROADMAP`                                                                |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — roadmap                                                              |
+| Reconciled       | 2026-08-31 · A statement of intended order of work. `60-Production-Readiness-Audit` §10 is the roadmap actually being executed. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

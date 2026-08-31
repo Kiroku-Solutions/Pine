@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-25-ADR`                                                                    |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the register exists; most of the ADRs it names do not        |
+| Reconciled       | 2026-08-31 · §11 seeds twenty ADRs and marks all of them Accepted; seventeen have no file. §10 contradicts §11 on three serials, and a second two-digit `ADR-01`…`ADR-10` scheme in `09-System-Architecture` §16 disagrees with this one on content. `0012` and `0013` were written from the code (TD-40); see `docs/adr/INDEX.md`. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -240,6 +241,23 @@ Documents* table.
 | 22-Release-Plan        | 0014                                                                                       |
 
 ## 11. ADR Set (Seeded)
+
+> **Reconciliation note, 2026-08-31 (TD-40).** Every row below says **Accepted**. Three of the twenty
+> have a file in `docs/adr/`: `0001`, and — written from the implementation on this date — `0012` and
+> `0013`. The other seventeen record no decision anywhere. An "Accepted" ADR with no record is not a
+> decision documented badly; it is a claim about this project's history that nothing supports, and
+> code has already been written against one of them (`Argon2idKeyDerivationService.cs:8` cited
+> `ADR-0013` for eight months while `ADR-0013` was the eight-word row below).
+>
+> **Read this table as a backlog of ADRs to write, not as a register of decisions taken.**
+> `0012`'s row is additionally *wrong*: it says "Telemetry is opt-in, default-off", and the decision
+> actually taken was that Pine collects no telemetry and makes no network call at all. The written
+> `0012` supersedes it.
+>
+> Two further defects, recorded so they are not rediscovered: §10 of this document maps `0020`→"no
+> MVP" and `0014`→"DCO", which contradicts §11's `0017`, `0018` and `0014`; and a second, two-digit
+> `ADR-01`…`ADR-10` scheme is in use in `09-System-Architecture` §16, `19-Traceability-Matrix` and
+> `10-Domain-Model` whose numbers mean different decisions than the four-digit ones here.
 
 The following ADRs are seeded in the initial set. They are the
 *foundation* decisions of Pine.

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-19-TRACEABILITY-MATRIX`                                                    |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the matrix is not generated or checked                                |
+| Reconciled       | 2026-08-31 · Nothing links FR/NFR ids to code or tests; no tooling validates the matrix, so its rows decay silently. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

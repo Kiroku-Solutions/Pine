@@ -321,11 +321,28 @@ internal static class PineLogRecordFormatter
     /// Resolves §4.1's <c>version</c> field from the entry assembly's informational version.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The entry assembly is preferred because §4.1 asks for "the application version", and Pine
-    /// ships five heads out of one infrastructure assembly. Build metadata after <c>+</c> (the
-    /// source-control commit the SDK appends by default) is trimmed: it is a repository detail, and
-    /// leaving it in would put a different <c>version</c> in every developer's log for the same
-    /// release.
+    /// ships five heads out of one infrastructure assembly.
+    /// </para>
+    /// <para>
+    /// THE COMMIT IS KEPT, SHORTENED — AND THIS REVERSES AN EARLIER DECISION (TD-49). This method used
+    /// to trim everything after <c>+</c>, on the stated grounds that build metadata is a repository
+    /// detail and would otherwise "put a different <c>version</c> in every developer's log for the
+    /// same release". That reasoning had a premise which was never true: <b>there was no release
+    /// version</b>. No project and no props file set one, so the informational version was the SDK
+    /// default <c>1.0.0+&lt;sha&gt;</c> and trimming left the literal <c>1.0.0</c> — identical for every
+    /// build Pine had ever produced, on every machine, forever. The trim was not removing noise from
+    /// a signal; it was removing the only signal there was.
+    /// </para>
+    /// <para>
+    /// Now that <c>Directory.Build.props</c> sets a real version, the two halves say different
+    /// things and both are wanted. The prefix answers "which release is this"; the commit answers
+    /// "which build of it", and a developer build of <c>0.1.0-alpha.1</c> and a CI build of the same
+    /// version ARE different binaries — a bug report that cannot tell them apart is the failure mode,
+    /// not the fix. Twelve characters is enough to identify a commit in this repository and short
+    /// enough to read in a log line.
+    /// </para>
     /// </remarks>
     private static string ResolveApplicationVersion()
     {
@@ -340,18 +357,12 @@ internal static class PineLogRecordFormatter
                 ? assembly.GetName().Version?.ToString()
                 : informational;
 
-            if (string.IsNullOrEmpty(version))
-            {
-                return "unknown";
-            }
-
-            var plus = version.IndexOf('+', StringComparison.Ordinal);
-
-            return plus > 0 ? version[..plus] : version;
+            return ApplicationVersionText.Shorten(version);
         }
         catch (Exception)
         {
             return "unknown";
         }
     }
+
 }

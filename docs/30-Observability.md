@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-30-OBSERVABILITY`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — logging is real; metrics, traces and the DIB are not         |
+| Reconciled       | 2026-08-31 · The JSONL sink, the record shape, the level vocabulary, redaction, rotation and retention are implemented (TD-14, TD-15). §4.4 (log encryption), §5, §7, §8 and §9 are already annotated aspirational in place (TD-82, TD-84). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

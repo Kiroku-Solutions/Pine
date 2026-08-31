@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-24-CONTRIBUTING`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — describes a multi-contributor process that is not in use              |
+| Reconciled       | 2026-08-31 · No `CODEOWNERS`, no pull-request template, no locale leads; `.github/` contains only `workflows/`. The roles this and `04-Stakeholders` assign do not exist for a repository with one contributor. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

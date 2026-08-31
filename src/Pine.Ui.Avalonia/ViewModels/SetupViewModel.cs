@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -31,6 +33,7 @@ public partial class SetupViewModel : ObservableObject
     /// <see cref="VaultKeyMaterial"/> and hands both halves straight on.
     /// </summary>
     private readonly IVaultKeyService _vaultKeyService;
+    private readonly ILogger<SetupViewModel>? _logger;
 
     [ObservableProperty]
     public partial int CurrentStep { get; set; } = 1;
@@ -202,13 +205,15 @@ public partial class SetupViewModel : ObservableObject
         IVaultSession vaultSession,
         INavigationService navigationService,
         IVaultHeaderStore vaultHeaderStore,
-        IVaultKeyService vaultKeyService)
+        IVaultKeyService vaultKeyService,
+        ILogger<SetupViewModel>? logger = null)
     {
         _serviceProvider = serviceProvider;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
         _vaultHeaderStore = vaultHeaderStore;
         _vaultKeyService = vaultKeyService;
+        _logger = logger;
     }
 
     [RelayCommand]
@@ -326,7 +331,15 @@ public partial class SetupViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error: {ex.Message}";
+            // WAS: $"Error: {ex.Message}" (TD-24). Vault creation writes a directory, a header file
+            // and a database, so its failures are filesystem and SQLCipher exceptions naming the
+            // absolute path the user is about to store their finances in -- shown on a screen that
+            // is, by definition, the first one a new user ever sees.
+            StatusMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "vault-setup",
+                "Your vault could not be created. Choose a different folder or free up disk space, then try again.");
         }
         finally
         {

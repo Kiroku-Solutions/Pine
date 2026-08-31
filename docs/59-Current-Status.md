@@ -5,6 +5,8 @@
 | **Updated** | 2026-08-28 |
 | **Branch of record** | `main` |
 | **Focus of this cycle** | Production-readiness remediation (`docs/60`), Phase 0 — iteration 6 closed item 8 (TD-02) |
+| Status | Non-normative — working status record |
+| Reconciled | 2026-08-31 · Describes what happened rather than what must happen. The audit's §6.12 assessed it as accurate. |
 
 A living snapshot of the project's state so anyone can see, at a glance, what is
 done, what is pending, and where we are heading. Update the date + relevant

@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-51-TEST-DATA`                                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the process is not in use                                             |
+| Reconciled       | 2026-08-31 · Documents `pine td new|list|validate` (:178-180); the CLI implements none of them. `Bogus` is used directly in `tests/Pine.Tests.Unit` instead. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

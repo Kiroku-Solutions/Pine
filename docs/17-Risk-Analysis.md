@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-17-RISK-ANALYSIS`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — strategic risk register                                              |
+| Reconciled       | 2026-08-31 · An analysis with owners and scores. The mitigations it points at carry their own status in the documents that specify them. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

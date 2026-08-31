@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-27-DEV-GUIDELINES`                                                         |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the local loop is real; the tooling around it is not         |
+| Reconciled       | 2026-08-31 · Building, testing and running from source work as described. `pine dev test`, `pine dev mermaid` and `pine dev validate-ssot` do not exist; only `pine dev init` and `pine --version` do. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

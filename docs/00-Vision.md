@@ -3,7 +3,8 @@
 | Field            | Value                                                                |
 |------------------|----------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-00-VISION`                                                 |
-| Status           | Draft — pending review                                               |
+| Status           | Non-normative — product vision and principles                        |
+| Reconciled       | 2026-08-31 · It states direction and non-negotiables, not behaviour. Its scope boundary is normative only through `02-Product-Scope` and `07-Functional-Requirements`, which carry their own status. |
 | Owner            | Engineering Review Board (acting on behalf of Project Lead)          |
 | Created          | 2026-07-08                                                           |
 | Last Updated     | 2026-07-08                                                           |

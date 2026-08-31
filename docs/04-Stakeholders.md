@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-04-STAKEHOLDERS`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — stakeholder and RACI register                                        |
+| Reconciled       | 2026-08-31 · Describes people and accountability, not software. Note that the roles it assigns (Engineering Review Board, Trust team, Maintainer Council) are aspirational for a project with one contributor; see the note in `24-Contributing`. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

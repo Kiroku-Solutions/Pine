@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-37-CODE-REVIEW`                                                            |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no review process operates                                            |
+| Reconciled       | 2026-08-31 · No pull requests, no `CODEOWNERS`, no review template. Commits reach branches directly. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

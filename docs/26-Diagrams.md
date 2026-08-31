@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-26-DIAGRAMS`                                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — diagram set, several depicting components that do not exist          |
+| Reconciled       | 2026-08-31 · Illustrative rather than normative, but read with care: the plugin-host and synchronisation diagrams depict subsystems with no source files (`src/Pine.Plugins.Host`, `src/Pine.Plugins.Sdk` contain zero `.cs`; no sync code exists anywhere in `src/`). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

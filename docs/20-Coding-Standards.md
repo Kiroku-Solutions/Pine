@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-20-CODING-STANDARDS`                                                       |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the analyzer gates are real; the StyleCop claim is false     |
+| Reconciled       | 2026-08-31 · Nullable reference types, `TreatWarningsAsErrors`, an `.editorconfig` and Roslyn analyzers-as-errors are all in force (`Directory.Build.props`). :199 states "StyleCop. Enforced in CI"; StyleCop has zero references anywhere in the repository. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

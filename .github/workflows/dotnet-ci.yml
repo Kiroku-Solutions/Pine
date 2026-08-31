@@ -265,3 +265,82 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: TestResults/*.trx
           if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Packaging (TD-49). Produces the only shippable artefact Pine has: a
+  # version-stamped, RID-pinned, checksummed win-x64 archive plus a release
+  # manifest. It is NOT an installer and it carries no updater; packaging/package.sh
+  # says so in the manifest it writes, rather than leaving a reader to assume.
+  #
+  # `needs: [desktop, test]` is load-bearing: a packaging job that runs on a red
+  # suite is a mechanism for shipping a known-broken build, which is worse than
+  # having no mechanism at all.
+  #
+  # `lfs: true` IS NOT OPTIONAL HERE, AND ITS ABSENCE WAS A LATENT DEFECT.
+  # The three PP-OCRv4 / YOLO model files are LFS-tracked (.gitattributes). A
+  # default actions/checkout fetches 133-byte POINTER FILES for them. Every other
+  # job in this workflow still checks out pointers -- harmless there, because
+  # nothing they do reads the weights -- but an artefact built from pointers is an
+  # application whose OCR fails at first use, shipped, with a green pipeline behind
+  # it. The publish step is the first thing in this repository that ever needed the
+  # real bytes.
+  #
+  # Like every job here, this one runs only on manual dispatch (see the header).
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package win-x64 artefact
+    needs: [desktop, test]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (with LFS payloads, not pointers)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Verify the model weights are real files and not LFS pointers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in src/Pine.Infrastructure/Assets/Ai/*.onnx; do
+            size=$(stat -c %s "$f")
+            echo "$f = $size bytes"
+            # A pointer file is ~133 bytes. Anything under 1 MiB is not a model.
+            if [ "$size" -lt 1048576 ]; then
+              echo "::error::$f is an LFS pointer ($size bytes), not the model. The artefact would ship an application whose OCR cannot start."
+              exit 1
+            fi
+          done
+
+      - name: Setup .NET SDK (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.nuget-packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Build the artefact
+        shell: bash
+        # No --require-signature: no code-signing certificate exists for this project yet, so
+        # requiring one would simply fail every run. The script prints an UNSIGNED warning and the
+        # manifest records `"signed": false`. Add --require-signature on the day a certificate does
+        # exist, so an unsigned build can never be published by accident.
+        run: bash packaging/package.sh --out artifacts
+
+      - name: Upload the artefact and its manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-win-x64
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.release.json
+          if-no-files-found: error
+          # ~680 MB per run, measured. Kept short deliberately: this is a build output, and the
+          # 1.1 GiB unpacked size is itself an open row (TD-41 -- four overlapping PaddleOCR model
+          # packages, 383 MB of the total).
+          retention-days: 7

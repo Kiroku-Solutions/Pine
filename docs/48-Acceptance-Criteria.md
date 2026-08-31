@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-48-ACCEPTANCE-CRITERIA`                                                    |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the process is not in use                                             |
+| Reconciled       | 2026-08-31 · Documents `pine ac new|ready|status|coverage` (:175-178); the CLI implements none of them. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

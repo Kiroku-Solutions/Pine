@@ -26,9 +26,27 @@ namespace Pine.Core.Security;
 /// condition it is.
 /// </para>
 /// </remarks>
-public sealed class VaultLockedException : Exception
+public sealed class VaultLockedException : Exception, Pine.Core.Common.IUserFacingFailure
 {
     /// <summary>Creates the exception with the standard message.</summary>
+    /// <summary>
+    /// Gets the sentence shown to the user (TD-24), which is deliberately NOT
+    /// <see cref="Exception.Message"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the two-property design exists for. Every construction site writes a message
+    /// for an engineer reading a log — "so no file key can be derived", "so the categorisation model
+    /// cannot be trained" — and each of those is accurate, useful in a log, and the wrong thing to
+    /// put in front of a person who only needs to know that their session timed out. The user-facing
+    /// half is therefore fixed and says the one thing that is true of every construction site and
+    /// resolves all of them. It matters because this is the auto-lock path (TD-11): a vault that
+    /// timed out mid-session makes every subsequent command fail, and the call site's generic
+    /// "The transaction could not be saved" would send the user hunting for a defect that is not
+    /// there instead of to the unlock screen.
+    /// </remarks>
+    public string UserFacingMessage =>
+        "Your vault is locked, so this could not be completed and nothing was changed. Unlock the vault and try again.";
+
     public VaultLockedException()
         : base("The vault is locked. Unlock it before performing this operation.")
     {

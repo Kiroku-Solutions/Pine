@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-09-SYSTEM-ARCHITECTURE`                                                    |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — the hexagonal decomposition is real; the plugin host is not  |
+| Reconciled       | 2026-08-31 · The audit's architecture verdict (§11) found the layering genuine rather than nominal: `Pine.Core` carries no external dependency and the UI dispatches through MediatR. The plugin host in this document's strategic choices has no source files (TD-37). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

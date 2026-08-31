@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-14-SYNCHRONIZATION`                                                        |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no synchronisation code exists                                        |
+| Reconciled       | 2026-08-31 · A repo-wide grep for sync services, conflict resolution or a sync envelope returns nothing. The `CloudSync` setting this document implied was removed by TD-48. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

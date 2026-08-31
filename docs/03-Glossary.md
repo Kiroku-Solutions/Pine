@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-03-GLOSSARY`                                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — terminology registry                                                 |
+| Reconciled       | 2026-08-31 · Defines vocabulary for the other documents. Terms drift with the code, which is a review concern, not an implementation status. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

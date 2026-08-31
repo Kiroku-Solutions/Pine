@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-46-FEATURES`                                                                |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — planning artefact                                                    |
+| Reconciled       | 2026-08-31 · Documents `pine features list|status` (:170-171), which the CLI does not implement. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

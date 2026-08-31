@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-05-PERSONAS`                                                               |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — user archetypes                                                      |
+| Reconciled       | 2026-08-31 · Personas drive use cases; they are not themselves implementable. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

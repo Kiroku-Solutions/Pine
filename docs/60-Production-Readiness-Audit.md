@@ -3,14 +3,15 @@
 | Field | Value |
 |---|---|
 | Document ID | `PINE-DOC-60-AUDIT` |
-| Status | **Living document** — §1–§11 are the original audit (baseline, unaltered). §8/§9/§10 now carry status markers and §12 is the remediation log. |
+| Status | Non-normative — audit and remediation log                                                                                                     |
+| Reconciled| 2026-08-31 · A record of findings and of the work done against them. It is the document that required all the others to carry a status. |
 | Created | 2026-08-26 |
 | Audited commit | `c1c8844` on `feat-ui-production-theming` |
 | Method | Full source read + `dotnet build` + `dotnet test` execution. No claim below is taken from documentation. |
 | Scope | 154 `.cs` / 26 `.axaml` · ~11.7k LOC `src/` · 741 LOC `tests/` · 17,292 lines `docs/` |
 | Overall rating | **2.3 / 5 ★★☆☆☆** |
 | Classification | **Not Production Ready** |
-| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Iteration 8 closed the TD-18 half of item 10 — see §12.18. Iteration 9 closed the TD-19 half, ported the TD-11 harness into `tests/`, and reclassified TD-74 — see §12.20. **Every Phase 0 item has now been worked, and items 1, 4–11 are ✅. Phase 0 is NOT clean: item 2's export is still unreachable and item 3 regressed — CI has had its triggers removed since `79c5364` and has never run.** **Phase 1 items 5 and 6 are closed**: 5a (TD-30, TD-31, TD-79) by iteration 15, 5b (TD-17) by iteration 16, and item 6 was found **already closed** by iterations 8 and 9 — it duplicated Phase 0 item 10. Iteration 17 did what item 6 had actually left undone: carry the money scale policy into the UI, and stop the dashboard adding different currencies together. See §12.32, §12.34 and §12.36. That iteration also found **TD-94**, a shipped crash on the transaction list screen, under a fully green suite. Test suite 28 → **769** (582 unit + 187 integration), both suites green at this commit. See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14, §12.16, §12.18, §12.20, §12.22, §12.32, §12.34 and §12.36 repeat it as standing practice. **Iteration 18 closed Phase 1 item 7 (TD-20, TD-21, TD-22)** — receipt duplicate detection on an `s1:` key reusing the import index, locale-ordered date parsing that flags ambiguity instead of guessing, and per-field confidence bands taken from the OCR engine's own word scores in place of a literal tally. Eleven mutations, 10 killed, 1 survived by genuine redundancy. **Two `NaN` defects were found in that iteration's own new code, one of which crashed the scan and lived in the seam between two tasks under two green suites** — recorded in §12.38 as the clearest evidence yet that a green suite is not evidence of correctness. Suite 769 → **833** (643 unit + 190 integration), both green. **Phase 1 now has three rows left: items 8, 9 and 10.** New rows: TD-101, TD-102, TD-103. See **§12.38**. |
+| Remediation | Iterations 1–6 closed Phase 0 items 1–8. Iteration 7 **built** item 9 (TD-11) without executing it — see §12.16. Iteration 8 closed the TD-18 half of item 10 — see §12.18. Iteration 9 closed the TD-19 half, ported the TD-11 harness into `tests/`, and reclassified TD-74 — see §12.20. **Every Phase 0 item has now been worked, and items 1, 4–11 are ✅. Phase 0 is NOT clean: item 2's export is still unreachable and item 3 regressed — CI has had its triggers removed since `79c5364` and has never run.** **Phase 1 items 5 and 6 are closed**: 5a (TD-30, TD-31, TD-79) by iteration 15, 5b (TD-17) by iteration 16, and item 6 was found **already closed** by iterations 8 and 9 — it duplicated Phase 0 item 10. Iteration 17 did what item 6 had actually left undone: carry the money scale policy into the UI, and stop the dashboard adding different currencies together. See §12.32, §12.34 and §12.36. That iteration also found **TD-94**, a shipped crash on the transaction list screen, under a fully green suite. Test suite 28 → **769** (582 unit + 187 integration), both suites green at this commit. See **§12**. §12.12 is a reconciliation pass correcting stale §8/§9 claims; §12.14, §12.16, §12.18, §12.20, §12.22, §12.32, §12.34 and §12.36 repeat it as standing practice. **Iteration 18 closed Phase 1 item 7 (TD-20, TD-21, TD-22)** — receipt duplicate detection on an `s1:` key reusing the import index, locale-ordered date parsing that flags ambiguity instead of guessing, and per-field confidence bands taken from the OCR engine's own word scores in place of a literal tally. Eleven mutations, 10 killed, 1 survived by genuine redundancy. **Two `NaN` defects were found in that iteration's own new code, one of which crashed the scan and lived in the seam between two tasks under two green suites** — recorded in §12.38 as the clearest evidence yet that a green suite is not evidence of correctness. Suite 769 → **833** (643 unit + 190 integration), both green. **Phase 1 now has three rows left: items 8, 9 and 10.** New rows: TD-101, TD-102, TD-103. See **§12.38**. **Iteration 19 closed Phase 1 item 8 (TD-24), and TD-98 with it.** An exception now reaches a screen only if its author opted in via `IUserFacingFailure` and wrote the sentence — an allow-list, because the set of exceptions a request can throw is open and a deny-list is stale the moment anyone adds a `throw`. Eleven `ex.Message` renderings replaced; the detail moves to the TD-14 log rather than being deleted. TD-23 was re-verified in code and `UnlockViewModel` deliberately left alone, because its identical wordings are an anti-oracle property, not duplication. Eleven mutations, 11 killed — **two of which first failed to compile and were recorded as not-a-kill until rewritten**, §12.40. Suite 833 → **863** (673 unit + 190 integration), both green. **Phase 1 now has two rows left: items 9 and 10.** New rows: TD-104, TD-105, TD-106. See **§12.40**. **Iteration 20 worked Phase 1 item 9 (TD-49) and got half of it.** The row's premise was under it: no version was set anywhere, so every build stamped `1.0.0` and the resolver discarded the commit — a constant in the panel and in every log record. There is now a real version, a `pine --version` that proves it in a running process, and a packaging script that was **executed**: 1.78 GiB across 30 runtime-identifier folders became a 1.08 GiB RID-pinned artefact with 317/317 checksums verified, a release manifest, and a signing seam that refuses rather than pretends. CI gained a `package` job and the fix for a latent defect — no checkout set `lfs: true`, so it would have shipped 133-byte model pointers. **No installer, no certificate, no updater**, the last deliberately: it would be Pine's first network call. Seven mutations, 7 killed, two only after the tests were sharpened. Suite 863 → **876** (686 unit + 190 integration). **TD-97 was observed a fourth time, in a fourth different test.** **Phase 1 now has one row left: item 10.** New rows: TD-107, TD-108, TD-109, TD-110. See **§12.42**. |
 | Last updated | 2026-08-30 |
 | Related | `56-IMPLEMENTATION-PLAN`, `58-TechDebt-WeakReferenceMessenger-Lifecycle`, `59-Current-Status`, `STATUS.md` |
 
@@ -301,7 +302,7 @@ primitive and a key-management *architecture*.
 - 🟠 **P0** No password policy, no auto-lock, no re-authentication (TD-11). `SetupViewModel` rejects only whitespace-empty passwords — a one-character master password is accepted. `VaultSession.Lock()` is called from exactly one place: the `catch` of a failed unlock. No idle timer, no lock-on-suspend, no lock button. The 32-byte key sits in a managed `byte[]` in a singleton for the entire process lifetime. Argon2id at 64 MB is meaningless against a one-character password.
 - 🟠 **P1** ML model plaintext, cross-vault, outside the vault (TD-16) — see §4.9.
 - 🟡 **P1** Unredacted diagnostic files (TD-25). `Program.Main` writes the full exception + stack to `%LOCALAPPDATA%/Pine/crash.log`; `PaddleOcrEngine` writes `ocr_init_error.log` next to the exe; `PaddleOcrEngine.cs:107` does `Console.WriteLine($"[OCR] Extracted: '{region.Text}'…")` — the full recognised text of every receipt. `docs/30-Observability.md` mandates a redaction posture no code implements.
-- 🟡 **P2** Raw `ex.Message` surfaced to the user (TD-24) in `SetupViewModel`, `ScanReceiptViewModel`, `AddTransactionViewModel` and others. `UnlockViewModel` is the sole exception and does it correctly — apply that pattern everywhere.
+- ~~🟡 **P2** Raw `ex.Message` surfaced to the user (TD-24) in `SetupViewModel`, `ScanReceiptViewModel`, `AddTransactionViewModel` and others. `UnlockViewModel` is the sole exception and does it correctly — apply that pattern everywhere.~~ **✅ Closed by iteration 19 (§12.40).** The count was eleven renderings, not "and others". The prescription — *apply `UnlockViewModel`'s pattern everywhere* — was **not** followed and should not have been: that screen's per-type cascade is correct precisely because several of its arms must say the SAME thing, which is a security decision that does not generalise. What generalised was the rule underneath it.
 - 🔵 **P2** No file-type or size validation on imports (TD-50). Picked files go straight to `CsvImporter`/`ExcelImporter`/`PdfImporter`/OCR. No magic-byte check, no size cap, no row/page limit. PdfPig, ExcelDataReader and OpenCV all have real CVE histories.
 
 ### 6.8 Testing — 1.5
@@ -506,7 +507,7 @@ any other single change.
 | TD-21 | Ambiguous dd/MM vs MM/dd parsing — and the OCR "multi-culture cascade" tries `InvariantCulture` (MM/dd) **first**, so its `es-EC` leg is unreachable for any ambiguous date while its comment claims dd/MM is tried first | 🟠 | Silently misdated transactions, now behind code that reads as if it handled them | Locale-driven order; flag ambiguity | P1 | ✅ **Closed** — `ReceiptDateParser` matches explicit formats with `TryParseExact`, ISO first, then the culture's own day/month order; an ambiguous date is flagged and both readings are shown. The real cause was `TryParse`, not the ordering. See §12.38 |
 | TD-22 | Confidence score is an arbitrary tally | 🟠 | Unearned user trust in OCR | Propagate real confidence or relabel | P1 | ✅ **Closed** — the tally is deleted; per-field bands are built from the OCR engine's own word confidences, with `NotFound` distinct from `Low`. No aggregate score. See §12.38 |
 | TD-23 | Migration failure reported as wrong password | 🟠 | Undiagnosable support cases | Split auth and schema phases | P1 | ✅ **Done** |
-| TD-24 | Raw `ex.Message` surfaced in UI | 🟡 | Path/internals leakage | Map to user-facing messages | P2 | 🔴 **Open** |
+| TD-24 | Raw `ex.Message` surfaced in UI | 🟡 | Path/internals leakage | Map to user-facing messages | P2 | ✅ **Done** — iteration 19, §12.40 |
 | TD-25 | Unredacted crash.log / OCR text to console | 🟡 | Sensitive data outside vault | Redact and relocate | P1 | ✅ **Done** — iteration 11, §12.24. The OCR content trace is deleted outright (a receipt cannot be usefully redacted); `crash.log` and `ocr_init_error.log` are replaced by redacted JSONL records. The log files are still **plaintext on disk** — see TD-82 |
 | TD-26 | Reflection sets `LinkedTransactionId` | 🟠 | Silent runtime break on rename | Domain method or single aggregate | P1 | 🔴 **Open** |
 | TD-27 | No configuration system | 🟠 | Nothing tunable; no env separation | `IOptions` + appsettings | P1 | 🔴 **Open** |
@@ -531,7 +532,7 @@ any other single change.
 | TD-46 | Relative model paths in `MlNetCategorizer` and `OnnxNlpFieldExtractor`; `ReceiptDetector` already anchors to `AppContext.BaseDirectory` | 🟡 | Feature silently off; stray files | Anchor the remaining two | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-47 | New vaults seeded with a fictional $1,000 account | 🔵 | In a tool whose value is an accurate picture of the user's money, seeding invented data is a correctness problem | Removed from `SetupViewModel`; a fresh vault now has zero accounts, and the dashboard's always-visible `+ New Account` button is the path in | P1 | ✅ **Closed** — iteration 10, §12.22 |
 | TD-48 | `CloudSync` setting read by nothing | 🔵 | Onboarding promises an absent feature | The disabled radio, the `IsCloudSync` property and the `System.StorageMode` write are all gone; the step keeps the local option, whose privacy claim is true | P2 | ✅ **Closed** — iteration 10, §12.22 |
-| TD-49 | No packaging, signing or update channel | 🟠 | No way to ship or patch | Installer + signing + updater | P1 | 🔴 **Open** |
+| TD-49 | No packaging, signing or update channel | 🟠 | No way to ship or patch | Installer + signing + updater | P1 | 🟡 **Partial** — iteration 20 (§12.42). Version identity, a reproducible RID-pinned checksummed artefact, a release manifest and a signing seam exist. **An installer, a certificate and an update channel do not** — tracked as TD-108 (certificate), TD-109 (per-platform bundles) and, for the updater, the network-egress decision §12.42 records |
 | TD-50 | No file-type or size validation on imports | 🔵 | Parser DoS / hang | Magic-byte + size cap | P2 | 🔴 **Open** |
 | TD-51 | Draft comments and `<!-- asdasda` in source | 🔵 | Signals unreviewed code | Clean up; enforce in review | P2 | 🟡 **Partial** |
 | TD-52 | Web/Android/iOS roots omit `TimeProvider.System` + 9 other registrations Windows has | 🔴 | Heads compile, then throw on the first command dispatched | Shared `AddPine*()` roots (TD-29) | P1 | 🔴 **Open** |
@@ -587,7 +588,7 @@ a concrete failure mode.
 8. 🟡 **TD-10** — Encrypted pre-migration backup is implemented and verified, so a failed upgrade no longer destroys the only copy. **Recovery is still manual**: no restore path and no UI entry point for the export command.
 9. 🟡 **TD-11** — ~~No password policy, no auto-lock. The encryption is defeatable by the setup screen.~~ **The setup screen no longer accepts a one-character password**: a 60-bit entropy floor, derived from the KDF Pine actually ships, gates vault creation, and an idle watchdog locks the session after ten minutes. **This blocker is not closed, because nothing in the suite guards it.** The behaviour has been executed and observed once, by hand, outside the repository; the code compiles on three of five heads and is unreachable on the other two for unrelated reasons (TD-08). It downgrades from 🔴 to 🟡 on structure alone, and returns to 🔴 if the tests in §12.17 are not written. See §12.16.
 10. ✅ **TD-12 ✅ / TD-13 ✅** — ~~Owned collections dropped on update~~ and ~~currency never validated against the account~~. **Blocker closed.** TD-13: `Transaction.Splits` and `LineItems` round-trip through the tracked graph, proven from a fresh context and a raw `SELECT COUNT(*)` across grow/shrink/empty. TD-12: a validation pipeline behaviour rejects a currency mismatch before any write, proven by falsification. **The honest correction this blocker needs:** it claimed *two* corruption paths. Iteration 4 measured the second one and found it was no longer a corruption path — closing TD-01 had already contained it (a mismatch rolled back cleanly: zero rows, balance untouched, `Begin, Rollback`). What remained was a domain exception (`"Cannot add money of different currencies: USD and EUR"`) leaking verbatim to the user from the wrong layer. That is a real defect and it is now fixed, but it was not data corruption, and this blocker overstated it from iteration 2 onward. See §12.9.
-11. 🔴 **TD-49** — No packaging, signing or update channel. No mechanism to deliver any of the above fixes to a user who already installed.
+11. 🟡 **TD-49** — No packaging, signing or update channel. No mechanism to deliver any of the above fixes to a user who already installed. **[Updated, iteration 20: Pine can now produce a versioned, checksummed win-x64 artefact that states its own build id (§12.42). It still cannot be *installed* and still cannot be *updated*, so the blocker stands — what changed is that a fix can now be handed to someone as a named, verifiable file rather than as a git clone.]**
 
 **Not blockers, but ship with eyes open:** TD-15 (mock diagnostics — remove the
 screen rather than ship it), TD-16 (plaintext ML model — contradicts the marketing
@@ -629,8 +630,8 @@ a day of work now and an impossible migration later.
 - [x] ✅ **5b.** Row versions on the aggregates (TD-17) — **DONE.** A `Version` shadow property on all nine non-owned entities — shadow, because optimistic concurrency is a fact about the store and not about money — assigned a fresh GUID by `PineDbContext` on every insert and update, with the store's `DbUpdateConcurrencyException` translated into `ConcurrencyConflictException` at the persistence boundary. A change confined to an owned collection promotes its owner, so the aggregate rather than the row is the unit of concurrency; that promotion is the one thing a surviving mutation proved was untested, and it is now covered by the case that would otherwise corrupt a transaction. No automatic retry, deliberately. 564 → 567 unit, 179 → 187 integration. Five mutations, 4 killed, **1 survived and led to a real correction** (§12.34). Row registered: **TD-98**.
 - [x] ✅ **6.** Money scale + rounding + `Allocate`; line-item reconciliation in the confirmation UI (TD-18, TD-19) — **ALREADY DONE WHEN THIS ROW WAS REACHED, AND THAT IS THE FINDING.** This row duplicates Phase 0 item 10: iteration 8 closed TD-18 and iteration 9 closed TD-19, the UI half included. Verified against the code rather than against the register — `Money`'s constructor rounds half-to-even (`:102`), rejects a fractional amount in a zero-minor-unit currency (`:94`), and `Allocate` distributes by largest remainder in `Int128` (`:236-247`); the reconciliation panel and its one-click adjustment are live at `ScanReceiptView.axaml:152-191` with 9 view-model tests. **What had NOT happened is that the scale policy never reached the rest of the UI**, and iteration 17 did that: TD-75 closed, plus a dashboard that was adding different currencies together. 567 → 582 unit. Five falsification mutations, all killed. See §12.36. Rows registered: **TD-99**, **TD-100**.
 - [x] ✅ **7.** Receipt duplicate detection; locale-driven date parsing; honest confidence labelling (TD-20, TD-21, TD-22) — **DONE.** `ReceiptDateParser` replaces a cascade whose real defect was `TryParse` (which accepts far more than a culture's short pattern, making the `es-EC` leg unreachable by construction, not merely by ordering); ambiguous dates are carried and shown, never resolved on the user's behalf. `ComputeConfidence`'s literal tally is deleted and replaced by per-field bands taken from `OcrWord.Confidence`, which the engine had always produced and the extractor had always discarded; `NotFound` is a distinct band from `Low`. An `s1:` receipt key reuses the import path's lookup and index — no new migration — and the duplicate warning is non-blocking and re-checked immediately before the write. Eleven falsification mutations, **10 killed, 1 survived by genuine redundancy** (§12.38). Two `NaN` defects were found in this iteration's *own* new code, one of which crashed the scan and lived in the seam between two tasks under two green suites. 582 → **643** unit, 187 → **190** integration. Rows registered: **TD-101**, **TD-102**, **TD-103**.
-- [ ] Exception taxonomy; split unlock auth and schema phases; stop surfacing `ex.Message` (TD-23, TD-24)
-- [ ] Packaging, code signing, update channel (TD-49)
+- [x] ✅ **8.** Exception taxonomy; split unlock auth and schema phases; stop surfacing `ex.Message` (TD-23, TD-24) — **DONE.** `IUserFacingFailure` (Core) makes showing an exception an **opt-in the author takes while writing the sentence**, which reverses the default that made TD-24 unfixable: the set of exceptions a request can throw is open, so a deny-list is stale the moment anyone adds a `throw`. `UserFacingError` (UI) is the single place a caught exception becomes screen text, and it writes the whole exception to the TD-14 log first — the detail **moves to the log, it is not deleted**. Eleven `ex.Message` renderings replaced; three pairs of hand-rolled catch blocks collapsed into it. Three types opted in: `RequestValidationException`, `ConcurrencyConflictException` (**this is TD-98, closed here**) and `VaultLockedException` (with a fixed sentence, *not* its `Message`). The nine vault exceptions deliberately stay OUT, because several must produce wording identical to a genuine auth failure or the unlock screen becomes a password oracle — TD-23 was already closed by iteration 1 and was re-verified in code, not in the register. Eleven falsification mutations, all killed. 643 → **673** unit; integration unchanged at 190. Rows registered: **TD-104**, **TD-105**, **TD-106**. See §12.40.
+- [x] 🟡 **9.** Packaging, code signing, update channel (TD-49) — **VERSIONING AND THE ARTEFACT DONE; INSTALLER AND UPDATER DELIBERATELY NOT.** The row's premise turned out to sit under it: nothing set a version, so every build stamped `1.0.0` and the resolver *trimmed off the commit* — the only varying part — leaving a constant in the diagnostics panel and in every log record. `Directory.Build.props` now sets `0.1.0-alpha.1` per `22-Release-Plan` §5, `ApplicationVersionText` keeps twelve characters of commit, and `pine --version` makes the whole chain observable in a real process (measured: `0.1.0-alpha.1+9f42153820e4`). `packaging/package.sh` was **run**, not written and assumed: an unconstrained publish emitted 1.78 GiB across **30 runtime-identifier folders**; the RID-pinned artefact is 1.08 GiB, 318 files, with 317 of 317 checksums verified, and it refuses to build if the published binary's own version disagrees with its filename. Signing is a real seam with two outcomes and no third — `--require-signature` exits non-zero when no certificate is configured, which is the current state. CI gained a `package` job and, with it, the fix for a **latent defect nothing had noticed**: no `actions/checkout` set `lfs: true`, so a runner would have packaged 133-byte LFS pointers instead of the OCR models. **No installer and no updater**: an in-app update check would be Pine's first network call ever, which is a change to the privacy posture and not a packaging chore. Seven mutations, 7 killed — **two only after the tests were sharpened, one of them a survivor that was unfalsifiable rather than untested**. 673 → **686** unit. Rows registered: **TD-107**, **TD-108**, **TD-109**, **TD-110**. See §12.42.
 - [ ] Reconcile the docs: mark every unimplemented spec `Status: Aspirational`; write ADR-0012/0013 or drop the citations (TD-39, TD-40)
 
 ### Phase 2 — Engineering quality
@@ -3322,7 +3323,7 @@ until someone runs them the honest status of this fix is "believed correct, unob
 | TD-95 | `TransactionLineItems.Quantity` is still a `decimal` stored as `TEXT` | 🟡 | The residue of TD-79. It is not money and has no scale policy in the domain, so scaling it to 4 would silently round a five-decimal quantity; leaving it means one column can still hold a value the store cannot compare correctly. Nothing orders or filters it today | Give quantity a domain scale policy first, then a column type | P3 | 🔴 **Open** — opened by iteration 15 |
 | TD-96 | `Budget.StartDate` / `EndDate` are `DateTimeOffset` columns with the same offset-in-the-text defect as `Transaction.Date` | 🟡 | Any future `ORDER BY` or range predicate over a budget period will either throw, exactly as TD-94 did, or compare local wall clocks. Neither column reaches SQL today | The same treatment as TD-94, if and when a query needs it | P3 | 🔴 **Open** — opened by iteration 15 |
 | TD-97 | `Importing/ImportKeyMigrationTests` fails intermittently under the full integration run and passes in isolation | 🟡 | A flaky test is a test nobody trusts, and this suite's whole value is that a red result means something. At this rate it will be re-run rather than read. Observed **three times, in three DIFFERENT tests** — iteration 15 (`ImportKeyMigrationTests`, 18 s against a 2 s norm), iteration 16 (name not captured before the re-run passed), iteration 17 (`BalanceRecalculationTests.Recalculate_OfALedgerADoubleWouldGetWrong_IsExactToTheCent`, 10 s, passing in isolation immediately afterwards). That it moves between tests is the diagnosis: this is not a flaky assertion anywhere, it is file contention between `TempVault` directories under xUnit's default per-class parallelism. Roughly one full run in four | Serialise the vault-backed classes into one xUnit collection, or give `TempVault` a retry on the lock | P2 | 🔴 **Open** — opened by iteration 15 |
-| TD-98 | Nothing catches `ConcurrencyConflictException`; a refused write reaches the user as an unhandled exception | 🟡 | TD-17 turned a silent lost update into a loud refusal, which is strictly better — but the loudness currently lands wherever an unhandled exception lands. The user is told something failed without being told to reload, which is the one instruction that resolves it | Handle it in the view models as part of TD-24's exception taxonomy (Phase 1 item 8) | P2 | 🔴 **Open** — opened by iteration 16 |
+| TD-98 | Nothing catches `ConcurrencyConflictException`; a refused write reaches the user as an unhandled exception | 🟡 | TD-17 turned a silent lost update into a loud refusal, which is strictly better — but the loudness currently lands wherever an unhandled exception lands. The user is told something failed without being told to reload, which is the one instruction that resolves it | Handle it in the view models as part of TD-24's exception taxonomy (Phase 1 item 8) | P2 | ✅ **Done** — opened by iteration 16, closed by iteration 19 (§12.40). The type now implements `IUserFacingFailure`, so its "Reload and try again." survives to the screen on every write path instead of being flattened |
 | TD-99 | The budgets screen is a mock wearing a real screen's clothes | 🟠 | `BudgetsViewModel:149` sets `SpentAmount = 0m` with the comment "Will be calculated from transactions", so the progress bar is **always** at 0% and `IsExceeded` is **never** true — a budget can be blown wide open and the screen says nothing. `:146` renders `CategoryName` as `"Category " + b.CategoryId.ToString()[..4]`, a fragment of a GUID where a category name belongs. Both are visible on a shipped screen and neither is a placeholder the user can recognise as one | A query summing non-voided transactions per category over the budget's period, and a real category lookup | P1 | 🔴 **Open** — opened by iteration 17 |
 | TD-100 | `ScanReceiptViewModel.RecomputeReconciliation` computes the difference two ways | 🔵 | With an account selected the arithmetic goes through `Money` and rounds each line to the currency's scale; without one it sums raw decimals. Iteration 17 verified the divergence is **not** load-bearing — `SaveTransactionAsync` refuses with "Please select an account" before it ever consults `IsReconciled`, so every save is judged by the `Money` path — but the figure shown on screen while the form is being filled can still differ from the one that will decide the save | Nothing, until an account can be defaulted; the branch is commented rather than unified, because unifying it means guessing a currency | P3 | 🔴 **Open** — opened by iteration 17 |
 
@@ -3846,4 +3847,361 @@ TD-97 did not reproduce in these runs, which is consistent with it being intermi
 - **TD-97 — the flaky suite**, diagnosed, not fixed.
 - **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85**, **TD-83**, then **TD-78**, **TD-75**'s
   siblings **TD-95**, **TD-96**, **TD-100**, and **TD-81**, **TD-91**.
+- **TD-84** last, unchanged.
+
+### 12.40 Iteration 19 — Phase 1, item 8 (TD-24, TD-98; TD-23 re-verified)
+
+**Ticket:** Phase 1 item 8, "Exception taxonomy; split unlock auth and schema phases; stop surfacing
+`ex.Message`."
+
+The row bundles three things that turned out to be in three different states. The unlock split
+(TD-23) was closed by iteration 1 and needed **verifying, not building**. `ex.Message` (TD-24) was
+open, and had been quoted as unfixable-in-place by four previous iterations. TD-98 was a separate row
+that had been *scheduled into* this one by iteration 16, and it closes here as a consequence rather
+than as extra work.
+
+#### What was true at the start, read from the code rather than the register
+
+Every `catch` in every UI project was enumerated and checked, not sampled.
+
+| Claim | Verified against |
+|---|---|
+| **Eleven** catch blocks render `ex.Message` into a bound property | `AddTransactionViewModel:178`, `CreateAccountViewModel:84`, `DashboardViewModel:155`, `ImportWizardViewModel:185`, `:269`, `:323`, `LiveScannerViewModel:225`, `:308`, `ScanReceiptViewModel:316`, `:448`, `SetupViewModel:329` |
+| §7's wording "and others" understated nothing and named too little | The eleven above are the whole set; `Pine.Ui.Android`, `Pine.Ui.Ios`, `Pine.Ui.Web` and `Pine.Cli` contain **no `catch` at all** |
+| Two further sites render `ex.Message` of a **typed** exception on purpose | `SettingsViewModel:200`, `TransactionsViewModel:194` — both `RequestValidationException`, both documented as deliberate |
+| TD-23 is genuinely still closed | `UnlockViewModel:117-147` — the migration runs in its own DI scope *after* `UnwrapDataKey` has already answered the password question with an authentication tag; nine typed catches at `:161-219` precede the generic one at `:221` |
+| **Nothing anywhere catches `ConcurrencyConflictException`** (TD-98) | Whole-repo grep: it is thrown at `EfCoreUnitOfWork.cs:66` and referenced only in tests. In the UI it fell into the eleven blocks above and rendered as raw text |
+| The logging idiom for a view model already existed | `CropReceiptViewModel.cs:113-128` — source-generated `[LoggerMessage]` behind a nullable-logger wrapper, because CA1848 is an error in this repository |
+
+#### The design decision, and why the obvious one was refused
+
+§7 prescribed *"`UnlockViewModel` is the sole exception and does it correctly — apply that pattern
+everywhere."* That prescription was **not** followed, and following it would have been wrong.
+`UnlockViewModel`'s cascade is correct *because* several of its arms say the same sentence: a
+`VaultKeyUnwrapException` and a generic failure must be indistinguishable, or an attacker holding a
+copy of a vault learns whether a candidate password was the failing part. That is a security decision
+local to one screen, and copying its *shape* to twelve others would have produced twelve hand-written
+cascades that drift.
+
+What generalises is the rule underneath it: **an exception's own words reach the screen only if
+someone decided they should.**
+
+- **`Pine.Core/Common/IUserFacingFailure`** — one member, `UserFacingMessage`. Deliberately **not**
+  `Exception.Message`: `Message` is read by logs, debuggers and `ToString`, and its audience is an
+  engineer. Making it double as on-screen text would mean every future edit to a diagnostic string
+  silently edits the UI. An implementer may return `Message` when the two genuinely coincide, but
+  that is then a stated decision.
+- **`Pine.Ui.Avalonia/Diagnostics/UserFacingError`** — `Describe(exception, fallback)` and
+  `Report(logger, exception, operation, fallback)`. The fallback is written **at the call site**,
+  because the call site is the only place that knows what the user was trying to do and therefore
+  what did not happen. A blank fallback is refused with an `ArgumentException` rather than rendering
+  an empty error area, which a user reads as success.
+- **The detail moves, it is not deleted.** `Report` writes the whole exception — type, message, stack
+  — to the TD-14 JSONL sink before returning the sentence. Refusing to show `ex.Message` would be a
+  net loss if the text went nowhere: today a user can at least read the leak aloud to a support
+  channel. Eight view models gained an `ILogger<T>? logger = null` parameter, using the exact
+  `CropReceiptViewModel` idiom so no composition root and no existing test had to change.
+
+**Three types opted in, and each for a different reason:**
+
+| Type | `UserFacingMessage` | Why |
+|---|---|---|
+| `RequestValidationException` | `=> Message` | `Compose` already builds `Message` from validator sentences that the type's contract requires to be complete and user-facing. The two coincide *by construction*. |
+| `ConcurrencyConflictException` | `=> Message` | Its message names no entity, id or row value — a constraint its own remarks already imposed — and ends in the instruction that resolves the conflict. **This is TD-98.** |
+| `VaultLockedException` | **a fixed sentence, not `Message`** | This is the case the two-property design exists for. Its six construction sites write for a log: *"so no file key can be derived"*, *"so the categorisation model cannot be trained"*. Each is accurate and each is the wrong thing to show someone whose session merely timed out (TD-11). |
+
+**The nine vault exceptions deliberately did not opt in**, so `UnlockViewModel` was not touched at
+all. That is the anti-oracle property from TD-23 being preserved on purpose rather than by neglect.
+
+#### What changed on each screen
+
+Eleven `ex.Message` renderings replaced with a sentence naming what did not happen. Three pairs of
+hand-rolled catch blocks — `SettingsViewModel` twice, `TransactionsViewModel` once — were **collapsed
+into one**, because "catch the validation exception and show it; catch everything else and show a
+fixed sentence" *is* this taxonomy, written out by hand three times. The merge is not a tidy-up: each
+of those three sites now also carries the concurrency and locked-vault instructions, which the
+hand-rolled version silently flattened.
+
+Two wordings are load-bearing claims rather than reassurance, and are only true for a reason:
+
+- `"No transactions were imported."` — true because `ImportTransactionsCommand` runs inside
+  `TransactionBehavior`'s single database transaction, so a throw rolls the whole batch back. If that
+  ever stops being true the sentence becomes a lie; the comment at the call site says so.
+- `"Your vault is unchanged and your current password still works."` — pre-existing, and true because
+  the header write is atomic. Carried over unmodified.
+
+The dashboard is the one unsatisfying case: its failure sentence still lands in `Greeting`, the
+screen's header text, because that view has no error surface to bind to. Registered as **TD-105**
+rather than papered over with a view change smuggled into this ticket.
+
+#### Falsification mutations
+
+Eleven mutations, **11 killed**. Each was applied to the working tree, built, run against the new
+tests, and reverted.
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `Describe` returns `exception.Message` instead of the call site's sentence | 12 tests failed |
+| 2 | The empty-`UserFacingMessage` guard is dropped | 2 tests failed |
+| 3 | `AggregateException` is unwrapped unconditionally, not only when single-inner | 1 test failed |
+| 4 | The `InnerException` chain is walked, reaching a nested user-facing exception through a wrapper | 2 tests failed |
+| 5 | The blank-fallback guard is removed | 3 tests failed |
+| 6 | `Report` stops writing the exception to the log | 13 tests failed |
+| 7 | `ConcurrencyConflictException` stops implementing `IUserFacingFailure` | 5 tests failed |
+| 8 | `VaultLockedException.UserFacingMessage` returns `Message` | 2 tests failed |
+| 9 | `AddTransactionViewModel` goes back to `$"Error: {ex.Message}"` | 3 tests failed |
+| 10 | `SettingsViewModel` ignores the taxonomy and always shows its own sentence | 2 tests failed |
+| 11 | `Report` returns the fallback instead of what `Describe` decided | 7 tests failed |
+
+**Mutations 4 and 10 did not compile on the first attempt, and that was recorded as *not a kill*.**
+A mutation the compiler rejects proves nothing about the tests — it proves the mutation was malformed
+(4 was missing a cast; 10 left a `catch (Exception ex)` with an unused `ex`, which is an error in this
+repository). Both were rewritten until they compiled and were then re-run; both died on tests. Calling
+a compiler rejection a kill is the cheapest way to inflate a mutation score, and it is worth naming
+because it nearly happened here.
+
+#### Test counts
+
+| | Before | After |
+|---|---|---|
+| `Pine.Tests.Unit` | 643 | **673** |
+| `Pine.Tests.Integration` | 190 | **190** (untouched — the change is entirely in the presentation layer) |
+| Total | 833 | **863** |
+
+Both suites green at this commit. Two new files: `Diagnostics/UserFacingErrorTests.cs` (the rule) and
+`ViewModels/ErrorMessageTaxonomyTests.cs` (the screens). They are separate on purpose — **a correct
+mapper that nothing calls is exactly the shape of a fix that is not one**, and only the second file
+can tell the difference.
+
+The screen tests are driven with a real `VaultHeaderCorruptException`, chosen because it is a type
+this application actually throws, it carries a `FilePath`, and its message names that path. It is the
+leak, not a stand-in for one. The rule tests are driven with a type this codebase does **not** contain,
+so that passing cannot depend on the current inventory of exceptions — which is the whole premise of
+the fix.
+
+#### Deliberately not done
+
+- **`61-Manual-Test-Plan` was not updated.** Four consecutive iterations added procedures to it; this
+  one did not, and the twelve new sentences have therefore never been read on a screen by anyone.
+  Stated rather than skipped quietly.
+- **Nothing was seen running.** Fifth consecutive iteration to say so. A bound property holding the
+  right sentence is not a screen showing it.
+- **TD-78 is unchanged and its character shifted.** `CreateAccountCommand` and `CreateBudgetCommand`
+  still have no validator, so an unknown currency still arrives as an `ArgumentException` from inside
+  `CurrencyCode`. It now produces the generic sentence instead of leaking a parameter name — strictly
+  safer, strictly less helpful. Giving those two commands validators is what turns it into a sentence,
+  and that is still TD-78.
+- **No `Result<T>`.** `RequestValidationException`'s remarks already record why Pine signals refusal
+  with exceptions, and this iteration took that shape as given rather than re-opening it. The ticket
+  is about what reaches a human, and that is what was fixed.
+- **The Android and iOS heads were not compiled.** Their workloads are not installed on this machine;
+  this is pre-existing and unrelated to the change, which adds only optional constructor parameters.
+  Windows, macOS, Web, CLI and both test projects build clean.
+
+#### New debt
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-104 | The log half of the fix is opt-in: eight view models take `ILogger<T>? logger = null`, so a construction site that omits it loses the log record silently | 🟡 | The honest trade of this ticket is "the detail moves from the screen to the log". Where the logger is null the detail moves *nowhere*, and nothing detects it — the fix degrades into deletion without saying so | Typed view-model factories (TD-28) would make the logger non-optional; or make `UserFacingError` an injected seam rather than a static class | P2 | 🔴 **Open** |
+| TD-105 | `DashboardViewModel` renders its failure sentence into `Greeting`, the screen's header text, because the view has no error surface | 🟢 | A failed load replaces "Welcome to Pine" with an error, and there is nowhere for the two to coexist. The message is correct; its placement is not | Give the dashboard view a bound error area, as `AddTransactionView` and the others already have | P3 | 🔴 **Open** |
+| TD-106 | Nothing enforces the taxonomy: a new `catch (Exception ex) { ErrorMessage = ex.Message; }` added tomorrow compiles, passes every test, and reintroduces TD-24 | 🟡 | The eleven known sites are fixed; the *class* of defect is not closed, only currently absent. This is the same shape as the deny-list this ticket replaced, one level up | An architecture test (NetArchTest is already referenced) or an analyzer asserting no UI type formats an `Exception` into a bound property | P2 | 🔴 **Open** |
+
+### 12.41 Next
+
+- **TD-99 — make the budgets screen true or take it down.** Still the sharpest open row, and unchanged
+  by this iteration for the third time in a row. That it keeps being deferred is itself worth noticing.
+- **TD-106** — enforce what §12.40 built, before the next contributor undoes it by hand.
+- **TD-94's lesson**, unchanged and still the largest: almost nothing is covered by a test that
+  executes the query path a screen actually uses.
+- **TD-07 — re-arm CI.** Now five iterations old, and every count in this document is a local claim
+  because of it.
+- **Phase 1 item 9** — packaging, code signing and an update channel (TD-49). The next roadmap row,
+  and the first one in Phase 1 whose work is mostly *outside* the source tree.
+- **TD-104**, **TD-101**, **TD-102**, **TD-105**, then **TD-103**.
+- **TD-97 — the flaky suite**, diagnosed, not fixed.
+- **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85**, **TD-83**, then **TD-78**, **TD-75**'s
+  siblings **TD-95**, **TD-96**, **TD-100**, and **TD-81**, **TD-91**.
+- **TD-84** last, unchanged.
+
+### 12.42 Iteration 20 — Phase 1, item 9 (TD-49), partially
+
+**Ticket:** Phase 1 item 9, "Packaging, code signing, update channel."
+
+Three things, and only one of them could be finished honestly. What follows says which, and why the
+other two stop where they stop rather than being simulated.
+
+#### What was true at the start, read from the code rather than the register
+
+| Claim | Verified against |
+|---|---|
+| **No project and no props file set any version** | `Directory.Build.props` was ten lines with no `Version*` property; a repo-wide grep for `<Version>`, `<VersionPrefix>`, `<AssemblyVersion>`, `<FileVersion>`, `<InformationalVersion>` over `**/*.csproj` and `**/*.props` returned nothing |
+| So every build ever produced stamped `1.0.0` | `obj/**/AssemblyInfo.cs` on both configurations: `AssemblyInformationalVersionAttribute("1.0.0+9f42153820e4…")` |
+| …and the resolver **discarded the only varying part** | `PineLogRecordFormatter.cs:348-350` trimmed everything after `+`, leaving the literal `1.0.0` — in the diagnostics panel and in the `version` field of every log record |
+| No packaging artefact of any kind exists | `find` for `*.wxs`, `*.iss`, `*.nuspec`, `*.appxmanifest`, `*.desktop`, `Dockerfile`, `*.pubxml`, `installer/`, `packaging/`, `scripts/` → the only hit anywhere is `src/Pine.Ui.Ios/Info.plist` |
+| No update or signing code exists | grep for `squirrel\|velopack\|clickonce\|authenticode\|notariz\|codesign\|signtool` across `src/` → zero. The one hit for "Squirrel" in the repo is a colour palette name in `STATUS.md` |
+| No version tags exist | `git tag -l` → `sdd-backup-before-split`, and nothing matching `22-Release-Plan` §5's `0.Y.0-alpha.N` scheme |
+| Mobile identity is still template text | `com.CompanyName.TempApp` (`Pine.Ui.Android.csproj:7`), `android:label="TempApp"`, `CFBundleIdentifier=companyName.TempApp`, `<title>TempApp.Browser</title>` |
+| **An unconstrained publish emits 30 runtime-identifier folders** | Measured: `dotnet publish -c Release` on the Windows head → **1 906 312 177 bytes, 220 files, 30 RID folders** including `linux-loongarch64` and `linux-musl-s390x` |
+| **CI would have shipped an application that cannot start its OCR** | `.gitattributes` puts the three ONNX models in LFS; no `actions/checkout` in `dotnet-ci.yml` sets `lfs: true`, so a runner gets 133-byte pointer files. Nothing in CI read the weights, so nothing noticed |
+
+That last row is the finding worth keeping. It was latent rather than active: every existing job
+compiles, and compiling does not open a model. The first thing in this repository that would ever
+have needed the real bytes is the thing this ticket adds.
+
+#### The version was a constant, and the code had a written reason for making it one
+
+`ResolveApplicationVersion`'s remarks justified the trim: build metadata is "a repository detail",
+and keeping it "would put a different `version` in every developer's log for the same release".
+
+**The premise was never true.** There was no release version. The SDK default was `1.0.0+<sha>`, so
+the trim did not remove noise from a signal — it removed the only signal, and left a string that was
+identical for every build, on every machine, forever. The panel that §12.25 built specifically so
+that its figures would be measured rather than asserted was, in this one field, measuring a
+constant. The reasoning was sound and its input was wrong, which is a failure mode worth naming
+because nothing about reading the comment would reveal it.
+
+- **`Directory.Build.props`** now sets `VersionPrefix 0.1.0` / `VersionSuffix alpha.1`.
+  `22-Release-Plan` §5 defines the Alpha channel as *"Unstable; data loss possible"* and tags it
+  `0.Y.0-alpha.N`; that is a description of this software as this audit finds it, so it is what the
+  version says. `1.0.0` claimed a stable release and the literal it replaced in the UI claimed
+  `1.0.0-beta.1` — both fiction, both in the flattering direction.
+- **`ApplicationVersionText.Shorten`** keeps the release version *and* twelve characters of commit.
+  A developer build and a CI build of `0.1.0-alpha.1` are different binaries, and a bug report that
+  cannot tell them apart is the failure, not the fix.
+- **It is a type of its own because of what a test can and cannot see.** The other half of the
+  resolution reads `Assembly.GetEntryAssembly()`, and under `dotnet test` that is the VSTest host,
+  not Pine. A test asserting on the resolved value would be asserting on Microsoft's version number
+  while appearing to assert on Pine's — worse than no test. The rule is extracted and covered
+  exhaustively; the reflection is left uncovered and said so.
+- **`pine --version`** is what closes that gap without pretending. It is the only end-to-end
+  observation available without a GUI, and it was run: **`0.1.0-alpha.1+9f42153820e4`**.
+
+#### `packaging/package.sh` — run, not written and assumed
+
+|  | Before | After |
+|---|---|---|
+| publish | 1 906 312 177 B, 220 files, **30 RID folders** | 1 160 623 713 B, 318 files, **1 RID** |
+| archive | did not exist | 712 756 461 B, sha256 `66ff99440e1eea349d56eb067769fe1496a1ff4c0ed2ffb5ad240878c6e9898b` |
+| per-file checksums | did not exist | `SHA256SUMS`, **317 of 317 verified with `sha256sum -c`** |
+| self-identification | impossible | the artefact reports `0.1.0-alpha.1+9f42153820e4` |
+
+The script publishes the desktop head and the CLI together, pins the RID, drops the third-party
+native `.pdb` files (105 MB, still present in the NuGet packages a native crash dump would consult),
+**runs the published binary and refuses to continue if the artefact's own version disagrees with the
+filename it is being given**, and writes a manifest in the shape `29-Deployment` §5.3 specifies.
+
+Two departures from §5.3 are recorded inside the manifest rather than left for a reader to infer:
+`signature` is `null` unless the artefact was really signed — §5.3 says a client MUST verify the
+signature before fetching, and a placeholder would defeat that check by being present — and there is
+no `url`, because nothing hosts these artefacts and a download address that 404s is worse than an
+admitted absence. A `not_included` array names the missing halves in the artefact itself.
+
+**Signing is a seam with two outcomes and no third.** No certificate exists for this project and a
+script cannot conjure one. With `PINE_SIGNTOOL`/`PINE_SIGNING_CERT` set, every `.exe` and `.dll`
+is signed — not just the entry point, because a signature on the executable says nothing about the
+forty native libraries loaded beside it — and the manifest says `"signed": true`. Without them the
+build is unsigned, says so loudly, records `"signed": false`, and `--require-signature` turns that
+into a non-zero exit so a release pipeline can refuse without anyone remembering to check.
+
+#### Falsification mutations
+
+**Seven on the version rule, 7 killed** — and one of them tells a story.
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `Shorten` reverts to the old trim, dropping the commit | 7 tests failed |
+| 2 | The commit is not shortened (limit raised to 40) | 3 tests failed |
+| 3 | A blank version becomes `""` instead of `"unknown"` | 3 tests failed |
+| 4 | `plus <= 0` becomes `plus < 0` | **SURVIVED**, then killed — see below |
+| 5 | The empty-metadata guard is dropped, leaving a dangling `+` | 1 test failed |
+| 6 | Surrounding whitespace is not trimmed | 1 test failed |
+| 7 | The dot rule is deleted | 1 test failed |
+
+**Mutation 4 survived, and the reason is instructive.** For the input the test used, `"+abcdef"`,
+the fall-through path rebuilds the *identical* string the guard returns — so the guard was not
+untested, it was **unfalsifiable by that input**. The two branches only disagree when the metadata
+contains a dot. Adding `"+abc.def"` made them disagree and killed the mutation. Mutation 7 had the
+same shape one step earlier: with a 40-character SHA in front, truncating at twelve characters
+produces the same answer whether or not the dot rule exists, so a test with a *short* commit
+(`"1.2.3+abc.build.7"`) had to be added before the rule was covered at all. Two of the seven
+mutations were therefore only killable after the tests were made sharper, which is the entire point
+of running them.
+
+**Three guards in the packaging script were verified by removing them and watching the outcome
+change**, since a shell script is reached by no unit test:
+
+| Guard | Removed | Restored |
+|---|---|---|
+| `--require-signature` refusal | script exits **0** with an unsigned artefact | exits **1** |
+| artefact-vs-filename version agreement | (forced `VERSION=9.9.9-bogus`) | refuses, naming both strings |
+| CI's LFS-pointer check | — | fires on a real 133-byte file, exits 1 |
+
+#### Test counts
+
+| | Before | After |
+|---|---|---|
+| `Pine.Tests.Unit` | 673 | **686** |
+| `Pine.Tests.Integration` | 190 | **190** (untouched) |
+| Total | 863 | **876** |
+
+#### TD-97 observed a fourth time, and this run captured the name
+
+The integration suite failed **once in four consecutive full runs**, then passed three times. The
+failing test was `ConcurrencyTokenTests.TheStoredToken_ChangesOnEveryUpdate` — a **fourth** distinct
+test, at the same roughly-one-run-in-four rate TD-97 already records. It is not a regression from
+this iteration: the change to `ConcurrencyConflictException` adds a property and touches no write
+path. That the failure keeps moving between tests is exactly the evidence for TD-97's diagnosis
+(file contention between `TempVault` directories under xUnit's per-class parallelism) and against
+any theory that names a particular assertion. **The suite figures above are from runs that passed;
+this paragraph exists so that is not read as "the suite is green".**
+
+#### Deliberately not done
+
+- **No installer.** This produces a `.tar.gz`, not an `.msi`, `.dmg` or `.deb`. Calling an archive
+  "packaging, done" would be the same class of claim this audit exists to remove, so TD-49 stays
+  🟡 rather than ✅ and the manifest says so in the artefact itself.
+- **No updater, and this one is a decision rather than a shortfall.** `src/` contains no
+  `HttpClient`, `WebClient`, `WebRequest` or `Socket` — verified, zero hits. An in-app update check
+  would be the first network call Pine has ever made, and the audit's stated *biggest strength* is
+  "no network egress anywhere in the codebase". `29-Deployment` §5.1 already anticipates this by
+  making the check opt-in and default-off, which is the right shape; building it is not a packaging
+  chore, it is a change to the product's privacy posture and deserves its own ticket.
+- **One runtime identifier only.** `OpenCvSharp4.runtime.win` and
+  `Sdcb.PaddleInference.runtime.win64.mkl` are Windows-x64-only, so a `linux-x64` artefact would
+  build, launch, and then be unable to do the thing the application is for. That is TD-44. The
+  script accepts any `--rid`; it simply does not pretend the result is supported.
+- **CI triggers were not re-armed.** The `package` job, like every other job, runs only on manual
+  dispatch. TD-07 is a separate row and the disarming was a written decision, not an oversight to
+  quietly reverse inside a packaging ticket.
+- **`61-Manual-Test-Plan` was not updated**, for the second iteration running.
+- **Nothing was seen running except the CLI.** Sixth consecutive iteration to say so. The Windows
+  GUI head was published, not launched.
+
+#### New debt
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-107 | `packaging/package.sh` is reached by no test. Its three guards were proven load-bearing by hand this iteration, and nothing re-proves them | 🟡 | The one artefact users would ever install is produced by a script that cannot break a build. A future edit that drops the version-agreement check or the signature gate is invisible | Port the guards into a test that invokes the script against a stub publish directory, or reimplement packaging as a `dotnet` tool the unit suite can call | P2 | 🔴 **Open** |
+| TD-108 | The pipeline's normal outcome is an **unsigned** build: no certificate exists, so CI deliberately does not pass `--require-signature` | 🟠 | SmartScreen warns on first launch, and a user cannot distinguish the project's artefact from one a third party built and modified. The seam exists; the property does not hold | Obtain a code-signing certificate, then add `--require-signature` to the CI job so an unsigned build can never be published by accident | P1 | 🔴 **Open** |
+| TD-109 | Only the Windows head can be packaged at all. macOS/Linux have no bundle definition, and Android/iOS still carry template identity — `com.CompanyName.TempApp`, `android:label="TempApp"`, `CFBundleIdentifier=companyName.TempApp` | 🟠 | The README claims Pine "runs natively on Windows, macOS, Linux, iOS, Android, and WebAssembly". Four of those six cannot be built into anything installable, and two of them do not yet have a name | Give each head a real application identity, then a bundle per platform — or narrow the README, which is the Phase 3 decision | P1 | 🔴 **Open** |
+| TD-110 | The artefact is **1.08 GiB unpacked / 680 MB compressed**, of which 383 MB is three overlapping PaddleOCR model packages and 204 MB is the ONNX set | 🟡 | This is TD-41 with a measurement attached. A ~700 MB download for a personal-finance application is a distribution problem, not just a tidiness one | TD-41: keep one PaddleOCR package. Then reconsider bundling the ONNX weights at all versus fetching them on first use — which would need the network egress decision above | P2 | 🔴 **Open** |
+
+### 12.43 Next
+
+- **Phase 1 item 10 — reconcile the docs (TD-39, TD-40).** The last row in Phase 1, and this
+  iteration sharpened the case for it: `53-Release-Checklist` requires sign-off from a Trust team and
+  a Maintainer Council that do not exist, `28-CI-CD` describes a sign-and-attest stage that does not
+  exist, and `29-Deployment` lists six distribution channels of which zero exist. All four documents
+  are `Status: Draft — pending review`, dated 2026-07-08, and none has been revised since.
+- **TD-99 — make the budgets screen true or take it down.** Still the sharpest open row, deferred a
+  fourth time. The deferral is now itself worth reading as a signal.
+- **TD-108** — a certificate, so that the signing seam built here has something to hold.
+- **TD-106** — enforce the exception taxonomy §12.40 built, before it is undone by hand.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-07 — re-arm CI.** Six iterations old, and every count in this document remains a local claim.
+- **TD-97 — the flaky suite.** Now observed four times in four different tests; the diagnosis has
+  not changed and neither has the code.
+- **TD-104**, **TD-107**, **TD-101**, **TD-102**, **TD-105**, then **TD-103**.
+- **TD-110/TD-41**, **TD-109**, **TD-93**, **TD-89**, **TD-86**, then **TD-90 and TD-85**, **TD-83**,
+  then **TD-78**, **TD-75**'s siblings **TD-95**, **TD-96**, **TD-100**, and **TD-81**, **TD-91**.
 - **TD-84** last, unchanged.

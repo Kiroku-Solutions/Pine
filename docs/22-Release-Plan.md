@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-22-RELEASE-PLAN`                                                           |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — no release has ever been cut                                          |
+| Reconciled       | 2026-08-31 · `git tag -l` returns one non-version tag. None of the `release/alpha|beta|rc|stable` branches or `0.Y.0-alpha.N` tags this document defines exists. Iteration 20 took its version scheme (`0.1.0-alpha.1`) as the source for `Directory.Build.props`; that is the only clause now true. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

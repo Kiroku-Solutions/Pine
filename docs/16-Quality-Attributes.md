@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-16-QUALITY-ATTRIBUTES`                                                     |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the quality gates are not enforced anywhere                           |
+| Reconciled       | 2026-08-31 · The gates are described as CI-enforced (`56-IMPLEMENTATION-PLAN`:1097). CI has no coverage, performance, mutation or accessibility gate, and fires only on manual dispatch (TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

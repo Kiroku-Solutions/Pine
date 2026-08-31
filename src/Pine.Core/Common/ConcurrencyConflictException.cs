@@ -33,7 +33,7 @@ namespace Pine.Core.Common;
 /// exception's message can reach a log or a dialog.
 /// </para>
 /// </remarks>
-public sealed class ConcurrencyConflictException : Exception
+public sealed class ConcurrencyConflictException : Exception, IUserFacingFailure
 {
     private const string DefaultMessage =
         "The data was changed by another operation after it was read, so this change was not applied. " +
@@ -43,6 +43,14 @@ public sealed class ConcurrencyConflictException : Exception
         : base(DefaultMessage)
     {
     }
+
+    /// <summary>
+    /// Gets the sentence shown to the user. This is one of the few exceptions whose
+    /// <see cref="Exception.Message"/> was written for a person rather than for a log — it names
+    /// nothing (see the remarks on the type) and it ends in the one instruction that resolves the
+    /// conflict — so the two coincide here by decision rather than by omission (TD-98).
+    /// </summary>
+    public string UserFacingMessage => Message;
 
     public ConcurrencyConflictException(string message)
         : base(message)

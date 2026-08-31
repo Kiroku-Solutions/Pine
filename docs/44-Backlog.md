@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-44-BACKLOG`                                                                 |
-| Status           | Draft — pending review                                                               |
+| Status           | Non-normative — planning artefact                                                    |
+| Reconciled       | 2026-08-31 · A backlog. It also documents `pine backlog list|triage|stats` (:191-193); the CLI implements `dev init` and `--version` only (`src/Pine.Cli/Program.cs`). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

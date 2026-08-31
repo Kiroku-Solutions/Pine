@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-54-MAINTENANCE`                                                             |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — the maintenance process is not in use                                 |
+| Reconciled       | 2026-08-31 · No support channel, no LTS line, no deprecation record, and no released version to maintain. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

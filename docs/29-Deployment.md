@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-29-DEPLOYMENT`                                                              |
-| Status           | Draft — pending review                                                               |
+| Status           | Aspirational — one artefact exists; none of the six channels does                    |
+| Reconciled       | 2026-08-31 · Iteration 20 built `packaging/package.sh`, which produces a checksummed win-x64 archive and a manifest in this document's §5.3 shape. Nothing hosts it; there is no store listing, no installer, and no updater - Pine performs no network I/O at all. See audit §12.42 and TD-49. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

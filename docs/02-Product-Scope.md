@@ -3,7 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-02-PRODUCT-SCOPE`                                                          |
-| Status           | Draft — pending review                                                               |
+| Status           | Partially implemented — several in-scope capabilities are not built                  |
+| Reconciled       | 2026-08-31 · Accounts, transactions, imports, budgets and receipt scanning exist. Sync, plugins, the rule engine, localisation and attachments do not (TD-36, TD-37, TD-45). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
