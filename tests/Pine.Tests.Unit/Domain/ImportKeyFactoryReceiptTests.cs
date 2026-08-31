@@ -66,6 +66,24 @@ public class ImportKeyFactoryReceiptTests
     }
 
     [Fact]
+    public void The_sign_of_the_amount_is_significant()
+    {
+        var negative = ImportKeyFactory.FromReceipt(Account, Date, -24.50m, "USD", "ACME");
+        var positive = ImportKeyFactory.FromReceipt(Account, Date, 24.50m, "USD", "ACME");
+
+        positive.Should().NotBe(negative);
+    }
+
+    [Fact]
+    public void The_scale_of_the_amount_does_not_change_the_key()
+    {
+        var withScale = ImportKeyFactory.FromReceipt(Account, Date, -24.50m, "USD", "ACME");
+        var withoutScale = ImportKeyFactory.FromReceipt(Account, Date, -24.5m, "USD", "ACME");
+
+        withoutScale.Should().Be(withScale);
+    }
+
+    [Fact]
     public void A_missing_currency_is_refused()
     {
         var act = () => ImportKeyFactory.FromReceipt(Account, Date, -24.50m, " ", "ACME");

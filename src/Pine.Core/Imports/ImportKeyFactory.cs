@@ -179,7 +179,11 @@ public static class ImportKeyFactory
     /// <para>
     /// THE AMOUNT IS THE SIGNED LEDGER AMOUNT, not the printed one. The caller converts a receipt to
     /// an expense before it ever reaches a command; deriving the key from the printed positive figure
-    /// would produce a key that never matches anything the vault stores.
+    /// would produce a key that never matches anything the vault stores. The amount is formatted with
+    /// fixed-point notation at 4 decimal places so two numerically equal amounts always produce the same
+    /// key regardless of their scale representation. (Bare <see cref="decimal.ToString()"/> leaks the
+    /// value's scale into the string, so <c>-24.50m</c> and <c>-24.5m</c> would hash differently despite
+    /// being equal.)
     /// </para>
     /// <para>
     /// Only the calendar date participates: the same purchase re-scanned carries a re-read timestamp,
@@ -201,7 +205,7 @@ public static class ImportKeyFactory
             .Append(FieldSeparator)
             .Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .Append(FieldSeparator)
-            .Append(amount.ToString(CultureInfo.InvariantCulture))
+            .Append(amount.ToString("F4", CultureInfo.InvariantCulture))
             .Append(FieldSeparator)
             .Append(Normalise(currencyCode))
             .Append(FieldSeparator)
