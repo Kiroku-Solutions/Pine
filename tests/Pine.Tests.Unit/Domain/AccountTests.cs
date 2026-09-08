@@ -26,7 +26,6 @@ public class AccountTests
         account.Should().NotBeNull();
         account.Name.Should().Be(name);
         account.Balance.Should().BeEquivalentTo(initialBalance);
-        account.DomainEvents.Should().HaveCount(1);
     }
 
     [Fact]

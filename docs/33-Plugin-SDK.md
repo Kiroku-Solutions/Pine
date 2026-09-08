@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-33-PLUGIN-SDK`                                                              |
 | Status           | Aspirational — no SDK exists                                                         |
-| Reconciled       | 2026-08-31 · Same two empty projects (TD-37). Documents `pine plugin submit` (:69), which the CLI does not implement. |
+| Reconciled       | 2026-09-07 · **The two projects were deleted in iteration 27 (TD-38)**; see `12-Plugin-Architecture` for the reasoning, which applies unchanged here. This document still specifies `pine plugin submit`, which the CLI does not implement. `Status` stays `Aspirational` — the plan is intact, only the empty scaffolding is gone. The earlier citation of TD-37 was wrong; the empty projects are TD-38. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

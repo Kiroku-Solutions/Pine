@@ -92,9 +92,47 @@ public class VoidAndOpeningBalanceMigrationTests
     /// </summary>
     private const string ConcurrencyTokenSchemaVersion = "20260830200447_AddConcurrencyTokens";
 
+    /// <summary>
+    /// TD-37's migration: the three dead entities' tables, dropped. Listed for the same reason as
+    /// every constant above it.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a fourth time, and this one needed only a short check. The migration drops
+    /// <c>Attachments</c>, <c>Rules</c> and <c>Tags</c>. This class plants nothing in those tables
+    /// and reads nothing from them, and there were no foreign keys in either direction — the columns
+    /// that looked like references were unconstrained <c>Guid</c>s — so nothing it does touch is
+    /// orphaned or rewritten. The premise of this class is unaffected: the void columns and the
+    /// opening balance are still added by the migration under test, and still left NULL.
+    /// </remarks>
+    private const string DropDeadEntitiesSchemaVersion = "20260908040007_DropAttachmentRuleAndTagTables";
+
+    /// <summary>
+    /// The self-referencing foreign key on <c>Categories.ParentCategoryId</c> (TD-32).
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a fifth time, and this firing was worth more than a name change. SQLite
+    /// cannot add a foreign key to an existing table, so EF REBUILDS <c>Categories</c>: new table,
+    /// copy, drop, rename. The rebuild is generated from the model, and the model does not carry the
+    /// <c>defaultValue</c> that <c>AddConcurrencyTokens</c> gave <c>Categories.Version</c> — so the
+    /// rebuilt column is still <c>NOT NULL</c> but no longer has a default behind it. Existing rows
+    /// are copied with their values and are unaffected; what breaks is an INSERT that omits the
+    /// column and relied on the default, which is why <c>LegacyMoneyToleranceTests.InsertCategory</c>
+    /// had to start naming <c>Version</c> explicitly. Production never inserts a category by raw SQL
+    /// — <c>PineDbContext.BumpConcurrencyTokens</c> assigns the token — so no shipped path depends on
+    /// that default.
+    /// </remarks>
+    private const string CategoryParentForeignKeySchemaVersion = "20260908152526_AddCategoryParentForeignKey";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
-        [VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion, ScaledMoneySchemaVersion, ConcurrencyTokenSchemaVersion];
+    [
+        VoidAndOpeningBalanceSchemaVersion,
+        LineItemKindSchemaVersion,
+        ScaledMoneySchemaVersion,
+        ConcurrencyTokenSchemaVersion,
+        DropDeadEntitiesSchemaVersion,
+        CategoryParentForeignKeySchemaVersion,
+    ];
 
     private const decimal LegacyBalance = 1000.00m;
     private const decimal LegacyRent = -750.00m;
@@ -284,7 +322,7 @@ public class VoidAndOpeningBalanceMigrationTests
     private static async Task<VaultMigrationResult> MigrateThroughTheProductionPathAsync(TempVault vault)
     {
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
-        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context));
+        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security);
         return await migrator.MigrateAsync(CancellationToken.None);
     }
 

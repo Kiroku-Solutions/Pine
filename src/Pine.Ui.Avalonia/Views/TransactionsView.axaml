@@ -47,6 +47,15 @@
 
                 <ScrollViewer>
                     <StackPanel>
+                        <!-- TD-35: this page used to swallow every load failure, so an unreadable
+                             vault looked exactly like an empty one. Shown only when there is
+                             something to say. -->
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   Foreground="{DynamicResource PineError}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,12"
+                                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
                         <ItemsControl ItemsSource="{Binding Transactions}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="core:Transaction">

@@ -52,44 +52,24 @@ public class TransferFundsCommandHandler : IRequestHandler<TransferFundsCommand>
         // four figures cannot disagree about the currency's scale.
         var transferAmount = new Pine.Core.Common.ValueObjects.Money(request.Amount, currency);
 
-        // 1. Create Outflow (Expense)
-        var outflowMoney = -transferAmount;
-        var sourceTx = Transaction.Create(
+        // 1. Both legs, created together and already linked to each other. The domain owns the
+        //    pairing (TD-26) so this handler has no way to produce a transfer whose two legs
+        //    disagree about being a transfer -- which is what voiding one of them depends on.
+        var (sourceTx, destTx) = Transaction.CreateTransferPair(
             sourceAccount.Id,
-            request.Date,
-            $"Transfer to {destAccount.Name}",
-            outflowMoney,
-            TransactionType.Transfer,
-            _timeProvider,
-            request.Notes
-            // LinkedTransactionId will be set via reflection or we can pass null and update later, 
-            // but since constructor creates Id, we can create both and link them.
-        );
-
-        // 2. Create Inflow (Income)
-        var inflowMoney = transferAmount;
-        var destTx = Transaction.Create(
             destAccount.Id,
             request.Date,
+            $"Transfer to {destAccount.Name}",
             $"Transfer from {sourceAccount.Name}",
-            inflowMoney,
-            TransactionType.Transfer,
+            transferAmount,
             _timeProvider,
-            request.Notes,
-            sourceTx.Id // Link destination to source
-        );
-        
-        // Wait, source needs to link to destination as well. 
-        // Since constructor doesn't allow setting Id manually, we must use a workaround or just link one way.
-        // Or we use reflection to set LinkedTransactionId.
-        typeof(Transaction).GetProperty(nameof(Transaction.LinkedTransactionId))!
-            .SetValue(sourceTx, destTx.Id);
+            request.Notes);
 
-        // 3. Update account balances
+        // 2. Update account balances
         sourceAccount.Withdraw(transferAmount, _timeProvider);
         destAccount.Deposit(transferAmount, _timeProvider);
 
-        // 4. Stage both legs and both balances. All four writes land in the single transaction
+        // 3. Stage both legs and both balances. All four writes land in the single transaction
         //    opened by TransactionBehavior for this command, so a half-finished transfer -- money
         //    withdrawn but never deposited -- cannot be committed (TD-01).
         await _transactionRepository.SaveAsync(sourceTx, cancellationToken);

@@ -192,6 +192,202 @@ public class DocumentStatusTests
             + "worse than no comment: it costs them the search before it costs them the answer");
     }
 
+
+    // -----------------------------------------------------------------------------------------
+    // Iteration 21. The four additions below close gaps that were found by re-verifying iteration
+    // 20's own work rather than by reading its summary, which is the practice §12 asks for.
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The documents a person actually reads first are at the repository root, and the docs-only
+    /// pass did not reach them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the gap iteration 20 left. <c>STATUS.md</c> is the file the audit's own §6.12
+    /// contradiction table cites TWICE — once for a Diagnostics claim that was false when written,
+    /// and once for "Phase 1 and Phase 2 ✅ 100% Completed" — and it was not touched by a pass that
+    /// classified all sixty-two files in <c>docs/</c>. It had by then gone seven remediation
+    /// iterations without an edit, still naming item 4 as "next" and still quoting a test count of
+    /// 542 against an actual 891.
+    /// </para>
+    /// <para>
+    /// The failure mode is the same one the rest of this file exists for, but the exposure is worse:
+    /// a specification in <c>docs/</c> misleads a contributor who goes looking, whereas the README
+    /// misleads everyone who arrives.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("README.md")]
+    [InlineData("STATUS.md")]
+    [InlineData("PRODUCT.md")]
+    [InlineData("CHANGELOG.md")]
+    public void EveryRootDocumentDeclaresAStatusAndWhenItWasReconciled(string fileName)
+    {
+        var path = Path.Combine(RepositoryRoot(), fileName);
+
+        File.Exists(path).Should().BeTrue($"{fileName} is one of the documents this rule covers");
+
+        var lines = File.ReadAllLines(path).Take(HeaderLineBudget).ToArray();
+        var status = FieldValue(lines, "Status");
+        var reconciled = FieldValue(lines, "Reconciled");
+
+        status.Should().NotBeNull(
+            $"{fileName} is read before anything else in this repository and must say whether it "
+            + "describes software that exists");
+
+        AllowedStatusPrefixes.Any(allowed => status!.StartsWith(allowed, StringComparison.Ordinal))
+            .Should().BeTrue($"{fileName} carries the status '{status}', which is outside the closed vocabulary");
+
+        reconciled.Should().NotBeNull(
+            $"{fileName}'s status needs a date, or nobody can see it go stale — which is exactly "
+            + "what happened to STATUS.md for seven iterations");
+    }
+
+    /// <summary>
+    /// The document set must not shrink silently.
+    /// </summary>
+    /// <remarks>
+    /// Every assertion above is of the form "no document violates X". Deleting a document satisfies
+    /// all of them. The floor is deliberately a floor and not an equality: adding a document is
+    /// ordinary, and removing one is a decision that should have to be taken in the open, by
+    /// lowering this number in a commit that says why.
+    /// </remarks>
+    [Fact]
+    public void TheDocumentSetHasNotShrunk()
+    {
+        Documents().Should().HaveCountGreaterThanOrEqualTo(
+            62,
+            "there were 62 documents in docs/ when this floor was set. If one was deliberately "
+            + "deleted, lower this number in the same commit and say which and why");
+    }
+
+    /// <summary>
+    /// ADRs carry their own status vocabulary, and it is not the one above.
+    /// </summary>
+    /// <remarks>
+    /// <c>docs/adr/</c> sits outside <see cref="Documents"/>, which reads the top level of
+    /// <c>docs/</c> only. That is correct — an ADR is not "Implemented" or "Aspirational", it is a
+    /// decision with a lifecycle — but it left the ADR files with no check at all, so this applies
+    /// the ADR vocabulary from <c>25-ADR</c> §3 to them.
+    /// </remarks>
+    [Fact]
+    public void EveryAdrDeclaresAStatusFromTheAdrVocabulary()
+    {
+        string[] allowed = { "Proposed", "Accepted", "Rejected", "Deprecated", "Superseded" };
+
+        var offences = new List<string>();
+
+        foreach (var path in AdrFiles())
+        {
+            var lines = File.ReadAllLines(path).Take(HeaderLineBudget).ToArray();
+            var status = FieldValue(lines, "Status");
+
+            if (status is null)
+            {
+                offences.Add($"{Path.GetFileName(path)} declares no status");
+                continue;
+            }
+
+            if (!allowed.Any(value => status.StartsWith(value, StringComparison.Ordinal)))
+            {
+                offences.Add($"{Path.GetFileName(path)}: '{status}'");
+            }
+        }
+
+        offences.Should().BeEmpty(
+            "an ADR whose status is not Proposed, Accepted, Rejected, Deprecated or Superseded "
+            + "cannot be acted on: a reader cannot tell whether it binds them");
+    }
+
+    /// <summary>
+    /// Every quotation an ADR uses to cite a document must still appear in that document (TD-40).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ADR-0012 first cited its callers by line number — <c>30-Observability:22,251,296</c> and so
+    /// on. Every one of those numbers was wrong within the same commit, because the
+    /// <c>Reconciled</c> row that the same change added to each document's header shifted every line
+    /// below it by one. The citations were not merely stale; they were born stale, by an edit made
+    /// minutes later in the same commit.
+    /// </para>
+    /// <para>
+    /// So the ADRs cite by quotation instead, and this test is what keeps a quotation honest. A
+    /// quotation survives insertions, deletions and re-flowing above it, and fails loudly and
+    /// specifically when the sentence it points at is actually edited away — which is the moment
+    /// somebody should look at whether the decision still describes the document.
+    /// </para>
+    /// <para>
+    /// The format is a <c>## Citations</c> section containing lines of the form
+    /// <c>- `NN-Document.md` — "quoted text"</c>. An ADR with no such section is fine; an ADR with
+    /// one that no longer matches is not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryAdrQuotationStillAppearsInTheDocumentItCites()
+    {
+        var citation = new System.Text.RegularExpressions.Regex(
+            "^- `([^`]+)` — \"(.+)\"\\s*$",
+            System.Text.RegularExpressions.RegexOptions.Multiline,
+            TimeSpan.FromSeconds(5));
+
+        var offences = new List<string>();
+        var quotationsChecked = 0;
+
+        foreach (var adr in AdrFiles())
+        {
+            var text = File.ReadAllText(adr);
+            var start = text.IndexOf("## Citations", StringComparison.Ordinal);
+
+            if (start < 0)
+            {
+                continue;
+            }
+
+            var rest = text[start..];
+            var next = rest.IndexOf("\n## ", 1, StringComparison.Ordinal);
+            var section = next < 0 ? rest : rest[..next];
+
+            foreach (System.Text.RegularExpressions.Match match in citation.Matches(section))
+            {
+                var name = match.Groups[1].Value;
+                var document = Path.Combine(DocsDirectory(), name);
+                var quotation = match.Groups[2].Value;
+
+                quotationsChecked++;
+
+                if (!File.Exists(document))
+                {
+                    offences.Add($"{Path.GetFileName(adr)} cites '{name}', which does not exist");
+                    continue;
+                }
+
+                if (!File.ReadAllText(document).Contains(quotation, StringComparison.Ordinal))
+                {
+                    offences.Add(
+                        $"{Path.GetFileName(adr)} quotes \"{quotation}\" from {name}, "
+                        + "which no longer contains it");
+                }
+            }
+        }
+
+        offences.Should().BeEmpty(
+            "a decision record that quotes a document which has since been edited is pointing a "
+            + "reader at something that is no longer there");
+
+        quotationsChecked.Should().BeGreaterThan(
+            0,
+            "ADR-0012 carries a Citations section; finding none means the parser stopped matching "
+            + "and this test is passing on an empty set");
+    }
+
+    private static List<string> AdrFiles()
+        => Directory
+            .GetFiles(Path.Combine(RepositoryRoot(), "docs", "adr"), "*.md", SearchOption.TopDirectoryOnly)
+            .Where(path => !string.Equals(Path.GetFileName(path), "INDEX.md", StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToList();
+
     private static IEnumerable<string> SourceFiles(string sourceRoot)
         => Directory
             .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)

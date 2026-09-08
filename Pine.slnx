@@ -1,13 +1,9 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Pine.Ai.Default/Pine.Ai.Default.csproj" />
-    <Project Path="src/Pine.Ai.Explainer/Pine.Ai.Explainer.csproj" />
     <Project Path="src/Pine.Application/Pine.Application.csproj" />
     <Project Path="src/Pine.Cli/Pine.Cli.csproj" />
     <Project Path="src/Pine.Core/Pine.Core.csproj" />
     <Project Path="src/Pine.Infrastructure/Pine.Infrastructure.csproj" />
-    <Project Path="src/Pine.Plugins.Host/Pine.Plugins.Host.csproj" />
-    <Project Path="src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj" />
     <Project Path="src/Pine.Ui.Android/Pine.Ui.Android.csproj" />
     <Project Path="src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj" />
     <Project Path="src/Pine.Ui.Ios/Pine.Ui.Ios.csproj" />
@@ -16,10 +12,7 @@
     <Project Path="src/Pine.Ui.Windows/Pine.Ui.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj" />
     <Project Path="tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj" />
-    <Project Path="tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj" />
-    <Project Path="tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj" />
     <Project Path="tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj" />
   </Folder>
 </Solution>

@@ -27,6 +27,19 @@
                    Foreground="{DynamicResource PineText}"
                    TextWrapping="Wrap" />
       </Border>
+
+      <!-- TD-35: the vault list failing to load used to be completely silent, which read as
+           "you have no vaults". See VaultSelectionViewModel.VaultsUnavailable. -->
+      <Border Background="{DynamicResource PineSurfaceElevated}"
+              BorderBrush="{DynamicResource PineDanger}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="16,12"
+              IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Text="{Binding ErrorMessage}"
+                   Foreground="{DynamicResource PineText}"
+                   TextWrapping="Wrap" />
+      </Border>
     </StackPanel>
 
     <ListBox Grid.Row="1"

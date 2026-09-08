@@ -100,8 +100,19 @@ public partial class AddTransactionViewModel : ObservableObject
     {
         _mediator = mediator;
         _onComplete = onComplete;
+        // NOT MOVED ONTO IAsyncInitializable, AND THE REASON IS STRUCTURAL (TD-35). That interface
+        // is driven by PageActivation, which only ever sees a page assigned to a navigator's
+        // CurrentPage. This view model is an overlay: TransactionsViewModel builds it through
+        // IViewModelFactory and shows it in place, so navigation never sees it and would never
+        // start its initialisation. The load therefore stays here -- what changes is that its
+        // failure is now read instead of discarded.
         _logger = logger;
-        _ = LoadAccountsAsync();
+        ObservedTask.Run(
+            LoadAccountsAsync,
+            _logger,
+            "add-transaction-accounts-load",
+            "Pine could not load your accounts, so this form cannot be saved yet. Close it and try again.",
+            message => ErrorMessage = message);
     }
 
     private async Task LoadAccountsAsync()

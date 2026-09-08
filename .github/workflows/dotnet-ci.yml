@@ -64,11 +64,17 @@ jobs:
       # There are no packages.lock.json files in this repo, so the cache key is
       # hashed over every .csproj plus the shared MSBuild/SDK inputs. That is a
       # coarse key (it changes on any csproj edit) but it is never stale.
+      #
+      # Directory.Packages.props IS PART OF THE KEY, AND HAS TO BE (TD-42). Since
+      # central package management moved every version out of the .csproj files,
+      # a version bump changes no .csproj at all. Without this entry a restore
+      # would hit a cache populated under the previous versions, and the runner
+      # would build against packages no file in the repository names.
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -83,11 +89,7 @@ jobs:
             src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
             src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
             src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
-            src/Pine.Cli/Pine.Cli.csproj \
-            src/Pine.Ai.Default/Pine.Ai.Default.csproj \
-            src/Pine.Ai.Explainer/Pine.Ai.Explainer.csproj \
-            src/Pine.Plugins.Host/Pine.Plugins.Host.csproj \
-            src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj
+            src/Pine.Cli/Pine.Cli.csproj
           do
             echo "::group::restore $p"
             dotnet restore "$p"
@@ -105,11 +107,7 @@ jobs:
             src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
             src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
             src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
-            src/Pine.Cli/Pine.Cli.csproj \
-            src/Pine.Ai.Default/Pine.Ai.Default.csproj \
-            src/Pine.Ai.Explainer/Pine.Ai.Explainer.csproj \
-            src/Pine.Plugins.Host/Pine.Plugins.Host.csproj \
-            src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj
+            src/Pine.Cli/Pine.Cli.csproj
           do
             echo "::group::build $p"
             dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
@@ -166,7 +164,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-${{ matrix.head }}-
             nuget-${{ runner.os }}-
@@ -181,13 +179,18 @@ jobs:
         run: dotnet build ${{ matrix.project }} --configuration Release --no-restore
 
   # ---------------------------------------------------------------------------
-  # Tests. Only Pine.Tests.Unit and Pine.Tests.Integration contain real tests
-  # (23 and 5 respectively as of 2026-08-26).
-  # Pine.Tests.Accessibility, Pine.Tests.Performance and Pine.Tests.Mutation
-  # contain a single empty `UnitTest1.Test1()` template each and assert nothing.
-  # They are COMPILED here so they cannot rot, but they are deliberately NOT run
-  # and NOT described as accessibility/performance/mutation coverage - that
-  # would be a green light over an empty file. See audit TD-38.
+  # Tests. Pine.Tests.Unit and Pine.Tests.Integration are the whole suite
+  # (854 and 197 respectively as of iteration 27).
+  #
+  # There used to be three more test projects here - Accessibility, Performance
+  # and Mutation - each holding a single empty `UnitTest1.Test1()` from the
+  # `dotnet new xunit` template. This workflow compiled them and deliberately did
+  # not run them, on the grounds that running an empty file would be "a green
+  # light over an empty file". Iteration 27 deleted them (TD-38): a project that
+  # has to be explicitly excluded from the thing it is named after was carrying a
+  # promise instead of a test. The three documents that named them -
+  # 39-Performance, 40-Accessibility and 18-Test-Strategy - say so now, which is
+  # where an unkept intention belongs.
   # ---------------------------------------------------------------------------
   test:
     name: Test (unit + integration) - ${{ matrix.os }}
@@ -209,7 +212,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -219,28 +222,17 @@ jobs:
           set -euo pipefail
           for p in \
             tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj \
-            tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj \
-            tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj \
-            tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj \
-            tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj
+            tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
           do
             dotnet restore "$p"
           done
 
-      - name: Build test projects that contain real tests
+      - name: Build the test projects
         shell: bash
         run: |
           set -euo pipefail
           dotnet build tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-restore
           dotnet build tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-restore
-
-      - name: Compile-only check of empty placeholder projects (Accessibility/Performance/Mutation contain no assertions - TD-38)
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet build tests/Pine.Tests.Accessibility/Pine.Tests.Accessibility.csproj --configuration Release --no-restore
-          dotnet build tests/Pine.Tests.Performance/Pine.Tests.Performance.csproj --configuration Release --no-restore
-          dotnet build tests/Pine.Tests.Mutation/Pine.Tests.Mutation.csproj --configuration Release --no-restore
 
       - name: Run unit tests
         shell: bash
@@ -258,6 +250,29 @@ jobs:
           --logger "trx;LogFileName=integration-${{ matrix.os }}.trx"
           --results-directory TestResults
 
+      # -----------------------------------------------------------------------
+      # Coverage floor (Phase 2 item 9). The gate is a script rather than a flag
+      # because `coverlet.collector` -- the only coverage package this repository
+      # references -- cannot enforce a threshold. Its own VSTestIntegration.md
+      # says the VSTest integration does not support "threshold validation", and
+      # `coverlet.msbuild`, which does support /p:Threshold=, is not referenced.
+      # So scripts/coverage-gate.sh reads the cobertura report and decides.
+      #
+      # ubuntu ONLY, deliberately. The floors were measured on one platform and a
+      # second platform would either duplicate the same number or, if it differed,
+      # turn the gate into a source of noise nobody could act on. The suite still
+      # runs on both; only the measurement is single-platform.
+      #
+      # THE HONEST LIMIT OF THIS STEP: nothing triggers this workflow (TD-07). A
+      # coverage gate in a workflow that only runs on manual dispatch is a gate
+      # nobody passes through. The script is the part that works today -- it runs
+      # locally in one command -- and this step is what makes it automatic on the
+      # day the triggers come back.
+      - name: Coverage floor
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: bash scripts/coverage-gate.sh
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -265,6 +280,14 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: TestResults/*.trx
           if-no-files-found: error
+
+      - name: Upload coverage report
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: TestResults/coverage/**/coverage.cobertura.xml
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Packaging (TD-49). Produces the only shippable artefact Pine has: a
@@ -277,10 +300,15 @@ jobs:
   # having no mechanism at all.
   #
   # `lfs: true` IS NOT OPTIONAL HERE, AND ITS ABSENCE WAS A LATENT DEFECT.
-  # The three PP-OCRv4 / YOLO model files are LFS-tracked (.gitattributes). A
-  # default actions/checkout fetches 133-byte POINTER FILES for them. Every other
-  # job in this workflow still checks out pointers -- harmless there, because
-  # nothing they do reads the weights -- but an artefact built from pointers is an
+  # The YOLO model file is LFS-tracked (.gitattributes). It used to be three:
+  # `PP-OCRv4-det.onnx` and `PP-OCRv4-rec.onnx` were deleted by TD-41 after
+  # `git log -S` proved no commit on any branch had ever named either of them.
+  # The OCR's own weights are embedded resources inside the
+  # Sdcb.PaddleOCR.Models.LocalV5 assembly and are PP-OCRv5, so the v4 pair had
+  # been superseded before it was ever wired to anything. A
+  # default actions/checkout fetches a 133-byte POINTER FILE for it. Every other
+  # job in this workflow still checks out the pointer -- harmless there, because
+  # nothing they do reads the weights -- but an artefact built from a pointer is an
   # application whose OCR fails at first use, shipped, with a green pipeline behind
   # it. The publish step is the first thing in this repository that ever needed the
   # real bytes.
@@ -320,7 +348,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 

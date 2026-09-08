@@ -4,19 +4,32 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MediatR;
-using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
 using Pine.Core.Security;
-using Pine.Infrastructure.Data;
 using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class UnlockViewModel : ObservableObject
 {
-    private readonly IServiceProvider _serviceProvider;
+    /// <summary>
+    /// Reads this vault's persisted accent theme once the vault is open.
+    /// </summary>
+    /// <remarks>
+    /// INJECTED, NOT RESOLVED (TD-28). It was pulled out of the container at the point of use;
+    /// taking it in the constructor is the same singleton, obtained where the type system can see
+    /// it. The reason the read goes through the MEDIATOR at all is unchanged, and is written at the
+    /// call site.
+    /// </remarks>
+    private readonly ISender _sender;
+
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen hands over to -- the shell on success, the picker on Back (TD-28).
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly IVaultHeaderStore _vaultHeaderStore;
 
     /// <summary>
@@ -25,6 +38,15 @@ public partial class UnlockViewModel : ObservableObject
     /// AEAD tag inside that call rather than a SQLCipher error guessed at further down.
     /// </summary>
     private readonly IVaultKeyService _vaultKeyService;
+
+    /// <summary>
+    /// The database half of opening a vault (TD-28). This screen no longer creates a DI scope or
+    /// resolves a DbContext of its own: it hands the work to this port, which owns the scope, the
+    /// probe that proves the unwrapped key opens THIS database, and the schema migration -- in that
+    /// order, and as two separate phases, so a failed schema upgrade can still be told apart from a
+    /// wrong password by the catch blocks below.
+    /// </summary>
+    private readonly IVaultDatabaseOpener _vaultDatabaseOpener;
 
     private VaultProfile? _profile;
 
@@ -41,17 +63,21 @@ public partial class UnlockViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     public UnlockViewModel(
-        IServiceProvider serviceProvider,
+        ISender sender,
         IVaultSession vaultSession,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         IVaultHeaderStore vaultHeaderStore,
-        IVaultKeyService vaultKeyService)
+        IVaultKeyService vaultKeyService,
+        IVaultDatabaseOpener vaultDatabaseOpener)
     {
-        _serviceProvider = serviceProvider;
+        _sender = sender;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _vaultHeaderStore = vaultHeaderStore;
         _vaultKeyService = vaultKeyService;
+        _vaultDatabaseOpener = vaultDatabaseOpener;
     }
 
     public void Initialize(VaultProfile profile)
@@ -108,55 +134,23 @@ public partial class UnlockViewModel : ObservableObject
                 _vaultSession.Unlock(vaultDir, key);
                 Array.Clear(key, 0, key.Length);
 
-                // PineDbContext and IVaultMigrator are both Scoped (TD-01). Resolving either from
-                // the ROOT provider silently creates a root-scoped instance that never dies, so the
-                // context built here - carrying THIS vault's file path and encryption key - would
-                // still be handed out after the user locks the vault and unlocks a different one.
-                // One explicit scope covers both the auth probe and the migration, and is disposed
-                // only after MigrateAsync has completed.
-                using var vaultScope = _serviceProvider.CreateScope();
-
-                // THE PROBE IS NO LONGER THE PASSWORD CHECK, AND THE DIFFERENCE MATTERS (TD-06).
-                // Before the envelope, this query WAS the authentication: the password derived the
-                // database key directly, so "SQLCipher refused to read a page" was the only signal
-                // that the password had been wrong. Now UnwrapDataKey has already answered that
-                // question above, with an authentication tag rather than an inference.
-                //
-                // What the probe still proves is a different proposition: that the data key we just
-                // unwrapped actually opens THIS database file. Those can diverge -- a header paired
-                // with a database from another vault, a restored backup, a half-finished copy -- and
-                // that mismatch is not a wrong password and would otherwise only surface later, on
-                // some arbitrary first query deep inside the app. It is checked here, once, up front.
-                var dbContext = vaultScope.ServiceProvider.GetRequiredService<PineDbContext>();
-
-                bool canConnect = dbContext.Database.CanConnect();
-                if (!canConnect)
-                {
-                    throw new InvalidOperationException("Cannot connect to database.");
-                }
-
-                // CanConnect alone is too weak: it can succeed without ever decrypting a page. One
-                // real read forces SQLCipher to actually use the key.
-                _ = System.Linq.Queryable.Any(dbContext.Accounts);
-
-                // Schema phase, kept distinct from the auth phase above so its failures are not
-                // reported as a wrong password. Resolved only after Unlock, because the migrator
-                // depends on PineDbContext, which refuses to be built while the session is locked.
-                // No-op (and no backup) when the schema is already current.
-                var migrator = vaultScope.ServiceProvider.GetRequiredService<IVaultMigrator>();
-                await migrator.MigrateAsync(CancellationToken.None).ConfigureAwait(false);
+                // The database phase (TD-28). Everything this used to do inline -- the explicit
+                // DI scope, the probe that the unwrapped key really opens THIS database file, and
+                // the schema migration afterwards -- now lives behind IVaultDatabaseOpener, in the
+                // persistence adapter that owns those concepts. The auth phase above and the schema
+                // phase in there stay distinct: a schema failure arrives as VaultMigrationException
+                // and is caught below on its own terms, never as a wrong password.
+                await _vaultDatabaseOpener.OpenExistingAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
             // Vault is open: apply this vault's persisted accent theme before showing the shell.
             // Read through the mediator, not through the Scoped ISettingRepository: the mediator is
             // a singleton that opens its own scope per request, so nothing scoped escapes into this
             // long-lived view model and the read always targets the vault unlocked right now.
-            var sender = _serviceProvider.GetService<ISender>();
-            if (sender != null)
-                await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(sender);
+            await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(_sender);
 
             // Transition to Dashboard
-            _navigationService.NavigateTo<ShellViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateShell());
         }
         catch (VaultMigrationException ex)
         {
@@ -236,6 +230,6 @@ public partial class UnlockViewModel : ObservableObject
     [RelayCommand]
     private void GoBack()
     {
-        _navigationService.NavigateTo<VaultSelectionViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateVaultSelection());
     }
 }

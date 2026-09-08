@@ -39,7 +39,7 @@ public class ScanReceiptConfidenceTests
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
 
-        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService);
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>());
         viewModel.SelectedAccount = account;
         return viewModel;
     }

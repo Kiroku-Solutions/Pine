@@ -57,8 +57,22 @@ public record ReceiptExtractionResult(
 /// <summary>
 /// Contains the categorisation prediction.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <paramref name="Category"/> IS A NAME, AND AN EMPTY STRING MEANS "NO SUGGESTION" (TD-32). This
+/// record used to carry a <see cref="System.Guid"/> <c>CategoryId</c>, which every caller then had
+/// to resolve back to a name through <c>ICategoryRepository</c> — against a <c>Categories</c> table
+/// that no code path in this application has ever written a row to. Both call sites therefore
+/// discarded every prediction the model made, and neither could report why.
+/// </para>
+/// <para>
+/// The empty string is the "no suggestion" value rather than <c>null</c> so that a caller cannot
+/// dereference it by accident, and it is checked with the same
+/// <c>string.IsNullOrWhiteSpace</c> guard the ledger already uses for a split's category.
+/// </para>
+/// </remarks>
 public record CategorisationResult(
-    System.Guid CategoryId,
+    string Category,
     double ConfidenceScore
 );
 

@@ -15,7 +15,22 @@
         while its handler did nothing at all. Both are gone; Refresh below is the only action the
         header offers, and it only reads.
     -->
-    <Grid RowDefinitions="Auto, Auto, *" Margin="40">
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="40">
+    <!-- TD-35: this handler was `async void` with no try/catch, so a clipboard failure
+         rethrew on the UI thread. It now reports here. -->
+    <Border Grid.Row="3"
+            Background="{DynamicResource PineSurfaceElevated}"
+            BorderBrush="{DynamicResource PineDanger}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="12,8"
+            Margin="0,8,0,0"
+            IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Foreground="{DynamicResource PineText}"
+                 TextWrapping="Wrap" />
+    </Border>
+
 
         <!-- Header -->
         <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,32">

@@ -8,7 +8,22 @@
              x:Class="Pine.Ui.Avalonia.Views.CropReceiptView"
              x:DataType="vm:CropReceiptViewModel">
   
-  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource PineBackground}">
+  <Grid RowDefinitions="Auto,*,Auto,Auto" Background="{DynamicResource PineBackground}">
+    <!-- TD-35: this handler was `async void` with no try/catch, so a crop failure
+         rethrew on the UI thread. It now reports here. -->
+    <Border Grid.Row="3"
+            Background="{DynamicResource PineSurfaceElevated}"
+            BorderBrush="{DynamicResource PineDanger}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="12,8"
+            Margin="0,8,0,0"
+            IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Foreground="{DynamicResource PineText}"
+                 TextWrapping="Wrap" />
+    </Border>
+
     
     <!-- Header -->
     <Border Grid.Row="0" Padding="20,15" Background="{DynamicResource PineSurface}">

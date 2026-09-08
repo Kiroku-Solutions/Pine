@@ -59,7 +59,6 @@ internal static class PreMigrationAccount
     {
         var account = Account.Create(name, type, balance, timeProvider);
         OpeningBalanceAmountSetter.Invoke(account, ClearedOpeningBalance);
-        account.ClearDomainEvents();
         return account;
     }
 }

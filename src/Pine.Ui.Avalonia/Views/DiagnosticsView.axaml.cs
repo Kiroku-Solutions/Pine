@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Input.Platform;
 using System.Linq;
 using Pine.Ui.Avalonia.ViewModels;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.Views;
 
@@ -19,9 +20,26 @@ public partial class DiagnosticsView : UserControl
         AvaloniaXamlLoader.Load(this);
     }
 
-    private async void CopyLogs_Click(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Copies the visible log tail to the clipboard. Was <c>async void</c> until TD-35, with an
+    /// unguarded <c>SetTextAsync</c> -- and a clipboard that refuses is an ordinary Windows
+    /// condition, not an exotic one.
+    /// </summary>
+    private void CopyLogs_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is DiagnosticsViewModel vm)
+        {
+            ObservedTask.Run(
+                () => CopyLogsAsync(sender, vm),
+                null,
+                "diagnostics-copy-logs",
+                "The log could not be copied to the clipboard.",
+                message => vm.ErrorMessage = message);
+        }
+    }
+
+    private async System.Threading.Tasks.Task CopyLogsAsync(object? sender, DiagnosticsViewModel vm)
+    {
         {
             // TD-15: the collection holds projected records now, not pre-formatted strings, so the
             // clipboard form is built here from DiagnosticsLogEntryViewModel.Text. That text

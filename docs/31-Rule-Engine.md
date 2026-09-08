@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-31-RULE-ENGINE`                                                            |
-| Status           | Aspirational — an entity, not an engine                                              |
-| Reconciled       | 2026-08-31 · `src/Pine.Core/Rules/Rule.cs` and its table exist; nothing evaluates a rule. TD-36 records the entity as possibly-dead code. |
+| Status           | Aspirational — nothing in the tree evaluates a rule                                  |
+| Reconciled       | 2026-09-07 · Neither the entity nor the table exists any more. `src/Pine.Core/Rules/Rule.cs` and the `Rules` table were dropped under TD-37 — a shell with no evaluator, no consumer and an unconstrained `TargetCategoryId` `Guid` where a `Category` relationship belongs. Everything below this line is design, not code. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

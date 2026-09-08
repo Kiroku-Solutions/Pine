@@ -4,8 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
-using Microsoft.ML.OnnxRuntime;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Tokenizers;
 using Pine.Core.Ai;
 using Pine.Core.Transactions;
@@ -27,38 +25,17 @@ namespace Pine.Infrastructure.Ai.Extraction;
 /// </summary>
 public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 {
-    private const string ModelPath = "Assets/Ai/ner_minilm_int8.onnx";
-
-    private readonly ILogger<HeuristicFieldExtractor>? _logger;
-    private InferenceSession? _session;
-    private readonly object _lock = new();
-
     /// <summary>Creates the extractor.</summary>
-    /// <param name="logger">
-    /// Where a failed model load is recorded (TD-14). Optional for the same reason
-    /// <c>PaddleOcrEngine</c>'s is: this type is hand-constructed by <c>DefaultLocalAiProvider</c>,
-    /// which threads the container's <c>ILoggerFactory</c> through when it has one.
-    /// </param>
-    public HeuristicFieldExtractor(ILogger<HeuristicFieldExtractor>? logger = null)
+    /// <remarks>
+    /// THE LOGGER PARAMETER IS GONE WITH THE MODEL LOAD (TD-36). It existed for exactly one
+    /// record — a warning that the ONNX NER model had failed to load — and that load is deleted,
+    /// because the session it produced was never used for inference and the model file it named
+    /// has never existed in this repository. The parameter is kept in the signature as an unused
+    /// optional argument by nobody: it is removed, and <c>DefaultLocalAiProvider</c> stops passing
+    /// one. Nothing else in this class logged anything.
+    /// </remarks>
+    public HeuristicFieldExtractor()
     {
-        _logger = logger;
-    }
-
-    // Source-generated, because CA1848 is an error in this repository; see PaddleOcrEngine for the
-    // same pattern and for why the wrapper takes a nullable logger.
-    [LoggerMessage(
-        EventId = 1,
-        EventName = "nlp.model_load_failed",
-        Level = Microsoft.Extensions.Logging.LogLevel.Warning,
-        Message = "Failed to load the ONNX NER model; falling back to layout heuristics only.")]
-    private static partial void LogModelLoadFailedCore(ILogger logger, Exception exception);
-
-    private static void LogModelLoadFailed(ILogger? logger, Exception exception)
-    {
-        if (logger is not null)
-        {
-            LogModelLoadFailedCore(logger, exception);
-        }
     }
 
     // ===== COMPILED REGEX PATTERNS =====
@@ -137,28 +114,6 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
     // ===== PUBLIC API =====
 
-    public void LoadModel()
-    {
-        lock (_lock)
-        {
-            if (_session != null) return;
-            try
-            {
-                var options = new SessionOptions();
-                options.AppendExecutionProvider_CPU();
-                _session = new InferenceSession(ModelPath, options);
-            }
-            catch (Exception ex)
-            {
-                // WAS: Console.WriteLine, in a WinExe with no console attached (TD-14). The
-                // extractor deliberately keeps running -- the heuristic path does not need the
-                // model -- so this is a recoverable anomaly, which 30-Observability §4.2 puts at
-                // warn, not error.
-                LogModelLoadFailed(_logger, ex);
-            }
-        }
-    }
-
     public ReceiptExtractionResult ExtractFields(IReadOnlyList<OcrWord> ocrWords)
     {
         if (ocrWords == null || ocrWords.Count == 0)
@@ -215,11 +170,6 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             DateIsAmbiguous: dateCandidate?.IsAmbiguous ?? false,
             AlternativeDate: dateCandidate?.Alternative
         );
-    }
-
-    public void Dispose()
-    {
-        _session?.Dispose();
     }
 
     // ===== SPATIAL LINE CLUSTERING =====

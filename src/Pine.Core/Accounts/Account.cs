@@ -1,7 +1,6 @@
 using System;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
-using Pine.Core.Events;
 
 namespace Pine.Core.Accounts;
 
@@ -82,8 +81,6 @@ public sealed class Account : AggregateRoot
         OpeningBalanceAmount = initialBalance.Amount;
         CreatedAt = timeProvider.GetUtcNow();
         UpdatedAt = CreatedAt;
-
-        AddDomainEvent(new AccountCreatedEvent(Id, Name, Balance, CreatedAt));
     }
 
     public static Account Create(string name, AccountType type, Money initialBalance, TimeProvider timeProvider)

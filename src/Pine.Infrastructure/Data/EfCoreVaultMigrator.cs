@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pine.Core.Security;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
 
 namespace Pine.Infrastructure.Data;
 
@@ -17,16 +19,27 @@ public sealed class EfCoreVaultMigrator : IVaultMigrator
 {
     private readonly PineDbContext _context;
     private readonly IVaultBackupService _backupService;
+    private readonly int _backupsToKeep;
 
     /// <param name="context">The keyed context for the unlocked vault.</param>
     /// <param name="backupService">Produces the pre-migration backup.</param>
-    public EfCoreVaultMigrator(PineDbContext context, IVaultBackupService backupService)
+    /// <param name="securityOptions">
+    /// Carries how many backups survive a prune. It was
+    /// <c>VaultBackupService.DefaultBackupsToKeep</c>, a constant whose own doc comment named TD-27
+    /// as the reason it was one.
+    /// </param>
+    public EfCoreVaultMigrator(
+        PineDbContext context,
+        IVaultBackupService backupService,
+        IOptions<PineSecurityOptions> securityOptions)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(backupService);
+        ArgumentNullException.ThrowIfNull(securityOptions);
 
         _context = context;
         _backupService = backupService;
+        _backupsToKeep = securityOptions.Value.BackupsToKeep;
     }
 
     /// <summary>
@@ -128,7 +141,7 @@ public sealed class EfCoreVaultMigrator : IVaultMigrator
         try
         {
             await _backupService
-                .PruneAsync(VaultDirectory, VaultBackupService.DefaultBackupsToKeep, cancellationToken)
+                .PruneAsync(VaultDirectory, _backupsToKeep, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (VaultBackupFailedException)

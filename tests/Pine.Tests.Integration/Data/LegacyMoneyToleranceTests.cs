@@ -243,14 +243,26 @@ public class LegacyMoneyToleranceTests
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Plants a category over a raw connection, as a previous build would have.
+    /// </summary>
+    /// <remarks>
+    /// <c>Version</c> IS NAMED EXPLICITLY, AND IT DID NOT USED TO BE (TD-32). Adding the
+    /// self-referencing foreign key on <c>ParentCategoryId</c> makes SQLite rebuild this table, and
+    /// the rebuild is generated from the model, which does not carry the <c>defaultValue</c> that
+    /// <c>AddConcurrencyTokens</c> attached to the column. The column is still <c>NOT NULL</c>; it
+    /// simply no longer fills itself in for a writer that ignores it. Production never inserts a
+    /// category this way, so naming the column here restores what this helper was relying on rather
+    /// than papering over a behaviour change a shipped path depends on.
+    /// </remarks>
     private static void InsertCategory(TempVault vault, Guid categoryId, string name)
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO "Categories" ("Id", "Name", "ColorHex", "ParentCategoryId")
-            VALUES ($id, $name, '#FFFFFF', NULL);
+            INSERT INTO "Categories" ("Id", "Name", "ColorHex", "ParentCategoryId", "Version")
+            VALUES ($id, $name, '#FFFFFF', NULL, '00000000-0000-0000-0000-000000000000');
             """;
         command.Parameters.AddWithValue("$id", Text(categoryId));
         command.Parameters.AddWithValue("$name", name);

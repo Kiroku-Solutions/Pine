@@ -269,12 +269,15 @@ public class VoidTransactionAtomicityTests
     /// The other direction: voiding the leg that RECEIVED the money must void the leg that sent it.
     /// </summary>
     /// <remarks>
-    /// The two links are established by different mechanisms in
-    /// <c>TransferFundsCommandHandler</c> — the receiving leg is linked through its constructor, the
-    /// sending leg by writing <c>LinkedTransactionId</c> back onto it through reflection once the
-    /// other identifier exists. Two mechanisms means two ways to lose one direction, and either
-    /// failure leaves a half-voided transfer. The test above exercises the reflection-written link;
-    /// this one exercises the constructor-written one, so neither can break unnoticed.
+    /// The two links used to be established by different mechanisms in
+    /// <c>TransferFundsCommandHandler</c> — the receiving leg through its constructor, the sending
+    /// leg by writing <c>LinkedTransactionId</c> back onto it through reflection once the other
+    /// identifier existed. Two mechanisms means two ways to lose one direction, and either failure
+    /// leaves a half-voided transfer. TD-26 replaced both with <c>Transaction.CreateTransferPair</c>,
+    /// which writes the two directions in a single operation, so they can no longer be lost
+    /// independently. Both are still followed end to end -- the test above starts from the sending
+    /// leg, this one from the receiving leg -- because that pairing is now the single point of
+    /// failure for both.
     /// </remarks>
     /// <returns>A task representing the test.</returns>
     [Fact]

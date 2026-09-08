@@ -19,8 +19,8 @@ namespace Pine.Tests.Unit.Diagnostics;
 /// <para>
 /// TD-15 UNCOVERED A REGISTRATION BUG THAT NO TEST COULD HAVE CAUGHT, AND THIS IS THE NARROW FIX
 /// FOR THAT CLASS OF BUG. <c>DiagnosticsViewModel</c> was registered in <c>Pine.Ui.Windows</c> and
-/// in none of the other four heads, while <c>ShellViewModel.NavigateTo</c> resolves through
-/// <c>GetRequiredService</c> -- so the Diagnostics nav button threw on macOS, Web, Android and iOS.
+/// in none of the other four heads, while the shell's Diagnostics command resolves that page from
+/// the container -- so the Diagnostics nav button threw on macOS, Web, Android and iOS.
 /// It compiled perfectly on all five.
 /// </para>
 /// <para>

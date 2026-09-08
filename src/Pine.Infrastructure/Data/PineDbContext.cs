@@ -5,9 +5,6 @@ using Pine.Infrastructure.Data.Converters;
 using Pine.Core.Transactions;
 using Pine.Core.Categories;
 using Pine.Core.Budgets;
-using Pine.Core.Tags;
-using Pine.Core.Attachments;
-using Pine.Core.Rules;
 using Pine.Core.Settings;
 using Pine.Core.Importing;
 using System.Text.Json;
@@ -27,9 +24,6 @@ public sealed class PineDbContext : DbContext
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Budget> Budgets => Set<Budget>();
-    public DbSet<Tag> Tags => Set<Tag>();
-    public DbSet<Attachment> Attachments => Set<Attachment>();
-    public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<ImportProfile> ImportProfiles => Set<ImportProfile>();
 
@@ -217,6 +211,27 @@ public sealed class PineDbContext : DbContext
             e.HasKey(c => c.Id);
             e.Property(c => c.Name).IsRequired();
             e.Property(c => c.ColorHex).IsRequired();
+
+            // TD-32. `ParentCategoryId` was a bare nullable Guid column with no constraint of any
+            // kind: the original CreateTable emitted no `table.ForeignKey` for it, and there was no
+            // `HasOne` here either, while `Budget.CategoryId` two blocks below has had a real FK all
+            // along. So a category could name a parent that does not exist, and deleting a parent
+            // left its children pointing at nothing.
+            //
+            // Restrict, matching Budget: deleting a category that others are filed under is a
+            // decision a person has to make about the children first, not something a cascade should
+            // make silently on their behalf.
+            //
+            // WHAT THIS STILL DOES NOT PREVENT, STATED PLAINLY: cycles. A foreign key constrains
+            // each row on its own, so A→B→A satisfies every constraint here. Preventing that needs a
+            // check on the write path, and the write path is `CreateCategoryCommand`, which no
+            // production code calls (TD-132). Adding a cycle guard now would be writing enforcement
+            // for a caller that does not exist; the referential integrity below is worth having
+            // regardless, because it is what makes the column mean anything at all.
+            e.HasOne<Category>()
+             .WithMany()
+             .HasForeignKey(c => c.ParentCategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Budget>(e =>
@@ -237,26 +252,6 @@ public sealed class PineDbContext : DbContext
              .WithMany()
              .HasForeignKey(b => b.CategoryId)
              .OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<Tag>(e =>
-        {
-            e.HasKey(t => t.Id);
-            e.Property(t => t.Name).IsRequired();
-            e.Property(t => t.ColorHex).IsRequired();
-        });
-
-        modelBuilder.Entity<Attachment>(e =>
-        {
-            e.HasKey(a => a.Id);
-            e.Property(a => a.FileName).IsRequired();
-            e.Property(a => a.ContentType).IsRequired();
-        });
-
-        modelBuilder.Entity<Rule>(e =>
-        {
-            e.HasKey(r => r.Id);
-            e.Property(r => r.MatchCondition).IsRequired();
         });
 
         modelBuilder.Entity<Setting>(e =>

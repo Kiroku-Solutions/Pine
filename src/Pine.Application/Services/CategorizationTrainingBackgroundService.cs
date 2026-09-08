@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using MediatR;
 using Pine.Application.Settings.Commands;
@@ -18,12 +19,24 @@ public class CategorizationTrainingBackgroundService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<CategorizationTrainingBackgroundService> _logger;
     private const string LastTrainedCountSettingKey = "Ai.Categorization.LastTrainedCount";
-    private const int BatchThreshold = 10; // Number of new categorized transactions required to trigger training
+    private readonly PineAiOptions _aiOptions;
 
-    public CategorizationTrainingBackgroundService(IServiceProvider serviceProvider, ILogger<CategorizationTrainingBackgroundService> logger)
+    /// <summary>Creates the background trainer.</summary>
+    /// <param name="aiOptions">
+    /// Carries the batch threshold, the startup delay and the poll interval. All three were
+    /// literals in this file, and the two timings were literals inside <c>ExecuteAsync</c> where
+    /// nothing could reach them — including a test, which is why this service had none (TD-27).
+    /// </param>
+    public CategorizationTrainingBackgroundService(
+        IServiceProvider serviceProvider,
+        ILogger<CategorizationTrainingBackgroundService> logger,
+        IOptions<PineAiOptions> aiOptions)
     {
+        ArgumentNullException.ThrowIfNull(aiOptions);
+
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _aiOptions = aiOptions.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,10 +46,9 @@ public class CategorizationTrainingBackgroundService : BackgroundService
 
         // Wait for the app to fully start and the user to unlock the vault
         // before attempting database access.
-        await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        await Task.Delay(_aiOptions.TrainingStartupDelay, stoppingToken);
 
-        // Poll every 5 minutes
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        using var timer = new PeriodicTimer(_aiOptions.TrainingInterval);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
@@ -97,7 +109,7 @@ public class CategorizationTrainingBackgroundService : BackgroundService
             .Where(t => t.Splits.Any(s => !string.IsNullOrWhiteSpace(s.Category)))
             .ToList();
 
-        int currentCategorizedCount = categorizedTransactions.Count;
+        int currentCategorizedCount = CategorisationTrainingData.CountCategorised(categorizedTransactions);
 
         var lastTrainedCountSetting = await settingRepository.GetAsync(LastTrainedCountSettingKey, cancellationToken);
         int lastTrainedCount = 0;
@@ -107,21 +119,17 @@ public class CategorizationTrainingBackgroundService : BackgroundService
             lastTrainedCount = parsedCount;
         }
 
-        if (currentCategorizedCount - lastTrainedCount >= BatchThreshold)
+        if (currentCategorizedCount - lastTrainedCount >= _aiOptions.TrainingBatchThreshold)
         {
 #pragma warning disable CA1848, CA2254, CA1873
             _logger.LogInformation($"Threshold reached. Training AI model with {currentCategorizedCount} transactions.");
 #pragma warning restore CA1848, CA2254, CA1873
 
-            // Prepare training data: mapping Payee and Split Category
-            var trainingData = categorizedTransactions.SelectMany(t => 
-                t.Splits.Where(s => !string.IsNullOrWhiteSpace(s.Category))
-                .Select(s => (
-                    Text: t.Payee, 
-                    Amount: s.Amount.Amount, 
-                    CategoryId: Guid.TryParse(s.Category, out var g) ? g : Guid.Empty
-                ))
-            ).Where(d => d.CategoryId != Guid.Empty).ToList();
+            // TD-32. This projection lives in CategorisationTrainingData so that it can be tested,
+            // because for as long as it was written inline here it threw away every example: it
+            // parsed the split's category NAME as a Guid and then filtered out everything that
+            // failed to parse, which was all of it.
+            var trainingData = CategorisationTrainingData.From(categorizedTransactions);
 
             if (trainingData.Count > 0)
             {

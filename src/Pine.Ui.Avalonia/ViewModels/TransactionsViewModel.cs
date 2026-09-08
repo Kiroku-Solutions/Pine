@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,12 +13,26 @@ using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Services;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class TransactionsViewModel : ObservableObject, IRecipient<DataChangedMessage>
+public partial class TransactionsViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable
 {
     private readonly IMediator _mediator;
+
+    /// <summary>
+    /// Builds the add-transaction dialog this page opens (TD-28/TD-58).
+    /// </summary>
+    /// <remarks>
+    /// It used to be built with <c>new</c> here, which handed it the mediator and nothing else --
+    /// so its optional <c>ILogger&lt;T&gt;</c> defaulted to <see langword="null"/> and every error
+    /// it showed the user was recorded nowhere. The container supplies the rest now.
+    /// </remarks>
+    private readonly IViewModelFactory _viewModels;
+
     private readonly ILogger<TransactionsViewModel>? _logger;
 
     [ObservableProperty]
@@ -29,10 +44,32 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     public ObservableCollection<Transaction> Transactions { get; } = new();
 
     private int _currentPage = 1;
-    private const int PageSize = 30;
+
+    /// <summary>
+    /// How many transactions one page holds, from <c>PineUiOptions.TransactionsPageSize</c> (TD-27).
+    /// </summary>
+    /// <remarks>
+    /// Was <c>const int PageSize = 30</c>, which quietly overrode the <c>PageSize = 50</c> default
+    /// on <c>GetTransactionsQuery</c>. That default is now gone and this is the only page size.
+    /// </remarks>
+    private readonly int _pageSize;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
+
+    /// <summary>
+    /// Why the list is empty, when it is empty because something failed (TD-35).
+    /// </summary>
+    /// <remarks>
+    /// THIS SCREEN HAD NO ERROR SURFACE AT ALL, and the page load ended in a bare
+    /// <c>catch { /* Handle error silently or via status message */ }</c>. A locked vault, a
+    /// corrupt database or a validation refusal all produced the same thing: an empty transaction
+    /// list, which the user reads as "I have no transactions". That is a statement about their
+    /// records that nothing had checked. The property is bound in <c>TransactionsView.axaml</c> and
+    /// is cleared at the start of every load, so it never outlives the failure it describes.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
 
     [ObservableProperty]
     public partial bool HasMorePages { get; set; } = true;
@@ -57,17 +94,63 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [ObservableProperty]
     public partial bool IsVoiding { get; set; }
 
-    public TransactionsViewModel(IMediator mediator, ILogger<TransactionsViewModel>? logger = null)
+    /// <summary>Creates the transaction list.</summary>
+    /// <param name="mediator">The dispatcher.</param>
+    /// <param name="uiOptions">Carries the page size. Optional, for tests that construct this by hand.</param>
+    /// <param name="logger">The category logger.</param>
+    public TransactionsViewModel(
+        IMediator mediator,
+        IViewModelFactory viewModels,
+        IOptions<PineUiOptions>? uiOptions = null,
+        ILogger<TransactionsViewModel>? logger = null)
     {
         _mediator = mediator;
+        _viewModels = viewModels;
+        _pageSize = (uiOptions?.Value ?? new PineUiOptions()).TransactionsPageSize;
         _logger = logger;
-        WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((TransactionsViewModel)r).Receive(m));
-        _ = LoadDataAsync();
+
+        // No Register call here any more (TD-34): ObservableRecipient registers this page when the
+        // navigator activates it and unregisters it on the way out, so a list the user left behind
+        // no longer re-queries on every broadcast until the GC happens to collect it.
+        //
+        // And no `_ = LoadDataAsync()` here any more (TD-35). It made construction a race: the
+        // first page of transactions arrived on a continuation nobody held, so a caller could not
+        // tell a list that is empty from one that has not loaded yet. PageActivation calls
+        // InitializeAsync when this page becomes the current one.
     }
 
+    /// <summary>
+    /// Reads the first page of transactions. Started by <c>PageActivation</c> on navigation.
+    /// </summary>
+    /// <param name="cancellationToken">Cooperative cancellation; the query itself is not cancellable yet.</param>
+    /// <returns>A task that completes when the first page is on screen, or its failure is.</returns>
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadDataAsync();
+
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "transactions-initialise",
+        TransactionsUnavailable,
+        message => ErrorMessage = message);
+
+    /// <summary>What the user reads when the list cannot be read. Written once; used by both paths.</summary>
+    private const string TransactionsUnavailable =
+        "Your transactions could not be loaded, so this list is not showing all of them. Try again.";
+
+    /// <summary>Reloads the list when something elsewhere changed the data.</summary>
+    /// <remarks>
+    /// Observed rather than discarded (TD-35): <c>IRecipient&lt;T&gt;</c> is <c>void</c>, so this
+    /// still starts work it cannot await, but the outcome is now read.
+    /// </remarks>
+    /// <param name="message">The broadcast. It carries no payload.</param>
     public void Receive(DataChangedMessage message)
     {
-        _ = LoadDataAsync();
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-reload",
+            TransactionsUnavailable,
+            reported => ErrorMessage = reported);
     }
 
     [RelayCommand]
@@ -76,6 +159,11 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         _currentPage = 1;
         Transactions.Clear();
         HasMorePages = true;
+
+        // Cleared here rather than in LoadNextPageAsync: paging forward must not erase the
+        // explanation of a page that failed, but a fresh load from the top must.
+        ErrorMessage = null;
+
         await LoadNextPageAsync();
     }
 
@@ -87,14 +175,14 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         IsLoading = true;
         try
         {
-            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, PageSize));
+            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, _pageSize));
 
             foreach (var t in pagedResult.Items)
             {
                 Transactions.Add(t);
             }
 
-            if (_currentPage * PageSize >= pagedResult.TotalCount)
+            if (_currentPage * _pageSize >= pagedResult.TotalCount)
             {
                 HasMorePages = false;
             }
@@ -103,9 +191,16 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
                 _currentPage++;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Handle error silently or via status message
+            // WAS: `catch { }` with the comment "Handle error silently or via status message"
+            // (TD-35). It did the first and never the second, so every failure of the only query
+            // this page makes produced an empty list and no record anywhere.
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "transactions-load-page",
+                TransactionsUnavailable);
         }
         finally
         {
@@ -116,11 +211,19 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [RelayCommand]
     private void ShowAddTransactionDialog()
     {
-        AddTransactionVm = new AddTransactionViewModel(_mediator, () =>
+        AddTransactionVm = _viewModels.CreateAddTransaction(() =>
         {
             IsAddTransactionDialogVisible = false;
             AddTransactionVm = null;
-            _ = LoadDataAsync(); // Refresh
+
+            // Observed rather than discarded (TD-35). This is the refresh whose silent failure is
+            // most alarming: the transaction was saved, and the list would simply not show it.
+            ObservedTask.Run(
+                LoadDataAsync,
+                _logger,
+                "transactions-reload",
+                "The transaction was saved, but this list could not be refreshed. Reopen the page to see it.",
+                reported => ErrorMessage = reported);
         });
         IsAddTransactionDialogVisible = true;
     }
@@ -192,8 +295,13 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
             VoidTarget = null;
             VoidReason = string.Empty;
 
+            // THE RELOAD USED TO BE HERE TOO, AND IT RAN TWICE (TD-34). This view model is itself
+            // an IRecipient<DataChangedMessage>, and the broadcast below is synchronous, so the
+            // line that followed it -- `await LoadDataAsync();` -- was the SECOND full reload of
+            // the same list: two round trips, two Transactions.Clear() calls, a visible flicker.
+            // The broadcast stays, because the dashboard and its widgets have no other way to
+            // learn a transaction was voided; only the duplicate self-refresh is gone.
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
-            await LoadDataAsync();
         }
         catch (Exception ex)
         {

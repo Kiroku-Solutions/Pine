@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-56-IMPLEMENTATION-PLAN`                                                    |
 | Status           | Non-normative — historical plan, substantially overtaken                            |
-| Reconciled       | 2026-08-31 · A plan written before implementation. Its claim at :1097 that "the 15 gates of `16-Quality-Attributes` §4 are not aspirational - they are CI-enforced" is false: `.github/workflows/dotnet-ci.yml` has build and test jobs only, and runs on `workflow_dispatch` alone (:20-21, TD-07). |
+| Reconciled       | 2026-09-07 · A plan written before implementation. **Its repository-layout tree (:208-211, :222-224) and its SDK gate (:562) name seven projects that were created empty, never filled in, and deleted in iteration 27 (TD-38).** The tree is deliberately left as written: this document is a historical plan, and editing it to match the outcome would destroy the only record of what was intended. Read it as intent, not inventory. Its claim at :1097 that "the 15 gates of `16-Quality-Attributes` §4 are not aspirational - they are CI-enforced" is false: `.github/workflows/dotnet-ci.yml` has build and test jobs only, and runs on `workflow_dispatch` alone (:20-21, TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Author           | Mavis (MiniMax), commissioned by the project team                                    |
 | Created          | 2026-07-08                                                                           |

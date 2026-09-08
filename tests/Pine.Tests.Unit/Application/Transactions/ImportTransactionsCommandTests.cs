@@ -292,10 +292,11 @@ public class ImportTransactionsCommandTests
 
             var ai = Substitute.For<IAIProvider>();
             ai.CategorizeTransactionAsync(Arg.Any<string>(), Arg.Any<decimal>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(new CategorisationResult(Guid.Empty, 0d)));
+                .Returns(Task.FromResult(new CategorisationResult(string.Empty, 0d)));
 
             Handler = new ImportTransactionsCommandHandler(
-                Transactions, Accounts, TimeProvider.System, ai, Substitute.For<ICategoryRepository>());
+                Transactions, Accounts, TimeProvider.System, ai,
+                Microsoft.Extensions.Options.Options.Create(new Pine.Core.Configuration.PineAiOptions()));
 
             Command = new ImportTransactionsCommand(
                 AccountId,

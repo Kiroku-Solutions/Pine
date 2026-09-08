@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Core.Accounts;
@@ -103,6 +104,18 @@ internal sealed class AtomicityHost : IAsyncDisposable
             // MediatR 14 resolves an ILoggerFactory while constructing Mediator.
             services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
             services.AddSingleton(TimeProvider.System);
+
+            // Configuration, at its defaults (TD-27). This host mirrors production wiring by hand,
+            // so every registration the real root gained has to be mirrored here too -- and the
+            // first thing this line did was fail four import tests with "unable to resolve
+            // IOptions<PineAiOptions>", which is TD-29's whole argument reappearing inside a test
+            // fixture. It is registered at the DEFAULTS deliberately: these tests are about
+            // atomicity and deduplication, not about thresholds, and a fixture that quietly
+            // configures something is a fixture that hides what it is testing.
+            services.AddSingleton<IOptions<PineAiOptions>>(Options.Create(new PineAiOptions()));
+            services.AddSingleton<IOptions<PineSecurityOptions>>(Options.Create(new PineSecurityOptions()));
+            services.AddSingleton<IOptions<PineUiOptions>>(Options.Create(new PineUiOptions()));
+            services.AddSingleton<IOptions<PineStorageOptions>>(Options.Create(new PineStorageOptions()));
 
             services.AddPineApplication();
 
@@ -434,5 +447,5 @@ internal sealed class NonPersistingAiProvider : IAIProvider
         => throw new NotSupportedException("No transactional command performs receipt extraction.");
 
     public Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)
-        => Task.FromResult(new CategorisationResult(Guid.Empty, 0d));
+        => Task.FromResult(new CategorisationResult(string.Empty, 0d));
 }

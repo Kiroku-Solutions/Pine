@@ -1,0 +1,176 @@
+using System;
+using System.Collections.Generic;
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Pine.Core.Common;
+using Pine.Core.Configuration;
+using Pine.Ui.Avalonia.Composition;
+using Xunit;
+
+namespace Pine.Tests.Unit.Configuration;
+
+/// <summary>
+/// Binding configuration onto <see cref="PineOptions"/>, and refusing it when it cannot be used
+/// (TD-27).
+/// </summary>
+/// <remarks>
+/// These build an in-memory <see cref="IConfiguration"/> rather than calling
+/// <c>PineConfiguration.Build()</c>. `Build()` reads a real file path and the real environment, so a
+/// test of it would depend on the developer's machine and would pass or fail for reasons that have
+/// nothing to do with Pine. What is testable — and what actually carries the risk — is the binding
+/// and the validation, which is everything between a key and a value in use.
+/// </remarks>
+public class PineConfigurationTests
+{
+    private static IConfiguration ConfigurationFrom(params (string Key, string Value)[] entries)
+    {
+        var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in entries)
+        {
+            data[key] = value;
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(data).Build();
+    }
+
+    [Fact]
+    public void AnEmptyConfiguration_ShouldLeaveEveryDefaultInPlace()
+    {
+        var bound = PineConfiguration.Bind(ConfigurationFrom());
+
+        bound.Should().BeEquivalentTo(new PineOptions());
+    }
+
+    /// <summary>
+    /// A file naming one key changes one value.
+    /// </summary>
+    /// <remarks>
+    /// This is the property that makes a partial configuration file safe to write. Binding onto an
+    /// instance that already carries the defaults gives it; binding onto a fresh, zeroed object
+    /// would silently reset every key the file did not mention — and the symptom would be a page
+    /// size of zero because someone wanted to change a log directory.
+    /// </remarks>
+    [Fact]
+    public void AConfigurationNamingOneKey_ShouldChangeOnlyThatValue()
+    {
+        var bound = PineConfiguration.Bind(
+            ConfigurationFrom(("Pine:Ai:CategorisationConfidenceThreshold", "0.75")));
+
+        bound.Ai.CategorisationConfidenceThreshold.Should().Be(0.75);
+
+        bound.Ai.MinimumTrainingRows.Should().Be(10);
+        bound.Ui.TransactionsPageSize.Should().Be(30);
+        bound.Security.BackupsToKeep.Should().Be(5);
+    }
+
+    [Fact]
+    public void ATimeSpanValue_ShouldBindFromItsUsualTextForm()
+    {
+        var bound = PineConfiguration.Bind(
+            ConfigurationFrom(("Pine:Security:AutoLockIdleTimeout", "00:02:00")));
+
+        bound.Security.AutoLockIdleTimeout.Should().Be(TimeSpan.FromMinutes(2));
+    }
+
+    [Fact]
+    public void TheKdfProfileForNewVaults_ShouldBeConfigurable()
+    {
+        var bound = PineConfiguration.Bind(ConfigurationFrom(
+            ("Pine:Security:NewVaultKdfMemoryKib", "131072"),
+            ("Pine:Security:NewVaultKdfIterations", "4")));
+
+        bound.Security.NewVaultKdfMemoryKib.Should().Be(131_072);
+        bound.Security.NewVaultKdfIterations.Should().Be(4);
+        bound.Security.NewVaultKdfParallelism.Should().Be(4, "an unnamed key keeps its default");
+    }
+
+    /// <summary>
+    /// An unusable configuration is refused at bind time, with every problem in one exception.
+    /// </summary>
+    [Fact]
+    public void AnUnusableConfiguration_ShouldBeRefusedWithEveryProblemAtOnce()
+    {
+        var bind = () => PineConfiguration.Bind(ConfigurationFrom(
+            ("Pine:Ai:CategorisationConfidenceThreshold", "5"),
+            ("Pine:Ui:TransactionsPageSize", "0")));
+
+        var thrown = bind.Should().Throw<PineOptionsValidationException>().Which;
+
+        thrown.Problems.Should().HaveCount(2);
+        thrown.Message.Should().Contain("CategorisationConfidenceThreshold").And.Contain("TransactionsPageSize");
+    }
+
+    /// <summary>
+    /// The refusal is safe to show, and says so through the taxonomy rather than by convention.
+    /// </summary>
+    /// <remarks>
+    /// Every sentence names a configuration key, a bound and the value that was read — three things
+    /// the reader typed themselves, so none of them is a disclosure. That is exactly the test
+    /// <see cref="IUserFacingFailure"/>'s remarks set, which is why this exception is allowed on it
+    /// when most are not.
+    /// </remarks>
+    [Fact]
+    public void TheRefusal_ShouldBeOnTheUserFacingTaxonomy()
+    {
+        var bind = () => PineConfiguration.Bind(ConfigurationFrom(("Pine:Security:BackupsToKeep", "0")));
+
+        var thrown = bind.Should().Throw<PineOptionsValidationException>().Which;
+
+        thrown.Should().BeAssignableTo<IUserFacingFailure>();
+        ((IUserFacingFailure)thrown).UserFacingMessage.Should().Contain("BackupsToKeep");
+    }
+
+    /// <summary>
+    /// The override hook runs after binding and is still validated.
+    /// </summary>
+    /// <remarks>
+    /// It exists so a test or a head can set a value without writing a file. If it ran after
+    /// validation it would be a hole straight through the guard.
+    /// </remarks>
+    [Fact]
+    public void TheOverrideHook_ShouldRunAfterBinding_AndStillBeValidated()
+    {
+        var bound = PineConfiguration.Bind(
+            ConfigurationFrom(("Pine:Ui:TransactionsPageSize", "10")),
+            options => options.Ui.TransactionsPageSize = 25);
+
+        bound.Ui.TransactionsPageSize.Should().Be(25);
+
+        var invalid = () => PineConfiguration.Bind(
+            ConfigurationFrom(),
+            options => options.Ui.TransactionsPageSize = 0);
+
+        invalid.Should().Throw<PineOptionsValidationException>();
+    }
+
+    /// <summary>
+    /// The configuration file is looked for in the data directory, not beside the executable.
+    /// </summary>
+    /// <remarks>
+    /// <c>packaging/package.sh</c> checksums every file it ships and records the list in a
+    /// manifest, so a config file inside the artefact would be a file whose purpose is to be edited
+    /// and whose edit breaks the artefact's own integrity claim. Pinning the location here means
+    /// moving it back into the package is a visible decision.
+    /// </remarks>
+    [Fact]
+    public void TheConfigurationFile_ShouldLiveOutsideTheSignedArtefact()
+    {
+        PineConfiguration.FilePath.Should().StartWith(PineStorageOptions.DefaultDataDirectory());
+        PineConfiguration.FilePath.Should().EndWith("appsettings.json");
+        PineConfiguration.FilePath.Should().NotStartWith(AppContext.BaseDirectory);
+    }
+
+    [Fact]
+    public void TheSources_ShouldBeDescribable_WithoutNamingAnyValue()
+    {
+        var sources = PineConfiguration.DescribeSources();
+
+        sources.Should().HaveCount(3);
+        sources.Should().Contain(s => s.Contains("defaults", StringComparison.Ordinal));
+        sources.Should().Contain(s => s.Contains("appsettings.json", StringComparison.Ordinal));
+        sources.Should().Contain(s => s.Contains("PINE_", StringComparison.Ordinal));
+
+        // The description reaches a log, and a data directory is a path the user chose.
+        sources.Should().NotContain(s => s.Contains(PineStorageOptions.DefaultDataDirectory(), StringComparison.Ordinal));
+    }
+}

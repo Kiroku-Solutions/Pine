@@ -98,6 +98,32 @@ public class ImportKeyMigrationTests
     /// <summary>TD-17's concurrency token column, the migration after the scaled-money one.</summary>
     private const string ConcurrencyTokenSchemaVersion = "20260830200447_AddConcurrencyTokens";
 
+    /// <summary>TD-37's migration: the <c>Attachments</c>, <c>Rules</c> and <c>Tags</c> tables, dropped.</summary>
+    /// <remarks>
+    /// The tripwire fired a fourth time. Confirmed by hand: this class plants an account and
+    /// transactions and asserts on <c>ImportKey</c>; it never writes or reads the three dropped
+    /// tables, and there were no foreign keys between them and anything, so the drop is invisible
+    /// here. It is listed anyway because the pending set is asserted exactly, which is the point.
+    /// </remarks>
+    private const string DropDeadEntitiesSchemaVersion = "20260908040007_DropAttachmentRuleAndTagTables";
+
+    /// <summary>
+    /// The self-referencing foreign key on <c>Categories.ParentCategoryId</c> (TD-32).
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a fifth time, and this firing was worth more than a name change. SQLite
+    /// cannot add a foreign key to an existing table, so EF REBUILDS <c>Categories</c>: new table,
+    /// copy, drop, rename. The rebuild is generated from the model, and the model does not carry the
+    /// <c>defaultValue</c> that <c>AddConcurrencyTokens</c> gave <c>Categories.Version</c> — so the
+    /// rebuilt column is still <c>NOT NULL</c> but no longer has a default behind it. Existing rows
+    /// are copied with their values and are unaffected; what breaks is an INSERT that omits the
+    /// column and relied on the default, which is why <c>LegacyMoneyToleranceTests.InsertCategory</c>
+    /// had to start naming <c>Version</c> explicitly. Production never inserts a category by raw SQL
+    /// — <c>PineDbContext.BumpConcurrencyTokens</c> assigns the token — so no shipped path depends on
+    /// that default.
+    /// </remarks>
+    private const string CategoryParentForeignKeySchemaVersion = "20260908152526_AddCategoryParentForeignKey";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -125,7 +151,7 @@ public class ImportKeyMigrationTests
         VaultMigrationResult result;
         await using (var context = new PineDbContext(vault.DatabasePath, vault.Key))
         {
-            var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context));
+            var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security);
             result = await migrator.MigrateAsync(CancellationToken.None);
         }
 
@@ -175,7 +201,7 @@ public class ImportKeyMigrationTests
 
         await using (var context = new PineDbContext(vault.DatabasePath, vault.Key))
         {
-            await new EfCoreVaultMigrator(context, new VaultBackupService(context))
+            await new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security)
                 .MigrateAsync(CancellationToken.None);
         }
 
@@ -253,7 +279,9 @@ public class ImportKeyMigrationTests
             VoidAndOpeningBalanceSchemaVersion,
             LineItemKindSchemaVersion,
             ScaledMoneySchemaVersion,
-            ConcurrencyTokenSchemaVersion
+            ConcurrencyTokenSchemaVersion,
+            DropDeadEntitiesSchemaVersion,
+            CategoryParentForeignKeySchemaVersion
         });
     }
 

@@ -5,12 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -22,9 +23,24 @@ public partial class SetupViewModel : ObservableObject
     /// </summary>
     private const string LegacySaltFileName = "pine.salt";
 
-    private readonly IServiceProvider _serviceProvider;
+    /// <summary>
+    /// The vault registry this screen creates the new vault profile in.
+    /// </summary>
+    /// <remarks>
+    /// INJECTED, NOT RESOLVED (TD-28). <c>InitializeVaultAsync</c> used to pull this out of the
+    /// container mid-command, which is the last service-locator call left in this type once
+    /// navigation stopped needing one. It is a singleton on every head, so this is the same object
+    /// -- only the reach has gone.
+    /// </remarks>
+    private readonly VaultManager _vaultManager;
+
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the shell this screen hands over to once the vault exists (TD-28).
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly IVaultHeaderStore _vaultHeaderStore;
 
     /// <summary>
@@ -33,6 +49,15 @@ public partial class SetupViewModel : ObservableObject
     /// <see cref="VaultKeyMaterial"/> and hands both halves straight on.
     /// </summary>
     private readonly IVaultKeyService _vaultKeyService;
+
+    /// <summary>
+    /// Creates the new vault's database schema (TD-28). This screen no longer opens a DI scope or
+    /// resolves the migrator itself: the scope, the DbContext and the migration all belong to the
+    /// persistence adapter behind this port. The setup path is deliberately a different method from
+    /// the unlock path -- a brand-new vault has nothing to probe and no data to back up.
+    /// </summary>
+    private readonly IVaultDatabaseOpener _vaultDatabaseOpener;
+
     private readonly ILogger<SetupViewModel>? _logger;
 
     [ObservableProperty]
@@ -200,19 +225,32 @@ public partial class SetupViewModel : ObservableObject
         _ => null,
     };
 
+    private readonly PineSecurityOptions _securityOptions;
+
+    /// <param name="securityOptions">
+    /// Carries the Argon2id profile NEW vaults are minted with (TD-27). Optional, defaulting to
+    /// <see cref="KdfParameters.Argon2idV1"/> — see <see cref="NewVaultKdf"/> for why this can only
+    /// ever affect new vaults.
+    /// </param>
     public SetupViewModel(
-        IServiceProvider serviceProvider,
+        VaultManager vaultManager,
         IVaultSession vaultSession,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         IVaultHeaderStore vaultHeaderStore,
         IVaultKeyService vaultKeyService,
+        IVaultDatabaseOpener vaultDatabaseOpener,
+        IOptions<PineSecurityOptions>? securityOptions = null,
         ILogger<SetupViewModel>? logger = null)
     {
-        _serviceProvider = serviceProvider;
+        _securityOptions = securityOptions?.Value ?? new PineSecurityOptions();
+        _vaultManager = vaultManager;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _vaultHeaderStore = vaultHeaderStore;
         _vaultKeyService = vaultKeyService;
+        _vaultDatabaseOpener = vaultDatabaseOpener;
         _logger = logger;
     }
 
@@ -263,8 +301,7 @@ public partial class SetupViewModel : ObservableObject
 
         try
         {
-            var vaultManager = _serviceProvider.GetRequiredService<VaultManager>();
-            var profile = await vaultManager.CreateVaultAsync(VaultName);
+            var profile = await _vaultManager.CreateVaultAsync(VaultName);
             
             await Task.Run(async () => 
             {
@@ -281,7 +318,7 @@ public partial class SetupViewModel : ObservableObject
                 // that data key wrapped under an auth key derived from the master password with
                 // the Argon2idV1 profile. The password is stamped nowhere -- what lands on disk is
                 // the wrap, and only this password's auth key opens it.
-                var material = _vaultKeyService.CreateVault(MasterPassword, KdfParameters.Argon2idV1);
+                var material = _vaultKeyService.CreateVault(MasterPassword, _securityOptions.ToKdfParameters());
 
                 // ORDERING IS A CORRECTNESS REQUIREMENT, NOT A STYLE CHOICE. The header is written
                 // BEFORE anything creates the database file, because the two failure modes are not
@@ -299,22 +336,12 @@ public partial class SetupViewModel : ObservableObject
                 _vaultSession.Unlock(vaultDir, material.DataKey);
                 Array.Clear(material.DataKey, 0, material.DataKey.Length);
 
-                // Resolved only after Unlock: the migrator depends on PineDbContext, which refuses
-                // to be constructed while the vault session is locked.
-                //
-                // IVaultMigrator and PineDbContext are Scoped (TD-01), so they are resolved from an
-                // EXPLICIT scope rather than from the root provider. Resolving a Scoped service
-                // from the root creates a root-scoped instance that lives for the whole process --
-                // here that would be a DbContext pinned to this vault's path and key, still alive
-                // after the user locks it and opens a different vault. The scope is disposed only
-                // after MigrateAsync has completed.
-                using var migrationScope = _serviceProvider.CreateScope();
-                var migrator = migrationScope.ServiceProvider.GetRequiredService<IVaultMigrator>();
-
-                // Migrations (never EnsureCreated) are the single source of truth for the schema:
-                // this creates the full schema AND records __EFMigrationsHistory. On a brand-new
-                // vault there is no data yet, so no pre-migration backup is taken.
-                await migrator.MigrateAsync(CancellationToken.None).ConfigureAwait(false);
+                // The schema phase (TD-28). Creating it needs an explicit DI scope, a DbContext
+                // and the migrator, and all three now live behind IVaultDatabaseOpener rather than
+                // in this view model. Called only after Unlock: the migrator depends on
+                // PineDbContext, which refuses to be constructed while the vault session is locked.
+                // Migrations (never EnsureCreated) remain the single source of truth for the schema.
+                await _vaultDatabaseOpener.CreateSchemaAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
             StatusMessage = "Vault initialized!";
@@ -327,7 +354,7 @@ public partial class SetupViewModel : ObservableObject
             // it replaced. A fresh vault also seeds no account: see DashboardView's always-visible
             // "+ New Account" affordance for the empty-vault path.
 
-            _navigationService.NavigateTo<ShellViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateShell());
         }
         catch (Exception ex)
         {

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Avalonia.Controls;
+using Pine.Ui.Avalonia.Diagnostics;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Pine.Ui.Avalonia.ViewModels.Importing;
@@ -19,7 +20,27 @@ public partial class ImportWizardView : UserControl
         InitializeComponent();
     }
 
-    private async void SelectFile_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Picks the file to import. Was <c>async void</c> with an unguarded file-picker await
+    /// until TD-35.
+    /// </summary>
+    private void SelectFile_Click(object sender, RoutedEventArgs e)
+    {
+        ObservedTask.Run(
+            SelectFileAsync,
+            null,
+            "import-file-select",
+            "That file could not be opened. Try another one.",
+            message =>
+            {
+                if (DataContext is ImportWizardViewModel target)
+                {
+                    target.StatusMessage = message;
+                }
+            });
+    }
+
+    private async System.Threading.Tasks.Task SelectFileAsync()
     {
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel == null) return;

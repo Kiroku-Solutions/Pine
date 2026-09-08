@@ -169,7 +169,7 @@ public class ErrorMessageTaxonomyTests
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<VoidTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(ConcurrencyConflictException.From(new InvalidOperationException("store detail")));
-        var vm = new TransactionsViewModel(mediator);
+        var vm = new TransactionsViewModel(mediator, Substitute.For<IViewModelFactory>());
         vm.BeginVoidCommand.Execute(SomeTransaction());
         vm.VoidReason = "Duplicate";
 
@@ -184,7 +184,7 @@ public class ErrorMessageTaxonomyTests
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<VoidTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(Leak());
-        var vm = new TransactionsViewModel(mediator);
+        var vm = new TransactionsViewModel(mediator, Substitute.For<IViewModelFactory>());
         vm.BeginVoidCommand.Execute(SomeTransaction());
         vm.VoidReason = "Duplicate";
 
@@ -259,7 +259,7 @@ public class ErrorMessageTaxonomyTests
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new DashboardViewModel(mediator);
+        var vm = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>());
 
         await vm.LoadDataCommand.ExecuteAsync(null);
 

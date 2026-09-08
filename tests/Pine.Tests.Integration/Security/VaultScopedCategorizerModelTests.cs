@@ -41,7 +41,7 @@ public class VaultScopedCategorizerModelTests
         using var personal = new TempVault();
         using var business = new TempVault();
 
-        var groceries = Guid.NewGuid();
+        var groceries = "Groceries";
 
         // Act - train inside Personal.
         using (var session = OpenSession(personal))
@@ -49,7 +49,7 @@ public class VaultScopedCategorizerModelTests
             var categorizer = BuildCategorizer(session);
             await categorizer.TrainModelAsync(BuildHistory(40, groceries));
 
-            (await categorizer.PredictCategoryAsync(DistinctivePayee, 12.50m)).CategoryId
+            (await categorizer.PredictCategoryAsync(DistinctivePayee, 12.50m)).Category
                 .Should().Be(groceries, "the vault that trained the model must be able to use it");
 
             categorizer.Dispose();
@@ -61,7 +61,7 @@ public class VaultScopedCategorizerModelTests
             using var categorizer = BuildCategorizer(session);
             var result = await categorizer.PredictCategoryAsync(DistinctivePayee, 12.50m);
 
-            result.CategoryId.Should().Be(Guid.Empty);
+            result.Category.Should().BeEmpty();
             result.ConfidenceScore.Should().Be(0.0);
         }
     }
@@ -225,15 +225,18 @@ public class VaultScopedCategorizerModelTests
     private static MlNetCategorizer BuildCategorizer(IVaultDataKeyAccessor accessor)
         => new(BuildStore(accessor), NullLogger<MlNetCategorizer>.Instance);
 
-    private static List<(string Text, decimal Amount, Guid CategoryId)> BuildHistory(int rows, Guid? groceries = null)
+    /// <summary>
+    /// Labels are category NAMES, not identifiers (TD-32) -- see <see cref="TrainingExample"/>.
+    /// </summary>
+    private static List<TrainingExample> BuildHistory(int rows, string? groceries = null)
     {
-        var groceriesId = groceries ?? Guid.NewGuid();
-        var transport = Guid.NewGuid();
+        var groceriesLabel = groceries ?? "Groceries";
+        const string transport = "Transport";
 
         return Enumerable.Range(0, rows)
             .Select(i => i % 2 == 0
-                ? ($"{DistinctivePayee} {i}", 10m + i, groceriesId)
-                : ($"UBER TRIP {i}", 20m + i, transport))
+                ? new TrainingExample($"{DistinctivePayee} {i}", 10m + i, groceriesLabel)
+                : new TrainingExample($"UBER TRIP {i}", 20m + i, transport))
             .ToList();
     }
 

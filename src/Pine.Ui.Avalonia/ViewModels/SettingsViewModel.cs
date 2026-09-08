@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,6 +21,7 @@ using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -34,7 +36,7 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// encryption key - for the rest of the session. The mediator is a singleton that opens a fresh
 /// scope per request, and it is also what commits the writes: repositories no longer flush.
 /// </remarks>
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
 {
     [ObservableProperty]
     public partial int SelectedThemeIndex { get; set; }
@@ -85,11 +87,65 @@ public partial class SettingsViewModel : ObservableObject
         SelectedThemeIndex = 2; // System
         SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
         SelectedLanguageIndex = 0; // English
-
-        _ = LoadSettingsAsync();
     }
 
+    /// <inheritdoc />
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadSettingsAsync();
+
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "settings-load",
+        SettingsUnavailable,
+        message => ErrorMessage = message);
+
+    /// <summary>What the user reads when their saved settings cannot be read back.</summary>
+    private const string SettingsUnavailable =
+        "Pine could not read your saved appearance settings, so this page is showing the defaults. "
+        + "Changing anything here will still be saved.";
+
+    /// <summary>What the user reads when a change they just made could not be stored.</summary>
+    /// <remarks>
+    /// This one matters more than it looks. <c>ThemeManager.Apply*</c> runs on the line BEFORE the
+    /// save, so the change is already visible on screen when the write fails -- without this
+    /// sentence the user sees the new theme, believes it is saved, and finds it reverted at the
+    /// next launch with nothing having said otherwise.
+    /// </remarks>
+    private const string SettingNotSaved =
+        "Pine applied that change but could not save it, so it will revert the next time you open Pine.";
+
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Reads the three persisted appearance settings and applies them.
+    /// </summary>
+    /// <remarks>
+    /// THE <c>finally</c> IS THE FIX, NOT AN ORNAMENT (TD-35). <c>_isInitializing</c> starts
+    /// <see langword="true"/> so that applying a stored value does not immediately write it back,
+    /// and it used to be cleared on the last line of the happy path -- AFTER three awaited queries
+    /// that had no <c>catch</c>. Any one of them throwing left the latch stuck <see langword="true"/>
+    /// for the life of the view model, and every one of
+    /// <see cref="OnSelectedThemeIndexChanged"/>, <see cref="OnSelectedPaletteIndexChanged"/> and
+    /// <see cref="OnSelectedLanguageIndexChanged"/> opens with <c>if (_isInitializing) return;</c>.
+    /// The result was a settings page that silently stopped saving anything for the rest of the
+    /// session, while still visibly applying every change -- because <c>ThemeManager.Apply*</c> runs
+    /// before the save. Clearing it in a <c>finally</c> means a failed read costs the user their
+    /// stored values, and nothing else.
+    /// </remarks>
     private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            await LoadAppearanceSettingsAsync();
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+    }
+
+    private async Task LoadAppearanceSettingsAsync()
     {
         var themeSetting = await _sender.Send(new GetSettingQuery(ThemeManager.VariantSettingKey));
         if (themeSetting != null && int.TryParse(themeSetting, out int themeIndex))
@@ -110,8 +166,6 @@ public partial class SettingsViewModel : ObservableObject
         {
             SelectedLanguageIndex = langIndex;
         }
-
-        _isInitializing = false;
 
         await LoadAccountsAsync();
     }
@@ -223,7 +277,12 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_isInitializing) return;
         ThemeManager.ApplyVariant(value);
-        _ = SaveSettingAsync(ThemeManager.VariantSettingKey, value.ToString(CultureInfo.InvariantCulture));
+        ObservedTask.Run(
+            () => SaveSettingAsync(ThemeManager.VariantSettingKey, value.ToString(CultureInfo.InvariantCulture)),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            message => ErrorMessage = message);
     }
 
     partial void OnSelectedPaletteIndexChanged(int value)
@@ -231,13 +290,23 @@ public partial class SettingsViewModel : ObservableObject
         if (_isInitializing) return;
         if (value < 0 || value >= ThemeManager.Palettes.Count) return;
         ThemeManager.ApplyPaletteIndex(value);
-        _ = SaveSettingAsync(ThemeManager.PaletteSettingKey, ThemeManager.Palettes[value].Key);
+        ObservedTask.Run(
+            () => SaveSettingAsync(ThemeManager.PaletteSettingKey, ThemeManager.Palettes[value].Key),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            message => ErrorMessage = message);
     }
 
     partial void OnSelectedLanguageIndexChanged(int value)
     {
         if (_isInitializing) return;
-        _ = SaveSettingAsync(LanguageSettingKey, value.ToString(CultureInfo.InvariantCulture));
+        ObservedTask.Run(
+            () => SaveSettingAsync(LanguageSettingKey, value.ToString(CultureInfo.InvariantCulture)),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            message => ErrorMessage = message);
     }
 
     /// <summary>

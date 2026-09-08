@@ -30,9 +30,16 @@ namespace Pine.Infrastructure.Data;
 public sealed partial class VaultBackupService : IVaultBackupService
 {
     /// <summary>
-    /// How many backups are retained by default. There is no user-facing configuration system
-    /// yet, so this is a constant; making retention configurable is tracked separately as TD-27.
+    /// How many backups are retained when nothing says otherwise.
     /// </summary>
+    /// <remarks>
+    /// WAS THE ONLY ANSWER; IS NOW ONLY THE DEFAULT. This constant's previous comment read "There
+    /// is no user-facing configuration system yet, so this is a constant; making retention
+    /// configurable is tracked separately as TD-27." TD-27 is closed:
+    /// <see cref="Pine.Core.Configuration.PineSecurityOptions.BackupsToKeep"/> is the configured
+    /// value and <c>EfCoreVaultMigrator</c> reads it. This stays because it is the number that
+    /// options object defaults to, and one of the two has to hold it.
+    /// </remarks>
     public const int DefaultBackupsToKeep = 5;
 
     /// <summary>Sub-directory of the vault directory that holds the backups.</summary>

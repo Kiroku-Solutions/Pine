@@ -5,11 +5,13 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.Extensions.Options;
 using Pine.Application.Common;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
+using Pine.Core.Configuration;
 using Pine.Core.Categories;
 
 namespace Pine.Application.Transactions.Commands;
@@ -108,20 +110,28 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
     private readonly IAccountRepository _accountRepository;
     private readonly TimeProvider _timeProvider;
     private readonly IAIProvider _aiProvider;
-    private readonly ICategoryRepository _categoryRepository;
+    private readonly PineAiOptions _aiOptions;
 
+    /// <summary>Creates the handler.</summary>
+    /// <param name="aiOptions">
+    /// Carries the confidence threshold below which an AI-predicted category is NOT applied to an
+    /// imported row. It was the literal <c>0.3</c> here and, separately, in
+    /// <c>CategorizeTransactionQueryHandler</c>; the two are now one value (TD-27).
+    /// </param>
     public ImportTransactionsCommandHandler(
         ITransactionRepository transactionRepository, 
         IAccountRepository accountRepository, 
         TimeProvider timeProvider,
         IAIProvider aiProvider,
-        ICategoryRepository categoryRepository)
+        IOptions<PineAiOptions> aiOptions)
     {
+        ArgumentNullException.ThrowIfNull(aiOptions);
+
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
         _timeProvider = timeProvider;
         _aiProvider = aiProvider;
-        _categoryRepository = categoryRepository;
+        _aiOptions = aiOptions.Value;
     }
 
     public async Task<ImportTransactionsResult> Handle(ImportTransactionsCommand request, CancellationToken cancellationToken)
@@ -253,14 +263,15 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
                 string transactionText = $"{tx.Payee} {tx.Notes}".Trim();
                 var aiResult = await _aiProvider.CategorizeTransactionAsync(transactionText, tx.TotalAmount.Amount, cancellationToken);
                 
-                if (aiResult.CategoryId != Guid.Empty && aiResult.ConfidenceScore >= 0.3)
+                // TD-32: this used to resolve `aiResult.CategoryId` through `ICategoryRepository`
+                // and apply the split only `if (category != null)`. Nothing in this application has
+                // ever written a row to `Categories`, so that lookup always returned null and the
+                // import path silently applied no AI category at all, however confident the model.
+                if (!string.IsNullOrWhiteSpace(aiResult.Category)
+                    && aiResult.ConfidenceScore >= _aiOptions.CategorisationConfidenceThreshold)
                 {
-                    var category = await _categoryRepository.GetByIdAsync(aiResult.CategoryId, cancellationToken);
-                    if (category != null)
-                    {
-                        // Set (not append) the category: a repeated categorization must not add a second split.
-                        tx.ReplaceSplits(new[] { new SplitDefinition(tx.TotalAmount, category.Name, "AI") });
-                    }
+                    // Set (not append) the category: a repeated categorization must not add a second split.
+                    tx.ReplaceSplits(new[] { new SplitDefinition(tx.TotalAmount, aiResult.Category.Trim(), "AI") });
                 }
             }
 

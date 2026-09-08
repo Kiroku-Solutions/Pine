@@ -4,33 +4,57 @@ This document tracks the real-time implementation progress based on the master p
 
 ## Production readiness — read this first
 
-The phase percentages below track **feature delivery against `docs/56-IMPLEMENTATION-PLAN.md`**. They
-do not track whether the software is safe to put real money in, and the two have diverged: the
-production-readiness audit (`docs/60-Production-Readiness-Audit.md`) rated this codebase
-**2.3 / 5 — Not Production Ready** and opened 71 numbered debts. A remediation cycle is running
-against it, and **that** is the number to read before shipping anything.
+| | |
+|---|---|
+| **Status** | Non-normative — working status record |
+| **Reconciled** | 2026-09-08 · Test counts, coverage and the remediation row brought to iteration 30; Phase 2 recorded as closed. Rewritten from the audit's remediation log at iteration 21. Both `STATUS.md` rows in the audit's §6.12 contradiction table — the Diagnostics claim, and "Phase 1 and Phase 2 ✅ 100% Completed" — are corrected here rather than left standing (TD-39) |
+
+The phase percentages below track **feature delivery against `docs/56-IMPLEMENTATION-PLAN.md`**, and
+nothing else. They do not track whether the software is safe to put real money in. A phase can be
+100% delivered against that plan and still be unsafe, which is exactly the state this repository is
+in: the production-readiness audit (`docs/60-Production-Readiness-Audit.md`) rated this codebase
+**2.3 / 5 — Not Production Ready** and has opened **110** numbered debts. **That** is the number to
+read before shipping anything.
 
 | | |
 |---|---|
 | Classification | **Not Production Ready** (audit §11) |
-| Remediation | Audit **Phase 0: all 11 items worked** (iterations 1–10). Items 1 and 4–11 are ✅. **The phase is not clean**: item 2's encrypted export is still unreachable from the UI (TD-56), and item 3 **regressed after it was ticked** — `79c5364` removed the CI workflow's `push`/`pull_request` triggers, so it has never run and the Android/iOS heads have never compiled. See audit §12.22. **Phase 1: items 1–3 are ✅** (structured logging TD-14/TD-25, iteration 11; real diagnostics TD-15, iteration 12; envelope encryption TD-06, iteration 13). Item 3 shipped password change but **not** biometric unlock (TD-87) and re-wraps rather than rotates the data key (TD-86). Item 4 (per-vault encrypted ML model, TD-16) is next |
-| Remaining before the branch is defensible | **TD-07**: re-arm CI — the largest single risk, since every claim above was verified on one machine by hand and the Android/iOS heads have now been edited blind in two consecutive iterations · **TD-85**: four of the five heads throw on navigation buttons the shell renders unconditionally · then TD-83, TD-78, TD-75, TD-81 |
-| Test suite | 28 → **542** (423 unit + 119 integration), both green, verified on this machine at iteration 12. TD-74's "98/99" was a misdiagnosis: the integration project had not **compiled** since `f691ba8` — zero tests executed, not one failing. Fixed and reclassified; see audit §12.20 |
-| Last remediation | 2026-08-29 — Phase 1 item 3: envelope encryption (TD-06). Vault header v2 carries the data key wrapped with AES-256-GCM under the Argon2id-derived auth key, bound to every other header field; `ChangeVaultPasswordCommand` re-wraps under a fresh salt without re-encrypting the database or closing the session. Pre-envelope vaults (v1, `pine.salt`) are **refused, not adopted** — a deliberate breaking change taken while no vault exists in production. Nine falsification mutations, all killed; 474 unit + 150 integration tests green. Registered and **not** fixed: TD-86 (the data key is never rotated), TD-87 (no platform secure storage, so no biometric), TD-88 (WASM has no AES-GCM). See audit §12.27 |
-| Previous remediation | 2026-08-29 — Phase 1 item 2: the Diagnostics screen stopped fabricating (TD-15). Real log tail, real database probe, real version; `Export DIB` and `Seed Demo Data` removed rather than reimplemented. Found and fixed en route: `DiagnosticsViewModel` was registered on one head of five. Found and **not** fixed: TD-85, the same defect across four other pages. See audit §12.25 |
+| Version | `0.1.0-alpha.1`, set in `Directory.Build.props` per `22-Release-Plan` §5. Measured in a running process, not asserted: `pine --version` → `0.1.0-alpha.1+6b7e7f0db86a` |
+| Remediation | **Audit Phase 0: all 11 items worked** (iterations 1–10); items 1 and 4–11 are ✅. The phase is not clean — item 2's encrypted export is still unreachable from the UI (TD-56). **Audit Phase 1: all 10 items worked** (iterations 11–21). Items 1–4, 5b, 6, 7, 8 and 10 are ✅; item **5a** could not build the `Date` index as written and walked into a shipped crash instead (TD-94), and item **9** produced a version and a packaged artefact but **no installer, no signing certificate and no updater** (TD-107–TD-110). Audit **Phase 2: 6 of 9 rows closed** (iterations 22–27). Item 1 dissolved the five duplicated composition roots (TD-29 plus five rows nobody worked directly); item 2 built `PineOptions` (TD-27); item 3 removed the service locator and EF Core from the UI (TD-28, TD-58); item 4 deleted the reflection call that wrote half of every transfer's link (TD-26); item 5 gave the messenger deterministic unregistration and moved I/O out of nine constructors (TD-34, TD-35); item 6 deleted seven empty projects, three dead entities and one unused inference session (TD-36, TD-37, TD-38). **Three rows remain**: package management (TD-41–TD-43), `CategoryId` as an FK plus the undispatched domain events (TD-32, TD-33), and the CI coverage floor. Two things found along the way outrank most of what is left: **TD-121**, a shipped navigation defect that drops the shell, and **TD-117**, now diagnosed as a native access violation under test parallelism |
+| CI | **Manual dispatch only, and that is a decision, not a regression.** `.github/workflows/dotnet-ci.yml` carries no `push` or `pull_request` trigger, so no commit is verified automatically, every count in this file was measured on one machine, and the Android/iOS heads are compiled by nobody (TD-07) |
+| Test suite | 28 → **1079** (874 unit + 205 integration), both green, run locally at iteration 30. Line coverage is now measured and gated: **61.93% overall**, 87.27% in `Pine.Core`, with no exclusions (`scripts/coverage-gate.sh`). This row was **three iterations stale** when iteration 24 found it, still reading 891 after iterations 22, 23 and 24 had each added tests — which is the limit of the rule iteration 21 built: `DocumentStatusTests` checks that a `Reconciled` line exists, not that the numbers in it are true. The suite is **not** evidence of correctness: iteration 18 found two `NaN` defects in its own new code, one of which crashed the receipt scan, under two green suites. One flaky failure has now been observed thirteen times in thirteen different tests (TD-97), and a separate **native access violation aborts the unit run outright** often enough that iteration 28 needed two attempts to state a number (TD-117, diagnosed at §12.54 and still unfixed) |
+| Last remediation | 2026-09-08 — Phase 2 item 9: the coverage floor (**and with it, Phase 2 is closed**). Coverage is measured with no exclusions and gated by `scripts/coverage-gate.sh`, which parses the cobertura report because the only coverage package here cannot enforce a threshold. Getting there first required fixing something larger: **the test suite went red the moment coverage was measured**, because the coverage tool injects a type that the architecture tests choked on. **The gate's CI half cannot fire — nothing triggers the workflow (TD-07/TD-136)** — so the local one-command script is the part that works today. See audit §12.62. Previously, 2026-09-08 — Phase 2 item 8: `CategoryId` as an FK on splits and the undispatched domain events (TD-32, TD-33). The row read as a modelling tidy-up and was hiding a feature that had never run: the transaction categoriser parsed a category NAME as a `Guid` when building its training set, discarded everything, and so was **never trained even once** — while at the other end every prediction it did make was resolved against a category table nothing has ever written to, and dropped. Both ends now speak the same language. `Category.ParentCategoryId` gained the foreign key it never had. The undispatched domain events were removed rather than wired to a dispatcher with no subscribers. **Phase 2 now has one row left.** See audit §12.60. Previously, 2026-09-08 — Phase 2 item 7: central package management, one PaddleOCR model package, Git LFS for the ONNX files (TD-41, TD-42, TD-43). Every package version now lives in `Directory.Packages.props`; the `EFCore.Sqlite.Core` 10.0.9 / `Design` 10.0.11 split NuGet had been unifying silently is closed; two redundant PaddleOCR model packages (472 MB) and three model files (203 MB) that no commit in this repository's history had ever named were deleted, taking the artefact from 1.08 GiB to 658 MiB unpacked. **Phase 2 now has two rows left.** See audit §12.58. Previously, 2026-08-31 — Phase 1 item 10: reconcile the docs (TD-39, TD-40). All 62 files in `docs/` carry a status from a closed four-value vocabulary — `Implemented` / `Partially implemented` / `Aspirational` / `Non-normative` — with a dated `Reconciled` line, and `DocumentStatusTests` fails the build if one goes missing or reverts to "Draft — pending review". ADR-0012 and ADR-0013 were written from the code after eight months of being cited while existing as table rows. Iteration 21 extended the same step to this file, `README.md`, `PRODUCT.md` and `CHANGELOG.md`, which the docs-only pass had left outside it. See audit §12.44 |
+| Previous remediation | 2026-08-31 — Phase 1 item 9: versioning, packaging and a signing seam (TD-49). Nothing had set a version, so every build stamped `1.0.0` and the resolver discarded the commit. `packaging/package.sh` was **run**: an unconstrained publish emitted 1.78 GiB across 30 runtime-identifier folders; the RID-pinned artefact is 1.08 GiB with 317/317 checksums verified. See audit §12.42 |
 
-Note the numbering collision: the audit's "Phase 0" is a *remediation* phase and has nothing to do
-with the implementation plan's "Phase 0 (Foundations)" below.
+Note the numbering collision: the audit's "Phase 0" and "Phase 1" are *remediation* phases and have
+nothing to do with the implementation plan's "Phase 0 (Foundations)" and "Phase 1 (Core Engine)"
+below.
 
 ---
 
 ## Overall Progress
 
+Read the qualifiers. "Completed" below means *every task in the implementation plan was ticked*,
+which is a statement about the plan and not about the software. Where the audit found the delivered
+result to be less than the tick implies, the row says so and names the debt.
+
 - **Phase 0 (Foundations):** ✅ 100% Completed
-- **Phase 1 (v0.1 alpha - Core Engine):** ✅ 100% Completed
-- **Phase 2 (v0.2 beta - Imports & AI Baseline):** ✅ 100% Completed
+- **Phase 1 (v0.1 alpha - Core Engine):** 🟡 **Delivered against the plan; incomplete as a ledger.**
+  The plan had no row for correcting a transaction, so none was built: there is a `VoidTransaction`
+  path and no edit path at all (**TD-68**), and correction therefore costs two rows with no link
+  between them. This row previously read "✅ 100% Completed"; the audit listed that as
+  **Overstated** in its §6.12 contradiction table, and this is that correction.
+- **Phase 2 (v0.2 beta - Imports & AI Baseline):** 🟡 **Delivered against the plan.** The import,
+  OCR and categorisation paths are real and are covered by tests. What the tick did not say is that
+  the AI stack is registered in one head of five (**TD-90**), training is not the opt-in
+  `32-AI-Training` promises (**TD-89**), and the receipt image is never stored, so the audit trail
+  the feature exists to produce stops at the extracted fields (Phase 3 backlog).
 - **Phase 3 (v0.3 beta - Budgets, goals, recurring):** 🟡 In Progress
-  - **Pillar 1 (Budgets MVP):** ✅ Completed (Core, Infra, App, UI connected)
+  - **Pillar 1 (Budgets MVP):** 🔴 **Not usable — the screen is a mock wearing a real screen's
+    clothes (TD-99).** `BudgetsViewModel.cs:148` sets `SpentAmount = 0m` with the comment "Will be
+    calculated from transactions", so the progress bar sits at 0% forever and `IsExceeded` is never
+    true; `:145` renders a GUID fragment where a category name belongs. Core, Infra, App and the UI
+    are wired to each other, which is what "Completed" meant here, and none of it computes anything
   - **Pillar 2 (Savings Goals):** 🔴 Not Started
   - **Pillar 3 (Recurring):** 🔴 Not Started
 - **Phase 4 (v0.4 beta - Investments):** 🔴 Pending
@@ -38,6 +62,10 @@ with the implementation plan's "Phase 0 (Foundations)" below.
 - **Phases 6-10 (Beta to GA):** 🔴 Pending
 
 ---
+
+*Sections below this line are the original delivery record, kept as written except where a
+correction is marked inline with the iteration that made it. They describe what was built, not
+whether it was correct; the header table above is the current statement.*
 
 ## Current Architecture Baseline
 - **Cross-Platform UI (Pine.Ui.Avalonia)**: Contains the pure UI layer using the MVVM pattern with Fluent Design. Agnostic to OS.
@@ -97,7 +125,7 @@ with the implementation plan's "Phase 0 (Foundations)" below.
 ### ✅ Implemented (Pilar 4 - Cierre de Fase 1 SSoT Compliance)
 - **First-Run UX**: Reestructuramos SetupViewModel y la vista con selección paso a paso: Modo de almacenamiento y Opt-In de Telemetría (UC-01).
 - **Settings Panel persistente**: Implementamos la entidad Setting, ISettingRepository, e integramos con SettingsViewModel para guardar y cargar configuraciones desde SQLite.
-- **Entidades de Dominio**: Completamos y verificamos la inclusión de las entidades Category y Attachment en el Core y EF Core para dar soporte a la Fase 2 (IA y Recibos).
+- **Entidades de Dominio**: `Category` está en el Core y en EF Core. **`Attachment` fue eliminada en la iteración 27** (auditoría TD-37): era una entidad sin comportamiento, sin repositorio, sin consulta y sin consumidor, y además no tenía la propiedad `Hash` que `10-Domain-Model` declara obligatoria — es decir, ya contradecía su propia especificación. El almacenamiento cifrado de adjuntos sigue planeado para la Fase 3, sobre `IVaultFileCipher`.
 
 ## Phase 2 Detail (Imports & AI Baseline)
 
@@ -127,4 +155,4 @@ with the implementation plan's "Phase 0 (Foundations)" below.
 - **Deduplication Filter**: Implemented exact-match (Account, Date, Amount) SQLite transaction filtering in `ImportTransactionsCommandHandler` to prevent accidental finance duplication.
 
 ---
-*Last updated: July 12, 2026*
+*Last updated: 2026-08-31 (remediation iteration 21). Delivery record last extended: July 12, 2026.*

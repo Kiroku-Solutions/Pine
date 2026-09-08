@@ -9,6 +9,7 @@ using NSubstitute;
 using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
+using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
 using Xunit;
 
@@ -127,7 +128,7 @@ public class DashboardBalanceSummaryTests
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<Account>)accounts);
 
-        return new DashboardViewModel(mediator);
+        return new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>());
     }
 
     private sealed class InvariantCulture : IDisposable

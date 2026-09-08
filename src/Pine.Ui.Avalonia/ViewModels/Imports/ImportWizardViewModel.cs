@@ -13,7 +13,6 @@ using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
-using Pine.Infrastructure.Importing;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
 
@@ -24,6 +23,7 @@ public partial class ImportWizardViewModel : ObservableObject
     private readonly IMediator _mediator;
     private readonly Action _onClose;
     private readonly TimeProvider _timeProvider;
+    private readonly IImporterFactory _importerFactory;
     private readonly ILogger<ImportWizardViewModel>? _logger;
 
     private int _stepIndex;
@@ -131,17 +131,46 @@ public partial class ImportWizardViewModel : ObservableObject
 
     public bool HasUncheckedRows => UncheckedCount > 0;
 
+    /// <summary>
+    /// Creates the wizard.
+    /// </summary>
+    /// <param name="mediator">The application-layer entry point.</param>
+    /// <param name="timeProvider">The head's clock, used to stamp the temporary import profile.</param>
+    /// <param name="importerFactory">
+    /// Chooses the reader for the file the user picked. Injected rather than constructed (TD-28):
+    /// this screen previously named a concrete CSV importer, which both tied the UI assembly to the
+    /// infrastructure layer and meant every format the file picker offers -- spreadsheets, PDFs,
+    /// photographs -- was parsed as comma-separated text.
+    /// </param>
+    /// <param name="onClose">Invoked when the wizard is finished with, however it ends.</param>
+    /// <param name="logger">
+    /// Optional; supplied by the container through <c>PineViewModelFactory</c>. Optional only so a
+    /// test can construct the wizard without one.
+    /// </param>
     public ImportWizardViewModel(
         IMediator mediator,
         TimeProvider timeProvider,
+        IImporterFactory importerFactory,
         Action onClose,
         ILogger<ImportWizardViewModel>? logger = null)
     {
         _mediator = mediator;
         _timeProvider = timeProvider;
+        _importerFactory = importerFactory;
         _onClose = onClose;
+        // NOT MOVED ONTO IAsyncInitializable, AND THE REASON IS STRUCTURAL (TD-35). That interface
+        // is driven by PageActivation, which only ever sees a page assigned to a navigator's
+        // CurrentPage. This view model is an overlay: DashboardViewModel builds it through
+        // IViewModelFactory and shows it in place, so navigation never sees it and would never
+        // start its initialisation. The load therefore stays here -- what changes is that its
+        // failure is now read instead of discarded.
         _logger = logger;
-        _ = LoadAccountsAsync();
+        ObservedTask.Run(
+            LoadAccountsAsync,
+            _logger,
+            "import-accounts-load",
+            "Pine could not load your accounts, so there is nowhere to import into. Close the wizard and try again.",
+            message => StatusMessage = message);
     }
 
     private async Task LoadAccountsAsync()
@@ -254,8 +283,10 @@ public partial class ImportWizardViewModel : ObservableObject
             
             profile.UpdateSettings("yyyy-MM-dd", ',', HasHeaders, InvertAmounts, mappings, _timeProvider);
 
-            // Run importer on the file (without saving to DB)
-            var importer = new CsvImporter(_timeProvider);
+            // Run importer on the file (without saving to DB). The importer is chosen from the
+            // file's own extension: a .xlsx or .pdf used to be handed to the CSV reader here, and a
+            // format with no importer now throws a sentence rather than producing plausible rubbish.
+            var importer = _importerFactory.ForFile(SelectedFilePath);
             using var stream = File.OpenRead(SelectedFilePath);
             
             var transactions = await importer.ImportAsync(SelectedAccount, stream, profile);
@@ -317,7 +348,9 @@ public partial class ImportWizardViewModel : ObservableObject
             };
             profile.UpdateSettings("yyyy-MM-dd", ',', HasHeaders, InvertAmounts, mappings, _timeProvider);
 
-            var importer = new CsvImporter(_timeProvider);
+            // Same choice as the preview made, from the same file, so the rows the user approved
+            // on the preview step are the rows this writes.
+            var importer = _importerFactory.ForFile(SelectedFilePath);
             using var stream = File.OpenRead(SelectedFilePath);
 
             var command = new ImportTransactionsCommand(SelectedAccount.Id, stream, importer, profile);

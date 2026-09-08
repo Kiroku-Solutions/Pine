@@ -13,11 +13,10 @@
 | Closes OD      | `OD-10` (telemetry policy)                                   |
 | Deciders       | The implementation. See the note below.                      |
 
-> **This ADR does not record the decision its citations assume.** Seven documents cite `ADR-0012` as
-> the authority for a telemetry switch that is *opt-in and default-off*
-> (`30-Observability:22,251,296`, `29-Deployment:249,277`, `32-AI-Training:317`,
-> `38-Threat-Model:176,187`). No such ADR existed, and — more importantly — no such switch exists
-> either. What was built is stronger than what was cited, and writing this file the way the register
+> **This ADR does not record the decision its citations assume.** Eight places across four documents
+> cite `ADR-0012` as the authority for a telemetry switch that is *opt-in and default-off*; they are
+> listed under **Citations** below. No such ADR existed, and — more importantly — no such switch
+> exists either. What was built is stronger than what was cited, and writing this file the way the register
 > implied would have understated the actual posture. TD-40 asked for "write them or drop the
 > citations"; the honest third answer is *write what happened*.
 
@@ -96,15 +95,32 @@ machine unless the user copies it there themselves.
 | Risk | Mitigation |
 |---|---|
 | A defect that only manifests on user machines is never seen | **Unmitigated, and accepted.** The local JSONL log and `61-Manual-Test-Plan` are what stand in for it |
-| A future dependency introduces network I/O unnoticed | Currently only a grep would catch it. There is no test asserting the absence — a gap worth closing |
+| A future dependency introduces network I/O unnoticed | **Closed, iteration 21.** `NetworkEgressTests` fails the build if any `.cs` file under `src/` names a networking type, or if any project references a networking package. The property is now enforced rather than intended |
 | The documents keep asserting a telemetry switch | `30-Observability` and `29-Deployment` are now marked and annotated; this ADR supersedes the seeded row they cite |
 
 ## Compliance
 
 - `00-Vision` §5 — local-first, privacy-preserving. Satisfied more strongly than the policy required.
 - `15-Security` §5 — telemetry policy. Closed by absence.
-- `38-Threat-Model` TM-54, and the mitigation cross-reference at `:187`.
+- `38-Threat-Model` TM-54, and the mitigation table row that cross-references this ADR.
 - `30-Observability` §10 — **contradicted**. That document describes a switch; there is none.
+
+## Citations
+
+Every place in the document set that cites this ADR, quoted rather than numbered. Line numbers were
+tried first and were wrong within one commit — the `Reconciled` row that item 10 added to each header
+shifted every one of them by one line, which is the whole argument against citing a moving target.
+`DocumentStatusTests.EveryAdrQuotationStillAppearsInTheDocumentItCites` fails the build if any quote
+below stops matching the document it names.
+
+- `30-Observability.md` — "telemetry* principles (per `00-Vision` §5 and ADR-0012)"
+- `30-Observability.md` — "The telemetry switch is *off by default* (ADR-0012)"
+- `30-Observability.md` — "Privacy posture is consistent with ADR-0012 and `15-Security`"
+- `29-Deployment.md` — "settings), and *default-off* (ADR-0012)"
+- `29-Deployment.md` — "Telemetry posture is consistent with ADR-0012"
+- `32-AI-Training.md` — "Privacy posture is consistent with ADR-0012 and `15-Security`"
+- `38-Threat-Model.md` — "Data leaves the device without consent"
+- `38-Threat-Model.md` — "Telemetry opt-in"
 
 ## Traceability
 

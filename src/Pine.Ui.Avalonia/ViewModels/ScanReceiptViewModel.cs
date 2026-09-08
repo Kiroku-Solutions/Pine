@@ -27,10 +27,17 @@ using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class ScanReceiptViewModel : ObservableObject
+public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>, IAsyncInitializable
 {
     private readonly IMediator _mediator;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
+    /// resolve, so a page this head cannot serve is a compile-time surface a test can enumerate
+    /// instead of a throw on the user's click.
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly ILogger<ScanReceiptViewModel>? _logger;
 
     [ObservableProperty]
@@ -193,23 +200,94 @@ public partial class ScanReceiptViewModel : ObservableObject
     public ScanReceiptViewModel(
         IMediator mediator,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         ILogger<ScanReceiptViewModel>? logger = null)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _logger = logger;
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
         // fixes a mistyped price and the difference must move with it. CollectionChanged catches
         // rows appearing and disappearing; the per-row handler catches the amounts inside them.
         LineItems.CollectionChanged += OnLineItemsChanged;
+    }
 
-        _ = LoadAccountsAsync();
+    /// <inheritdoc />
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadAccountsAsync();
 
-        WeakReferenceMessenger.Default.Register<ReceiptCapturedMessage>(this, async (r, m) =>
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "scan-accounts-load",
+        AccountsUnavailable,
+        message => ErrorMessage = message);
+
+    /// <summary>What the user reads when the account list behind the Save button cannot load.</summary>
+    /// <remarks>
+    /// Loading the accounts used to be a discarded task in the constructor, and
+    /// <c>LoadAccountsAsync</c> has no <c>catch</c> (TD-35). The failure was therefore invisible
+    /// until the user had scanned a receipt, filled the form and pressed Save, at which point the
+    /// screen said "Please select an account." about a list that had never loaded.
+    /// </remarks>
+    private const string AccountsUnavailable =
+        "Pine could not load your accounts, so this receipt cannot be saved yet. Try again.";
+
+    /// <summary>
+    /// Starts the scan for a receipt captured elsewhere (the live scanner, or the crop screen).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE HANDLER THIS REPLACED WAS <c>async void</c> IN EVERYTHING BUT NAME (TD-34). It was
+    /// registered as <c>async (r, m) =&gt; await ProcessReceiptImageAsync(...)</c>; the messenger
+    /// invokes handlers synchronously and discards whatever they return, so the <c>Task</c> was
+    /// never observed and any exception inside it reached the runtime as an unobserved fault rather
+    /// than the user as a message. It also captured <c>this</c>, which kept every instance the user
+    /// ever navigated to alive and subscribed -- three visits to the scanner meant one captured
+    /// receipt was processed three times.
+    /// </para>
+    /// <para>
+    /// <see cref="Receive"/> must stay <c>void</c> -- that is the <c>IRecipient&lt;T&gt;</c>
+    /// contract -- so the work still has to be started rather than awaited. It is started through
+    /// <see cref="ProcessCapturedReceiptAsync"/> instead of a bare discard because
+    /// <see cref="ProcessReceiptImageAsync"/>'s own try/catch does not open until after several
+    /// property assignments; a throw from those (a disposed stream, say) would otherwise escape
+    /// into the same nowhere the old handler sent it.
+    /// </para>
+    /// </remarks>
+    /// <param name="message">The captured image, and optionally an OCR-enhanced copy of it.</param>
+    public void Receive(ReceiptCapturedMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        _ = ProcessCapturedReceiptAsync(message);
+    }
+
+    /// <summary>
+    /// The try/catch wrapper that makes the discard in <see cref="Receive"/> survivable.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately small and local. A general "start this and never lose the exception" helper is
+    /// TD-35's subject and would be the wrong thing to invent here; this only has to guarantee that
+    /// nothing thrown while handling a message leaves the view model, and that whatever went wrong
+    /// reaches the user through the same <see cref="ErrorMessage"/> the rest of the screen uses.
+    /// </remarks>
+    private async Task ProcessCapturedReceiptAsync(ReceiptCapturedMessage message)
+    {
+        try
         {
-            await ProcessReceiptImageAsync(m.ImageStream, m.OcrImageStream);
-        });
+            await ProcessReceiptImageAsync(message.ImageStream, message.OcrImageStream);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-process",
+                "Pine could not read that receipt. Try taking the photo again in better light.");
+            IsBusy = false;
+        }
     }
 
     private async Task LoadAccountsAsync()
@@ -454,7 +532,7 @@ public partial class ScanReceiptViewModel : ObservableObject
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
-            _navigationService.NavigateTo<TransactionsViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateTransactions());
         }
         catch (Exception ex)
         {
@@ -478,13 +556,13 @@ public partial class ScanReceiptViewModel : ObservableObject
     [RelayCommand]
     private void Cancel()
     {
-        _navigationService.NavigateTo<TransactionsViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateTransactions());
     }
 
     [RelayCommand]
     private void Retake()
     {
-        _navigationService.NavigateTo<LiveScannerViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateLiveScanner());
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
     }
 

@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-39-PERFORMANCE`                                                             |
 | Status           | Aspirational — no performance measurement exists                                     |
-| Reconciled       | 2026-08-31 · `tests/Pine.Tests.Performance` contains one empty template file and is compile-checked, never run (TD-38). Documents `pine perf bench` (:184), which the CLI does not implement. |
+| Reconciled       | 2026-09-07 · **`tests/Pine.Tests.Performance` no longer exists** — iteration 27 deleted it (TD-38). It had held a single empty `UnitTest1.Test1()` from the `dotnet new xunit` template, asserting nothing; CI compiled it and deliberately refused to run it, because running it would have put a green tick under a heading that measured nothing. A project that must be excluded from the thing it is named after is carrying a promise, not a test, and the promise belongs here rather than in the build. Still documents `pine perf bench` (:184), which the CLI does not implement. **No performance measurement was lost, because there was none.** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

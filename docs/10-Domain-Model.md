@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-10-DOMAIN-MODEL`                                                           |
-| Status           | Partially implemented — the money aggregates are real; three entities are shells     |
-| Reconciled       | 2026-08-31 · `Account`, `Transaction`, `Money`, `Budget` and their invariants are implemented and tested. `Attachment`, `Rule` and `Tag` exist as entities with no behaviour and no consumer (TD-36). |
+| Status           | Partially implemented — the money aggregates are real; several contexts are unbuilt  |
+| Reconciled       | 2026-09-07 · `Account`, `Transaction`, `Money`, `Budget` and their invariants are implemented and tested. `Attachment`, `Rule` and `Tag` no longer exist in code: the three shell entities and their tables were dropped (TD-37), so §6.14 and the `Tag`/`Attachment` rows in §7 describe a design that is not built. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -271,7 +271,13 @@ another context reads from a projection or subscribes to its events.
   - A profile MUST NOT execute code from the source file.
 - **Behaviours.** create, edit, run, schedule, replay, archive.
 
-### 6.14 Rule Engine
+### 6.14 Rule Engine *(not built)*
+
+> This section specifies a design, not code. The `Rule` entity and its table
+> were dropped in TD-37: what existed was a shell with an unconstrained
+> `TargetCategoryId` `Guid`, no evaluator and no consumer. The engine described
+> in `31-Rule-Engine` is Phase 3 work and is expected to be built on a real
+> `CategoryId` relationship rather than on that shell.
 
 - **Aggregate root.** `Rule`.
 - **Identity.** `RuleId`.
@@ -302,8 +308,8 @@ another context reads from a projection or subscribes to its events.
 | `ExchangeRate`| A rate at a specific timestamp.                                                              | Positive; timestamped.                                                   |
 | `DateRange`   | A pair of instants in a specific timezone.                                                   | `from <= to`.                                                            |
 | `Category`    | A hierarchical label (e.g. `Food / Restaurants`).                                            | Non-empty; tree depth ≤ 5 (configurable).                                |
-| `Tag`         | A free-form label.                                                                            | Non-empty; case-insensitive.                                              |
-| `Attachment`  | A reference to an encrypted blob with a content hash.                                        | Hash MUST be set.                                                        |
+| `Tag` *(not built)* | A free-form label.                                                                      | Non-empty; case-insensitive.                                              |
+| `Attachment` *(not built)* | A reference to an encrypted blob with a content hash.                           | Hash MUST be set.                                                        |
 | `Locale`      | A language-and-region identifier.                                                            | Conforms to BCP 47.                                                      |
 | `Timezone`    | An IANA TZ identifier.                                                                       | Conforms to IANA.                                                        |
 | `Confidence`  | A value in [0, 1].                                                                            | In range.                                                                 |

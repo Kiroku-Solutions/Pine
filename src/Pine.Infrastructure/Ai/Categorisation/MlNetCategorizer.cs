@@ -9,6 +9,8 @@ using Microsoft.ML;
 using Microsoft.ML.Data;
 using Pine.Core.Ai;
 using Pine.Core.Security;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
 
 namespace Pine.Infrastructure.Ai.Categorisation;
 
@@ -22,12 +24,12 @@ public class TransactionInput
 {
     [LoadColumn(0)] public string Text { get; set; } = string.Empty;
     [LoadColumn(1)] public float Amount { get; set; }
-    [LoadColumn(2)] public string CategoryId { get; set; } = string.Empty;
+    [LoadColumn(2)] public string Category { get; set; } = string.Empty;
 }
 
 public class TransactionPrediction
 {
-    [ColumnName("PredictedLabel")] public string PredictedCategoryId { get; set; } = string.Empty;
+    [ColumnName("PredictedLabel")] public string PredictedCategory { get; set; } = string.Empty;
     [ColumnName("Score")] public float[] Scores { get; set; } = Array.Empty<float>();
 }
 
@@ -68,9 +70,14 @@ public class TransactionPrediction
 public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizationTrainer, IDisposable
 {
     /// <summary>
-    /// Rows below which training is refused. Fewer than this and the model memorises rather than
-    /// generalises, and a confidently wrong category is worse than no category.
+    /// Rows below which training is refused, when nothing says otherwise.
     /// </summary>
+    /// <remarks>
+    /// Fewer than this and the model memorises rather than generalises, and a confidently wrong
+    /// category is worse than no category. The value actually used comes from
+    /// <see cref="Pine.Core.Configuration.PineAiOptions.MinimumTrainingRows"/> (TD-27); this
+    /// constant is what that property defaults to.
+    /// </remarks>
     public const int MinimumTrainingRows = 10;
 
     private readonly MLContext _mlContext;
@@ -93,15 +100,28 @@ public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizatio
     /// </summary>
     private bool _loadAttempted;
 
+    /// <summary>The configured refusal floor for training. See <see cref="MinimumTrainingRows"/>.</summary>
+    private readonly int _minimumTrainingRows;
+
     /// <summary>Creates the categoriser over a vault-scoped model store.</summary>
-    /// <exception cref="ArgumentNullException">Any argument is null.</exception>
-    public MlNetCategorizer(ICategorizerModelStore modelStore, ILogger<MlNetCategorizer> logger)
+    /// <param name="modelStore">The vault-scoped, encrypted model store.</param>
+    /// <param name="logger">The category logger.</param>
+    /// <param name="aiOptions">
+    /// Carries the minimum row count below which training is refused (TD-27). Optional, because
+    /// this type is constructed directly in several tests that have no container.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Any required argument is null.</exception>
+    public MlNetCategorizer(
+        ICategorizerModelStore modelStore,
+        ILogger<MlNetCategorizer> logger,
+        IOptions<PineAiOptions>? aiOptions = null)
     {
         ArgumentNullException.ThrowIfNull(modelStore);
         ArgumentNullException.ThrowIfNull(logger);
 
         _modelStore = modelStore;
         _logger = logger;
+        _minimumTrainingRows = aiOptions?.Value.MinimumTrainingRows ?? MinimumTrainingRows;
 
         // Instantiate ML.NET context. We use a seed for deterministic reproducibility.
         _mlContext = new MLContext(seed: 42);
@@ -129,7 +149,7 @@ public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizatio
             {
                 // No trained model for this vault yet -- or the vault is locked. Either way, do not
                 // predict anything with confidence.
-                return new CategorisationResult(Guid.Empty, 0.0);
+                return new CategorisationResult(string.Empty, 0.0);
             }
 
             prediction = _predictionEngine.Predict(input);
@@ -142,12 +162,13 @@ public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizatio
         // The maximum Score corresponds to the predicted category
         double confidence = prediction.Scores.Length > 0 ? prediction.Scores.Max() : 0.0;
 
-        Guid predictedGuid = Guid.TryParse(prediction.PredictedCategoryId, out var guid) ? guid : Guid.Empty;
-
-        return new CategorisationResult(predictedGuid, confidence);
+        // The label IS the category name (TD-32). This used to be
+        // `Guid.TryParse(prediction.PredictedCategoryId, ...)`, which mirrored the parse on the
+        // training side and failed for the same reason: nothing ever produced a Guid-shaped label.
+        return new CategorisationResult(prediction.PredictedCategory ?? string.Empty, confidence);
     }
 
-    public async Task TrainModelAsync(IEnumerable<(string Text, decimal Amount, Guid CategoryId)> history, CancellationToken cancellationToken = default)
+    public async Task TrainModelAsync(IEnumerable<TrainingExample> history, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(history);
 
@@ -170,10 +191,10 @@ public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizatio
             {
                 Text = h.Text,
                 Amount = (float)h.Amount,
-                CategoryId = h.CategoryId.ToString()
+                Category = h.Category
             }).ToList();
 
-            if (trainingData.Count < MinimumTrainingRows)
+            if (trainingData.Count < _minimumTrainingRows)
             {
                 // Not enough data to train a model without completely overfitting
                 return;
@@ -188,7 +209,7 @@ public sealed partial class MlNetCategorizer : IMlNetCategorizer, ICategorizatio
             // - Extract features (FeaturizeText) from the transaction text (creates n-grams, TF-IDF).
             // - Concatenate features: processed text + Amount.
             // - Algorithm: SdcaMaximumEntropy (ideal for multiclass text classification).
-            var pipeline = _mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: nameof(TransactionInput.CategoryId), outputColumnName: "Label")
+            var pipeline = _mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: nameof(TransactionInput.Category), outputColumnName: "Label")
                 .Append(_mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(TransactionInput.Text), outputColumnName: "TextFeatures"))
                 .Append(_mlContext.Transforms.Concatenate("Features", "TextFeatures", nameof(TransactionInput.Amount)))
                 .Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features"))

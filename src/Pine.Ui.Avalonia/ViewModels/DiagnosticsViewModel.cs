@@ -6,6 +6,11 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Pine.Core.Diagnostics;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
+using System.Threading;
+using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -133,7 +138,7 @@ public sealed class DiagnosticsLogEntryViewModel
 /// since SQLite and EF messages routinely carry the vault file path.
 /// </para>
 /// </remarks>
-public partial class DiagnosticsViewModel : ObservableObject
+public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializable
 {
     /// <summary>
     /// How many of the newest log records the terminal reads.
@@ -147,6 +152,12 @@ public partial class DiagnosticsViewModel : ObservableObject
     /// the <c>.log.jsonl</c> files themselves.
     /// </remarks>
     public const int MaxLogEntries = 200;
+
+    /// <summary>
+    /// The configured ceiling, from <c>PineUiOptions.DiagnosticsLogEntryLimit</c> (TD-27), which
+    /// defaults to <see cref="MaxLogEntries"/>.
+    /// </summary>
+    private readonly int _maxLogEntries;
 
     /// <summary>
     /// What every measured field reads before <see cref="RefreshAsync"/> has run.
@@ -191,6 +202,7 @@ public partial class DiagnosticsViewModel : ObservableObject
     public const string ViewClearedText = "View cleared. Refresh to read the log again.";
 
     private readonly ILogTailReader _logTailReader;
+    private readonly ILogger<DiagnosticsViewModel>? _logger;
     private readonly IDatabaseHealthProbe _databaseHealthProbe;
     private readonly IRuntimeInfoProvider _runtimeInfoProvider;
 
@@ -262,16 +274,22 @@ public partial class DiagnosticsViewModel : ObservableObject
     /// <param name="logTailReader">Reads back the records the log sink wrote.</param>
     /// <param name="databaseHealthProbe">Answers whether the vault database is there and migrated.</param>
     /// <param name="runtimeInfoProvider">Reports build, host and managed memory.</param>
+    /// <param name="uiOptions">Carries the record ceiling. Optional, for tests without a container.</param>
     public DiagnosticsViewModel(
         ILogTailReader logTailReader,
         IDatabaseHealthProbe databaseHealthProbe,
-        IRuntimeInfoProvider runtimeInfoProvider)
+        IRuntimeInfoProvider runtimeInfoProvider,
+        IOptions<PineUiOptions>? uiOptions = null,
+        ILogger<DiagnosticsViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(logTailReader);
         ArgumentNullException.ThrowIfNull(databaseHealthProbe);
         ArgumentNullException.ThrowIfNull(runtimeInfoProvider);
 
+        _maxLogEntries = (uiOptions?.Value ?? new PineUiOptions()).DiagnosticsLogEntryLimit;
+
         _logTailReader = logTailReader;
+        _logger = logger;
         _databaseHealthProbe = databaseHealthProbe;
         _runtimeInfoProvider = runtimeInfoProvider;
     }
@@ -299,6 +317,31 @@ public partial class DiagnosticsViewModel : ObservableObject
     /// precisely so this method has no exception to be tempted by.
     /// </para>
     /// </remarks>
+    /// <inheritdoc />
+    public Task InitializeAsync(CancellationToken cancellationToken) => RefreshAsync();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// REPORTS TO THE LOG AND NOWHERE ELSE, DELIBERATELY. This view model's own remarks state that
+    /// neither of its two seams throws by contract, which is why <see cref="RefreshAsync"/> has no
+    /// <c>catch</c>. That contract is still the design; what changed (TD-35) is what happens if it
+    /// is ever broken. It used to be nothing at all -- the shell fired
+    /// <c>_ = diagnostics.RefreshAsync()</c> and a fault vanished. Now it is an Error record naming
+    /// the operation. There is no screen text because this page has no error surface, and inventing
+    /// one to display a failure that cannot occur would be worse than the log line -- but the
+    /// clipboard copy on this same page CAN fail, routinely, so <see cref="ErrorMessage"/> exists
+    /// for that and this policy reports to it too rather than keeping two conventions.
+    /// </remarks>
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "diagnostics-refresh",
+        "The diagnostics panel could not be read.",
+        message => ErrorMessage = message);
+
+    /// <summary>What the user reads when something on this page fails -- in practice, the clipboard.</summary>
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
     [RelayCommand]
     public async Task RefreshAsync()
     {
@@ -312,7 +355,7 @@ public partial class DiagnosticsViewModel : ObservableObject
             var health = await _databaseHealthProbe.CheckAsync(CancellationToken.None).ConfigureAwait(true);
             DatabaseStatus = DescribeHealth(health);
 
-            var tail = await _logTailReader.ReadTailAsync(MaxLogEntries, CancellationToken.None).ConfigureAwait(true);
+            var tail = await _logTailReader.ReadTailAsync(_maxLogEntries, CancellationToken.None).ConfigureAwait(true);
 
             LogEntries.Clear();
             foreach (var entry in tail)

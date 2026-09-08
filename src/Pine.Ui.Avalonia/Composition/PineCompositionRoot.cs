@@ -1,0 +1,334 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Pine.Application.Common;
+using Pine.Application.Security;
+using Pine.Application.Services;
+using Pine.Core.Configuration;
+using Pine.Infrastructure.DependencyInjection;
+using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.ViewModels;
+
+namespace Pine.Ui.Avalonia.Composition;
+
+/// <summary>
+/// The one composition root every head uses (TD-29). Builds the container, and starts what has to
+/// be started, so that a head's <c>Main</c> consists of naming itself and handing the result to
+/// <see cref="App.InitializeServices"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// THE FIVE ROOTS DID NOT DIFFER BY PLATFORM; THEY DIFFERED BY WHO EDITED THEM LAST. That is the
+/// finding underneath TD-29, and the reason this type replaces them rather than being offered
+/// alongside them. Between the five files the container disagreed about the lifetime of
+/// <c>PineDbContext</c> (transient on Windows, scoped elsewhere) and of <c>ShellViewModel</c>
+/// (transient on Windows, singleton elsewhere); four of five registered no <c>IAIProvider</c>, so
+/// three MediatR handlers could not be constructed there at all (TD-90); four of five were missing
+/// between three and four of the seven nav targets, each one a throw on click (TD-85); three of
+/// five had no <c>TimeProvider</c> (TD-52). Not one of those is a platform difference. Every one of
+/// them is a line that existed in one file and was never copied into the other four.
+/// </para>
+/// <para>
+/// WHY IT LIVES IN <c>Pine.Ui.Avalonia</c> AND NOT IN A HEAD. The test projects reference
+/// <c>Pine.Ui.Avalonia</c> and cannot reference the heads -- three of them target
+/// <c>net10.0-android</c>, <c>net10.0-ios</c> and <c>net10.0-browser</c>, so a <c>net10.0</c> test
+/// project could not load them even if it wanted to. That is exactly why TD-83 could observe that
+/// deleting <c>AddPineLogging()</c> from <c>Pine.Ui.Web/Program.cs</c> left the whole suite green.
+/// Here the graph is a <c>net10.0</c> object that <c>PineCompositionRootTests</c> builds for all
+/// five profiles and interrogates.
+/// </para>
+/// <para>
+/// WHAT A HEAD STILL OWNS. Its platform's SQLite provider initialisation, its Avalonia
+/// <c>AppBuilder</c>, its crash handler, and its own name. Nothing else.
+/// </para>
+/// </remarks>
+public static class PineCompositionRoot
+{
+    /// <summary>
+    /// Registers the application layer, the infrastructure layer and the UI layer for a head.
+    /// </summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="profile">The head being composed.</param>
+    /// <returns>The same service collection, for chaining.</returns>
+    /// <remarks>
+    /// Prefer <see cref="Build"/>, which calls this and then builds the provider with the
+    /// validation flags that make a wiring mistake loud. This overload exists so a test can inspect
+    /// or override the descriptors before the provider is built.
+    /// </remarks>
+    public static IServiceCollection AddPine(
+        this IServiceCollection services,
+        PineHeadProfile profile,
+        Action<PineOptions>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var capabilities = PineHeadCapabilities.For(profile);
+        services.AddSingleton(capabilities);
+
+        // Configuration first, because everything below reads a value from it (TD-27). Binding
+        // happens here rather than through services.Configure<T>() so that a bad config file throws
+        // ONE exception listing every problem, at startup, instead of one exception per section at
+        // whichever screen first resolved it.
+        var configuration = PineConfiguration.Build();
+        var options = PineConfiguration.Bind(configuration, configureOptions);
+        AddOptions(services, configuration, options);
+
+        // The vault session, and the two Pine.Core bindings that forward to it, come from
+        // AddPineApplication -- but the session itself is registered here, because it is the UI's
+        // notion of "the vault the user opened" and Pine.Application deliberately does not decide
+        // that a process has exactly one.
+        services.AddSingleton<IVaultSession, VaultSession>();
+        services.AddSingleton<VaultManager>();
+
+        // MediatR, the validation and transaction pipeline behaviours, every request validator, the
+        // per-request scoping mediator, and the IVaultLockState / IVaultDataKeyAccessor forwards
+        // that AddPineInfrastructure's DbContext factory resolves through (TD-01, TD-15, TD-16).
+        services.AddPineApplication();
+
+        // Persistence, vault cryptography, logging, diagnostics and the AI subsystem (TD-29).
+        services.AddPineInfrastructure(infrastructure =>
+        {
+            infrastructure.IncludeReceiptVision = capabilities.HasReceiptVision;
+
+            // The log directory is now a fact about Pine's data directory rather than a second,
+            // independently computed answer to the same question. PineLoggingOptions STAYS a plain
+            // mutable class -- its own remarks explain why, and they are still true: PineCrashLogger
+            // runs from Main's catch block, where the failure being recorded may be the container
+            // itself, so the sink must be constructible with `new` and no options infrastructure.
+            // Configuration seeds it; it does not replace it.
+            infrastructure.ConfigureLogging = logging => logging.Directory = options.Storage.LogsDirectory;
+        });
+
+        // Idle auto-lock watchdog (TD-11). Registered as an IHostedService by that method, and
+        // STARTED by Start below on every head -- previously Windows started it through a hosted
+        // service loop and the other four armed it by resolving it once, which is two mechanisms
+        // for one watchdog and a silent no-op on any head that forgot the second.
+        // Seeded, not bound. VaultAutoLockOptions is deliberately a mutable singleton -- a settings
+        // screen changes the idle timeout at runtime, and an IOptions snapshot would never reach the
+        // already-running timer. Configuration supplies the starting value and then gets out of the
+        // way, which is the correct relationship for a value the user owns.
+        services.AddPineVaultAutoLock(autoLock => autoLock.IdleTimeout = options.Security.AutoLockIdleTimeout);
+
+        AddViewModels(services, capabilities);
+
+        if (capabilities.HasBackgroundTraining)
+        {
+            services.AddSingleton<IHostedService, CategorizationTrainingBackgroundService>();
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Builds the container for a head, with scope validation and build-time validation on.
+    /// </summary>
+    /// <param name="profile">The head being composed.</param>
+    /// <returns>The root provider. The caller owns its lifetime.</returns>
+    /// <remarks>
+    /// <para>
+    /// VALIDATESCOPES (TD-01). <c>PineDbContext</c>, the repositories, <c>IUnitOfWork</c>,
+    /// <c>IVaultMigrator</c> and <c>IVaultBackupService</c> are scoped. Without this flag, resolving
+    /// one of them from the ROOT provider quietly succeeds and produces a root-scoped instance that
+    /// lives for the whole process -- a context still holding the first vault's path and key after
+    /// the user locks it and opens another.
+    /// </para>
+    /// <para>
+    /// VALIDATEONBUILD IS NOW ON, AND IT WAS OFF IN ALL FIVE ROOTS FOR ONE REASON. Each of them
+    /// registered <c>AddTransactionViewModel</c>, whose constructor takes an <c>Action onComplete</c>
+    /// that no container can supply -- so build-time validation aborted startup on a registration
+    /// that was never usable. <c>TransactionsViewModel</c> constructs that view model by hand, as it
+    /// always did, so the registration was dead: it could only ever have thrown if something had
+    /// resolved it. Deleting it costs nothing and buys the flag, which is what turns "this head is
+    /// missing a service" from a crash on the screen that needs it into a failure at startup, in
+    /// front of a test.
+    /// </para>
+    /// <para>
+    /// AND THE THREE OF THEM ARE SERVED PROPERLY NOW (TD-58). Deleting the registration left those
+    /// three view models built by hand, with whatever their parent page happened to hold.
+    /// <see cref="IViewModelFactory"/>'s three <c>Action</c>-taking methods close that: the callback
+    /// is supplied by the caller and every other constructor argument comes from this container,
+    /// WITHOUT a registration and therefore without costing the flag again.
+    /// </para>
+    /// </remarks>
+    public static ServiceProvider Build(PineHeadProfile profile, Action<PineOptions>? configureOptions = null)
+    {
+        var services = new ServiceCollection();
+        services.AddPine(profile, configureOptions);
+
+        return services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true,
+        });
+    }
+
+    /// <summary>
+    /// Starts every <see cref="IHostedService"/> in the container -- the auto-lock watchdog on all
+    /// heads, plus categoriser training where the head has it.
+    /// </summary>
+    /// <param name="provider">The provider returned by <see cref="Build"/>.</param>
+    /// <remarks>
+    /// None of the five heads runs a generic host, so nothing starts hosted services for them. The
+    /// Windows head ran this loop; the other four instead resolved <c>IVaultAutoLockService</c> once
+    /// and relied on <c>VaultAutoLockOptions.StartAutomatically</c> arming it in its constructor.
+    /// Both work, which is the problem -- a second hosted service added later would have been
+    /// started on one head and silently ignored on four.
+    /// </remarks>
+    public static void Start(IServiceProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+
+        foreach (var hostedService in provider.GetServices<IHostedService>())
+        {
+            hostedService.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>
+    /// Hands the Avalonia layer the two objects it needs, by name (TD-28).
+    /// </summary>
+    /// <param name="provider">The provider returned by <see cref="Build"/>.</param>
+    /// <remarks>
+    /// <para>
+    /// THE HEADS USED TO PASS THE WHOLE CONTAINER. <c>App.InitializeServices</c> took an
+    /// <see cref="IServiceProvider"/> and parked it in a public static, which <c>MainWindow</c>
+    /// then reached into for the vault session. That is the same locator problem TD-28 removed from
+    /// the view models, one layer up: a window is not constructed by the container, so SOMETHING has
+    /// to bridge it -- but the bridge does not have to be "anything, on demand, from anywhere".
+    /// </para>
+    /// <para>
+    /// Resolving happens HERE, in the one file that is allowed to hold a container, and what crosses
+    /// into the UI is a <see cref="PineUiServices"/> whose members are named and typed. A missing
+    /// registration is a throw at startup, in this method, on every head at once -- not a
+    /// <see langword="null"/> that a window quietly tolerates until an idle timeout never fires.
+    /// </para>
+    /// </remarks>
+    public static void InitializeUi(IServiceProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+
+        App.InitializeServices(new PineUiServices(
+            provider.GetRequiredService<MainViewModel>(),
+            provider.GetRequiredService<IVaultSession>()));
+    }
+
+    /// <summary>
+    /// The view models the shell can navigate to on a head with the given capabilities.
+    /// </summary>
+    /// <param name="capabilities">The head's capabilities.</param>
+    /// <returns>The nav-target types, in the order the sidebar lists them.</returns>
+    /// <remarks>
+    /// PUBLIC BECAUSE IT IS THE ASSERTABLE HALF OF TD-85. <c>PineCompositionRootTests</c> resolves
+    /// every type this returns from every profile's real container, so a page that gains a nav
+    /// button without a registration fails the build rather than the click.
+    /// </remarks>
+    public static IReadOnlyList<Type> NavigationTargets(PineHeadCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        var targets = new List<Type>
+        {
+            typeof(DashboardViewModel),
+            typeof(TransactionsViewModel),
+        };
+
+        if (capabilities.HasReceiptVision)
+        {
+            targets.Add(typeof(ScanReceiptViewModel));
+            targets.Add(typeof(LiveScannerViewModel));
+        }
+
+        targets.Add(typeof(BudgetsViewModel));
+        targets.Add(typeof(SettingsViewModel));
+        targets.Add(typeof(DiagnosticsViewModel));
+
+        return targets;
+    }
+
+    /// <summary>
+    /// Registers the configuration root and every options section, in both shapes the codebase uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// TWO SHAPES, AND EACH ONE HAS A CALLER THE OTHER CANNOT SERVE. <c>IOptions&lt;T&gt;</c> is the
+    /// idiomatic seam for anything the container constructs, and every handler and view model that
+    /// reads a threshold takes it that way. The RAW instance is registered beside it for
+    /// <c>VaultManager</c>, which takes <see cref="PineStorageOptions"/> directly because it is also
+    /// constructed by hand outside any container. Both registrations point at the SAME object, so
+    /// there is one configuration in the process and not two that can drift.
+    /// </para>
+    /// </remarks>
+    private static void AddOptions(IServiceCollection services, IConfiguration configuration, PineOptions options)
+    {
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(options);
+
+        services.AddSingleton(options.Storage);
+        services.AddSingleton(options.Security);
+        services.AddSingleton(options.Ai);
+        services.AddSingleton(options.Ui);
+
+        services.AddSingleton<IOptions<PineOptions>>(Options.Create(options));
+        services.AddSingleton<IOptions<PineStorageOptions>>(Options.Create(options.Storage));
+        services.AddSingleton<IOptions<PineSecurityOptions>>(Options.Create(options.Security));
+        services.AddSingleton<IOptions<PineAiOptions>>(Options.Create(options.Ai));
+        services.AddSingleton<IOptions<PineUiOptions>>(Options.Create(options.Ui));
+    }
+
+    private static void AddViewModels(IServiceCollection services, PineHeadCapabilities capabilities)
+    {
+        // THE ONE PLACE A VIEW MODEL MAY REACH THE CONTAINER (TD-28). Every screen used to hold an
+        // IServiceProvider of its own and resolve its successor out of it; they now hold this
+        // instead, which offers one named method per page and nothing else. Singleton because it is
+        // stateless and holds only the provider -- see PineViewModelFactory for why the root
+        // provider is the right one here.
+        services.AddSingleton<IViewModelFactory, PineViewModelFactory>();
+
+        // MainViewModel is the pre-vault navigator and the app's INavigationService. Singleton
+        // because it owns the window's CurrentPage for the process's life.
+        services.AddSingleton<MainViewModel>();
+        services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<MainViewModel>());
+
+        // TRANSIENT, ON EVERY HEAD (TD-72). Windows had this transient and the other four had it
+        // singleton. A singleton shell is built once and then outlives the vault it was opened for:
+        // lock, open a different vault, and the shell handed to the window is still the first one,
+        // holding the first vault's CurrentPage. Transient is the answer that matches what the type
+        // is -- a view of one open vault.
+        services.AddTransient<ShellViewModel>();
+
+        // Pre-vault screens.
+        services.AddTransient<VaultSelectionViewModel>();
+        services.AddTransient<SetupViewModel>();
+        services.AddTransient<UnlockViewModel>();
+
+        // In-vault pages available on every head.
+        services.AddTransient<DashboardViewModel>();
+        services.AddTransient<TransactionsViewModel>();
+        services.AddTransient<BudgetsViewModel>();
+        services.AddTransient<SettingsViewModel>();
+        services.AddTransient<DiagnosticsViewModel>();
+
+        // The receipt pages, and ONLY where the pipeline behind them exists (TD-85). Registering
+        // them everywhere would resolve fine and then throw the moment the camera was asked for;
+        // not registering them anywhere was the previous state on four heads, where the button was
+        // still in the sidebar and threw on click. The button is now gated by the same capability.
+        if (capabilities.HasReceiptVision)
+        {
+            services.AddTransient<ScanReceiptViewModel>();
+            services.AddTransient<LiveScannerViewModel>();
+            services.AddTransient<CropReceiptViewModel>();
+        }
+
+        // NOT REGISTERED, DELIBERATELY: AddTransactionViewModel, CreateAccountViewModel and
+        // ImportWizardViewModel. All three take an Action the caller supplies, which no container can
+        // serve. Windows registered the first of them, which is what kept ValidateOnBuild off in all
+        // five roots; see the remarks on Build. They are built through IViewModelFactory's three
+        // Action-taking methods instead (TD-58), so they are no longer constructed by hand by their
+        // parent page: the callback comes from the caller and every other constructor argument, the
+        // logger included, comes from here.
+    }
+}

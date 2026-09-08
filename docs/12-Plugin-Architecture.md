@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-12-PLUGIN-ARCHITECTURE`                                                    |
 | Status           | Aspirational — no plugin host exists                                                 |
-| Reconciled       | 2026-08-31 · `src/Pine.Plugins.Host` and `src/Pine.Plugins.Sdk` contain zero `.cs` files (TD-37). Nothing loads, sandboxes or trusts a plugin. |
+| Reconciled       | 2026-09-07 · **`src/Pine.Plugins.Host` and `src/Pine.Plugins.Sdk` no longer exist** — iteration 27 deleted them (TD-38). They had contained zero `.cs` files since they were created; nothing loaded, sandboxed or trusted a plugin, and nothing referenced either project. §10 Phase 3 of the audit offered exactly two outcomes for them — build the host, or "formally retire the two plugin documents and delete the empty projects" — and this is the second. **This document is retained deliberately and its `Status` is unchanged**, because `Aspirational` is defined as "nothing in the tree does this; it may still be a good plan", which is now more precisely true than it was: an empty project implied work in progress, and its absence does not. The earlier citation of TD-37 here was wrong — TD-37 is the dead-entities row; the empty projects are TD-38. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

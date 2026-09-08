@@ -1,9 +1,11 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -16,6 +18,7 @@ using Pine.Core.Categories;
 using Pine.Core.Common;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.ViewModels.Widgets;
 
@@ -90,10 +93,23 @@ public partial class BudgetProgressViewModel : ObservableObject
     }
 }
 
-public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>
+/// <summary>
+/// The budgets page.
+/// </summary>
+/// <remarks>
+/// IT DECLARED <c>IRecipient&lt;DataChangedMessage&gt;</c> FOR MONTHS WITHOUT EVER RECEIVING ONE
+/// (TD-34). Nothing registered it -- there was no manual messenger registration
+/// call anywhere for this type -- so <see cref="Receive"/> was unreachable code and adding a
+/// transaction never refreshed the budget bars. Deriving from <see cref="ObservableRecipient"/> is
+/// the fix rather than deleting the interface, because the interface described the intended
+/// behaviour correctly; it was the wiring that was missing. Activation now registers it like every
+/// other page.
+/// </remarks>
+public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable
 {
     private readonly IMediator _mediator;
     private readonly INavigationService _navigationService;
+    private readonly ILogger<BudgetsViewModel>? _logger;
 
     public string Title { get; set; } = "Budgets";
     public int ColumnSpan { get; set; } = 2;
@@ -108,18 +124,54 @@ public partial class BudgetsViewModel : ObservableObject, IDashboardWidgetViewMo
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
-    public BudgetsViewModel(IMediator mediator, INavigationService navigationService)
+    public BudgetsViewModel(
+        IMediator mediator,
+        INavigationService navigationService,
+        ILogger<BudgetsViewModel>? logger = null)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+        _logger = logger;
     }
 
+    /// <summary>Reloads the budgets when something elsewhere changed the data.</summary>
+    /// <remarks>
+    /// Observed rather than discarded (TD-35). Until TD-34 this method was unreachable -- the class
+    /// declared <c>IRecipient&lt;DataChangedMessage&gt;</c> and nothing ever registered it -- so its
+    /// discarded task had never actually run.
+    /// </remarks>
+    /// <param name="message">The broadcast. It carries no payload.</param>
     public void Receive(DataChangedMessage message)
     {
-        _ = LoadBudgetsAsync();
+        ObservedTask.Run(
+            LoadBudgetsAsync,
+            _logger,
+            "budgets-reload",
+            BudgetsUnavailable,
+            reported => ErrorMessage = reported);
     }
 
-    public async Task InitializeAsync()
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "budgets-load",
+        BudgetsUnavailable,
+        message => ErrorMessage = message);
+
+    /// <summary>What the user reads when the budget list cannot be read.</summary>
+    /// <remarks>
+    /// <c>LoadBudgetsAsync</c> has a <c>try/finally</c> and no <c>catch</c>, and it clears
+    /// <c>Budgets</c> BEFORE its await -- so a failure used to leave an empty list with
+    /// <c>IsLoading</c> correctly false, which reads as "you have no budgets" (TD-35).
+    /// </remarks>
+    private const string BudgetsUnavailable =
+        "Your budgets could not be loaded, so this page is not showing them. Try again.";
+
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
+    /// <inheritdoc />
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         await LoadBudgetsAsync();
     }

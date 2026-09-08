@@ -50,6 +50,10 @@ Generated\ Files/
 # NUnit
 *.VisualState.xml
 TestResult.xml
+
+# Coverage and test output. scripts/coverage-gate.sh writes TestResults/coverage/ (Phase 2 item 9).
+TestResults/
+**/TestResults/
 nunit-*.xml
 
 # Build Results of an ATL Project

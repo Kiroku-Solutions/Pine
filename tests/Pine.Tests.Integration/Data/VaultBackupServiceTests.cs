@@ -80,8 +80,11 @@ public class VaultBackupServiceTests : IDisposable
         // the recorded schema version drift silently away from the schema that was backed up.
         // Retargeted in iteration 6 (TD-02) from 20260827141109_AddTransactionImportKey, again in
         // iteration 9 (TD-19), which added the nullable line item Kind column, and again for the
-        // scaled-money/UTC-ordering migration (TD-31, TD-79, TD-30), which is now the head.
-        backup.SchemaVersionBefore.Should().Be("20260830200447_AddConcurrencyTokens");
+        // scaled-money/UTC-ordering migration (TD-31, TD-79, TD-30). It is retargeted again here
+        // for DropAttachmentRuleAndTagTables (TD-37), and again here for AddCategoryParentForeignKey
+        // (TD-32), which is now the head -- and this line going red is the evidence that that
+        // migration really runs against a real SQLCipher vault.
+        backup.SchemaVersionBefore.Should().Be("20260908152526_AddCategoryParentForeignKey");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

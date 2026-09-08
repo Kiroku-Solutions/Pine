@@ -47,6 +47,30 @@ public class ArchitectureTests
     private static readonly string[] ExpectedAccountPublicMethods =
         ["AdoptOpeningBalance", "Create", "Deposit", "RecalculateBalance", "Withdraw"];
 
+    /// <summary>
+    /// Every type in <paramref name="assembly"/> that this repository actually wrote.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EXISTS BECAUSE A COVERAGE RUN INJECTS TYPES INTO THE ASSEMBLIES UNDER TEST (Phase 2 item 9).
+    /// Coverlet instruments by rewriting IL, and one of the things it writes in is a tracker type
+    /// named <c>Coverlet.Core.Instrumentation.Tracker.&lt;assembly&gt;_&lt;guid&gt;</c>. NetArchTest's
+    /// <c>GetTypes()</c> materialises <see cref="Type"/> objects, and materialising that one throws
+    /// <c>TypeLoadException: Could not resolve type</c> — so
+    /// <see cref="TheOnlyTypeInTheApplicationLayer_ThatUsesReflection_IsTheValidatorRegistration"/>
+    /// failed under <c>--collect:"XPlat Code Coverage"</c> and passed without it.
+    /// </para>
+    /// <para>
+    /// That is a real obstacle rather than a curiosity: a coverage gate cannot be enforced on a
+    /// suite that turns red the moment coverage is measured. Filtering to the <c>Pine</c> namespace
+    /// keeps every rule pointed at exactly the code it was written about, and instrumentation
+    /// becomes invisible to it. It does NOT weaken any rule — nothing here was ever asserting
+    /// something about a type this project did not write.
+    /// </para>
+    /// </remarks>
+    private static NetArchTest.Rules.PredicateList OurTypesIn(System.Reflection.Assembly assembly) =>
+        Types.InAssembly(assembly).That().ResideInNamespaceStartingWith("Pine");
+
     [Fact]
     public void DomainLayer_ShouldNot_DependOnOtherLayers()
     {
@@ -54,14 +78,13 @@ public class ArchitectureTests
         var domainAssembly = typeof(Pine.Core.Accounts.Account).Assembly;
 
         // Act
+        // Guard against a vacuous pass: NetArchTest reports success when it inspected nothing.
+        OurTypesIn(domainAssembly).GetTypes().Should().NotBeEmpty();
+
         var result = Types
             .InAssembly(domainAssembly)
-            .ShouldNot()
-            .HaveDependencyOn("Pine.Application")
-            .And()
-            .HaveDependencyOn("Pine.Infrastructure")
-            .And()
-            .HaveDependencyOn("Pine.Ui.Avalonia")
+            .Should()
+            .NotHaveDependencyOnAny("Pine.Application", "Pine.Infrastructure", "Pine.Ui.Avalonia")
             .GetResult();
 
         // Assert
@@ -75,12 +98,13 @@ public class ArchitectureTests
         var appAssembly = typeof(Pine.Application.Accounts.Commands.CreateAccountCommand).Assembly;
 
         // Act
+        // Guard against a vacuous pass: NetArchTest reports success when it inspected nothing.
+        OurTypesIn(appAssembly).GetTypes().Should().NotBeEmpty();
+
         var result = Types
             .InAssembly(appAssembly)
-            .ShouldNot()
-            .HaveDependencyOn("Pine.Infrastructure")
-            .And()
-            .HaveDependencyOn("Pine.Ui.Avalonia")
+            .Should()
+            .NotHaveDependencyOnAny("Pine.Infrastructure", "Pine.Ui.Avalonia")
             .GetResult();
 
         // Assert
@@ -293,7 +317,7 @@ public class ArchitectureTests
         var infrastructureAssembly = typeof(Pine.Infrastructure.Diagnostics.LogRedactor).Assembly;
 
         // Guard against a vacuous pass: NetArchTest reports success when it inspected nothing.
-        Types.InAssembly(infrastructureAssembly).GetTypes().Should().NotBeEmpty();
+        OurTypesIn(infrastructureAssembly).GetTypes().Should().NotBeEmpty();
 
         // Act
         var result = Types
@@ -326,6 +350,11 @@ public class ArchitectureTests
         // Arrange
         var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.SetupViewModel).Assembly;
 
+        // Guard against a vacuous pass: a rename would make this filter select nothing, and
+        // NetArchTest reports success when it inspected nothing.
+        Types.InAssembly(uiAssembly).That().HaveName("SetupViewModel").GetTypes()
+            .Should().ContainSingle("the filter below is only evidence while it actually selects SetupViewModel.");
+
         // Act
         var result = Types.InAssembly(uiAssembly)
             .That()
@@ -353,6 +382,11 @@ public class ArchitectureTests
     {
         // Arrange
         var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.SetupViewModel).Assembly;
+
+        // Guard against a vacuous pass: a rename would make this filter select nothing, and
+        // NetArchTest reports success when it inspected nothing.
+        Types.InAssembly(uiAssembly).That().HaveName("SetupViewModel").GetTypes()
+            .Should().ContainSingle("the filter below is only evidence while it actually selects SetupViewModel.");
 
         // Act
         var result = Types.InAssembly(uiAssembly)
@@ -391,5 +425,376 @@ public class ArchitectureTests
         propertyNames.Should().NotContain(
             ["IsCloudSync", "TelemetryOptIn"],
             "TD-48 removed the dead cloud-sync radio button and TD-80 removed the telemetry checkbox; neither property should exist to bind to.");
+    }
+
+    /// <summary>
+    /// The names of the types in <c>Pine.Ui.Avalonia</c> that are allowed to know
+    /// <c>Pine.Infrastructure</c> exists. Held in a field for the same CA1861 reason as
+    /// <see cref="ExpectedAccountPublicMethods"/>, and — like that list — it is a tripwire whose
+    /// whole value is that widening it is hard and visible.
+    /// </summary>
+    private static readonly string[] TypesAllowedToTouchInfrastructure = ["PineCompositionRoot"];
+
+    /// <summary>
+    /// TD-28. No view model and no view may depend on <c>Pine.Infrastructure</c> or on EF Core.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE RULE IS SCOPED TO THE VIEW MODELS AND THE VIEWS, AND THAT IS A DECISION, NOT A
+    /// COMPROMISE FOUND LATE. <c>60-Production-Readiness-Audit</c> §12.47 and §12.49 both flagged
+    /// that "UI ↛ Infrastructure" cannot be asserted over the whole assembly, because
+    /// <c>PineCompositionRoot</c> lives here — deliberately, so a <c>net10.0</c> test can reach it
+    /// (TD-83) — and calling <c>AddPineInfrastructure</c> is its entire job. An assembly-wide rule
+    /// would therefore have to be either false or disabled. The alternative considered and rejected
+    /// was moving composition into a project of its own so the compiler could enforce the rule
+    /// instead of a test: rejected because it buys the same guarantee this test gives while
+    /// requiring edits to the Android and iOS heads, which no machine in this project can compile
+    /// (TD-07), and because the residual coupling it would have to paper over is recorded honestly
+    /// instead — see the OpenCvSharp row in the register.
+    /// </para>
+    /// <para>
+    /// It is not vacuous. Before this ticket, <c>UnlockViewModel</c> held
+    /// <c>using Pine.Infrastructure.Data;</c> and resolved a <c>PineDbContext</c> out of a scope it
+    /// created itself, and <c>ImportWizardViewModel</c> constructed a <c>CsvImporter</c> — this test
+    /// would have named both.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ViewModelsAndViews_ShouldNot_DependOnInfrastructureOrEfCore()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+
+        // Guard against a vacuous pass: the namespace filter must actually select something.
+        Types.InAssembly(uiAssembly)
+            .That()
+            .ResideInNamespaceStartingWith("Pine.Ui.Avalonia.ViewModels")
+            .GetTypes()
+            .Should().NotBeEmpty("a filter that selects no view model proves nothing.");
+
+        // Act
+        var result = Types
+            .InAssembly(uiAssembly)
+            .That()
+            .ResideInNamespaceStartingWith("Pine.Ui.Avalonia.ViewModels")
+            .Or()
+            .ResideInNamespaceStartingWith("Pine.Ui.Avalonia.Views")
+            .Should()
+            .NotHaveDependencyOnAny("Pine.Infrastructure", "Microsoft.EntityFrameworkCore")
+            .GetResult();
+
+        // Assert
+        result.IsSuccessful.Should().BeTrue(
+            "TD-28: a screen must not reach past the application layer into persistence. Offending types: {0}",
+            string.Join(", ", result.FailingTypeNames ?? Array.Empty<string>()));
+    }
+
+    /// <summary>
+    /// TD-28, the other half: the set of types in the UI assembly that touch
+    /// <c>Pine.Infrastructure</c> at all is an explicit, enumerated allow-list.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ViewModelsAndViews_ShouldNot_DependOnInfrastructureOrEfCore"/> keeps the screens
+    /// clean; this keeps the exception NAMED. A new helper class in this assembly that reaches for
+    /// EF Core would satisfy the namespace rule above simply by not being called a view model, and
+    /// nothing else in the suite would notice. Here it fails, and the only way to make it pass is to
+    /// add its name to <see cref="TypesAllowedToTouchInfrastructure"/> — in a diff, on purpose.
+    /// </remarks>
+    [Fact]
+    public void TheOnlyTypeInTheUi_ThatTouchesInfrastructure_IsTheCompositionRoot()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+
+        // Guard against a vacuous pass: the assembly must have been inspected at all.
+        OurTypesIn(uiAssembly).GetTypes().Should().NotBeEmpty();
+
+        // Act
+        var touching = OurTypesIn(uiAssembly)
+            .And()
+            .HaveDependencyOn("Pine.Infrastructure")
+            .GetTypes()
+            .Select(OutermostDeclaringType)
+            .Select(type => type.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        touching.Should().Equal(
+            TypesAllowedToTouchInfrastructure,
+            "composition is the one place in this assembly allowed to name the infrastructure layer; " +
+            "anything else on this list is a new leak, and anything missing from it means the rule " +
+            "is no longer being tested against a real dependency.");
+    }
+
+    /// <summary>
+    /// TD-28. No view model may take the container — by constructor parameter or by field.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A NAMESPACE RULE CANNOT SEE THIS ONE. <c>IServiceProvider</c> is declared in
+    /// <c>System.Runtime</c>, not in any Microsoft.Extensions package, so an IL dependency check for
+    /// "the DI namespace" would miss a view model that simply holds one and calls
+    /// <c>GetService(typeof(T))</c> through the non-generic interface — which is exactly what
+    /// <c>MainWindow</c> did. This reflects on the types instead.
+    /// </para>
+    /// <para>
+    /// It is not vacuous. Before this ticket <c>MainViewModel</c>, <c>ShellViewModel</c>,
+    /// <c>SetupViewModel</c> and <c>UnlockViewModel</c> each held an <c>IServiceProvider</c> field
+    /// and took one in their constructor, and this test would have named all four.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoViewModelOrView_ShouldTakeTheContainer()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+        var containerTypes = new[]
+        {
+            typeof(IServiceProvider),
+            typeof(IServiceScope),
+            typeof(IServiceScopeFactory),
+        };
+
+        var screenTypes = uiAssembly.GetTypes()
+            .Where(type => type.Namespace is not null)
+            .Where(type => type.Namespace!.StartsWith("Pine.Ui.Avalonia.ViewModels", StringComparison.Ordinal)
+                        || type.Namespace!.StartsWith("Pine.Ui.Avalonia.Views", StringComparison.Ordinal))
+            .ToArray();
+
+        screenTypes.Should().NotBeEmpty("a filter that selects no screen proves nothing.");
+
+        // Act
+        var offenders = screenTypes
+            .SelectMany(type => type
+                .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .SelectMany(constructor => constructor.GetParameters())
+                .Where(parameter => containerTypes.Contains(parameter.ParameterType))
+                .Select(parameter => $"{type.Name}(..{parameter.ParameterType.Name}..)")
+                .Concat(type
+                    .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Where(field => containerTypes.Contains(field.FieldType))
+                    .Select(field => $"{type.Name}.{field.Name}")))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        offenders.Should().BeEmpty(
+            "TD-28: a screen that holds the container has hidden dependencies and can resolve a page " +
+            "this head never registered, which is a throw on the user's click rather than a failure a " +
+            "compiler or a test can see. Pages come from IViewModelFactory.");
+    }
+
+    /// <summary>
+    /// The names of the types in <c>Pine.Application</c> that are allowed an IL dependency on
+    /// <c>System.Reflection</c>. Held in a field for the same CA1861 reason as
+    /// <see cref="ExpectedAccountPublicMethods"/>, and — like that list — it is a tripwire whose
+    /// whole value is that widening it is hard and visible.
+    /// </summary>
+    /// <remarks>
+    /// <c>PineApplicationServiceCollectionExtensions</c> scans this assembly for
+    /// <c>IRequestValidator&lt;&gt;</c> implementations and registers each one. That is assembly
+    /// scanning at composition time — the one use of reflection here that is about WIRING rather
+    /// than about reaching past an access modifier — and
+    /// <c>EveryRequestValidator_ShouldBeRegistered</c> already pins what it is supposed to produce.
+    /// </remarks>
+    private static readonly string[] TypesAllowedToUseReflection = ["PineApplicationServiceCollectionExtensions"];
+
+    /// <summary>
+    /// TD-26, the durable half: the set of types in <c>Pine.Application</c> that use reflection at
+    /// all is an explicit, enumerated allow-list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT THIS IS FOR. <c>TransferFundsCommandHandler</c> used to finish building a transfer with
+    /// <c>typeof(Transaction).GetProperty(nameof(Transaction.LinkedTransactionId))!.SetValue(...)</c>,
+    /// punching through a <c>private set</c> because the handler had no way to link the second leg
+    /// back to the first. That call is gone: <c>Transaction.CreateTransferPair</c> now creates both
+    /// legs already linked, and <c>Transaction.Create</c> no longer accepts a link at all, so a
+    /// half-linked transfer is unconstructible rather than merely discouraged.
+    /// </para>
+    /// <para>
+    /// DELETING THE CALL IS THIS ITERATION'S WORK; THIS TEST IS WHAT STOPS THE NEXT ONE. Reflection
+    /// into a domain aggregate is what a handler reaches for the moment the domain does not offer
+    /// the operation it wants, and the resulting write bypasses every invariant the aggregate is
+    /// there to hold — silently, since it compiles, runs and reads perfectly well. The failure it
+    /// produced here was not a missing link but a HALF-VOIDED TRANSFER, because the void handler
+    /// follows exactly the direction that was being written this way. A code review cannot keep that
+    /// out; this can. Adding a type to <see cref="TypesAllowedToUseReflection"/> is the only way to
+    /// make it pass, which forces the question into a diff, on purpose.
+    /// </para>
+    /// <para>
+    /// It is not vacuous in either direction. Before this ticket
+    /// <c>TransferFundsCommandHandler</c> would have been named here; and the list is non-empty, so
+    /// a rule that had stopped matching real dependencies would fail rather than quietly pass.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheOnlyTypeInTheApplicationLayer_ThatUsesReflection_IsTheValidatorRegistration()
+    {
+        // Arrange
+        var appAssembly = typeof(Pine.Application.Accounts.Commands.CreateAccountCommand).Assembly;
+
+        // Guard against a vacuous pass: the assembly must have been inspected at all.
+        OurTypesIn(appAssembly).GetTypes().Should().NotBeEmpty();
+
+        // Act
+        var reflecting = OurTypesIn(appAssembly)
+            .And()
+            .HaveDependencyOn("System.Reflection")
+            .GetTypes()
+            .Select(OutermostDeclaringType)
+            .Select(type => type.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        reflecting.Should().Equal(
+            TypesAllowedToUseReflection,
+            "TD-26: a handler that reflects into an aggregate writes past every invariant that " +
+            "aggregate exists to hold. Anything new on this list is a new such write; anything " +
+            "missing from it means the rule is no longer being tested against a real dependency.");
+    }
+
+    /// <summary>
+    /// The complete public instance/static method surface <c>Transaction</c> is allowed to have.
+    /// Held in a field for the same CA1861 reason as <see cref="ExpectedAccountPublicMethods"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS LIST IS A TRIPWIRE, and widening it is the thing it exists to make hard. Every entry is
+    /// an operation the aggregate performs on itself, with its invariants intact. The properties
+    /// alongside them are all <c>private set</c>, and that is load-bearing: TD-26 removed the one
+    /// place in the codebase that wrote past one of them — <c>LinkedTransactionId</c>, through
+    /// reflection — by giving the domain the operation the caller actually wanted
+    /// (<c>CreateTransferPair</c>) instead of a way to set the field.
+    /// </para>
+    /// <para>
+    /// So a new public method here is not automatically wrong, but it is exactly the shape the next
+    /// bypass would take: a <c>LinkTo</c>, a <c>SetAmount</c>, a settable property added "just for
+    /// the importer". Any addition must be justified in writing, next to this list, the way
+    /// <see cref="ExpectedAccountPublicMethods"/> records its own amendment.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] ExpectedTransactionPublicMethods =
+    [
+        "AddLineItem", "AddSplit", "AssignImportKey", "Create", "CreateTransferPair", "EnsureValid",
+        "LineItemDifference", "ReplaceLineItems", "ReplaceSplits", "ValidateLineItems",
+        "ValidateSplits", "Void",
+    ];
+
+    /// <summary>
+    /// <c>Transaction</c>'s public surface is enumerated, and nothing may be added to it silently.
+    /// </summary>
+    /// <remarks>
+    /// The companion to <see cref="Account_ShouldNot_ExposeAnyPublicMeansOfChangingItsCurrency"/>,
+    /// for the other aggregate root. See <see cref="ExpectedTransactionPublicMethods"/> for why the
+    /// list exists and what adding to it costs.
+    /// </remarks>
+    [Fact]
+    public void Transaction_ShouldNot_WidenItsPublicSurfaceSilently()
+    {
+        // Arrange
+        var transactionType = typeof(Pine.Core.Transactions.Transaction);
+
+        // Act
+        var settableProperties = transactionType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.SetMethod is { IsPublic: true })
+            .Select(property => property.DeclaringType!.Name + "." + property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        var publicMethods = transactionType
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(method => !method.IsSpecialName)
+            .Select(method => method.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        settableProperties.Should().BeEmpty(
+            "every field of a transaction -- its amount, its date, and above all the link to the other leg of its transfer -- must only ever change through an operation the aggregate itself defines.");
+
+        publicMethods.Should().Equal(
+            ExpectedTransactionPublicMethods,
+            "a new public member on Transaction is a new way to write past an invariant; TD-26 exists because one such write was made with reflection instead.");
+    }
+
+    /// <summary>
+    /// The types in <c>Pine.Infrastructure</c> allowed to know the ONNX runtime exists.
+    /// </summary>
+    private static readonly string[] TypesAllowedToUseOnnx = ["ReceiptDetector"];
+
+    /// <summary>
+    /// TD-36. Only the type that actually runs inference may depend on the ONNX runtime.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT WAS DELETED, AND WHY A TEST RATHER THAN THE COMPILER. <c>HeuristicFieldExtractor</c>
+    /// held an <c>InferenceSession</c> over <c>Assets/Ai/ner_minilm_int8.onnx</c>, a file that has
+    /// never existed in this repository, and touched it in exactly four places: declaration, null
+    /// check, assignment, dispose. It never ran inference. The extraction was always heuristic.
+    /// </para>
+    /// <para>
+    /// That shape is invisible to the compiler. A field which is genuinely never used is CS0169,
+    /// which <c>TreatWarningsAsErrors</c> already turns into a build failure — but a field that is
+    /// assigned, null-checked and disposed is "used" by every mechanical measure, and reads as
+    /// working machinery to a person. So the guard has to be about the DEPENDENCY, not the field:
+    /// the ONNX runtime is a heavyweight native package, and a type that names it is claiming to do
+    /// machine learning. Exactly one type in this assembly does.
+    /// </para>
+    /// <para>
+    /// This is deliberately an allow-list rather than a ban. <c>ReceiptDetector</c> genuinely calls
+    /// <c>session.Run</c> over <c>yolo-receipt-nano.onnx</c>, which is present — so the package
+    /// reference stays and a blanket rule would be false.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheOnlyTypeUsingTheOnnxRuntime_IsTheOneThatRunsInference()
+    {
+        // Arrange
+        var infrastructure = typeof(Pine.Infrastructure.Diagnostics.LogRedactor).Assembly;
+
+        // Guard against a vacuous pass.
+        Types.InAssembly(infrastructure).GetTypes().Should().NotBeEmpty();
+
+        // Act
+        var usingOnnx = Types
+            .InAssembly(infrastructure)
+            .That()
+            .HaveDependencyOn("Microsoft.ML.OnnxRuntime")
+            .GetTypes()
+            .Select(OutermostDeclaringType)
+            .Select(type => type.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        usingOnnx.Should().Equal(
+            TypesAllowedToUseOnnx,
+            "a type that names the ONNX runtime is claiming to run a model. If this list grows, the "
+            + "new entry must actually call session.Run -- which is precisely what the extractor "
+            + "deleted by TD-36 never did.");
+    }
+
+    /// <summary>
+    /// Compiler-generated closures and iterator state machines are nested inside the type that
+    /// declared them; NetArchTest reports them under their own generated names, which would make the
+    /// allow-list above unreadable and brittle. This walks back out to the type a person wrote.
+    /// </summary>
+    private static Type OutermostDeclaringType(Type type)
+    {
+        var current = type;
+
+        while (current.DeclaringType is not null)
+        {
+            current = current.DeclaringType;
+        }
+
+        return current;
     }
 }

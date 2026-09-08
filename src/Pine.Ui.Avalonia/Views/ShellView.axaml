@@ -38,9 +38,20 @@
                                 Classes="pine-nav" Classes.active="{Binding IsDashboardActive}" />
                         <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsTransactionsActive}" />
+                        <!-- TD-85: these two are the only pages whose backing pipeline does not
+                             exist on every head, so they are the only two that are gated. IsVisible
+                             rather than IsEnabled, and rather than the "Coming soon" treatment the
+                             Rules button gets below. Rules is unbuilt everywhere and will arrive;
+                             receipt scanning is built and simply cannot run on this platform, and a
+                             permanently greyed button is a worse answer than no button. The binding
+                             source is the same PineHeadCapabilities object that decided whether
+                             ScanReceiptViewModel and LiveScannerViewModel were registered at all,
+                             so a visible button always has a view model behind it. -->
                         <Button Content="Scan Receipt" Command="{Binding NavigateToScanReceiptCommand}"
+                                IsVisible="{Binding HasReceiptVision}"
                                 Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
                         <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}"
+                                IsVisible="{Binding HasReceiptVision}"
                                 Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
                         <Button Content="Budgets" Command="{Binding NavigateToBudgetsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsBudgetsActive}" />

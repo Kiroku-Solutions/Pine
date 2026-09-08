@@ -25,7 +25,9 @@
 #
 # WHY win-x64 IS THE DEFAULT AND THE ONLY TESTED TARGET.
 #   Pine's OCR depends on `OpenCvSharp4.runtime.win` and `Sdcb.PaddleInference.runtime.win64.mkl`
-#   (Pine.Infrastructure.csproj:17,22) — both Windows-x64-only. A linux-x64 or osx-arm64 artefact
+#   (both named by `PackageReference` in Pine.Infrastructure.csproj; cited by name rather than by
+#   line, per iteration 21 — the previous citation said ":17,22" and those lines have since moved)
+#   — both Windows-x64-only. A linux-x64 or osx-arm64 artefact
 #   would build and launch and then be unable to do the thing the application is for. That is
 #   audit row TD-44, and this script will happily take another --rid; it just will not pretend the
 #   result is a supported build.

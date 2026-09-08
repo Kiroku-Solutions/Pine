@@ -55,6 +55,24 @@ however, taken — in code.
 4. **Header version 2 is the only format this build opens.** Pre-envelope vaults (v1, `pine.salt`)
    are refused with a distinct exception, not migrated.
 
+5. **Files that live beside the database, but not inside it, are sealed separately** — and this ADR
+   was silent about them until iteration 21, which is the omission a reader would have been most
+   entitled to be annoyed by. `AesGcmVaultFileCipher` seals a standalone vault file (today: the ML
+   categoriser's model, `{vault}/ai/categorizer.model`) with **AES-256-GCM** under a key derived from
+   the *data key* by **HKDF-SHA256** with `info = "pine:file-cipher:v1:" + purpose` and no salt.
+
+   The derivation is **purpose-separated on purpose**: the file key is deliberately not the database
+   key, so compromising a sealed model does not hand over the ledger, and a second purpose added
+   later gets its own key without a migration. The blob carries the magic `PINEFC1\0`, a 12-byte
+   nonce and a 16-byte tag — the same sizes as the key wrap, which is why they are read from
+   `VaultKeyWrap`'s constants rather than re-declared — and the associated data is the magic plus the
+   **length-prefixed** purpose, for the reason `VaultHeaderBinding` gives: unprefixed concatenation is
+   ambiguous, and the ambiguity is unreachable today only by accident of there being one field.
+
+   The key is derived per operation from `IVaultSession.Key` and the vault is re-checked for being
+   locked *after* availability is asserted, because the auto-lock timer runs on another thread. It
+   fails closed.
+
 ## Consequences
 
 **Positive.**

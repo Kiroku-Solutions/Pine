@@ -27,7 +27,7 @@ public class EfCoreVaultMigratorTests : IDisposable
     /// <c>Should().Contain(...)</c> is satisfied by an earlier id in the applied set. Corrected in
     /// iteration 6 (TD-02) along with the new head.
     /// </remarks>
-    private const string CurrentSchemaVersion = "20260828201103_AddTransactionLineItemKind";
+    private const string CurrentSchemaVersion = "20260908040007_DropAttachmentRuleAndTagTables";
 
     private readonly TempVault _vault = new();
 
@@ -42,7 +42,7 @@ public class EfCoreVaultMigratorTests : IDisposable
     {
         // Arrange: a brand-new vault; pine.db does not exist yet and there is no data to lose.
         var context = _vault.CreateContext();
-        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context));
+        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security);
 
         // Act
         var result = await migrator.MigrateAsync(CancellationToken.None);
@@ -63,12 +63,12 @@ public class EfCoreVaultMigratorTests : IDisposable
     {
         // Arrange: a vault that has already been migrated once.
         var firstContext = _vault.CreateContext();
-        await new EfCoreVaultMigrator(firstContext, new VaultBackupService(firstContext))
+        await new EfCoreVaultMigrator(firstContext, new VaultBackupService(firstContext), PineTestOptions.Security)
             .MigrateAsync(CancellationToken.None);
 
         var context = _vault.CreateContext();
         var backupService = new VaultBackupService(context);
-        var migrator = new EfCoreVaultMigrator(context, backupService);
+        var migrator = new EfCoreVaultMigrator(context, backupService, PineTestOptions.Security);
 
         // Act
         var result = await migrator.MigrateAsync(CancellationToken.None);
@@ -88,7 +88,7 @@ public class EfCoreVaultMigratorTests : IDisposable
         _vault.SeedAppliedMigration(PreviousSchemaVersion);
         var context = _vault.CreateContext();
         var backupService = new VaultBackupService(context);
-        var migrator = new EfCoreVaultMigrator(context, backupService);
+        var migrator = new EfCoreVaultMigrator(context, backupService, PineTestOptions.Security);
 
         // Act
         var result = await migrator.MigrateAsync(CancellationToken.None);
@@ -113,7 +113,7 @@ public class EfCoreVaultMigratorTests : IDisposable
         _vault.ExecuteSql(@"CREATE TABLE ""Accounts"" (""Id"" TEXT NOT NULL PRIMARY KEY);");
 
         var context = _vault.CreateContext();
-        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context));
+        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security);
 
         // Act
         var act = async () => await migrator.MigrateAsync(CancellationToken.None);

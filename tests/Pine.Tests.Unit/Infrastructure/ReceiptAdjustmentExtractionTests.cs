@@ -49,7 +49,9 @@ public class ReceiptAdjustmentExtractionTests
 
     private static ReceiptExtractionResult Extract(params IEnumerable<OcrWord>[] lines)
     {
-        using var extractor = new HeuristicFieldExtractor();
+        // Not `using` any more: the extractor stopped being IDisposable when its unused
+        // InferenceSession was deleted (TD-36). It holds nothing that needs releasing.
+        var extractor = new HeuristicFieldExtractor();
         return extractor.ExtractFields(lines.SelectMany(l => l).ToList());
     }
 

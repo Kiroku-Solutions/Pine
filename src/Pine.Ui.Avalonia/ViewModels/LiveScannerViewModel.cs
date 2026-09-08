@@ -23,10 +23,17 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// </summary>
 public record CameraOption(int Index, string Name);
 
-public partial class LiveScannerViewModel : ObservableObject, IDisposable
+public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<RetakeRequestedMessage>, IDisposable
 {
     private readonly IAIProvider _aiProvider;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
+    /// resolve, so a page this head cannot serve is a compile-time surface a test can enumerate
+    /// instead of a throw on the user's click.
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly ILogger<LiveScannerViewModel>? _logger;
     private readonly object _captureLock = new();
     private int _consecutiveDetections;
@@ -51,10 +58,12 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     public LiveScannerViewModel(
         IAIProvider aiProvider,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         ILogger<LiveScannerViewModel>? logger = null)
     {
         _aiProvider = aiProvider;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _logger = logger;
 
         // Populate mock cameras (OpenCV index based)
@@ -63,12 +72,20 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
             Cameras.Add(new CameraOption(i, $"Camera {i}"));
         }
         SelectedCamera = Cameras[0];
-
-        WeakReferenceMessenger.Default.Register<RetakeRequestedMessage>(this, (r, m) =>
-        {
-            StartScanning();
-        });
     }
+
+    /// <summary>
+    /// The user rejected the photo on the crop or scan screen and wants another go.
+    /// </summary>
+    /// <remarks>
+    /// THE OLD REGISTRATION CAPTURED <c>this</c> BY CALLING <see cref="StartScanning"/> (TD-34),
+    /// which handed the process-wide messenger a strong reference to a view model that owns a
+    /// CAMERA. Every visit to this screen left one behind, subscribed and holding a
+    /// <c>VideoCapture</c> that only <see cref="Dispose"/> releases. Registration now follows
+    /// <c>IsActive</c>, and navigation both unregisters and disposes.
+    /// </remarks>
+    /// <param name="message">The retake request. It carries no payload.</param>
+    public void Receive(RetakeRequestedMessage message) => StartScanning();
 
     [RelayCommand]
     private void StartScanning()
@@ -117,7 +134,19 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
                 if (_capture.Read(frame) && !frame.Empty())
                 {
                     PostToUI(() => StatusMessage = "Manual capture! Extracting text...");
-                    _ = CaptureAndNavigateAsync(frame);
+
+                    // OBSERVED, AND THE DISCARD HERE WAS THE ODD ONE OUT (TD-35).
+                    // CaptureAndNavigateAsync is NOT `async` -- it returns Task.CompletedTask -- so
+                    // a throw from frame.ImEncode(".png") inside it propagated SYNCHRONOUSLY out of
+                    // this relay command, while this thread still held _captureLock. The
+                    // Func<Task> overload is the one that matters: it catches a synchronous throw
+                    // from the factory as well as a faulted task, which a plain discard could not.
+                    ObservedTask.Run(
+                        () => CaptureAndNavigateAsync(frame),
+                        _logger,
+                        "camera-manual-capture",
+                        "That frame could not be captured. Try again.",
+                        message => PostToUI(() => StatusMessage = message));
                 }
             }
         }
@@ -345,7 +374,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         PostToUI(() =>
         {
             StopScanning();
-            _navigationService.NavigateTo<CropReceiptViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt());
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(imageStream));
         });
 
@@ -379,7 +408,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
             StopScanning();
 
             // Navigate first so CropReceiptViewModel is created and registers the message handler
-            _navigationService.NavigateTo<CropReceiptViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt());
 
             // Deliver the already cropped image (user can adjust further if needed)
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(memStream, ocrMemStream));
@@ -397,10 +426,23 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
     }
 
+    /// <summary>
+    /// Releases the camera. Idempotent -- <c>_isDisposed</c> makes a second call a no-op, which is
+    /// what lets navigation and <c>LiveScannerView.OnUnloaded</c> both call it safely.
+    /// </summary>
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        // TD-34: unregister here as well as from the navigator. Dispose is reachable from
+        // LiveScannerView.OnUnloaded, which can fire without any navigation having happened, and a
+        // disposed scanner that still receives RetakeRequestedMessage would call StartScanning on
+        // a camera it has already put down. StartScanning does check _isDisposed, so this is
+        // defence in depth rather than the only guard -- but it is the one that stops the messenger
+        // holding a dead recipient at all.
+        IsActive = false;
+
         StopScanning();
         GC.SuppressFinalize(this);
     }

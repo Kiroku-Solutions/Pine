@@ -3,18 +3,45 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Pine.Core.Configuration;
 
 namespace Pine.Application.Security;
 
 public sealed class VaultManager
 {
     private readonly string _pineDataDirectory;
+    private readonly string _vaultsDirectory;
     private readonly string _vaultsJsonPath;
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { WriteIndented = true };
 
-    public VaultManager()
+    /// <summary>
+    /// Creates the manager over a configured data directory (TD-27).
+    /// </summary>
+    /// <param name="storage">
+    /// Where Pine keeps its data. Optional, defaulting to <c>%LOCALAPPDATA%/Pine</c> — the value
+    /// this constructor used to compute inline.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// THE DIRECTORY IS INJECTED NOW, AND HALF OF TD-81 GOES WITH IT. That row reads "extract
+    /// `IVaultManager`, **or inject the data directory**", and names the consequence of neither:
+    /// `InitializeVaultAsync` could not run under test without writing `vaults.json` into the
+    /// developer's real `%LOCALAPPDATA%`, so every test of `SetupViewModel` stopped at an early
+    /// validation failure instead of exercising the happy path. A test can now point this at a
+    /// temporary directory. The other half — the missing interface — is still open.
+    /// </para>
+    /// <para>
+    /// THE PARAMETER IS OPTIONAL because this type is also constructed by hand. Defaulting to the
+    /// same directory the old constructor computed means no caller changes behaviour by not
+    /// passing anything.
+    /// </para>
+    /// </remarks>
+    public VaultManager(PineStorageOptions? storage = null)
     {
-        _pineDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pine");
+        var options = storage ?? new PineStorageOptions();
+
+        _pineDataDirectory = options.DataDirectory;
+        _vaultsDirectory = options.VaultsDirectory;
         _vaultsJsonPath = Path.Combine(_pineDataDirectory, "vaults.json");
     }
 
@@ -69,7 +96,7 @@ public sealed class VaultManager
         if (string.IsNullOrWhiteSpace(safeName)) safeName = "Vault";
         
         var vaultDirName = $"{safeName}_{Guid.NewGuid().ToString().Substring(0, 8)}";
-        var vaultPath = Path.Combine(_pineDataDirectory, "Vaults", vaultDirName);
+        var vaultPath = Path.Combine(_vaultsDirectory, vaultDirName);
         
         Directory.CreateDirectory(vaultPath);
 
