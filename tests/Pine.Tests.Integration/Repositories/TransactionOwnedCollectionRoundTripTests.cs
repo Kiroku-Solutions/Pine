@@ -196,13 +196,17 @@ public class TransactionOwnedCollectionRoundTripTests
     }
 
     /// <summary>
-    /// Pins the fact that <see cref="Transaction"/> is the ONLY aggregate with owned collections.
-    /// TD-13 is a defect of owned-collection updates, so the day a second aggregate grows an
-    /// <c>OwnsMany</c> it needs a round-trip proof of its own — and this test fails and says so,
-    /// instead of the new collection being silently dropped on update. <c>Account.Balance</c> and
-    /// <c>Budget.Limit</c> are <c>ComplexProperty</c>, not navigations, and are therefore not
-    /// affected.
+    /// Pins which aggregates have owned collections, because TD-13 is a defect of owned-collection
+    /// UPDATES and every one of them needs a round-trip proof of its own.
     /// </summary>
+    /// <remarks>
+    /// <c>Transaction</c> was the only one until the Phase 3 rule engine gave <c>Rule</c> a
+    /// <c>Conditions</c> collection. Its proof is
+    /// <c>RuleStorageTests.TogglingARule_KeepsItsConditions</c> — the TD-13 shape exactly: the
+    /// parent is updated while its owned children are loaded, which is where splits used to be
+    /// deleted and re-inserted. <c>Account.Balance</c> and <c>Budget.Limit</c> are
+    /// <c>ComplexProperty</c>, not navigations, and are therefore not affected.
+    /// </remarks>
     [Fact]
     public void EfModel_DeclaresOwnedCollectionsOnTransactionOnly()
     {
@@ -216,7 +220,7 @@ public class TransactionOwnedCollectionRoundTripTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
 
-        ownedCollections.Should().Equal("Transaction.LineItems", "Transaction.Splits");
+        ownedCollections.Should().Equal("Rule.Conditions", "Transaction.LineItems", "Transaction.Splits");
     }
 
     /// <summary>

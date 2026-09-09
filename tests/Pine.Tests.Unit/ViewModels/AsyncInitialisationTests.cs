@@ -8,6 +8,7 @@ using NSubstitute.ExceptionExtensions;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Utils;
 using Xunit;
@@ -47,23 +48,32 @@ public class AsyncInitialisationTests
         sender.Send(Arg.Any<GetSettingQuery>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("the settings table is unreadable"));
 
-        var viewModel = new SettingsViewModel(sender);
+        var store = new LanguagePreferenceStore(path: null);
+        var localizer = new Localizer();
+        var viewModel = new SettingsViewModel(sender, localizer, store);
 
         // The failure happens here, inside initialisation, exactly as it would at runtime.
         await InitialiseAndSwallowAsync(viewModel);
 
-        // The LANGUAGE index rather than the theme index: the theme handler calls
-        // ThemeManager.ApplyVariant, which touches Avalonia objects and demands the UI thread, and
-        // that would make this a test about dispatcher affinity instead of about the latch. The
-        // language handler is guarded by the same _isInitializing flag and does nothing else.
-        viewModel.SelectedLanguageIndex = 1;
+        // STILL THE LANGUAGE HANDLER, AND IT NO LONGER PERSISTS THROUGH THE MEDIATOR.
+        //
+        // This test used the language index because that handler did nothing but persist, so it
+        // isolated the latch: the theme handler calls ThemeManager.Apply*, which touches Avalonia
+        // objects and demands the UI thread, and asserting through it would make this a test about
+        // dispatcher affinity. That reason is unchanged. What changed is where the value goes --
+        // TD-45 moved the UI language OUT of the vault (D3, D4), because the pre-unlock screens are
+        // rendered before any vault is open. So the observation moves with it, from a
+        // SaveSettingCommand on the mediator to the preference store, and the thing under test is
+        // the same: every change handler opens with `if (_isInitializing) return;`, and a failed
+        // load used to leave that flag latched for the rest of the session.
+        viewModel.SelectedLanguage = localizer.Available[1];
 
-        await WaitForAsync(() => sender.ReceivedCalls().Any(
-            call => call.GetArguments()[0] is SaveSettingCommand));
+        await WaitForAsync(() => store.Read() is not null);
 
-        await sender.Received().Send(
-            Arg.Is<SaveSettingCommand>(command => command.Key == SettingsViewModel.LanguageSettingKey),
-            Arg.Any<CancellationToken>());
+        store.Read().Should().Be(
+            localizer.Available[1].Code,
+            "a failed settings read must not latch the page into applying changes and saving none "
+            + "of them, which is the defect this test pins");
     }
 
     /// <summary>

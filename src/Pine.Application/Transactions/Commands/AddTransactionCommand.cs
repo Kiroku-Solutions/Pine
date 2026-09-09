@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using MediatR;
 using Pine.Application.Common;
 using Pine.Core.Accounts;
+using Pine.Core.Attachments;
+using Pine.Core.Rules;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 
@@ -36,6 +38,25 @@ public record AddTransactionLineItemCommand(
     LineItemKind Kind = LineItemKind.Product
 );
 
+/// <summary>
+/// The document a transaction is being recorded from, to be kept with it as evidence.
+/// </summary>
+/// <param name="FileName">A display name for the file.</param>
+/// <param name="ContentType">The IANA media type of <paramref name="Content"/>.</param>
+/// <param name="Content">The bytes. Hashed by the domain; never trusted from here.</param>
+/// <remarks>
+/// IT RIDES ON THE TRANSACTION COMMAND RATHER THAN FOLLOWING IT, AND THAT IS THE DESIGN. A second
+/// request after this one would be a second database transaction, so a crash between them leaves a
+/// transaction whose receipt was lost or a receipt for a transaction that was rolled back. Carrying
+/// the bytes here means <c>TransactionBehavior</c> commits the ledger row and its evidence
+/// together or neither -- which is the property that made storing the blob in <c>pine.db</c> the
+/// right call in the first place.
+/// </remarks>
+public sealed record AddTransactionAttachmentCommand(
+    string FileName,
+    string ContentType,
+    byte[] Content);
+
 public record AddTransactionCommand(
     Guid AccountId,
     DateTimeOffset Date,
@@ -45,19 +66,30 @@ public record AddTransactionCommand(
     string Notes,
     string Category,
     System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null,
-    string? ImportKey = null
+    string? ImportKey = null,
+    AddTransactionAttachmentCommand? Attachment = null
 ) : IRequest<Guid>, ITransactionalRequest;
 
 public class AddTransactionCommandHandler : IRequestHandler<AddTransactionCommand, Guid>
 {
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly IAttachmentRepository _attachmentRepository;
+    private readonly IRuleRepository _ruleRepository;
     private readonly TimeProvider _timeProvider;
 
-    public AddTransactionCommandHandler(ITransactionRepository transactionRepository, IAccountRepository accountRepository, TimeProvider timeProvider)
+    public AddTransactionCommandHandler(
+        ITransactionRepository transactionRepository,
+        IAccountRepository accountRepository,
+        IAttachmentRepository attachmentRepository,
+        IRuleRepository ruleRepository,
+        TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(ruleRepository);
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
+        _attachmentRepository = attachmentRepository;
+        _ruleRepository = ruleRepository;
         _timeProvider = timeProvider;
     }
 
@@ -81,8 +113,28 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
             _timeProvider, 
             request.Notes);
 
+        // The category, and the one place a rule may speak here.
+        //
+        // A RULE ONLY FILLS A BLANK; IT NEVER OVERRULES THE USER. On this path the category arrives
+        // from a person who typed it into a box, and an instruction they wrote last week must not
+        // silently rewrite what they typed thirty seconds ago. So the rules run only when the field
+        // is empty -- which is also the case the receipt scanner leaves when OCR found no category.
+        // The same precedence holds as on the import path: a matching rule wins outright and the
+        // classifier is not consulted.
+        var category = request.Category;
+        var appliedRule = (RuleMatch?)null;
+
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            appliedRule = RuleEvaluator.FirstMatch(
+                await _ruleRepository.GetEnabledAsync(cancellationToken),
+                new RuleInput(request.Payee ?? string.Empty, request.Notes ?? string.Empty, request.Amount));
+
+            category = appliedRule?.Category ?? category;
+        }
+
         // Add a single split for the whole amount to the specified category
-        transaction.AddSplit(moneyAmount, request.Category, request.Notes);
+        transaction.AddSplit(moneyAmount, category, appliedRule?.Title ?? request.Notes ?? string.Empty);
 
         // Same mechanism as the file importer (ImportTransactionsCommand): the receipt scanner is
         // just another source of an import key, and a transaction is meant to carry at most one.
@@ -110,6 +162,23 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
         }
 
         await _transactionRepository.SaveAsync(transaction, cancellationToken);
+
+        // The receipt, if one came with the request. AFTER the transaction is staged, because the
+        // attachment carries a foreign key to it; both are staged on the same DbContext and flushed
+        // by the same unit of work, so the ordering here is about the insert order SQLite sees, not
+        // about two separate writes. Attachment.Create computes the hash and enforces the size
+        // limit -- neither is the caller's to decide (10-Domain-Model §7).
+        if (request.Attachment is { } attachment)
+        {
+            await _attachmentRepository.AddAsync(
+                Pine.Core.Attachments.Attachment.Create(
+                    transaction.Id,
+                    attachment.FileName,
+                    attachment.ContentType,
+                    attachment.Content,
+                    _timeProvider),
+                cancellationToken);
+        }
         
         // Also update account balance. In a real CQRS system, this might be handled 
         // by listening to the TransactionRegisteredEvent, but for simplicity we do it here.

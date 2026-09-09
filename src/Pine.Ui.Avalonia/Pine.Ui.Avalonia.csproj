@@ -32,4 +32,23 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    THE STRING TABLES (TD-45).
+
+    EmbeddedResource, not AvaloniaResource, and the design's §5 named the latter. §13 recorded the
+    Avalonia 12 asset API as an unverified risk and named Assembly.GetManifestResourceStream as the
+    fallback; the risk was routed around rather than resolved. AssetLoader does exist in 12.0.5, but
+    it resolves through AvaloniaLocator, so reading the string table would require an Avalonia
+    platform to have been configured first. "Can this application read its own words" must not
+    depend on the rendering platform being up: §8 says nothing in localisation may take down a
+    screen. A manifest stream is BCL-only, needs no platform and no satellite assembly, which also
+    keeps it clear of the trimming failure mode that ruled out .resx in §3.3.
+
+    The logical name is the default (namespace + path), which Localizer.Load reconstructs as
+    Pine.Ui.Avalonia.Localization.Resources.{code}.json.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\Resources\*.json" />
+  </ItemGroup>
+
 </Project>

@@ -36,7 +36,7 @@ namespace Pine.Tests.Unit.Build;
 /// the latest version would fail on a schedule set by other people's publishing.
 /// </para>
 /// </remarks>
-public class BuildHygieneTests
+public partial class BuildHygieneTests
 {
     /// <summary>
     /// Package families whose members share assemblies and must therefore share a version.
@@ -411,6 +411,102 @@ public class BuildHygieneTests
 
         return projects;
     }
+
+    /// <summary>
+    /// TD-115. The capability table's stated reason is checked against the package graph it claims
+    /// to describe.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT TD-115 ASKED FOR AND WHAT THIS ACTUALLY DELIVERS. The row's complaint is that
+    /// <c>PineHeadCapabilities</c> makes a claim about which native assets exist and nothing checks
+    /// it, so "if a runtime package is added for another RID, the table silently becomes wrong in
+    /// the direction that withholds a working feature". That specific drift is what this closes:
+    /// add <c>OpenCvSharp4.runtime.osx.arm64</c> to the pins and this test fails until the table is
+    /// revisited. It does NOT verify a published artefact per RID, which is the rest of the row.
+    /// </para>
+    /// <para>
+    /// THE OTHER HALF OF THE TABLE'S OLD REASONING WAS FALSE AND IS ASSERTED AGAINST HERE. The
+    /// Windows arm of the table used to say it was "the one head whose Assets/Ai/*.onnx models are
+    /// copied to the output". The model is a <c>&lt;Content CopyToOutputDirectory&gt;</c> item in
+    /// <c>Pine.Infrastructure.csproj</c> and every head has a <c>ProjectReference</c> to that
+    /// project, so MSBuild copies it into every head's output -- confirmed in iteration 31 by
+    /// listing three heads' build folders. Vision is Windows-only because of the two RID-pinned
+    /// NATIVE packages and nothing else, and this test states that in the only place that can go
+    /// stale silently.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheOnlyRidPinnedNativeRuntimes_AreTheWindowsOnes_WhichIsWhatTheCapabilityTableClaims()
+    {
+        var pins = File.ReadAllText(Path.Combine(RepositoryRoot(), "Directory.Packages.props"));
+
+        var declared = CentrallyPinnedPackageId()
+            .Matches(pins)
+            .Select(match => match.Groups["id"].Value)
+            .ToArray();
+
+        declared.Should().NotBeEmpty("central package management is where every version lives");
+
+        var ridPinned = declared
+            .Where(id => id.Contains(".runtime.", StringComparison.OrdinalIgnoreCase)
+                         || id.Contains(".official.runtime.", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+
+        ridPinned.Should().Equal(
+            ExpectedRidPinnedNativeRuntimes,
+            "PineHeadCapabilities says receipt vision exists on the Windows head and nowhere else, and "
+            + "these two win-only native runtime packages are the entire reason. Adding an osx, linux, "
+            + "android or ios runtime here without revisiting that table would leave it claiming a "
+            + "capability is absent on a head that had just gained it -- TD-115");
+    }
+
+    /// <summary>
+    /// TD-115, the corrected half: the ONNX model is shipped by the shared project, so it reaches
+    /// every head.
+    /// </summary>
+    /// <remarks>
+    /// A head that declared its own copy of the model would make the old, false reason true again
+    /// by accident. The asset belongs to <c>Pine.Infrastructure</c>, which is the project that
+    /// reads it.
+    /// </remarks>
+    [Fact]
+    public void TheModelAsset_IsShippedByTheSharedProject_AndByNoHead()
+    {
+        var infrastructure = File.ReadAllText(
+            Path.Combine(RepositoryRoot(), "src", "Pine.Infrastructure", "Pine.Infrastructure.csproj"));
+
+        infrastructure.Should().Contain("yolo-receipt-nano.onnx",
+            "the project that reads the model is the project that ships it");
+
+        foreach (var head in ShippedHeads)
+        {
+            var project = File.ReadAllText(
+                Path.Combine(RepositoryRoot(), "src", head, $"{head}.csproj"));
+
+            project.Should().NotContain(".onnx",
+                $"'{head}' must not ship model assets of its own: the model already reaches every head "
+                + "through the Pine.Infrastructure ProjectReference, which is why 'only Windows copies "
+                + "the ONNX models' was never a true reason for the capability table");
+
+            project.Should().Contain("Pine.Infrastructure.csproj",
+                $"'{head}' reaches the model, and everything else, through the shared project");
+        }
+    }
+
+    /// <summary>
+    /// The two win-only native runtime packages the capability table's Windows row rests on.
+    /// </summary>
+    private static readonly string[] ExpectedRidPinnedNativeRuntimes =
+        ["OpenCvSharp4.runtime.win", "Sdcb.PaddleInference.runtime.win64.mkl"];
+
+    /// <summary>The four heads that survived the Phase 3 platform decision (iteration 31).</summary>
+    private static readonly string[] ShippedHeads =
+        ["Pine.Ui.Windows", "Pine.Ui.Macos", "Pine.Ui.Android", "Pine.Ui.Ios"];
+
+    [GeneratedRegex(@"<PackageVersion\s+Include=""(?<id>[^""]+)""")]
+    private static partial Regex CentrallyPinnedPackageId();
 
     private static string Relative(string path) =>
         Path.GetRelativePath(RepositoryRoot(), path).Replace('\\', '/');

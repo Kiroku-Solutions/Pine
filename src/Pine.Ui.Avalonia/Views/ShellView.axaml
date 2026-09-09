@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
@@ -14,9 +15,9 @@
             <DockPanel>
                 <!-- App Title at Top -->
                 <StackPanel DockPanel.Dock="Top" Margin="24,28,24,0">
-                    <TextBlock Text="Pine Vault" FontSize="22" FontWeight="Bold" 
+                    <TextBlock Text="{loc:Tr Shell.Brand.Title}" FontSize="22" FontWeight="Bold" 
                                Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="Secure Finance" FontSize="12" 
+                    <TextBlock Text="{loc:Tr Shell.Brand.Subtitle}" FontSize="12" 
                                Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                 </StackPanel>
 
@@ -27,16 +28,16 @@
                      to the DockPanel BEFORE the ScrollViewer: DockPanel's default
                      LastChildFill="True" makes whichever child is added LAST the one that fills
                      the remaining space, regardless of its own Dock value. -->
-                <Button DockPanel.Dock="Bottom" Content="Lock Vault" Command="{Binding LockVaultCommand}"
+                <Button DockPanel.Dock="Bottom" Content="{loc:Tr Shell.LockVault}" Command="{Binding LockVaultCommand}"
                         Classes="pine-nav" Margin="16,8,16,20"
                         Foreground="{DynamicResource PineDanger}" />
 
                 <!-- Navigation Buttons -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="4" Margin="16,28,16,16">
-                        <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.Dashboard}" Command="{Binding NavigateToDashboardCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsDashboardActive}" />
-                        <Button Content="Transactions" Command="{Binding NavigateToTransactionsCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.Transactions}" Command="{Binding NavigateToTransactionsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsTransactionsActive}" />
                         <!-- TD-85: these two are the only pages whose backing pipeline does not
                              exist on every head, so they are the only two that are gated. IsVisible
@@ -47,21 +48,24 @@
                              source is the same PineHeadCapabilities object that decided whether
                              ScanReceiptViewModel and LiveScannerViewModel were registered at all,
                              so a visible button always has a view model behind it. -->
-                        <Button Content="Scan Receipt" Command="{Binding NavigateToScanReceiptCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.ScanReceipt}" Command="{Binding NavigateToScanReceiptCommand}"
                                 IsVisible="{Binding HasReceiptVision}"
                                 Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
-                        <Button Content="Live Scanner" Command="{Binding NavigateToLiveScannerCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.LiveScanner}" Command="{Binding NavigateToLiveScannerCommand}"
                                 IsVisible="{Binding HasReceiptVision}"
                                 Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />
-                        <Button Content="Budgets" Command="{Binding NavigateToBudgetsCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.Budgets}" Command="{Binding NavigateToBudgetsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsBudgetsActive}" />
-                        <Button Content="Rules" Classes="pine-nav" IsEnabled="False" Opacity="0.5" ToolTip.Tip="Coming soon" />
+                        <!-- Enabled as of the Phase 3 rule-engine work. It was disabled, dimmed and tagged
+                             "Coming soon" while nothing evaluated a rule: honest, but a promise. -->
+                        <Button Content="{loc:Tr Shell.Nav.Rules}" Command="{Binding NavigateToRulesCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsRulesActive}" />
 
                         <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
 
-                        <Button Content="Settings" Command="{Binding NavigateToSettingsCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.Settings}" Command="{Binding NavigateToSettingsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsSettingsActive}" />
-                        <Button Content="Diagnostics" Command="{Binding NavigateToDiagnosticsCommand}"
+                        <Button Content="{loc:Tr Shell.Nav.Diagnostics}" Command="{Binding NavigateToDiagnosticsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsDiagnosticsActive}" />
                     </StackPanel>
                 </ScrollViewer>

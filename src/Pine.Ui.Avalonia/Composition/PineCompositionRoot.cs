@@ -9,7 +9,9 @@ using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Services;
 using Pine.Core.Configuration;
+using Pine.Infrastructure.Data;
 using Pine.Infrastructure.DependencyInjection;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
 
@@ -34,16 +36,19 @@ namespace Pine.Ui.Avalonia.Composition;
 /// </para>
 /// <para>
 /// WHY IT LIVES IN <c>Pine.Ui.Avalonia</c> AND NOT IN A HEAD. The test projects reference
-/// <c>Pine.Ui.Avalonia</c> and cannot reference the heads -- three of them target
-/// <c>net10.0-android</c>, <c>net10.0-ios</c> and <c>net10.0-browser</c>, so a <c>net10.0</c> test
-/// project could not load them even if it wanted to. That is exactly why TD-83 could observe that
-/// deleting <c>AddPineLogging()</c> from <c>Pine.Ui.Web/Program.cs</c> left the whole suite green.
-/// Here the graph is a <c>net10.0</c> object that <c>PineCompositionRootTests</c> builds for all
-/// five profiles and interrogates.
+/// <c>Pine.Ui.Avalonia</c> and cannot reference the heads -- two of them target
+/// <c>net10.0-android</c> and <c>net10.0-ios</c>, so a <c>net10.0</c> test project could not load
+/// them even if it wanted to. That is exactly why TD-83 could observe that deleting
+/// <c>AddPineLogging()</c> from the Browser head's <c>Program.cs</c> left the whole suite green --
+/// that head is gone as of iteration 31, but the instrument's weakness is not. Here the graph is a
+/// <c>net10.0</c> object that <c>PineCompositionRootTests</c> builds for all four profiles and
+/// interrogates.
 /// </para>
 /// <para>
-/// WHAT A HEAD STILL OWNS. Its platform's SQLite provider initialisation, its Avalonia
-/// <c>AppBuilder</c>, its crash handler, and its own name. Nothing else.
+/// WHAT A HEAD STILL OWNS. Its Avalonia <c>AppBuilder</c>, its crash handler, and its own name.
+/// Nothing else. SQLite provider initialisation used to be on this list, described as something
+/// "its platform" owned; iteration 31 found that only one head of four actually did it and that no
+/// platform difference justified the split, so <see cref="Build"/> does it now.
 /// </para>
 /// </remarks>
 public static class PineCompositionRoot
@@ -68,6 +73,17 @@ public static class PineCompositionRoot
 
         var capabilities = PineHeadCapabilities.For(profile);
         services.AddSingleton(capabilities);
+
+        // Localisation, FIRST, and the order is the requirement rather than a preference (TD-45).
+        // AddPineLocalization applies the stored language as it registers, and the pre-unlock
+        // screens -- vault selection, unlock, setup -- are constructed almost immediately after
+        // this method returns. Registering it later would leave them rendering in English and then
+        // flickering to the chosen language, which is a visible version of the defect this closes.
+        //
+        // The design (D12) said "called from all five composition roots". That predates iteration
+        // 22, which collapsed the five roots into this one; D12's own reasoning -- per-head hand
+        // registration is a known trap here -- now points at this line instead.
+        services.AddPineLocalization();
 
         // Configuration first, because everything below reads a value from it (TD-27). Binding
         // happens here rather than through services.Configure<T>() so that a bad config file throws
@@ -156,6 +172,22 @@ public static class PineCompositionRoot
     /// </remarks>
     public static ServiceProvider Build(PineHeadProfile profile, Action<PineOptions>? configureOptions = null)
     {
+        // Arm the SQLCipher native provider before anything can open a database (iteration 31).
+        //
+        // THIS MOVED HERE FROM ONE HEAD OUT OF FOUR, AND IT IS NOT A BUG FIX. The call was at
+        // Pine.Ui.Windows/Program.cs:19 and nowhere else in src/, justified by a comment claiming
+        // "each head's provider bundle differs" -- which is false; one bundle is pinned once and
+        // reaches every head through the same ProjectReference. But the natural conclusion from
+        // that, "so three heads cannot open a vault", was TESTED AND IS ALSO FALSE:
+        // Microsoft.Data.Sqlite finds the bundle by reflection and initialises it with no help.
+        // PineSqliteProvider carries the probe that established this.
+        //
+        // What is left is a real but smaller argument: an asymmetry with a wrong reason attached,
+        // and a trimming risk on the two AOT heads that nothing here can measure. Build() is the
+        // one path every head takes, which makes it the place -- the same argument TD-29 made about
+        // every other line that lived in one root and not the others.
+        PineSqliteProvider.EnsureInitialised();
+
         var services = new ServiceCollection();
         services.AddPine(profile, configureOptions);
 
@@ -243,6 +275,7 @@ public static class PineCompositionRoot
         }
 
         targets.Add(typeof(BudgetsViewModel));
+        targets.Add(typeof(RulesViewModel));
         targets.Add(typeof(SettingsViewModel));
         targets.Add(typeof(DiagnosticsViewModel));
 
@@ -309,6 +342,7 @@ public static class PineCompositionRoot
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<BudgetsViewModel>();
+        services.AddTransient<RulesViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
 

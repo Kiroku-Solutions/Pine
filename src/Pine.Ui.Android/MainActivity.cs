@@ -6,7 +6,7 @@ using Avalonia.Android;
 namespace Pine.Ui.Android;
 
 [Activity(
-    Label = "TempApp.Android",
+    Label = "Pine",
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,

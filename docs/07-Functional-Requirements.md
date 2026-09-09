@@ -223,7 +223,7 @@ Out of scope: quality attributes (performance, security, etc.) →
 
 - **FR-TXN-01.** The system MUST support manual, imported, recurring
   and split transactions.
-- **FR-TXN-02.** The system MUST allow attaching files (receipt,
+- **FR-TXN-02.** *(Implemented for scanned receipts; a manual file picker is not built.)* The system MUST allow attaching files (receipt,
   contract, photo) to a transaction; attachments MUST be stored
   encrypted at rest.
 - **FR-TXN-03.** The system MUST support search, filter and sort

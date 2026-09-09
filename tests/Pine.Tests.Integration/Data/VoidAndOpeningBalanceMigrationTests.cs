@@ -123,6 +123,12 @@ public class VoidAndOpeningBalanceMigrationTests
     /// </remarks>
     private const string CategoryParentForeignKeySchemaVersion = "20260908152526_AddCategoryParentForeignKey";
 
+    /// <summary>The head of the migration list: the Phase 3 attachment table.</summary>
+    private const string AttachmentsSchemaVersion = "20260909155223_AddTransactionAttachments";
+
+    /// <summary>The head of the migration list: the Phase 3 rule engine.</summary>
+    private const string RulesSchemaVersion = "20260909165749_AddCategorisationRules";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
     [
@@ -132,6 +138,8 @@ public class VoidAndOpeningBalanceMigrationTests
         ConcurrencyTokenSchemaVersion,
         DropDeadEntitiesSchemaVersion,
         CategoryParentForeignKeySchemaVersion,
+        AttachmentsSchemaVersion,
+        RulesSchemaVersion,
     ];
 
     private const decimal LegacyBalance = 1000.00m;

@@ -44,14 +44,39 @@ Your money. Your data. Your control.
   explicit confirmation.
 - **.NET 10, Avalonia UI, CQRS via MediatR, hexagonal architecture.** The layering is real: the
   domain project has no external dependency and the UI dispatches through MediatR.
+- **Rules file transactions for you, and they beat the classifier.** A rule is a standing
+  instruction — "payee contains STARBUCKS → Coffee" — with a priority, conditions that must all
+  hold, and a switch to turn it off without deleting it. When a rule matches an imported row, the
+  on-device classifier is not consulted at all: an instruction you wrote is not a guess to be
+  weighed against a confidence score. Rules never overwrite a category you typed yourself, and
+  never rewrite transactions already in the ledger.
+- **A scanned receipt is kept with the transaction it produced.** The image is stored inside the
+  encrypted vault database, hashed with SHA-256 when it is attached and verified every time it is
+  opened, so a receipt that no longer matches its fingerprint is reported rather than shown. It is
+  written in the same database transaction as the ledger row, and it is inside every backup —
+  because the backup copies the database.
+- **The interface is available in English and Spanish, and switches without a restart.** Every
+  string in every view comes from a JSON table rather than from the markup, and choosing a language
+  in Settings re-renders the running application. The preference is stored outside the vault, so
+  the unlock and vault-selection screens are translated too — they are rendered before any vault is
+  open. Adding a third language is one JSON file (TD-45).
 
 ### What is not true yet
 
 - **Windows is the only head that is built, packaged and used.** The shared UI is OS-agnostic and
-  macOS, Linux, Android, iOS and WebAssembly heads exist as projects, but only Windows has a
-  packaging path; Android and iOS still carry template identity; and the WebAssembly head cannot
-  open a vault at all, because the browser platform has no AES-GCM implementation available to it
-  (TD-88, TD-109). Treat the other five as source, not as supported platforms.
+  macOS, Android and iOS heads exist as projects, but only Windows has a packaging path. Treat the
+  other three as source, not as supported platforms (TD-109).
+- **There is no WebAssembly head, and that is now a decision rather than an omission.** One existed
+  until the Phase 3 platform review, and it could not run the product on three independent counts:
+  the browser runtime provides no AES-GCM, so no vault could ever be unwrapped there; OpenCV and
+  PaddleInference publish no WebAssembly build, so receipt scanning could never exist there; and
+  `docs/02-Product-Scope` already listed browser-only distribution as an explicit non-goal. It was
+  deleted rather than left as source, because a head that compiles is a head that looks supported.
+- **Receipt scanning is Windows-only, and the blocker is a test machine, not a package.** The
+  macOS- and Linux-native builds of OpenCV and PaddleInference are published at the exact versions
+  this repository already pins. They are deliberately not referenced: nothing in this project can
+  execute a macOS or Linux binary, so adding them would replace an honest "unsupported" with an
+  untested "supported" (TD-44).
 - **A transaction cannot be edited.** Correction is void-and-re-enter, which is the right default
   for a ledger and costs two rows with no link between them (TD-68).
 - **The budgets screen does not compute anything.** Its progress bar is hard-coded to zero (TD-99).
@@ -68,7 +93,7 @@ Pine was engineered from the ground up using strict **Clean / Hexagonal Architec
 
 1. **Domain-Driven Design (DDD):** The core engine uses rich Domain Entities (`AggregateRoot`, `ValueObject`, `DomainEvent`) to eliminate primitive obsession (e.g., using a `Money` Value Object instead of raw decimals).
 2. **CQRS via MediatR:** Every action in Pine is segregated into `Commands` (state mutations) and `Queries` (data retrieval), with validation and transaction behaviours in the pipeline so a rejected command never opens a database transaction.
-3. **Composition Roots:** The UI layer (`Pine.Ui.Avalonia`) is OS-agnostic. The executables (`Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Ui.Ios`, etc.) are composition roots that bootstrap the native OS window and inject dependencies. They are **not** equivalent: each root registers its own services by hand, and several services are registered in one root only (TD-29, TD-85, TD-90).
+3. **Composition Roots:** The UI layer (`Pine.Ui.Avalonia`) is OS-agnostic. The executables (`Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Ui.Android`, `Pine.Ui.Ios`) are composition roots that bootstrap the native OS window. They no longer register services of their own — `PineCompositionRoot` does that for all four (TD-29, TD-85, TD-90).
 
 ## Getting Started
 
@@ -91,9 +116,9 @@ dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
 dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
 ```
 
-The macOS, Linux, Android, iOS and Web heads build from the same shared UI but are not verified:
-CI does not compile them (TD-07) and none of them has been packaged. Android, iOS and Web
-additionally need their respective `dotnet` workloads installed.
+The macOS, Android and iOS heads build from the same shared UI but are not verified: CI does not
+compile them (TD-07) and none of them has been packaged. Android and iOS additionally need their
+respective `dotnet` workloads installed.
 
 ---
 
@@ -103,7 +128,7 @@ additionally need their respective `dotnet` workloads installed.
 - `src/Pine.Application`: The Use Case Layer. Contains CQRS Commands/Queries and interfaces.
 - `src/Pine.Infrastructure`: The Persistence Layer. Implements repositories and the EF Core SQLCipher Database Context.
 - `src/Pine.Ui.Avalonia`: The Cross-Platform UI Layer. Contains MVVM views, routing, and Fluent Design styles.
-- `src/Pine.Ui.*`: Platform-specific bootstrappers (Windows, macOS, iOS, Android, Web).
+- `src/Pine.Ui.*`: Platform-specific bootstrappers (Windows, macOS, iOS, Android).
 
 ## Contributing
 Please see our [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details on how to help out.

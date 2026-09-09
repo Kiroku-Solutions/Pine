@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-08 · Extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-09 · Extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -16,6 +16,30 @@ Nothing has been released. The build is stamped `0.1.0-alpha.1`; there is no ins
 signed artefact and no update mechanism, so "unreleased" is literal.
 
 ### Added
+- **A rule engine, and a screen to write rules in.** A rule is a title, a priority, a category and
+  up to eight conditions over a transaction's payee, notes or amount — all of which must hold. Rules
+  are evaluated on every import and on manual entry, and a matching rule **beats the on-device
+  classifier outright**: the model is not consulted at all, because an instruction the user wrote is
+  not a guess to be weighed against a confidence score. Two guardrails are deliberate: a rule never
+  overwrites a category that came from the user or from the imported file, and a rule never touches
+  transactions already in the ledger. Ties between equal priorities resolve by creation time and
+  then by id, so the same vault answers the same way on every machine. The sidebar's "Rules" entry,
+  which had been disabled with a "Coming soon" tooltip, is now a working page.
+- **The receipt is kept with the transaction.** Scanning a receipt produced a transaction and
+  discarded the image; the picture is now stored inside the encrypted vault database, linked to its
+  transaction by a real foreign key, and shown from the transaction list. A SHA-256 is recorded when
+  it is attached and verified whenever it is opened, so an image that no longer matches its
+  fingerprint is refused rather than presented as evidence. The bytes live in `pine.db` rather than
+  in a file beside it for three reasons: SQLCipher already encrypts them, they are written in the
+  same database transaction as the ledger row, and the backup copies the database — a file beside it
+  would have been missing from every restore.
+- **A language you can choose, and an interface that follows it.** Pine ships English and Spanish.
+  The Settings picker now changes the application instead of only remembering a number: every
+  string in every view is bound to a shared string table, so switching re-renders the running UI
+  without a restart. The preference lives in `%LOCALAPPDATA%/Pine/ui-preferences.json` rather than
+  inside the vault, which is what lets the unlock and vault-selection screens be translated at all
+  — they are drawn before any vault is open. A pre-existing in-vault choice is migrated once, so
+  nobody loses a selection they had already made. Adding a third language is one JSON file (TD-45).
 - **A version.** Builds are stamped `0.1.0-alpha.1` plus the commit, and `pine --version` prints it
   from a running process. Every log record and the diagnostics panel previously showed the constant
   `1.0.0`, because nothing set a version and the resolver discarded the only varying part.
@@ -106,5 +130,7 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   requires re-encrypting the whole vault and is not yet implemented (TD-86).
 - Biometric and platform-keychain unlock remain unavailable. The new envelope makes them possible;
   nothing implements them yet (TD-87).
-- The experimental browser build cannot open vaults at all: its runtime does not provide AES-GCM
-  (TD-88).
+- The experimental browser build has been removed (Phase 3 platform review). It could not open a
+  vault at all — the browser runtime provides no AES-GCM — and OpenCV and PaddleInference publish
+  no WebAssembly build, so receipt scanning could never have run there either. Browser-only
+  distribution was already an explicit non-goal in `02-Product-Scope`.

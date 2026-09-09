@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-10-DOMAIN-MODEL`                                                           |
 | Status           | Partially implemented — the money aggregates are real; several contexts are unbuilt  |
-| Reconciled       | 2026-09-07 · `Account`, `Transaction`, `Money`, `Budget` and their invariants are implemented and tested. `Attachment`, `Rule` and `Tag` no longer exist in code: the three shell entities and their tables were dropped (TD-37), so §6.14 and the `Tag`/`Attachment` rows in §7 describe a design that is not built. |
+| Reconciled       | 2026-09-09 · `Account`, `Transaction`, `Money`, `Budget`, `Attachment` and their invariants are implemented and tested. **`Attachment` is built as of the Phase 3 attachment work**: §7's "Hash MUST be set" is a SHA-256 the aggregate computes and verifies on read, and §6.2's "Attachments MUST be stored encrypted at rest" is satisfied by SQLCipher, because the bytes are a BLOB in `pine.db` rather than a file beside it — see `60-Production-Readiness-Audit` §12.68 for why. `Rule` and `Tag` still do not exist (TD-37), so §6.14 and the `Tag` row in §7 describe a design that is not built. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -309,7 +309,7 @@ another context reads from a projection or subscribes to its events.
 | `DateRange`   | A pair of instants in a specific timezone.                                                   | `from <= to`.                                                            |
 | `Category`    | A hierarchical label (e.g. `Food / Restaurants`).                                            | Non-empty; tree depth ≤ 5 (configurable).                                |
 | `Tag` *(not built)* | A free-form label.                                                                      | Non-empty; case-insensitive.                                              |
-| `Attachment` *(not built)* | A reference to an encrypted blob with a content hash.                           | Hash MUST be set.                                                        |
+| `Attachment` | The file itself, stored encrypted, with a content hash. | Hash MUST be set — and IS: SHA-256, computed by the aggregate from the content and verified on every read. Content is non-empty and at most 25 MB; the row is bound to its transaction by a real foreign key. |
 | `Locale`      | A language-and-region identifier.                                                            | Conforms to BCP 47.                                                      |
 | `Timezone`    | An IANA TZ identifier.                                                                       | Conforms to IANA.                                                        |
 | `Confidence`  | A value in [0, 1].                                                                            | In range.                                                                 |

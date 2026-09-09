@@ -146,7 +146,7 @@ whether it was correct; the header table above is the current statement.*
 
 ### ✅ Implemented (Multi-Vault Architecture)
 - **VaultManager**: Singleton service managing `vaults.json` and generating isolated vault directories per profile.
-- **Cross-Platform DI**: Dynamic database path resolution in all OS entry points (`Windows`, `Macos`, `Android`, `Ios`, `Web`).
+- **Cross-Platform DI**: Dynamic database path resolution in all OS entry points (`Windows`, `Macos`, `Android`, `Ios`). The `Web` head was deleted in the Phase 3 platform review.
 - **VaultSelection UX**: Premium glassmorphic UI (`VaultSelectionView.axaml`) for choosing or creating separate personal/business finance vaults.
 
 ### ✅ Implemented (Imports Engine)

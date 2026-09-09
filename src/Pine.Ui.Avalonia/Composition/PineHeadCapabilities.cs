@@ -3,7 +3,7 @@ using System;
 namespace Pine.Ui.Avalonia.Composition;
 
 /// <summary>
-/// Which of the five heads is being composed. One value per shipped executable, and the only thing
+/// Which of the four heads is being composed. One value per shipped executable, and the only thing
 /// a head's <c>Main</c> still gets to decide (TD-29).
 /// </summary>
 /// <remarks>
@@ -29,8 +29,14 @@ public enum PineHeadProfile
     /// <summary>The iOS head.</summary>
     Ios,
 
-    /// <summary>The Browser (WebAssembly) head.</summary>
-    Browser,
+    // THERE IS NO Browser MEMBER, AND ITS ABSENCE IS THE DECISION OF PHASE 3, ITEM 1.
+    // `Pine.Ui.Web` was deleted in iteration 31. The head compiled -- that was never the problem --
+    // and it could not run the product on three independent counts: `AesGcm.IsSupported` is false
+    // on the browser runtime, so no vault can be unwrapped (TD-88); OpenCV and PaddleInference
+    // publish no WebAssembly build, so the receipt pipeline could never exist there (TD-44); and
+    // `02-Product-Scope` already listed browser-only distribution as an explicit NON-GOAL, so the
+    // head contradicted this project's own scope document before any of the above mattered.
+    // Adding a value back here is therefore not a small edit. It is a scope change.
 }
 
 /// <summary>
@@ -50,9 +56,23 @@ public enum PineHeadProfile
 /// </para>
 /// <para>
 /// IT IS A CAPABILITY, NOT A FEATURE FLAG. Nothing here is a preference or a rollout switch;
-/// <see cref="HasReceiptVision"/> is false on four heads because the native binaries for OpenCV and
-/// PaddleInference exist for win-x64 and nowhere else. If that ever stops being true, this table is
-/// the one place that changes.
+/// <see cref="HasReceiptVision"/> is false on three heads because the native binaries for OpenCV and
+/// PaddleInference exist for win-x64 and nowhere else IN THIS PROJECT'S PACKAGE GRAPH. Iteration 31
+/// asked whether that is a limit of the ecosystem or of this repository, and it is the latter.
+/// Queried against nuget.org's flat container, AT THE EXACT VERSIONS THIS REPOSITORY ALREADY PINS:
+/// <c>OpenCvSharp4.runtime.osx.arm64</c> 4.13.0.20260627 and
+/// <c>OpenCvSharp4.official.runtime.linux-x64</c> 4.13.0.20260627 both exist, as do
+/// <c>Sdcb.PaddleInference.runtime.osx-arm64</c> 3.3.1.70 and
+/// <c>Sdcb.PaddleInference.runtime.linux-x64.mkl</c> 3.3.1.70. Adding four
+/// <c>PackageReference</c>s is the whole of the desktop half of "invest in per-RID runtimes", and
+/// it was deliberately NOT taken -- see <c>60-Production-Readiness-Audit</c> §12.64 -- because no
+/// machine in this project can execute a macOS or Linux binary, so the only reachable outcome is
+/// this table going from an honest <c>false</c> to an untested <c>true</c>. The blocker is a
+/// runner, not a package, and that is a far better-defined problem than the one this row started
+/// with. Android and iOS are a different case: those runtime packages do not exist at all
+/// (<c>sdcb.paddleinference.runtime.android</c> is a 404; a package-id search for
+/// <c>opencvsharp4.runtime.android</c> returns zero hits).
+/// If any of that changes, this table is the one place that changes.
 /// </para>
 /// </remarks>
 public sealed class PineHeadCapabilities
@@ -96,7 +116,18 @@ public sealed class PineHeadCapabilities
     public static PineHeadCapabilities For(PineHeadProfile profile) => profile switch
     {
         // The one head with OpenCvSharp4.runtime.win and Sdcb.PaddleInference.runtime.win64.mkl
-        // assets on disk, and the one head whose Assets/Ai/*.onnx models are copied to the output.
+        // native assets on disk.
+        //
+        // THIS COMMENT USED TO CARRY A SECOND REASON AND THAT REASON WAS FALSE. It read "and the
+        // one head whose Assets/Ai/*.onnx models are copied to the output". They are not: the
+        // model is a <Content CopyToOutputDirectory="PreserveNewest"> item in
+        // Pine.Infrastructure.csproj, every head ProjectReferences that project, and MSBuild
+        // therefore copies yolo-receipt-nano.onnx into EVERY head's output -- verified by listing
+        // the build outputs of three heads in iteration 31. The managed ONNX runtime is portable;
+        // it was never the thing that made vision Windows-only. Only the OpenCV and Paddle native
+        // libraries are. Stating a true reason and a false one is worse than stating one reason,
+        // because the false half is what a reader checks against and finds confirmed by a file
+        // that is genuinely there.
         PineHeadProfile.Windows => new PineHeadCapabilities(profile, hasReceiptVision: true, hasBackgroundTraining: true),
 
         // macOS is a DESKTOP head and still has no vision, which is the surprising row in this
@@ -106,13 +137,11 @@ public sealed class PineHeadCapabilities
         // reading of the package graph, not a decision to withhold the feature.
         PineHeadProfile.MacOs => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
 
+        // Android and iOS are narrower than macOS, not wider: OpenCvSharp and Sdcb.PaddleInference
+        // publish no android or ios runtime package at all, so unlike the desktop RIDs this is not
+        // a pin this project chose to omit.
         PineHeadProfile.Android => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
         PineHeadProfile.Ios => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
-
-        // The Browser head additionally cannot open a vault at all -- AesGcm.IsSupported is false
-        // on WASM (TD-88) -- but that is a runtime refusal the vault layer already makes by name,
-        // not a page inventory question, so it does not appear in this table.
-        PineHeadProfile.Browser => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
 
         _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown head profile."),
     };

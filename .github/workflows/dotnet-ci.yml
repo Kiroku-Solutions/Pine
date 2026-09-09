@@ -3,6 +3,7 @@ name: CI
 # TD-07: this workflow builds the PRODUCT, not just the test projects.
 # The previous version only restored/built/tested tests/**, which is why three
 # broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
+# The Web/WASM head no longer exists: iteration 31 deleted it (Phase 3, item 1).
 
 # TRIGGERS: MANUAL ONLY, BY DECISION (TD-07).
 # `push:` and `pull_request:` were removed in 79c5364 to save compute minutes, and iteration 6 of the
@@ -117,13 +118,17 @@ jobs:
   # ---------------------------------------------------------------------------
   # Platform heads that require a .NET workload. These are NOT skipped: they are
   # real gating jobs. Each leg installs exactly the workload its head needs,
-  # because a bare GitHub runner has no android/ios/wasm-tools workload
+  # because a bare GitHub runner has no android/ios workload
   # installed and `dotnet restore` fails with NETSDK1147 without them.
   #   - android: needs the `android` workload plus a JDK (pinned to Temurin 17).
   #   - ios:     needs the `ios` workload and can only build on macOS.
-  #   - wasm:    Pine.Ui.Web (net10.0-browser) restores without wasm-tools, but
-  #              wasm-tools is required for the WebAssembly build/publish path,
-  #              so it is installed rather than gambled on.
+  #
+  # There used to be a third leg, `browser-wasm`, building Pine.Ui.Web with the
+  # `wasm-tools` workload. Iteration 31 deleted the Browser head (Phase 3, item
+  # 1), so the leg went with it. It was the only leg in this file that compiled a
+  # head which could never run the product: no AES-GCM on the browser runtime
+  # means no vault can be opened there, and OpenCV and PaddleInference ship no
+  # WebAssembly build at all. A green light over that is worse than no light.
   # ---------------------------------------------------------------------------
   platform-heads:
     name: Build ${{ matrix.head }} head - ${{ matrix.os }}
@@ -136,10 +141,6 @@ jobs:
             os: ubuntu-latest
             workload: android
             project: src/Pine.Ui.Android/Pine.Ui.Android.csproj
-          - head: browser-wasm
-            os: ubuntu-latest
-            workload: wasm-tools
-            project: src/Pine.Ui.Web/Pine.Ui.Web.csproj
           - head: ios
             os: macos-latest
             workload: ios

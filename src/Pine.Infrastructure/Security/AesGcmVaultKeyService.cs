@@ -288,7 +288,10 @@ public sealed class AesGcmVaultKeyService : IVaultKeyService
     /// Refuses early when the running platform does not provide AES-GCM.
     /// </summary>
     /// <remarks>
-    /// <c>AesGcm.IsSupported</c> is false on the browser/WASM runtime. Letting the platform's own
+    /// <c>AesGcm.IsSupported</c> is false on the browser/WASM runtime, which is the case that
+    /// motivated this guard; the head that ran there was deleted in the Phase 3 platform review and
+    /// the guard stays, because it asks a runtime question that any future target can answer no to.
+    /// Letting the platform's own
     /// <see cref="PlatformNotSupportedException"/> escape would reach the unlock screen as an
     /// unclassifiable error; the named exception lets it say "this build cannot open vaults" rather
     /// than blaming the password.

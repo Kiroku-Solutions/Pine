@@ -8,7 +8,6 @@
     <Project Path="src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj" />
     <Project Path="src/Pine.Ui.Ios/Pine.Ui.Ios.csproj" />
     <Project Path="src/Pine.Ui.Macos/Pine.Ui.Macos.csproj" />
-    <Project Path="src/Pine.Ui.Web/Pine.Ui.Web.csproj" />
     <Project Path="src/Pine.Ui.Windows/Pine.Ui.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">

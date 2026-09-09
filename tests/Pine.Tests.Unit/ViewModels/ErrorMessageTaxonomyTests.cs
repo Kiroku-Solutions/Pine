@@ -16,6 +16,7 @@ using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Xunit;
 
@@ -72,7 +73,7 @@ public class ErrorMessageTaxonomyTests
 
     private static AddTransactionViewModel BuildAddTransaction(IMediator mediator, Account account)
     {
-        var vm = new AddTransactionViewModel(mediator, () => { });
+        var vm = new AddTransactionViewModel(mediator, new Localizer(), () => { });
         vm.SelectedAccount = account;
         vm.Amount = 10m;
         vm.Payee = "Corner shop";
@@ -153,7 +154,7 @@ public class ErrorMessageTaxonomyTests
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<CreateAccountCommand>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new CreateAccountViewModel(mediator, () => { }) { AccountName = "Current" };
+        var vm = new CreateAccountViewModel(mediator, new Localizer(), () => { }) { AccountName = "Current" };
 
         await vm.CreateCommand.ExecuteAsync(null);
 
@@ -211,7 +212,7 @@ public class ErrorMessageTaxonomyTests
         var sender = Substitute.For<ISender>();
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(ConcurrencyConflictException.From(new InvalidOperationException("store detail")));
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
@@ -225,7 +226,7 @@ public class ErrorMessageTaxonomyTests
         var sender = Substitute.For<ISender>();
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(Leak());
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
@@ -245,7 +246,7 @@ public class ErrorMessageTaxonomyTests
             {
                 new ValidationError("AccountId", "That account no longer exists."),
             }));
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 

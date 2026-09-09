@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-31-RULE-ENGINE`                                                            |
-| Status           | Aspirational — nothing in the tree evaluates a rule                                  |
-| Reconciled       | 2026-09-07 · Neither the entity nor the table exists any more. `src/Pine.Core/Rules/Rule.cs` and the `Rules` table were dropped under TD-37 — a shell with no evaluator, no consumer and an unconstrained `TargetCategoryId` `Guid` where a `Category` relationship belongs. Everything below this line is design, not code. |
+| Status           | **Partially implemented** — a rule is evaluated on every import and manual entry     |
+| Reconciled       | 2026-09-09 · **The engine exists.** `Rule`, `RuleCondition` and a pure `RuleEvaluator` are in `src/Pine.Core/Rules/`, with a `Rules` table, a rules screen, and evaluation on both the import and manual-entry paths — a matching rule beats the ML classifier outright. What is built is §5.1's shape reduced: six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, and one action (`set category`). §6.2's priority ordering and idempotence are implemented and tested; §6.3's sandbox, §7's recurring detection, §8's notifications, §9's plugin extension and §12's conflict surfacing are NOT. The action's value is a category NAME, not a `CategoryId`: §10 Phase 3 of the audit called for "the now-real `CategoryId` relationship" and there is no such relationship (TD-32, TD-132). See `60-Production-Readiness-Audit` §12.70. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

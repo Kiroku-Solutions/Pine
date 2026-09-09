@@ -214,7 +214,6 @@ pine/
 │   ├── Pine.Ui.Android/           # Android shell (backed by Avalonia)
 │   ├── Pine.Ui.Macos/             # macOS shell (backed by Avalonia)
 │   ├── Pine.Ui.Windows/           # Windows shell (backed by Avalonia)
-│   ├── Pine.Ui.Web/               # Web/PWA shell (backed by Avalonia)
 │   └── Pine.Docs/                 # docs site (Astro + Mermaid CLI)
 ├── tests/
 │   ├── Pine.Tests.Unit/           # xUnit + FsCheck + NSubstitute
@@ -233,11 +232,15 @@ pine/
 └── CODEOWNERS
 ```
 
-> **Note on Avalonia.** `27-Development-Guidelines` §5 lists `Pine.Ui.Web` as part of
-> the Web shell. Pine is not "web only" (`00-Vision` §9.2); the Web shell is a
-> *secondary* distribution channel (`29-Deployment` §4) and ships at v1.0 only.
-> Phase 0 creates *scaffolds* for every UI shell; only desktop shells are wired in
-> Phase 1.
+> **Note on the Web shell, which no longer exists.** This plan and
+> `27-Development-Guidelines` §5 both listed a `Pine.Ui.Web` scaffold as a *secondary*
+> distribution channel shipping at v1.0. The scaffold was built, and the Phase 3 platform
+> review deleted it: the browser runtime provides no AES-GCM, so it could not open a vault,
+> and OpenCV and PaddleInference publish no WebAssembly build, so it could not scan a
+> receipt. `02-Product-Scope` had already listed browser-only distribution as a non-goal,
+> so the scaffold contradicted the scope document it was built under. Phase 0 creates
+> *scaffolds* for every remaining UI shell; only desktop shells are wired in Phase 1. See
+> `60-Production-Readiness-Audit` §12.64.
 
 ### 4.3 CI pipeline (matches `28-CI-CD` §4.1)
 

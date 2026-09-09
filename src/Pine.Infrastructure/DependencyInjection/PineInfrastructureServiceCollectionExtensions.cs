@@ -3,6 +3,7 @@ using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pine.Core.Accounts;
+using Pine.Core.Attachments;
 using Pine.Core.Ai;
 using Pine.Core.Budgets;
 using Pine.Core.Categories;
@@ -126,6 +127,8 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
         services.AddScoped<ISettingRepository, SqliteSettingRepository>();
         services.AddScoped<IImportProfileRepository, SqliteImportProfileRepository>();
+        services.AddScoped<IAttachmentRepository, SqliteAttachmentRepository>();
+        services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
 
         // SINGLETON (TD-28). The factory holds only the container's TimeProvider -- itself a
         // singleton -- and constructs a fresh, stateless importer per call, so it captures nothing

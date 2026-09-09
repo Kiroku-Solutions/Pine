@@ -62,6 +62,9 @@ public sealed class PineViewModelFactory : IViewModelFactory
     public BudgetsViewModel CreateBudgets() => _provider.GetRequiredService<BudgetsViewModel>();
 
     /// <inheritdoc />
+    public RulesViewModel CreateRules() => _provider.GetRequiredService<RulesViewModel>();
+
+    /// <inheritdoc />
     public SettingsViewModel CreateSettings() => _provider.GetRequiredService<SettingsViewModel>();
 
     /// <inheritdoc />

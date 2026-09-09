@@ -22,18 +22,19 @@ using Xunit;
 namespace Pine.Tests.Unit.Composition;
 
 /// <summary>
-/// Builds the REAL container each of the five heads builds, for each of the five heads (TD-29,
+/// Builds the REAL container each of the four heads builds, for each of the four heads (TD-29,
 /// TD-83, TD-85, TD-90).
 /// </summary>
 /// <remarks>
 /// <para>
 /// THIS IS THE TEST THAT COULD NOT BE WRITTEN BEFORE, AND WRITING IT WAS THE POINT. Until the
 /// registrations moved into <c>Pine.Ui.Avalonia</c>, they lived in five <c>static void
-/// ConfigureServices</c> methods inside five executables, three of which target
-/// <c>net10.0-android</c>, <c>net10.0-ios</c> and <c>net10.0-browser</c> and therefore cannot be
+/// ConfigureServices</c> methods inside five executables, three of which targeted
+/// <c>net10.0-android</c>, <c>net10.0-ios</c> and <c>net10.0-browser</c> and therefore could not be
 /// referenced by a <c>net10.0</c> test project at all. TD-83 stated the consequence exactly:
-/// deleting <c>AddPineLogging()</c> from <c>Pine.Ui.Web/Program.cs</c> left the entire suite green.
-/// Every assertion below would have been unwritable a commit ago.
+/// deleting <c>AddPineLogging()</c> from the Browser head's <c>Program.cs</c> left the entire suite
+/// green. That head no longer exists -- iteration 31 deleted it -- but two unreferenceable heads
+/// remain and the hole is the same shape.
 /// </para>
 /// <para>
 /// WHY IT BUILDS THE PROVIDER RATHER THAN READING DESCRIPTORS. Both appear here, and they answer
@@ -43,6 +44,7 @@ namespace Pine.Tests.Unit.Composition;
 /// five hand-written roots kept losing one line at a time.
 /// </para>
 /// </remarks>
+[Collection("ProcessWideState")]
 public class PineCompositionRootTests
 {
     public static TheoryData<PineHeadProfile> AllProfiles()
@@ -64,7 +66,7 @@ public class PineCompositionRootTests
     /// <see cref="PineHeadCapabilities.For"/> what it should expect and then checks the container
     /// agrees -- which proves the two halves are consistent, and would go on passing if someone
     /// flipped <c>Windows</c> to no-vision, because both halves would move together. The table is
-    /// a decision about five shipped executables, so it is spelled out here in full, and changing
+    /// a decision about four shipped executables, so it is spelled out here in full, and changing
     /// it has to be deliberate enough to change this line too.
     /// </remarks>
     [Theory]
@@ -72,7 +74,6 @@ public class PineCompositionRootTests
     [InlineData(PineHeadProfile.MacOs, false)]
     [InlineData(PineHeadProfile.Android, false)]
     [InlineData(PineHeadProfile.Ios, false)]
-    [InlineData(PineHeadProfile.Browser, false)]
     public void TheCapabilityTable_ShouldSayWhatItSays(PineHeadProfile profile, bool hasReceiptVision)
     {
         var capabilities = PineHeadCapabilities.For(profile);
@@ -87,7 +88,7 @@ public class PineCompositionRootTests
     /// Every head's container builds, with scope validation AND build-time validation on.
     /// </summary>
     /// <remarks>
-    /// <c>ValidateOnBuild</c> was off in all five roots because each registered
+    /// <c>ValidateOnBuild</c> was off in all five roots -- there were five then -- because each registered
     /// <c>AddTransactionViewModel</c>, whose <c>Action onComplete</c> no container can supply. With
     /// that dead registration gone, the flag is on, and this single line is what turns "a head is
     /// missing a service" from a throw on the screen that needs it into a failure here.
@@ -370,10 +371,10 @@ public class PineCompositionRootTests
     /// <para>
     /// THE ONE ASSERTION THAT HAS TO READ SOURCE, AND WHY. Everything above builds a container from
     /// <c>PineCompositionRoot</c> -- which proves the shared root is correct, and proves nothing
-    /// about whether a head calls it. The heads cannot be referenced from here: three of them target
-    /// <c>net10.0-android</c>, <c>net10.0-ios</c> and <c>net10.0-browser</c>. That is precisely the
-    /// hole TD-83 recorded, and reading the five files off disk is the only way to close it without
-    /// a per-head test project on a per-head runner.
+    /// about whether a head calls it. The heads cannot be referenced from here: two of them target
+    /// <c>net10.0-android</c> and <c>net10.0-ios</c>. That is precisely the hole TD-83 recorded, and
+    /// reading the four files off disk is the only way to close it without a per-head test project
+    /// on a per-head runner.
     /// </para>
     /// <para>
     /// It is a weak instrument used for exactly what it can do: it does not understand the code, it
@@ -384,7 +385,6 @@ public class PineCompositionRootTests
     [Theory]
     [InlineData("src/Pine.Ui.Windows/Program.cs", "PineHeadProfile.Windows")]
     [InlineData("src/Pine.Ui.Macos/Program.cs", "PineHeadProfile.MacOs")]
-    [InlineData("src/Pine.Ui.Web/Program.cs", "PineHeadProfile.Browser")]
     [InlineData("src/Pine.Ui.Android/Application.cs", "PineHeadProfile.Android")]
     [InlineData("src/Pine.Ui.Ios/AppDelegate.cs", "PineHeadProfile.Ios")]
     public void EveryHead_ShouldBuildItsContainer_ThroughTheSharedRootAndNothingElse(
@@ -392,7 +392,7 @@ public class PineCompositionRootTests
         string expectedProfile)
     {
         var path = Path.Combine(RepositoryRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
-        File.Exists(path).Should().BeTrue($"'{relativePath}' is one of the five composition roots");
+        File.Exists(path).Should().BeTrue($"'{relativePath}' is one of the four composition roots");
 
         var source = File.ReadAllText(path);
 

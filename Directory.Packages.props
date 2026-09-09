@@ -27,11 +27,17 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
-  <!-- UI: Avalonia and its heads. One version for the whole framework, by construction. -->
+  <!--
+    UI: Avalonia and its heads. One version for the whole framework, by construction.
+
+    `Avalonia.Browser` was pinned here until iteration 31, when the Browser head was deleted
+    (Phase 3, item 1). Central package management is what makes that removal safe to see: the pin
+    had exactly one consumer, so with the consumer gone the pin has none. It goes too, rather than
+    sitting here inviting a second Browser head into existence.
+  -->
   <ItemGroup>
     <PackageVersion Include="Avalonia" Version="12.0.5" />
     <PackageVersion Include="Avalonia.Android" Version="12.0.5" />
-    <PackageVersion Include="Avalonia.Browser" Version="12.0.5" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.0.5" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.0.5" />
     <PackageVersion Include="Avalonia.Headless" Version="12.0.5" />

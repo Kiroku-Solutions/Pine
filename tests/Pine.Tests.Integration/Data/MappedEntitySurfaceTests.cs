@@ -46,22 +46,39 @@ public class MappedEntitySurfaceTests
     /// Every non-owned entity type <see cref="PineDbContext"/> maps, by CLR name.
     /// </summary>
     /// <remarks>
-    /// Widening this is the thing the test exists to make deliberate. <c>Attachment</c>, <c>Rule</c>
-    /// and <c>Tag</c> are deliberately absent: they were shells with no behaviour and no consumer,
-    /// and <c>DropAttachmentRuleAndTagTables</c> removed them and their tables.
+    /// Widening this is the thing the test exists to make deliberate. <c>Tag</c> is deliberately
+    /// absent: it was a shell with no behaviour and no consumer, and
+    /// <c>DropAttachmentRuleAndTagTables</c> removed it and its table.
+    /// </remarks>
+    /// <remarks>
+    /// <c>Attachment</c> IS ON THIS LIST AGAIN, AND IT IS NOT THE SAME TYPE. The shell dropped in
+    /// iteration 27 had no hash, no content and an unconstrained <c>TransactionId</c>; it was
+    /// deleted precisely because keeping it preserved a shape known to disagree with its own
+    /// specification. The Phase 3 attachment carries the file, computes the SHA-256
+    /// <c>10-Domain-Model</c> §7 requires, verifies it on read, and is bound to its transaction by
+    /// a real foreign key. The allow-list grew by a deliberate edit, which is what it is for.
     /// </remarks>
     private static readonly string[] AllowedEntityNames =
     [
         nameof(Pine.Core.Accounts.Account),
+        nameof(Pine.Core.Attachments.Attachment),
         nameof(Pine.Core.Budgets.Budget),
         nameof(Pine.Core.Categories.Category),
         nameof(Pine.Core.Importing.ImportProfile),
+        nameof(Pine.Core.Rules.Rule),
         nameof(Pine.Core.Settings.Setting),
         nameof(Pine.Core.Transactions.Transaction),
     ];
 
-    /// <summary>The three names this ticket removed, kept explicit so the regression reads clearly.</summary>
-    private static readonly string[] DroppedEntityNames = ["Attachment", "Rule", "Tag"];
+    /// <summary>The one name that stayed removed, kept explicit so the regression reads clearly.</summary>
+    /// <remarks>
+    /// <c>Rule</c> left this list in the Phase 3 rule-engine work, and — like <c>Attachment</c>
+    /// before it — the type that came back is not the one that was dropped. The shell had a
+    /// <c>TargetCategoryId</c> the database knew nothing about, no conditions and no evaluator; the
+    /// replacement has conditions, a pure evaluator, a rules screen and a place in the import
+    /// pipeline. <c>Tag</c> is still nothing but a name in a document.
+    /// </remarks>
+    private static readonly string[] DroppedEntityNames = ["Tag"];
 
     [Fact]
     public void TheModelMapsOnlyTheEntitiesOnTheAllowList()

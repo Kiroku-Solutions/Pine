@@ -4,7 +4,7 @@
 |---|---|
 | Document ID | `PINE-DOC-60-AUDIT` |
 | Status | Non-normative — audit and remediation log                                                                                                     |
-| Reconciled| 2026-09-08 · A record of findings and of the work done against them, through **iteration 30**, which closed **Phase 2 item 9** and with it **Phase 2**. The row read as an afternoon — pick a number, add a flag — and neither half existed. **The suite went red the moment coverage was measured**: coverlet injects a tracker type into each instrumented assembly and NetArchTest threw `TypeLoadException` materialising it, so iteration 25's reflection allow-list failed under `--collect` and passed without it — a failure visible only in the configuration about to be made mandatory. The architecture rules are now scoped to the `Pine` namespace and the suite is 873/873 under instrumentation. And no threshold flag was available: `coverlet.collector`'s own documentation states the VSTest integration lacks "threshold validation", and `coverlet.msbuild` is neither referenced nor cached — so `scripts/coverage-gate.sh` parses the cobertura report itself. **No exclusions** — EF migrations, code-behind and generated properties all count, making every figure lower than a tuned configuration would report. Floors are a ratchet set just below measured: overall 61, `Pine.Core` 86, `Pine.Infrastructure` 74, `Pine.Application` 55, `Pine.Ui.Avalonia` 28. The script was **executed end to end**, not written and assumed. **Its honest limit is TD-07**: nothing triggers the workflow, so every regression net Phase 2 built into that file is inert (TD-136). Five mutations, 4 killed, **1 survived and exposed a real hole** — the guard test was reading the gate's name out of a CI *comment* — and its first re-run was a false pass caught only by reading the build output. Suite 873 → **874** unit, **205** integration, both green. **Phase 2 is closed: two of its nine rows were closed by finding the row's own premise wrong, and the phase's largest finding was in no row at all.** New rows: TD-135, TD-136. See **§12.62**. Through **iteration 29**, which closed **Phase 2 item 8** (TD-32, TD-33) and found that the row filed as a modelling complaint was hiding **a feature that had never once run**. The categoriser's training projection parsed a split's category NAME as a `Guid` and discarded everything that failed, so the training set was empty on every poll, `TrainModelAsync` was never reached and the watermark was never written — with no exception, no log line and no red test. The same mismatch broke the other end: both the suggestion and the import paths resolved a predicted `Guid` through a `Categories` table **nothing in this application has ever inserted a row into**, so every prediction was discarded. **TD-32's prescribed remedy was rejected in writing** — storing a `CategoryId` on the split needs categories to exist, and nothing creates one (TD-132) — so the string won, because it is the model with instances. The row's second clause was taken verbatim: `ParentCategoryId` now has a real `Restrict` foreign key with a migration and six integration tests, written as integration tests because a SQLite foreign key does nothing unless `PRAGMA foreign_keys` is on. TD-33 was closed by **removal**: no dispatcher ever existed on any branch, the two mutations that raised events already commit their effects synchronously, and **the deleted types did not implement `10-Domain-Model` §5 anyway**. Eight mutations, 7 killed, 1 survived and was fixed — and the decisive one restored the exact shipped projection and turned 6 of 7 tests red, which is the difference between claiming the defect and demonstrating it. Suite 863 → **873** unit, 199 → **205** integration, both green. New rows: TD-132, TD-133, TD-134. See **§12.60**. Through **iteration 28**, which closed **Phase 2 item 7** (TD-41, TD-42, TD-43) and found that **all three of that row’s sub-claims needed correcting** — one was already fixed, one was impossible as written, and one was false in a way that took three attempts to measure. Central package management moved every version into `Directory.Packages.props`, closing a real `EFCore.Sqlite.Core` 10.0.9 / `Design` 10.0.11 split that NuGet had been unifying silently. TD-41’s “keep one” could not be done — `Models.Local` is a facade whose own `.nuspec` requires `Models.LocalV5` — so the answer is two, with `LocalV3` and `LocalV4` (472 MB) removed. **The largest finding is not in the row at all:** `PP-OCRv4-det.onnx` (113 MB), `PP-OCRv4-rec.onnx` (90 MB) and `dict.txt` were shipped in every artefact by a glob and named by **no commit on any branch in the repository’s history**, having been superseded by the PP-OCRv5 weights embedded in the NuGet assembly before they were ever wired. The artefact went **1.08 GiB → 658 MiB unpacked, 680 MB → 292 MiB compressed**, measured by running `package.sh`. **And an agent sent to verify TD-43 returned a confident refutation that was wrong** — caught only because a second run of the same pipeline produced an impossible result, exposing a silently broken `awk` that had reported “no blob over 500 KB” while three blobs of 113 MB, 90 MB and 13 MB sat in `.git/objects`; TD-130 registers the class. Ten mutations, 9 killed, 1 survived by design, 1 discarded as invalid — and one kill only counts because the mutation exposed a real gap in the test, which was then fixed and re-falsified. Suite 855 → **863** unit, **199** integration, both green. New rows: TD-129, TD-130, TD-131. See **§12.58**. Through **iteration 27**, which closed **Phase 2 item 6** (TD-36, TD-37, TD-38) by deleting seven projects, three entities and one dead inference session — and found that two of that row’s own claims were wrong, and that the compiler already refused two of the three ways the deleted code could return. Through **iteration 26**, which closed **Phase 2 item 5** (TD-34, TD-35), found and reproduced the cause of **TD-117**, and watched a mutation survive all 853 tests — proving the suite had never checked that navigation actually initialises a page. Through **iteration 25**, which closed **Phase 2 item 4** (TD-26) by deleting the reflection call that wrote half of every transfer’s link — and which found, in doing so, that `Transaction` had never carried the public-surface tripwire `Account` has had since iteration 6. Through **iteration 24**, which closed **Phase 2 item 3** (TD-28) and TD-58 with it — and which began by discovering, with a throwaway experiment, that the two layer-dependency assertions this repository has relied on since early on were **conjunctive and therefore near-vacuous**. Through **iteration 23**, which closed **Phase 2 item 2** (TD-27) and half of TD-81, after iteration 22 closed **Phase 2 item 1** and, with it, TD-29, TD-52, TD-72, TD-83, TD-85 and TD-90 — six rows removed by removing one cause. It is the document that required all the others to carry a status, and §12.44 is where it was turned on the four root documents — `README.md`, `STATUS.md`, `PRODUCT.md`, `CHANGELOG.md` — that the first pass could not see. |
+| Reconciled| 2026-09-09 · A record of findings and of the work done against them, through **iteration 34**, which closed **Phase 3 item 4** — the rule engine. **The row's premise was false, and this document had already recorded why, twice**: there is no "now-real `CategoryId` relationship" to build on — `TransactionSplit.Category` is a `string`, iteration 29 rejected changing that in writing (TD-32, TD-132) because nothing in production writes a category, and iteration 27 flagged the same premise when it deleted the old `Rule` shell. **Fourth consecutive Phase 3 row whose stated premise did not survive contact with the code.** The engine is built on the name, because that is the model with instances. **TD-132 decided the scope before any code was written**: a `Rule` aggregate with no way to write a rule would have been that row's defect again — the third time, after `Attachment`, `Rule` and `Tag` were deleted for it under TD-37 — so the rules screen is not an extra, it is why the engine is allowed to exist, and it makes the sidebar's disabled "Coming soon" Rules button real. **A matching rule beats the classifier outright and the model is not consulted at all**, because a user's priority and a softmax confidence share no units and mixing them makes "why is this in Coffee?" unanswerable; a rule never overwrites a category the user typed or the file supplied. Ordering is **total** — §6.2 settles nothing when two rules share a priority, so ties break by creation time then id, and the repository applies the same order in SQL. Six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, one action — all declared deviations. **Seven mutations, six killed and one survived**: nothing tested the regex timeout, so a user-authored pattern could hang an import; closed with a test that races the match against a deadline, because asserting on it directly would hang the suite rather than fail it. **The coverage gate blocked this iteration too** and was obeyed rather than lowered — 937 → **990** unit, 212 → **219** integration, floors raised to overall 66, `Pine.Core` 88, `Pine.Infrastructure` 77, `Pine.Application` 57, `Pine.Ui.Avalonia` 37. New rows: TD-142, TD-143. See **§12.70**. Through **iteration 33**, which closed **Phase 3 item 3** — attachment storage. **The row's phrasing was exact**: scanning a receipt produced a transaction and destroyed the document it came from, because the image was decoded for the screen and then dropped. **The storage decision went against the plan this document itself recorded.** TD-37 wrote it down as "an encrypted blob written through `IVaultFileCipher`"; that cipher's own contract says it is "**the wrong shape for a large attachment. Say so before reusing it for one**", and `VaultBackupService` runs `VACUUM INTO` and **copies `pine.db` and nothing else** — so a receipt beside the database would have been absent from every backup, for the one feature whose purpose is an audit trail. The bytes are a BLOB in the vault, encrypted by SQLCipher and committed in the same unit of work as the ledger row. The SHA-256 §7 demands is computed by the aggregate and **verified on every read**. **Seven mutations, five killed and two survived — and both survivors were real holes**: nothing tested that the scanner attaches anything (reverting to discarding the image broke no test), and nothing tested that the read path refuses a tampered file. Both closed; both mutations now die. **The coverage gate blocked this iteration for the first time**, at 36% against a floor of 37%, and was obeyed rather than lowered. Suite 903 → **937** unit, 205 → **212** integration; floors raised to overall 65, `Pine.Core` 87, `Pine.Infrastructure` 75. New row: TD-141. See **§12.68**. Through **iteration 32**, which closed **Phase 3 item 2** — localisation. **The row read as infrastructure and the defect underneath it was a shipped control that did nothing**: a "Display Language" picker offering English and Spanish, persisting a number into the vault and changing not one character on screen, because nothing in `src/` ever read that key. Its two siblings on the same panel each applied AND persisted; it only persisted. Implemented against an already-approved design spec, which **overrode this document's own `.resx` prescription** in favour of `41-Localization` §5 — TD-45's Fix column is corrected. **260 keys**, `en` and `es`, switching live with no restart; the preference stored OUTSIDE the vault so the pre-unlock screens follow it; the glossary agreed BEFORE the strings rather than across them. **Three risks were declared unverified and none of them was the one that bit**: dotted keys work, and the real finding was that **no binding in this test suite had ever been evaluated** — `SetupWithoutStarting()` starts no dispatcher, so `Bind` succeeds and the property reads back `null`, in silence. Also **Avalonia does not listen for `Item[]`**, the BCL convention the design assumed. **Four of five parallel agents died mid-edit on a rate limit**, leaving keys with no values; recovered from `git HEAD` after the first recovery pass produced wrong English and was discarded — 205 exact, 6 reported, 0 guessed. The §14 guard test then found **nine more literals the manual count had missed**. Seven mutations, **7 killed**. Suite 865 → **903** unit, **205** integration; coverage ratchet turned, `Pine.Ui.Avalonia` 28 → **37**. New rows: TD-139, TD-140. See **§12.66**. Through **iteration 31**, which opened **Phase 3** by closing its first row: the platform story. **The decision is to narrow.** The Browser head is deleted — project, solution entry, CI leg, package pin, enum member, capability row and test rows. Three technical grounds hold, and **the decisive one was in no row at all**: `02-Product-Scope` has listed browser-only distribution as an explicit non-goal since before that head was scaffolded, so it contradicted this project's own scope document from day one. Two register entries were corrected on the way — **TD-53's stated cause was wrong** (`SQLitePCLRaw` does ship a `browser-wasm` asset; the build was never asking for it), and **§12.63's "it has never compiled on any machine" was false** — it was built here, 0 errors, before deletion, which is exactly why deleting beat leaving it as source. The row's *invest* branch was priced instead of dismissed: the macOS and Linux runtime packages for OpenCV and PaddleInference **exist at the exact versions already pinned**, four lines in total, and were still not taken — **the blocker is a runner, not a package**, and an untested `true` in the capability table is worse than an honest `false`. Android and iOS gained real application identities, closing half of TD-109. **The iteration's loudest finding was wrong, and the falsification pass is what caught it**: a missing `Batteries_V2.Init()` on three heads was written up as a vault-breaking defect, one mutation refused to die, and a clean-process probe showed `Microsoft.Data.Sqlite` arms the bundle by reflection. It was relabelled rather than patched into looking right. **TD-117's abort is closed** as an enabler — the first two full runs here aborted, and without the fix no number in this iteration could have been measured. Seven mutations, 5 killed, 1 survived deliberately, 1 needed three runs to kill. Suite 874 → **865** unit (the count fell with the deleted head's profile), **205** integration, both green; coverage gate re-run and passed. New rows: TD-137, TD-138. See **§12.64**. Through **iteration 30**, which closed **Phase 2 item 9** and with it **Phase 2**. The row read as an afternoon — pick a number, add a flag — and neither half existed. **The suite went red the moment coverage was measured**: coverlet injects a tracker type into each instrumented assembly and NetArchTest threw `TypeLoadException` materialising it, so iteration 25's reflection allow-list failed under `--collect` and passed without it — a failure visible only in the configuration about to be made mandatory. The architecture rules are now scoped to the `Pine` namespace and the suite is 873/873 under instrumentation. And no threshold flag was available: `coverlet.collector`'s own documentation states the VSTest integration lacks "threshold validation", and `coverlet.msbuild` is neither referenced nor cached — so `scripts/coverage-gate.sh` parses the cobertura report itself. **No exclusions** — EF migrations, code-behind and generated properties all count, making every figure lower than a tuned configuration would report. Floors are a ratchet set just below measured: overall 61, `Pine.Core` 86, `Pine.Infrastructure` 74, `Pine.Application` 55, `Pine.Ui.Avalonia` 28. The script was **executed end to end**, not written and assumed. **Its honest limit is TD-07**: nothing triggers the workflow, so every regression net Phase 2 built into that file is inert (TD-136). Five mutations, 4 killed, **1 survived and exposed a real hole** — the guard test was reading the gate's name out of a CI *comment* — and its first re-run was a false pass caught only by reading the build output. Suite 873 → **874** unit, **205** integration, both green. **Phase 2 is closed: two of its nine rows were closed by finding the row's own premise wrong, and the phase's largest finding was in no row at all.** New rows: TD-135, TD-136. See **§12.62**. Through **iteration 29**, which closed **Phase 2 item 8** (TD-32, TD-33) and found that the row filed as a modelling complaint was hiding **a feature that had never once run**. The categoriser's training projection parsed a split's category NAME as a `Guid` and discarded everything that failed, so the training set was empty on every poll, `TrainModelAsync` was never reached and the watermark was never written — with no exception, no log line and no red test. The same mismatch broke the other end: both the suggestion and the import paths resolved a predicted `Guid` through a `Categories` table **nothing in this application has ever inserted a row into**, so every prediction was discarded. **TD-32's prescribed remedy was rejected in writing** — storing a `CategoryId` on the split needs categories to exist, and nothing creates one (TD-132) — so the string won, because it is the model with instances. The row's second clause was taken verbatim: `ParentCategoryId` now has a real `Restrict` foreign key with a migration and six integration tests, written as integration tests because a SQLite foreign key does nothing unless `PRAGMA foreign_keys` is on. TD-33 was closed by **removal**: no dispatcher ever existed on any branch, the two mutations that raised events already commit their effects synchronously, and **the deleted types did not implement `10-Domain-Model` §5 anyway**. Eight mutations, 7 killed, 1 survived and was fixed — and the decisive one restored the exact shipped projection and turned 6 of 7 tests red, which is the difference between claiming the defect and demonstrating it. Suite 863 → **873** unit, 199 → **205** integration, both green. New rows: TD-132, TD-133, TD-134. See **§12.60**. Through **iteration 28**, which closed **Phase 2 item 7** (TD-41, TD-42, TD-43) and found that **all three of that row’s sub-claims needed correcting** — one was already fixed, one was impossible as written, and one was false in a way that took three attempts to measure. Central package management moved every version into `Directory.Packages.props`, closing a real `EFCore.Sqlite.Core` 10.0.9 / `Design` 10.0.11 split that NuGet had been unifying silently. TD-41’s “keep one” could not be done — `Models.Local` is a facade whose own `.nuspec` requires `Models.LocalV5` — so the answer is two, with `LocalV3` and `LocalV4` (472 MB) removed. **The largest finding is not in the row at all:** `PP-OCRv4-det.onnx` (113 MB), `PP-OCRv4-rec.onnx` (90 MB) and `dict.txt` were shipped in every artefact by a glob and named by **no commit on any branch in the repository’s history**, having been superseded by the PP-OCRv5 weights embedded in the NuGet assembly before they were ever wired. The artefact went **1.08 GiB → 658 MiB unpacked, 680 MB → 292 MiB compressed**, measured by running `package.sh`. **And an agent sent to verify TD-43 returned a confident refutation that was wrong** — caught only because a second run of the same pipeline produced an impossible result, exposing a silently broken `awk` that had reported “no blob over 500 KB” while three blobs of 113 MB, 90 MB and 13 MB sat in `.git/objects`; TD-130 registers the class. Ten mutations, 9 killed, 1 survived by design, 1 discarded as invalid — and one kill only counts because the mutation exposed a real gap in the test, which was then fixed and re-falsified. Suite 855 → **863** unit, **199** integration, both green. New rows: TD-129, TD-130, TD-131. See **§12.58**. Through **iteration 27**, which closed **Phase 2 item 6** (TD-36, TD-37, TD-38) by deleting seven projects, three entities and one dead inference session — and found that two of that row’s own claims were wrong, and that the compiler already refused two of the three ways the deleted code could return. Through **iteration 26**, which closed **Phase 2 item 5** (TD-34, TD-35), found and reproduced the cause of **TD-117**, and watched a mutation survive all 853 tests — proving the suite had never checked that navigation actually initialises a page. Through **iteration 25**, which closed **Phase 2 item 4** (TD-26) by deleting the reflection call that wrote half of every transfer’s link — and which found, in doing so, that `Transaction` had never carried the public-surface tripwire `Account` has had since iteration 6. Through **iteration 24**, which closed **Phase 2 item 3** (TD-28) and TD-58 with it — and which began by discovering, with a throwaway experiment, that the two layer-dependency assertions this repository has relied on since early on were **conjunctive and therefore near-vacuous**. Through **iteration 23**, which closed **Phase 2 item 2** (TD-27) and half of TD-81, after iteration 22 closed **Phase 2 item 1** and, with it, TD-29, TD-52, TD-72, TD-83, TD-85 and TD-90 — six rows removed by removing one cause. It is the document that required all the others to carry a status, and §12.44 is where it was turned on the four root documents — `README.md`, `STATUS.md`, `PRODUCT.md`, `CHANGELOG.md` — that the first pass could not see. |
 | Created | 2026-08-26 |
 | Audited commit | `c1c8844` on `feat-ui-production-theming` |
 | Method | Full source read + `dotnet build` + `dotnet test` execution. No claim below is taken from documentation. |
@@ -515,20 +515,20 @@ any other single change.
 | TD-29 | Five duplicated composition roots | 🟠 | Divergent lifetimes per platform | `AddPine*()` extensions | P1 | ✅ **Done** — iteration 22, §12.46. `AddPineInfrastructure()` + `PineCompositionRoot`; the five heads register nothing of their own, and a test reads their source to keep it that way |
 | TD-30 | No index on `Date`; no FK transaction→account | 🟠 | Scans at scale; orphan risk | The FK, and an index on a column that can actually be ordered | P2 | 🟢 **Fixed** (§12.32) — FK `Restrict`, no navigation property, matching Budget→Category. **The "index on `Date`" half could not be done as written**: ordering that column is wrong (TD-94), so the index is on the new `DateUtc`. Indexing `Date` would have made a wrong order fast |
 | TD-31 | Decimal stored as TEXT in SQLite | 🟠 | Wrong results when comparison reaches SQL | Scaled-integer converter | P1 | 🟢 **Fixed** (§12.32) — every money column is an `INTEGER` count of ten-thousandths. The scale is **fixed at 4, not per-currency**: a value converter sees one column and cannot read the sibling currency column, so a per-currency scale was unavailable, not merely awkward. 4 is free — it is the ISO 4217 maximum (`CLF`, `UYW`) and already `Money.PowerOfTen`'s ceiling |
-| TD-32 | `TransactionSplit.Category` is a free string, not a FK (`Budget` already uses a real `CategoryId` FK) | 🟡 | Rename orphans history | Store `CategoryId` on the split | P2 | ✅ **Done** — iteration 29 (§12.60), **and the severity was understated, not overstated.** The cost was not renames: the ledger spoke a string and the categoriser spoke a `Guid`, and the adapter between them was a `Guid.TryParse` on a human-typed name. It could not succeed, so **the model was never trained and no prediction was ever applied**. The fix unifies on the name; the prescribed direction (`CategoryId` on the split) was rejected in writing because the `Categories` table has no writer (TD-132). The row's second clause was taken as written: `ParentCategoryId` now has a real `Restrict` FK, a migration, and six tests proving it is enforced |
+| TD-32 | `TransactionSplit.Category` is a free string, not a FK (`Budget` already uses a real `CategoryId` FK) | 🟡 | Rename orphans history | Store `CategoryId` on the split | P2 | ✅ **Done** — iteration 29 (§12.60), **and the severity was understated, not overstated.** The cost was not renames: the ledger spoke a string and the categoriser spoke a `Guid`, and the adapter between them was a `Guid.TryParse` on a human-typed name. It could not succeed, so **the model was never trained and no prediction was ever applied**. The fix unifies on the name; the prescribed direction (`CategoryId` on the split) was rejected in writing because the `Categories` table has no writer (TD-132). The row's second clause was taken as written: `ParentCategoryId` now has a real `Restrict` FK, a migration, and six tests proving it is enforced. **AMENDED, iteration 34 (§12.70): the decision this row took is now load-bearing in a second subsystem.** The rule engine's action is a category NAME, for the same reason the split's is — so §10 Phase 3's "rule engine, on top of the now-real `CategoryId` relationship" was built on a relationship that does not exist, and says so in the code. TD-132's "not both, and not neither" is closer to being decided by default with every subsystem that adopts the string |
 | TD-33 | Domain events raised, never dispatched | 🟡 | Misleading scaffolding | Dispatch or remove | P2 | ✅ **Done** — iteration 29 (§12.60), by **remove**. Three event types, `IDomainEvent` and the list on `AggregateRoot` are gone. No dispatcher ever existed (`git log -S "IDomainEventDispatcher"` returns no commit on any branch), and the two mutations that raised events already update the balance synchronously in the same handler and the same transaction, with a written argument for why they must. `10-Domain-Model` §5's specified events are **not** what was deleted — the spec names `TransactionRecorded` carrying a category, the code had `TransactionRegisteredEvent` without one, and every subscriber the spec lists is a context with no source files. `AggregateRoot` survives as a marker with tests. **Note the naming collision**: §5's "Budget's `Money` uses a value converter" clause is a *different* concern filed under the same id, is deliberate, and was left alone |
 | TD-34 | Messenger subscriptions never unregistered | 🟡 | Stale VMs act on messages | `IDisposable` view models | P2 | ✅ **Done** — iteration 26, §12.54. Not by the remedy this row names: `IDisposable` alone would have left the three `this`-capturing handlers immortal regardless. `ObservableRecipient` + `IRecipient<T>` removes the capture by construction, and `PageActivation` — driven by the navigator's `CurrentPage` hook — deactivates and then disposes. Disposal is still there, and it is what makes the camera release deterministic |
 | TD-35 | Fire-and-forget async in ctor / messenger | 🟡 | Unobserved exceptions; init races | Awaited `InitializeAsync` | P1 | ✅ **Done** — iteration 26, §12.54. Both halves, and they needed different fixes: `ObservedTask` for the unobserved exceptions (25 sites), `IAsyncInitializable` for the init races (nine constructors that returned while their object was still filling itself in). Held by `ObservedTaskTests`, `AsyncInitialisationTests` and `Navigating_to_a_page_starts_its_initialisation` — the last written only because a mutation proved the other two did not connect |
 | TD-36 | Dead `InferenceSession`; missing model file | 🟡 | Startup cost; misleads readers | Delete | P2 | ✅ **Done** — iteration 27, §12.56. The session, the `ModelPath` constant, the model-load log record, `LoadModel()` and `IDisposable` are all gone; the extraction was always heuristic and is unchanged. **The `Microsoft.ML.OnnxRuntime` package reference stays**, because `ReceiptDetector` really does run inference — this row implied otherwise. Held by `TheOnlyTypeUsingTheOnnxRuntime_IsTheOneThatRunsInference`, an allow-list of one |
-| TD-37 | Dead entities: Attachment, Rule, Tag | 🟡 | Schema noise; implies features | Implement or drop | P2 | ✅ **Done** — dropped. `Attachment`, `Rule` and `Tag` and their three tables are gone (migration `DropAttachmentRuleAndTagTables`). Pure subtraction: there were no foreign keys in either direction, so `Attachment.TransactionId`, `Rule.TargetCategoryId` and `Rule.TargetTagId` were unconstrained `Guid` columns and nothing was orphaned. **Not saved work**: `Attachment` had no `Hash` despite `10-Domain-Model` §7 requiring one, and Phase 3's designs — an encrypted blob through `IVaultFileCipher`, a rule engine over a real `CategoryId` relationship — are different shapes. `10-Domain-Model` §6.14 and §7 now mark the design *(not built)*; `31-Rule-Engine` is kept, because nine documents cross-reference it |
+| TD-37 | Dead entities: Attachment, Rule, Tag | 🟡 | Schema noise; implies features | Implement or drop | P2 | ✅ **Done** — dropped. `Attachment`, `Rule` and `Tag` and their three tables are gone (migration `DropAttachmentRuleAndTagTables`). Pure subtraction: there were no foreign keys in either direction, so `Attachment.TransactionId`, `Rule.TargetCategoryId` and `Rule.TargetTagId` were unconstrained `Guid` columns and nothing was orphaned. **Not saved work**: `Attachment` had no `Hash` despite `10-Domain-Model` §7 requiring one, and Phase 3's designs — an encrypted blob through `IVaultFileCipher`, a rule engine over a real `CategoryId` relationship — are different shapes. `10-Domain-Model` §6.14 and §7 now mark the design *(not built)*; `31-Rule-Engine` is kept, because nine documents cross-reference it. **AMENDED, iteration 34 (§12.70): `Rule` is built too, and — like `Attachment` — the type that came back is not the one that was dropped.** The shell had a `TargetCategoryId` and a `TargetTagId` the database knew nothing about, no conditions and no evaluator. The replacement has conditions, a pure evaluator with a total ordering, a rules screen, and a place in the import and manual-entry pipelines. `Tag` is still nothing but a name in a document. **AMENDED, iteration 33 (§12.68): `Attachment` is built, and this row's own reasoning is why it could be built cleanly.** The replacement has the hash this row identified as missing, and it is verified on read rather than merely stored; it has a real foreign key where the old one had a loose `Guid`; and it holds the file, which the old one never did. **One clause of this row turned out to be wrong**: the Phase 3 design is NOT "an encrypted blob through `IVaultFileCipher`" — that cipher's contract explicitly refuses large attachments, and a file outside `pine.db` would be excluded from every backup. `Rule` and `Tag` remain deleted |
 | TD-38 | Four empty projects; three stub test projects | 🟡 | False signal in solution and CI | Remove until needed | P2 | ✅ **Done** — iteration 27, §12.56. All seven deleted; zero functionality, zero assertions and zero packaged output were lost, because there were none. §10 Phase 3 had made this conditional on "formally retiring the two plugin documents" — satisfied without inventing a new status value, since `Aspirational` already means "nothing in the tree does this", which an absent project states more precisely than an empty one |
 | TD-39 | Docs contradict implementation (§6.12) | 🟠 | Misleads every new contributor | Mark aspirational; reconcile | P1 | ✅ **Done** — iterations 20 and 21 (§12.44). All 62 files in `docs/` plus `README.md`, `STATUS.md`, `PRODUCT.md` and `CHANGELOG.md` carry a status from a closed vocabulary and a `Reconciled` date, and `DocumentStatusTests` is the workflow step that keeps it true. **What it does not do is judge accuracy** — no test can — so TD-113 records the residue |
 | TD-40 | Code cites ADR-0013/0012; only ADR-0001 exists | 🟡 | Dangling decision references | Write them or drop the citations | P2 | ✅ **Done** — iterations 20 and 21 (§12.44). Both ADRs were written from the code, `EveryAdrCitedInSourceHasAFile` fails the build on a dangling citation from source, and ADR-0012's citations were converted from line numbers to quotations after every one of them was found to be wrong **within the same commit that wrote them** |
 | TD-41 | Four PaddleOCR model packages referenced | 🟡 | Large duplicated payload | Keep one | P2 | ✅ **Done** — iteration 28 (§12.58). Down to two, not one, and **"keep one" was not achievable**: `Models.Local` is the 36 MB facade holding `LocalFullModels`, and its own `.nuspec` requires `Models.LocalV5 >= 3.0.0`, so dropping the weights package would only float it to that floor. `LocalV3` (238 MB) and `LocalV4` (234 MB) removed; neither defines `LocalFullModels` and no source file named either. The row's "three `.onnx` files committed separately" half turned out to be the larger finding — see TD-131 |
 | TD-42 | No central package management; version drift | 🟡 | Silent unification; EF mismatch | `Directory.Packages.props` | P2 | ✅ **Done** — iteration 28 (§12.58). `Directory.Packages.props` with `ManagePackageVersionsCentrally`, so `NU1008` makes a version in a `.csproj` a build error. The EF split this row named was real — `Sqlite.Core` 10.0.9 against `Design` 10.0.11 — and now resolves as one family at 10.0.11, confirmed in `project.assets.json` rather than by reading. The **`Microsoft.Extensions.DependencyInjection` 10.0.11/10.0.9 drift this row also named was already gone** before the work started. `BuildHygieneTests` carries six of the eight guards |
 | TD-43 | ONNX binaries are LFS-tracked since `bec0887`; the LFS conversion **did** leave the three raw blobs behind, but only in a working copy's reflog — never in reachable history, so no clone has ever received one | 🔵 | No clone cost at all; ~190 MB of local `.git` in this working copy only | Nothing to rewrite. `git gc --prune` reclaims the local copy | P3 | ✅ **Done** — iteration 28 (§12.58), by measurement rather than by change. Reachable history is **10.3 MiB of blobs in total**, largest 372,666 bytes (this document). The three raw blobs — 113,352,104 / 90,530,732 / 13,287,636 bytes, matching the pointers' own `size` fields — sit loose in `.git/objects`, reachable only via `--reflog`, which is why `fsck` is silent about them. **Both this row and the agent sent to check it were wrong, in opposite directions** |
-| TD-44 | Windows-only native runtimes | 🟡 | Scanning impossible off Windows | Per-RID runtimes; state support | P2 | 🔴 **Open** |
-| TD-45 | Hardcoded English UI; no localisation | 🟡 | Costly retrofit across 26 views | `.resx` + `IStringLocalizer` | P2 | 🔴 **Open** |
+| TD-44 | Windows-only native runtimes | 🟡 | Scanning impossible off Windows | Per-RID runtimes; state support | P2 | 🟡 **Partial** — iteration 31, §12.64. **"State support" is done and the row's own framing was too pessimistic.** The per-RID packages are not unavailable: `OpenCvSharp4.runtime.osx.arm64` and `OpenCvSharp4.official.runtime.linux-x64` at 4.13.0.20260627, and `Sdcb.PaddleInference.runtime.osx-arm64` and `Sdcb.PaddleInference.runtime.linux-x64.mkl` at 3.3.1.70, all exist — **the exact versions this repository already pins**. The desktop half of this row is four `PackageReference` lines. It was deliberately not done because **the blocker is a runner, not a package**: nothing in this project can execute a macOS or Linux binary, so the only reachable outcome is `PineHeadCapabilities` moving from an honest `false` to an untested `true`. The mobile half is genuinely impossible — `sdcb.paddleinference.runtime.android` is a 404 and `opencvsharp4.runtime.android` returns zero hits. The WASM clause is closed by deletion. **What remains: acquire a macOS or Linux runner, then add four lines and re-derive the table** |
+| TD-45 | Hardcoded English UI; no localisation | 🟡 | Costly retrofit across 26 views | ~~`.resx` + `IStringLocalizer`~~ → **JSON keyed by stable string IDs, per `41-Localization` §5**. **This column was wrong and is corrected here**: §5 is the normative specification and a *Fix* column is a reviewer's suggestion. `.resx` would also have shipped translations as satellite assemblies, the known silent casualty of trimming on the two AOT heads nothing here can build (TD-07) | P2 | ✅ **Done** — iteration 32, §12.66. **The row understated it: this was not a missing feature, it was a shipped control that did nothing.** A "Display Language" picker with English and Spanish has been on the Settings screen since the multi-vault work; it persisted `Appearance.Language` into the vault and changed not one character, because nothing in `src/` read that key and nothing ever assigned `CurrentUICulture`. Its two siblings on the same panel each applied AND persisted; it only persisted. Now: **260 keys**, `en` and `es`, live-switching with no restart through a binding to the localizer's indexer; the preference stored OUTSIDE the vault so the pre-unlock screens are translated too, with a one-way migration of any existing in-vault choice; and the `es` glossary `41-Localization` §8.4 requires agreed BEFORE the strings were written, as §18 of that document. **The guard test is the part that keeps it closed**: `41-Localization` §14 as an executable rule, which immediately found nine more literals the manual count had missed — `AutomationProperties.Name` values a screen reader reads aloud. Seven mutations, seven killed. Coverage of `Pine.Ui.Avalonia` 28% → 37%. **Not closed by this row: the sentences below `ViewModels/` (TD-139) and locale-driven number and date formatting (TD-21)** |
 | TD-46 | Relative model paths in `MlNetCategorizer` and `OnnxNlpFieldExtractor`; `ReceiptDetector` already anchors to `AppContext.BaseDirectory` | 🟡 | Feature silently off; stray files | Anchor the remaining two | P2 | 🔴 **Open** — scope narrowed, see §12.12 |
 | TD-47 | New vaults seeded with a fictional $1,000 account | 🔵 | In a tool whose value is an accurate picture of the user's money, seeding invented data is a correctness problem | Removed from `SetupViewModel`; a fresh vault now has zero accounts, and the dashboard's always-visible `+ New Account` button is the path in | P1 | ✅ **Closed** — iteration 10, §12.22 |
 | TD-48 | `CloudSync` setting read by nothing | 🔵 | Onboarding promises an absent feature | The disabled radio, the `IsCloudSync` property and the `System.StorageMode` write are all gone; the step keeps the local option, whose privacy claim is true | P2 | ✅ **Closed** — iteration 10, §12.22 |
@@ -536,7 +536,7 @@ any other single change.
 | TD-50 | No file-type or size validation on imports | 🔵 | Parser DoS / hang | Magic-byte + size cap | P2 | 🔴 **Open** |
 | TD-51 | Draft comments and `<!-- asdasda` in source | 🔵 | Signals unreviewed code | Clean up; enforce in review | P2 | 🟡 **Partial** |
 | TD-52 | Web/Android/iOS roots omit `TimeProvider.System` + 9 other registrations Windows has | 🔴 | Heads compile, then throw on the first command dispatched | Shared `AddPine*()` roots (TD-29) | P1 | ✅ **Done** — iteration 22, §12.46. There is one list of registrations and every head gets all of it; `ValidateOnBuild` now turns an omission into a startup failure in front of a test rather than a throw on the screen that needed it |
-| TD-53 | `Pine.Ui.Web` now passes `":memory:"`, but `PineDbContext` unconditionally builds a **keyed SQLCipher** connection, whose native lib WASM does not link | 🔴 | Web head still fails at first DB access — an in-memory *SQLCipher* database needs the same native library | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** — wording corrected, see §12.12. Iteration 22 deleted the false comment when the Web head lost its private composition root (§12.46): it now builds the same `PineDbContext` every head builds, from the real vault directory. **The defect is untouched** — the head still cannot open a vault, for the separate reason recorded as TD-88 |
+| TD-53 | `Pine.Ui.Web` now passes `":memory:"`, but `PineDbContext` unconditionally builds a **keyed SQLCipher** connection, whose native lib the WASM build does not link | 🔴 | Web head still fails at first DB access — an in-memory *SQLCipher* database needs the same native library | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** — wording corrected, see §12.12. Iteration 22 deleted the false comment when the Web head lost its private composition root (§12.46): it now builds the same `PineDbContext` every head builds, from the real vault directory. **The defect is untouched** — the head still cannot open a vault, for the separate reason recorded as TD-88. **Closed by deletion, iteration 31 (§12.64), and this row's stated cause was wrong**: `SQLitePCLRaw.lib.e_sqlcipher` does ship a `browser-wasm` native asset. Every build of that head printed `the native references won't be linked in, because neither $(WasmBuildNative), nor $(RunAOTCompilation) are 'true'` and named `e_sqlcipher.a`. It was not that WASM could not link it; it was that nothing asked. The outcome the row describes was real; the reason was not — ✅ **Done (by decision)** |
 | TD-54 | CI enumerates projects instead of building `Pine.slnx` | 🟠 | A newly added project is silently outside CI — the TD-07 drift class again | Build the solution, or assert slnx coverage in CI | P1 | 🔴 **Open** |
 | TD-55 | `TreatWarningsAsErrors` promotes NuGet audit warnings (NU19xx) to build errors | 🟡 | A new CVE advisory turns CI red with no code change | Set `NuGetAuditMode`; triage advisories separately | P2 | 🔴 **Open** |
 | TD-56 | No restore-from-backup path; `ExportVaultBackupCommand` has no UI entry point | 🟠 | Recovery requires the user to copy files by hand | Restore command + UI affordance | P1 | 🔴 **Open** |
@@ -660,10 +660,10 @@ a day of work now and an impossible migration later.
 
 ### Phase 3 — Long-term
 
-- [ ] Decide the platform story honestly. Either invest in per-RID native runtimes and a non-DirectShow camera abstraction, or narrow the README to the platforms that actually ship. The Browser head cannot run OpenCV or PaddleInference and should probably be dropped.
-- [ ] Localisation infrastructure before the view count grows (TD-45)
-- [ ] Attachment storage — persist the receipt image encrypted in the vault, linked to its transaction. The missing half of the OCR feature's audit value.
-- [ ] Rule engine, on top of the now-real `CategoryId` relationship
+- [x] ✅ **1.** Decide the platform story honestly — **DONE, AND THE DECISION IS TO NARROW.** The Browser head is **deleted**: nine files, the `Pine.slnx` entry, the `browser-wasm` CI leg, the `Avalonia.Browser` pin, the `PineHeadProfile.Browser` member and its test rows. Three technical grounds hold (no AES-GCM, so no vault; no WebAssembly build of OpenCV or PaddleInference, so no receipt pipeline; and its SQLCipher native asset was never being linked — which **corrects TD-53's stated cause**, the `browser-wasm` asset exists and the build simply was not asking for it). **But the decisive argument was in no row**: `02-Product-Scope` has listed browser-only distribution as an explicit non-goal the whole time, so the head contradicted this project's own scope document from the day it was scaffolded. **§12.63's claim that it "has never compiled on any machine" was false** — it was built here, 0 errors, before being deleted, which is exactly why leaving it as source was the worse option. The row's *invest* branch was priced rather than dismissed: `OpenCvSharp4.runtime.osx.arm64`, `OpenCvSharp4.official.runtime.linux-x64`, `Sdcb.PaddleInference.runtime.osx-arm64` and `Sdcb.PaddleInference.runtime.linux-x64.mkl` **all exist at the exact versions already pinned** — four lines — and were still not taken, because **the blocker is a runner, not a package**: no machine here can execute a macOS or Linux binary, so the capability table would go from an honest `false` to an untested `true`. Android and iOS have no such package at any price. Android and iOS gained **real application identities** (`org.pine.app`, display name `Pine`), closing the identity half of TD-109. **The iteration's loudest finding was wrong and the falsification pass is what caught it**: a mutation refused to die, and a clean-process probe proved `Microsoft.Data.Sqlite` arms the SQLCipher bundle by reflection, so the missing `Batteries_V2.Init()` on three heads was never the vault-breaking defect it was written up as. **TD-117's abort is closed** as an enabler — without it no count in this iteration could be measured. Seven mutations, 5 killed, 1 survived deliberately, 1 needed three runs. 874 → **865** unit (the count fell because a deleted head removes a profile from four theories), integration unchanged at **205**. Rows registered: **TD-137**, **TD-138**. See **§12.64**.
+- [x] ✅ **2.** Localisation infrastructure before the view count grows (TD-45) — **DONE, AND THE ROW WAS NOT ABOUT INFRASTRUCTURE.** Underneath it was a **shipped control that did nothing**: the Settings language picker persisted a number into the vault and changed no string on screen, because nothing ever read it. Implemented against the already-approved design spec, which **overrode this document's own `.resx` suggestion** in favour of `41-Localization` §5's JSON — corrected in TD-45's Fix column. **260 keys across `en` and `es`**, live switching with no restart, preference stored outside the vault so the pre-unlock screens follow it, glossary agreed before the strings rather than across them. **Three declared risks, and none of them was the one that bit**: dotted keys work; the real finding was that **no binding in this test suite had ever been evaluated** — `SetupWithoutStarting()` starts no dispatcher, so `Bind` succeeds and the property reads back `null`, silently. `Avalonia.Headless.XUnit` could not be used (it needs xunit v3 against this suite's 2.9.3), so `HeadlessUnitTestSession` was used directly. And **Avalonia does not listen for `Item[]`**, the BCL indexer convention the design assumed — only `"Item"` works, measured. **Four of five parallel agents died mid-edit on a rate limit**, leaving keys with no values; recovered from `git HEAD` mechanically after the first recovery pass produced wrong English and was thrown away — 205 exact, 6 reported, 0 guessed. The §14 guard test then found **nine more literals the count had missed**. Seven mutations, **7 killed**. 865 → **903** unit, **205** integration. Coverage ratchet turned: overall 61 → 63, UI 28 → 37. Rows registered: **TD-139**, **TD-140**. See **§12.66**.
+- [x] ✅ **3.** Attachment storage — **DONE, AND THE ROW'S PHRASING WAS EXACT.** Scanning worked and then destroyed the document: the image was decoded for the screen and dropped, and `AddTransactionCommand` had no image parameter at all. **The storage decision went AGAINST the plan this document recorded.** TD-37 wrote it down as "an encrypted blob written through `IVaultFileCipher`"; that cipher's own contract says "it is **the wrong shape for a large attachment. Say so before reusing it for one**", and — decisively — `VaultBackupService` runs `VACUUM INTO` on the keyed connection and **copies `pine.db` and nothing else**, so a receipt written beside the database would have been missing from every backup and every restore. The bytes are therefore a `BLOB` in the vault database: SQLCipher already encrypts them (§6.2, FR-TXN-02), and they commit in the SAME unit of work as the ledger row. `Attachment` is an aggregate root rather than a child of `Transaction`, so a ledger query never reads a photograph; the repository splits listing from content, and the transaction list's marker comes from a projection that never names `Content`. The SHA-256 `10-Domain-Model` §7 demands is computed by the aggregate and **verified on every read**, with a typed refusal rather than a warning beside a picture. **Seven mutations, five killed and two survived — and both survivors were real holes**: nothing tested that the scanner attaches anything (reverting to throwing the image away broke no test), and nothing tested that the read path refuses a tampered file. Both are closed and both mutations now die. **The coverage gate refused the first attempt** at 36% against a floor of 37% and was obeyed rather than lowered. 903 → **937** unit, 205 → **212** integration. Rows registered: **TD-141**. See **§12.68**.
+- [x] ✅ **4.** Rule engine — **DONE, AND THE PREMISE IN THIS LINE IS FALSE.** There is no "now-real `CategoryId` relationship": `TransactionSplit.Category` is a `string` with no foreign key, iteration 29 rejected changing that **in writing** (TD-32, §12.60) because the `Categories` table has no production writer (TD-132), and iteration 27 flagged the same premise when it deleted the old `Rule` (§12.56). **Fourth consecutive Phase 3 row whose stated premise did not survive contact with the code.** The engine is built on the name, for §12.60's reason: it is the model that has instances. **TD-132 decided the scope before any code was written**: its Fix column says "either build category management ... but not both, and not neither", and a `Rule` aggregate with no way to create a rule would have been that defect again — the third time, after `Attachment`, `Rule` and `Tag` were deleted for it under TD-37. So the rules screen is not an extra; it is why the engine is allowed to exist. It also makes the sidebar's disabled "Coming soon" Rules button real. **A matching rule beats the classifier outright and the model is not consulted at all** — comparing a user's priority with a softmax confidence mixes two scales that share no units and makes "why is this in Coffee?" unanswerable. A rule never overwrites a category the user typed or the file supplied. Ordering is TOTAL, not just by priority: §6.2 settles nothing when two rules share one, so ties break by creation time then id, and the repository applies the same order in SQL. Six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, one action — all declared deviations. **Seven mutations, six killed and one survived**: nothing tested the regex timeout, so a user-authored pattern could hang an import. Closed with a test that races the match against a deadline, because asserting on it directly would hang the suite rather than fail it. **The coverage gate blocked this iteration too** and was obeyed rather than lowered. 937 → **990** unit, 212 → **219** integration. Rows registered: **TD-142**, **TD-143**. See **§12.70**.
 - [ ] Sync — **only** after row versions, audit columns and stable natural keys exist
 - [ ] Plugin host, or formally retire the two plugin documents and delete the empty projects
 
@@ -3069,7 +3069,7 @@ that the build gate has teeth.
 |---|---|---|---|---|---|---|
 | TD-86 | Password change rotates the auth key, never the data key | 🟠 | A leaked data key survives every password change; `15-Security` §4's rotation clause is unmet | `PRAGMA rekey` to a fresh random data key, behind a mandatory pre-rekey backup | P2 | 🔴 Open |
 | TD-87 | No platform secure storage, so no biometric unlock | 🟡 | The envelope's second wrap has no consumer; `15-Security` §4's keychain clause is unmet | A second `VaultKeyWrap` under a platform-held key, per head | P2 | 🔴 Open |
-| TD-88 | `Pine.Ui.Web` registers AES-GCM, which WASM does not provide | 🟡 | The Browser head can no longer open any vault, and this is untested rather than observed | Decide the Browser head's fate (Phase 3 already proposes dropping it) before writing a WASM-safe wrap | P2 | 🔴 Open |
+| TD-88 | `Pine.Ui.Web` registers AES-GCM, which WASM does not provide | 🟡 | The Browser head can no longer open any vault, and this is untested rather than observed | Decide the Browser head's fate (Phase 3 already proposes dropping it) before writing a WASM-safe wrap | P2 | ✅ **Done (by decision)** — iteration 31, §12.64. The head is deleted, so no WASM-safe wrap was written and none is owed. **The guard outlives the head on purpose**: `AesGcmVaultFileCipher`, `AesGcmVaultKeyService`, `VaultKeyWrapUnavailableException` and `UnlockViewModel`'s catch branch all remain, because `AesGcm.IsSupported` is a claim about the primitive on whatever target is running, not about one deleted executable |
 
 ### 12.28 Next
 
@@ -4196,7 +4196,7 @@ this paragraph exists so that is not read as "the suite is green".**
 |---|---|---|---|---|---|---|
 | TD-107 | `packaging/package.sh` is reached by no test. Its three guards were proven load-bearing by hand this iteration, and nothing re-proves them | 🟡 | The one artefact users would ever install is produced by a script that cannot break a build. A future edit that drops the version-agreement check or the signature gate is invisible | Port the guards into a test that invokes the script against a stub publish directory, or reimplement packaging as a `dotnet` tool the unit suite can call | P2 | 🔴 **Open** |
 | TD-108 | The pipeline's normal outcome is an **unsigned** build: no certificate exists, so CI deliberately does not pass `--require-signature` | 🟠 | SmartScreen warns on first launch, and a user cannot distinguish the project's artefact from one a third party built and modified. The seam exists; the property does not hold | Obtain a code-signing certificate, then add `--require-signature` to the CI job so an unsigned build can never be published by accident | P1 | 🔴 **Open** |
-| TD-109 | Only the Windows head can be packaged at all. macOS/Linux have no bundle definition, and Android/iOS still carry template identity — `com.CompanyName.TempApp`, `android:label="TempApp"`, `CFBundleIdentifier=companyName.TempApp` | 🟠 | The README claims Pine "runs natively on Windows, macOS, Linux, iOS, Android, and WebAssembly". Four of those six cannot be built into anything installable, and two of them do not yet have a name | Give each head a real application identity, then a bundle per platform — or narrow the README, which is the Phase 3 decision | P1 | 🔴 **Open** |
+| TD-109 | Only the Windows head can be packaged at all. macOS/Linux have no bundle definition, and Android/iOS still carry template identity — `com.CompanyName.TempApp`, `android:label="TempApp"`, `CFBundleIdentifier=companyName.TempApp` | 🟠 | The README claims Pine "runs natively on Windows, macOS, Linux, iOS, Android, and WebAssembly". Four of those six cannot be built into anything installable, and two of them do not yet have a name | Give each head a real application identity, then a bundle per platform — or narrow the README, which is the Phase 3 decision | P1 | 🟡 **Partial** — iteration 31, §12.64, in the order this row prescribes. **Identity is done**: `org.pine.app` and display name `Pine` on both mobile heads, `ApplicationDisplayVersion` tracking `$(VersionPrefix)` rather than a `1.0` this project never had, and every `TempApp` string gone from the manifest, the activity attribute, `Info.plist` and the iOS launch screen. It was the half that could become unfixable — an Android application id cannot be changed after a first publish without shipping a different application. **The bundle half is untouched**: no `.apk`, `.ipa`, `.app` or `.deb` definition exists and `packaging/package.sh` still builds win-x64 only. The README half is done and went further than narrowing — the sixth platform was deleted rather than de-claimed |
 | TD-110 | The artefact is **1.08 GiB unpacked / 680 MB compressed**, of which 383 MB is three overlapping PaddleOCR model packages and 204 MB is the ONNX set | 🟡 | This is TD-41 with a measurement attached. A ~700 MB download for a personal-finance application is a distribution problem, not just a tidiness one | TD-41: keep one PaddleOCR package. Then reconsider bundling the ONNX weights at all versus fetching them on first use — which would need the network egress decision above | P2 | 🟡 **Partial** — iteration 28 (§12.58) took the measurement down to **690,067,133 bytes unpacked (658 MiB) / 306,385,892 bytes compressed (292 MiB)**, by running `package.sh` again rather than estimating. The download roughly halved. **The second half of the fix is untouched**: the remaining ~292 MiB still bundles PP-OCRv5 weights that could be fetched on first use, and that decision still runs into ADR-0012 |
 
 ### 12.43 Next
@@ -4590,7 +4590,7 @@ Both suites green at this commit.
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-114 | The head-source scan is the only thing tying a head to the shared root, and it is a text match | 🟡 | `EveryHead_ShouldBuildItsContainer_ThroughTheSharedRootAndNothingElse` reads five files and greps them. It catches the realistic regression — someone re-growing a private `ServiceCollection` — and cannot catch a head that calls `Build` and then discards the provider, or that registers services through a helper named something else. It is the strongest instrument available while three heads are unloadable from a `net10.0` test project | A per-head smoke test project on a per-head runner, which needs TD-07 closed and the Android/iOS workloads installed in CI | P2 | 🔴 **Open** |
-| TD-115 | `PineHeadCapabilities` states what each platform can run; nothing verifies the statement | 🟠 | The table says Windows has receipt vision and the other four do not, and that is a claim about which native assets a published artefact contains. It was derived by reading `Pine.Infrastructure.csproj` — `OpenCvSharp4.runtime.win`, `Sdcb.PaddleInference.runtime.win64.mkl`, no osx/android/ios/browser equivalents — and by observing that only the Windows head copies `Assets/Ai/*.onnx`. If a runtime package is added for another RID, the table silently becomes wrong in the direction that withholds a working feature; if the win packages are removed, it becomes wrong in the direction that promises one | Assert the capability table against the restored asset graph, or against the published output of `packaging/package.sh` per RID | P2 | 🔴 **Open** |
+| TD-115 | `PineHeadCapabilities` states what each platform can run; nothing verifies the statement | 🟠 | The table says Windows has receipt vision and the other four do not, and that is a claim about which native assets a published artefact contains. It was derived by reading `Pine.Infrastructure.csproj` — `OpenCvSharp4.runtime.win`, `Sdcb.PaddleInference.runtime.win64.mkl`, no osx/android/ios/browser equivalents — and by observing that only the Windows head copies `Assets/Ai/*.onnx`. If a runtime package is added for another RID, the table silently becomes wrong in the direction that withholds a working feature; if the win packages are removed, it becomes wrong in the direction that promises one | Assert the capability table against the restored asset graph, or against the published output of `packaging/package.sh` per RID | P2 | 🟡 **Partial** — iteration 31, §12.64, and **this row named a drift that had already happened**. `TheOnlyRidPinnedNativeRuntimes_AreTheWindowsOnes_WhichIsWhatTheCapabilityTableClaims` reads `Directory.Packages.props` and fails if any RID-pinned native runtime other than the two win ones appears — exactly the "a runtime package is added for another RID" case this row describes, verified by adding `OpenCvSharp4.runtime.osx.arm64` and watching it go red. Separately, **half of the table's stated reasoning was false**: the Windows arm claimed to be "the one head whose `Assets/Ai/*.onnx` models are copied to the output", and the model is a `<Content>` item in `Pine.Infrastructure.csproj` that MSBuild copies into EVERY head's output — confirmed by listing three heads' build folders. That is now corrected in the source and pinned by `TheModelAsset_IsShippedByTheSharedProject_AndByNoHead`. **What remains is the row's second option**: asserting against a published artefact per RID, which needs the runner TD-44 needs |
 | TD-116 | `PortableAiProvider` refuses vision, and no UI path yet catches the refusal by type | 🟡 | The exception is on `IUserFacingFailure`, so `UserFacingError` renders its sentence wherever a view model already routes through it. But the receipt pages are not registered on the heads that would throw, so the only reachable caller today is `ScanReceiptCommandHandler` via a code path no head can start — which means the sentence is written and never read. That is the correct state and an untested one | Once a head without vision gains any receipt entry point — an import that runs OCR, a shared-file handler — assert the sentence reaches a screen | P3 | 🔴 **Open** |
 
 ### 12.47 Next
@@ -4825,7 +4825,7 @@ first row of "Explicitly NOT done".
 
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
-| TD-117 | A misspelled configuration key is silently ignored, and the unit host aborted once with no explanation | 🟡 | `IConfiguration` binding ignores keys that match no property, so `Pine:Ai:ConfidenceThreshold` (the natural misspelling of `CategorisationConfidenceThreshold`) changes nothing and reports nothing — the operator's experience is that configuration does not work. Separately, one run of the unit suite aborted at 717 of 798 and three subsequent runs passed 798/798; the abort is unexplained and is a different shape from TD-97's failing assertions. **Amended, iteration 24: this is not an anomaly, it is the normal case.** The abort was observed **seven times in a single session** here, plus three more reported by agents — ten in one day, against a suite that passes 824/824 whenever it completes. It has a signature: six of the seven observed here aborted between test **700 and 735** of 824, one at 533, and the run prints only `Fatal error.` with a managed stack ending in the xunit invoker. Roughly one run in two now aborts, which means every test count in this document costs two or three runs to obtain | Compare the bound section's key set against the options tree's property names and refuse unknown keys, which is the same fail-loud posture the value bounds already take. Ship a commented example file. For the abort: capture a crash dump from the test host rather than re-running until it is green | P2 | 🔴 **Open**  **DIAGNOSED, iteration 26, §12.54 — this row is no longer about an unexplained abort.** The crash was captured and **reproduced three times consecutively**: `Fatal error. 0xC0000005` at `Sdcb.PaddleInference.Native.PaddleNative.PD_PredictorCreate2`, reached through `PineViewModelFactory.CreateLiveScanner()` from `ViewModelFactoryTests`, and through `PineCompositionRootTests.EveryHandlerThatNeedsTheAiProvider_ShouldBeConstructible_OnEveryHead` before that test existed. It is a **native access violation** from xunit resolving the real `IAIProvider` on several threads at once — not a flaky assertion, and nothing to do with the misspelled-key half of this row. The fix is small and known: serialise the tests that build the real AI stack into one xunit collection, or substitute the provider where the test does not need the real one. Deliberately not done in iteration 26, which owed its attention to a different row|
+| TD-117 | A misspelled configuration key is silently ignored, and the unit host aborted once with no explanation | 🟡 | `IConfiguration` binding ignores keys that match no property, so `Pine:Ai:ConfidenceThreshold` (the natural misspelling of `CategorisationConfidenceThreshold`) changes nothing and reports nothing — the operator's experience is that configuration does not work. Separately, one run of the unit suite aborted at 717 of 798 and three subsequent runs passed 798/798; the abort is unexplained and is a different shape from TD-97's failing assertions. **Amended, iteration 24: this is not an anomaly, it is the normal case.** The abort was observed **seven times in a single session** here, plus three more reported by agents — ten in one day, against a suite that passes 824/824 whenever it completes. It has a signature: six of the seven observed here aborted between test **700 and 735** of 824, one at 533, and the run prints only `Fatal error.` with a managed stack ending in the xunit invoker. Roughly one run in two now aborts, which means every test count in this document costs two or three runs to obtain | Compare the bound section's key set against the options tree's property names and refuse unknown keys, which is the same fail-loud posture the value bounds already take. Ship a commented example file. For the abort: capture a crash dump from the test host rather than re-running until it is green | P2 | 🔴 **Open**  **DIAGNOSED, iteration 26, §12.54 — this row is no longer about an unexplained abort.** The crash was captured and **reproduced three times consecutively**: `Fatal error. 0xC0000005` at `Sdcb.PaddleInference.Native.PaddleNative.PD_PredictorCreate2`, reached through `PineViewModelFactory.CreateLiveScanner()` from `ViewModelFactoryTests`, and through `PineCompositionRootTests.EveryHandlerThatNeedsTheAiProvider_ShouldBeConstructible_OnEveryHead` before that test existed. It is a **native access violation** from xunit resolving the real `IAIProvider` on several threads at once — not a flaky assertion, and nothing to do with the misspelled-key half of this row. The fix is small and known: serialise the tests that build the real AI stack into one xunit collection, or substitute the provider where the test does not need the real one. Deliberately not done in iteration 26, which owed its attention to a different row. **THE ABORT HALF IS CLOSED, iteration 31, §12.64 — as an enabler, not as this row's turn.** No count in that iteration could be measured otherwise: its first two full runs aborted at 768/874 and 760/874. `ProcessWideStateTestGroup` is a `[CollectionDefinition(DisableParallelization = true)]` over the three classes that build a real Windows-profile container — `PineCompositionRootTests`, `ViewModelFactoryTests`, `MessengerLifecycleTests` — taking the first of the two options this row offered; substituting the provider was rejected because these tests exist to prove the head's REAL graph closes, and a substitute would have deleted the coverage that found TD-90. It absorbs the old `"Messenger"` collection, which guarded the same category of hazard (one process-wide resource, several classes, run concurrently) and which a class cannot belong to at the same time. **Falsified, and the falsification is the point**: removing one class from the collection, the suite completed twice and aborted on the THIRD run at 650/865 — two runs would have reported a false pass, which is the trap this row has set for four iterations. With the collection: six consecutive complete runs, one of them under coverage instrumentation. **The misspelled-configuration-key half of this row is untouched and this row stays open for it** |
 | TD-118 | The receipt pipeline's ~20 vision and geometry constants stay literals, and the reason is not written anywhere they are | 🟡 | They were deliberately excluded — they are the algorithm, not settings, and exposing them would let a user break detection and report it as a bug. But that reasoning lives only in this entry, so the next person to read `ReceiptDetector` sees an inconsistency: some thresholds are configurable and these are not, with nothing saying why | Either a comment at the top of the vision classes stating the boundary, or a named `ReceiptVisionProfile` type that groups them as tuned constants belonging to a model version | P3 | 🔴 **Open** |
 | TD-119 | Nothing states where the boundary between configuration and user settings is, and several values sit on it | 🟠 | Theme, accent and language are user settings, written into the encrypted vault through `SaveSettingCommand`. The auto-lock timeout, the page size and the confidence gate are now configuration, in a plaintext file outside the vault — and all three are things a user would reasonably expect to change from a settings screen, where they would also be private and travel with the vault. `VaultAutoLockOptions`' own remarks describe the timeout as "a user preference that a settings screen changes at runtime", which is the opposite classification from the one this iteration gave it | Write the rule down: operator/installation values in configuration, per-user values in the vault, and name which of the thirteen are which. Then move the ones that are on the wrong side | P2 | 🔴 **Open** |
 
@@ -6062,9 +6062,230 @@ never been trained, under a green suite, for the entire life of the project.
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-135 | Branch coverage is measured on every run and gated on nothing | 🟢 | The cobertura report carries `branch-rate` — **50.94% overall**, against 61.93% line — and `scripts/coverage-gate.sh` reads only line coverage. Branch coverage is the stricter and more useful signal: a line executed once with its `if` never taken is counted as covered, which is precisely how a money-path guard can be "covered" and never exercised. The gap between the two numbers (eleven points overall, twenty-three in `Pine.Infrastructure`, where it is 51.72% against 74.44% line) is the size of what the line floor cannot see | Add branch floors alongside the line floors, set the same way — measure, round down, ratchet. The script already parses the attribute it would need | P3 | 🔴 **Open** |
-| TD-136 | The coverage gate's CI half cannot fire, and neither can anything else in the workflow | 🟡 | This is TD-07 restated as a consequence rather than a cause, because iteration 30 is the first row whose deliverable is **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` now contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite — and it runs only on `workflow_dispatch`. Every regression net Phase 2 built into that file is inert. The local script is the working half, and it works only when a person remembers to run it | Re-arm `pull_request: branches: [main]`. One line. The compute-budget decision that removed it in `79c5364` was taken when the workflow tested almost nothing; it now gates five things that did not exist then | P1 | 🔴 **Open** |
+| TD-136 | The coverage gate's CI half cannot fire, and neither can anything else in the workflow | 🟡 | This is TD-07 restated as a consequence rather than a cause, because iteration 30 is the first row whose deliverable is **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` now contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite — and it runs only on `workflow_dispatch`. Every regression net Phase 2 built into that file is inert. The local script is the working half, and it works only when a person remembers to run it | Re-arm `pull_request: branches: [main]`. One line. The compute-budget decision that removed it in `79c5364` was taken when the workflow tested almost nothing; it now gates five things that did not exist then | P1 | 🔴 **Open** |
+### 12.64 Iteration 31 - Phase 3, item 1: the platform story, and a finding that was wrong
 
-### 12.63 Next
+**Ticket:** Phase 3 item 1, "Decide the platform story honestly. Either invest in per-RID native
+runtimes and a non-DirectShow camera abstraction, or narrow the README to the platforms that
+actually ship. The Browser head cannot run OpenCV or PaddleInference and should probably be
+dropped."
+
+**The decision is: narrow.** The Browser head is deleted, Android and iOS have real identities, and
+the per-RID investment is costed, named and deliberately not taken. What follows is the evidence
+each half rests on, including the half that turned out to be wrong.
+
+#### The Browser head is deleted, on three independent grounds and a fourth that predates them all
+
+`src/Pine.Ui.Web` is gone: nine files, the `Pine.slnx` entry, the `browser-wasm` leg of
+`.github/workflows/dotnet-ci.yml`, the `Avalonia.Browser` pin, the `PineHeadProfile.Browser` enum
+member, its row in the capability table, and its `InlineData` rows in two test theories.
+
+The grounds, each checked rather than repeated:
+
+1. **No vault could ever open there.** `AesGcm.IsSupported` is false on the browser runtime, and
+   `AesGcmVaultFileCipher` and `AesGcmVaultKeyService` both refuse by name when it is (TD-88).
+2. **The receipt pipeline could never exist there.** `OpenCvSharp4` and `Sdcb.PaddleInference`
+   publish no WebAssembly runtime package. This is TD-44's WASM clause and it holds.
+3. **The database engine was not being linked.** Every build of this head printed
+   `@(NativeFileReference) is not empty, but the native references won't be linked in, because
+   neither $(WasmBuildNative), nor $(RunAOTCompilation) are 'true'`, naming `e_sqlcipher.a`.
+   **This corrects TD-53, whose text said WASM "does not link" the native library. It does --
+   `SQLitePCLRaw.lib.e_sqlcipher` ships a `browser-wasm` asset -- the build simply was not asking
+   for it.** The row was right about the outcome and wrong about the cause.
+4. **`02-Product-Scope` already listed it as a non-goal.** "Web-only or browser-only distribution
+   (the product is not a SaaS)" has been in that document's out-of-scope list the whole time.
+   **The strongest argument for deletion was not any of the technical ones. The head contradicted
+   this project's own scope document, and had done since it was scaffolded.**
+   `56-IMPLEMENTATION-PLAN` even carried a note reconciling the two, which is what a contradiction
+   looks like when it is managed instead of resolved.
+
+**And §12.63 was wrong about it.** That section wrote "it has never compiled on any machine, and
+neither has Android or iOS." `dotnet build src/Pine.Ui.Web/Pine.Ui.Web.csproj -c Release` was run
+here before deleting it: **0 errors, 1 warning, and it succeeded with no `wasm-tools` workload
+installed.** It compiled. It has compiled in every iteration that recorded a build log. That is
+precisely why deleting it beat leaving it as source: a head that builds green is a head that reads
+as supported, and this one could not open a vault, scan a receipt, or link its own database engine.
+
+#### Android and iOS have real identities now
+
+`com.CompanyName.TempApp`, `android:label="TempApp"`, `Label = "TempApp.Android"`,
+`CFBundleIdentifier=companyName.TempApp`, `CFBundleDisplayName=TempApp` and a `TempApp` string in
+the iOS launch screen are all gone. The application id is `org.pine.app` on both, the display name
+is `Pine`, and `ApplicationDisplayVersion` now tracks `$(VersionPrefix)` instead of restating `1.0`,
+a version this project has never had. The reverse-DNS root matches the download host
+`29-Deployment` already names. **This closes the identity half of TD-109 and none of the bundle
+half**: there is still no `.apk`, `.ipa`, `.app` or `.deb` definition anywhere, and
+`packaging/package.sh` still builds win-x64 and says so.
+
+An application id is not cosmetic on Android -- it is the package's primary key on the device and in
+the store, and it cannot be changed after a first publish without shipping a different application.
+Leaving it as the template's was the one thing in this row that would have become unfixable.
+
+#### "Invest in per-RID runtimes" is possible, costed, and deliberately not taken
+
+The row offers investment as the alternative to narrowing, and the register has implied throughout
+that it was not available. It is. Queried against nuget.org's flat container, **at the exact
+versions this repository already pins**:
+
+| Package | Version queried | Result |
+|---|---|---|
+| `OpenCvSharp4.runtime.osx.arm64` | 4.13.0.20260627 | exists |
+| `OpenCvSharp4.official.runtime.linux-x64` | 4.13.0.20260627 | exists |
+| `Sdcb.PaddleInference.runtime.osx-arm64` | 3.3.1.70 | exists |
+| `Sdcb.PaddleInference.runtime.linux-x64.mkl` | 3.3.1.70 | exists |
+| `sdcb.paddleinference.runtime.android` | - | 404 |
+| `opencvsharp4.runtime.android` | - | 0 hits |
+
+So the desktop half of the investment is **four `PackageReference` lines at versions that already
+resolve**, and the mobile half does not exist at any price. It was not taken, and the reason is
+worth stating precisely because it is not the reason the register has been implying: **the blocker
+is a runner, not a package.** No machine in this project can execute a macOS or Linux binary. Adding
+the pins would flip `PineHeadCapabilities.MacOs.HasReceiptVision` from an honest `false` to an
+untested `true`, which is a strictly worse position than the one being left. That is a far
+better-defined problem than "Windows-only native runtimes", and TD-44 now says so.
+
+#### The capability table was stating one true reason and one false one
+
+`PineHeadCapabilities.For(Windows)` justified itself with two facts: the win-only native runtime
+packages, **and** "the one head whose `Assets/Ai/*.onnx` models are copied to the output."
+
+The second is false. `yolo-receipt-nano.onnx` is a `<Content CopyToOutputDirectory="PreserveNewest">`
+item in `Pine.Infrastructure.csproj`, every head has a `ProjectReference` to that project, and
+MSBuild therefore copies it into every head's output. Verified by listing three heads' build
+folders -- the model is in `Pine.Ui.Macos/bin/.../Assets/Ai/` and was in the Browser head's too.
+The managed ONNX runtime is portable and never was the thing making vision Windows-only.
+
+A true reason beside a false one is worse than one reason alone, because the false half is what a
+reader spot-checks -- and they find the file exactly where the comment says it is.
+
+Two tests now hold the corrected version, which is the part of **TD-115** that was reachable:
+`TheOnlyRidPinnedNativeRuntimes_AreTheWindowsOnes_WhichIsWhatTheCapabilityTableClaims` reads
+`Directory.Packages.props` and fails if any RID-pinned native runtime other than the two win ones
+appears -- the exact silent drift TD-115 names -- and
+`TheModelAsset_IsShippedByTheSharedProject_AndByNoHead` pins the asset where it belongs. Neither
+verifies a published artefact per RID, which is the rest of that row and stays open.
+
+#### The finding this iteration got wrong, and how
+
+`SQLitePCL.Batteries_V2.Init()` appeared exactly once in all of `src/` -- at
+`Pine.Ui.Windows/Program.cs:19` -- defended by a comment reading "it is a process-global native
+initialisation, not a registration, **and each head's provider bundle differs**." The emphasised
+clause is false: `SQLitePCLRaw.bundle_e_sqlcipher` is pinned once and reaches every head through the
+same `ProjectReference`.
+
+From there the conclusion looked forced. This project references
+`Microsoft.EntityFrameworkCore.Sqlite.Core`, the variant whose whole purpose is to omit the
+auto-arming bundle, so the missing call should mean the first `SqliteConnection.Open()` throws and
+**macOS, Android and iOS could not open a vault at all**. That was written up as the iteration's
+largest finding, and it was reported as such.
+
+**It is not true.** The falsification pass is what caught it: mutation M3 neutered
+`PineSqliteProvider.EnsureInitialised()` so it called nothing, and every test in the new file stayed
+green. Rather than patch the test until the mutation died, the premise was probed. A standalone
+console project outside this repository, referencing only
+`Microsoft.EntityFrameworkCore.Sqlite.Core` 10.0.11 and `SQLitePCLRaw.bundle_e_sqlcipher` 2.1.11,
+in a clean process with no `Init()` call anywhere, opened a `Password=` connection and round-tripped
+a row:
+
+```
+RESULT: OPENED WITHOUT Batteries_V2.Init()
+```
+
+The mechanism is inside `Microsoft.Data.Sqlite.dll` itself, which carries the UTF-16 literals
+`"SQLitePCLRaw.batteries_v2"`, `"Batteries_V2"` and `"Init"`: it locates the bundle **by reflection**
+and initialises it unasked. The explicit call is redundant on this package set, and has been for as
+long as this package set has been pinned.
+
+**What was kept, and honestly relabelled.** `PineSqliteProvider` and the call from
+`PineCompositionRoot.Build` stay, and every comment about them was rewritten to say what they are:
+not a bug fix. Two arguments survive. One head of four doing something the others do not, justified
+by a false clause, is the divergence class TD-29 exists to remove. And `Microsoft.Data.Sqlite`
+finding the bundle **by assembly name through reflection** is exactly the shape a trimmer may
+remove, on the two AOT heads that never made the call -- an explicit call is a static reference the
+trimmer must keep. **That second argument is reasoning, not a measurement, and is labelled as such
+in the source**: no machine here can build a trimmed Android head (TD-07).
+
+**M3 is left alive on purpose.** Killing it would require asserting that the explicit call is
+required, which is false. A test that passes for a reason nobody checked is how this finding went
+wrong in the first place.
+
+#### TD-117's abort is closed, and this iteration could not have been measured without it
+
+Not the row's target, and it had to be done: every test count in this document since iteration 24
+has cost two or three runs, and the first two full runs attempted here both aborted -- at 768/874
+and 760/874, with `Fatal error. 0xC0000005` at
+`Sdcb.PaddleInference.Native.PaddleNative.PD_PredictorCreate2`, reached through
+`DefaultLocalAiProvider`'s constructor.
+
+Iteration 26 diagnosed it and named the fix. It is applied now: `ProcessWideStateTestGroup` is a
+`[CollectionDefinition(DisableParallelization = true)]` holding the three classes that build a real
+container on the Windows profile -- `PineCompositionRootTests`, `ViewModelFactoryTests` and
+`MessengerLifecycleTests`. xunit runs classes in parallel; three of them entering
+`PD_PredictorCreate2` at once takes the host down, which is why the run prints a passing count and
+then "test run aborted" with no failing test to name. It absorbs the old `"Messenger"` collection,
+which existed for the same category of problem -- one process-wide resource, several classes, run
+concurrently -- and a class can only belong to one collection.
+
+It was falsified rather than assumed. Removing `ViewModelFactoryTests` from the collection, the
+suite completed twice and **aborted on the third run at 650/865**. With the collection in place:
+**six consecutive complete runs**, including one under coverage instrumentation. The
+misspelled-key half of TD-117 is untouched.
+
+#### Falsification
+
+Seven mutations. **Five killed, one survived and was left alive deliberately, one required three
+runs to kill.**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | Delete `PineSqliteProvider.EnsureInitialised()` from `PineCompositionRoot.Build` | **Killed** -- `TheSharedRoot_ShouldArmTheProvider_AndNoHeadShould` |
+| M2 | Put `Batteries_V2.Init()` back into `Pine.Ui.Windows/Program.cs` | **Killed** -- same test; the head half is not decorative |
+| M3 | Make `EnsureInitialised()` call nothing | **SURVIVED -- and it is the most valuable result in this iteration.** It refuted the finding above; see that section |
+| M4 | Pin `OpenCvSharp4.runtime.osx.arm64` without touching the capability table | **Killed** -- `TheOnlyRidPinnedNativeRuntimes_...`, which is TD-115's named drift |
+| M5 | Give `Pine.Ui.Windows` its own `.onnx` `Content` item | **Killed** -- `TheModelAsset_IsShippedByTheSharedProject_AndByNoHead` |
+| M6 | Drop `src/` below ten projects | **Killed by an existing test, as designed** -- `NetworkEgressTests.TheScanActuallyReadsTheSourceTree` went red on the real deletion, not on a synthetic mutation. Its floor was lowered from 10 to 9 as the deliberate edit it is built to demand |
+| M7 | Remove `[Collection("ProcessWideState")]` from `ViewModelFactoryTests` | **Killed on the third run** -- the abort returned at 650/865. Two runs would have reported a false pass, which is the same trap TD-117 has set for four iterations |
+
+#### Explicitly NOT done
+
+- **The camera abstraction (TD-120).** The row names "a non-DirectShow camera abstraction" as part
+  of the *invest* branch. Narrowing was chosen, so it is not owed here. `LiveScannerViewModel:177`
+  still reads `new VideoCapture(cameraIndex, VideoCaptureAPIs.DSHOW)` with a same-process fallback
+  to OpenCV's default backend, and `OpenCvSharp` still reaches the UI in two files. TD-120 is
+  unchanged.
+- **Per-RID desktop runtime packages.** Costed above; blocked on a runner.
+- **Any packaging bundle for macOS, Android or iOS.** TD-109's second half.
+- **`WasmBuildNative`.** Would have been the first step of making the Browser head real. The head
+  was deleted instead.
+- **Deleting Android and iOS.** They are first-class targets in `00-Vision` and in
+  `02-Product-Scope`'s in-scope list. Unlike the browser head, nothing in this project's own
+  documents contradicts them.
+
+#### Verified state
+
+- `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli`, `Pine.Tests.Unit`, `Pine.Tests.Integration`:
+  **0 warnings, 0 errors** (Release, warnings-as-errors).
+- `Pine.slnx` as a whole still fails on `NETSDK1147` for the android and ios workloads -- unchanged,
+  pre-existing, and the reason the platform-heads CI job exists.
+- Unit **874 -> 865**, integration unchanged at **205**, both green. The unit count FELL because
+  deleting a head removes a profile from the `AllProfiles` theories and one `InlineData` row; five
+  tests were added.
+- Coverage gate re-run end to end and **passed**: overall 61, `Pine.Core` 87, `Pine.Infrastructure`
+  74, `Pine.Application` 55, `Pine.Ui.Avalonia` 28, against unchanged floors.
+
+#### New debt
+
+- **TD-137** -- the `Batteries_V2` divergence, recorded with its correct severity rather than the
+  one it was first given.
+- **TD-138** -- the trimming question the Android and iOS heads cannot answer.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-137 | `SQLitePCL.Batteries_V2.Init()` was called by one head of four, defended by a comment whose load-bearing clause was false | 🟢 | The call sat at `Pine.Ui.Windows/Program.cs:19` and nowhere else in `src/`, justified by "it is a process-global native initialisation, not a registration, **and each head's provider bundle differs**". The second clause is false: `SQLitePCLRaw.bundle_e_sqlcipher` is pinned once in `Directory.Packages.props`, referenced once by `Pine.Infrastructure`, and reaches every head through the same `ProjectReference`. **This row is registered at 🟢 and not 🔴 because the obvious consequence was tested and is NOT true.** Iteration 31 first wrote it up as a shipped defect — `Microsoft.EntityFrameworkCore.Sqlite.Core` omits the auto-arming bundle, so three heads should have been unable to open a vault at all. Mutation M3 neutered the initialiser and killed no test; a standalone console project outside this repository, referencing only that package pair in a clean process with no `Init()` call anywhere, opened a keyed `Password=` connection and round-tripped a row. `Microsoft.Data.Sqlite.dll` carries the literals `"SQLitePCLRaw.batteries_v2"`, `"Batteries_V2"` and `"Init"` and finds the bundle **by reflection**. Nothing was ever broken | Done: the call moved to `PineCompositionRoot.Build`, the one path every head takes, and the false comment is replaced by the account above. The residual value is the removed asymmetry, not a fixed crash | P3 | ✅ **Done** — iteration 31, §12.64. **Its real lesson belongs to TD-130**: a plausible mechanism, a real asymmetry and a demonstrably false comment together produced a confident finding that a single mutation refuted |
+| TD-138 | Whether a trimmed AOT head keeps `SQLitePCLRaw.batteries_v2` is unknown and unanswerable here | 🟡 | `Microsoft.Data.Sqlite` locates the SQLCipher bundle **by assembly name, through reflection** (TD-137). That is precisely the shape an IL trimmer is entitled to remove, and the Android and iOS heads are trimmed AOT targets that never held a static reference to that assembly. If the trimmer drops it, the failure is at the first database access on the two heads no machine in this project can build — the worst place for it. The explicit `PineSqliteProvider.EnsureInitialised()` call is a static reference the trimmer must keep, and is the mitigation already in place; **it is reasoning, not a measurement, and the source says so** | Build a trimmed Android or iOS head and open a vault on it. Needs the workloads and a device or emulator, which is TD-07's blocker restated | P2 | 🔴 **Open** — registered iteration 31, §12.64 |
+
+
+### 12.63 Next (after iteration 30) - superseded
 
 - **TD-07 — re-arm CI.** Fifteen iterations, and it is now the blocker for the row that was just
   closed: the coverage gate's CI half cannot fire, and neither can the packaging job, the platform
@@ -6086,4 +6307,589 @@ never been trained, under a green suite, for the entire life of the project.
 - **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
   **TD-110**'s remaining half, **TD-109**, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s
   siblings **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.66 Iteration 32 — Phase 3, item 2: localisation, and three risks that were not the risk
+
+**Ticket:** Phase 3 item 2, "Localisation infrastructure before the view count grows (TD-45)."
+
+**The row asked for infrastructure. The defect underneath it was a shipped control that did
+nothing.** The Settings screen has offered a "Display Language" picker with English and Spanish
+since the multi-vault work. Choosing Spanish wrote `Appearance.Language = "1"` into the vault and
+changed not one character on screen, because nothing in `src/` ever read that key for any purpose
+and nothing ever assigned `CurrentUICulture`. Its two siblings on the same panel each had two legs:
+
+```
+OnSelectedThemeIndexChanged    -> ThemeManager.ApplyVariant(value) + persist    two legs
+OnSelectedPaletteIndexChanged  -> ThemeManager.ApplyPaletteIndex() + persist    two legs
+OnSelectedLanguageIndexChanged ->            (nothing)             + persist    one leg
+```
+
+That is the same class as the budgets progress bar hard-coded to zero (TD-99) and the fabricated
+Diagnostics screen (§4, problem 10): a control that promises a feature which does not exist.
+
+#### It was implemented against an approved design, not invented here
+
+`docs/superpowers/specs/2026-08-29-localization-design.md` already existed, marked **"Approved —
+pending implementation"**, with twelve numbered decisions, a phase plan and a declared deviation
+table. This iteration executed it. Where reality contradicted it, the deviation is recorded in that
+document rather than silently taken — which is what made the contradictions findable at all.
+
+#### The document conflict, and which document won
+
+`60-Production-Readiness-Audit` prescribed **`.resx` + `IStringLocalizer`** in TD-45's *Fix* column.
+`41-Localization` §5, the normative specification, requires **`.po`/`.json` files keyed by stable
+string IDs**. The normative document wins: a *Fix* column is a reviewer's suggestion, a §5 is the
+standard. `.resx` would also have shipped translations as satellite assemblies, which is a known
+silent casualty of trimming on the two AOT heads that no machine here can build (TD-07). **TD-45's
+Fix column is corrected in this document** so the next reader is not sent down that path.
+
+#### Three risks were named as unverified. None of them was the one that bit
+
+The design's §13 listed the risks honestly. What happened to each:
+
+**The dotted-key risk — real question, wrong answer expected.** §13 said Avalonia's binding-path
+parser might reject `Settings.Title` inside `[...]`, with "switch the separator to `/`" as the
+fallback. Test 7 was written first, as §9 requires, and it **failed** — `target.Text` came back
+`null`. So did a `TextBlock` bound to a plain POCO property. So did one bound through a
+`DataContext`. **No binding in this suite had ever been evaluated.**
+
+`TestAppInitializer` calls `SetupWithoutStarting()` from a module initializer. That is correct for
+what it was written for — a headless Skia surface so `new Bitmap(stream)` works — and it starts no
+dispatcher loop. Avalonia schedules binding evaluation onto its UI thread, so with nothing pumping,
+**`control.Bind(...)` succeeds and the bound property then reads back `null`**. No exception.
+`Dispatcher.UIThread.RunJobs()` threw "the calling thread cannot access this object";
+`InvokeAsync` from the test thread timed out after fifteen seconds. Every one of those looked like
+the dotted-key risk confirmed, and none of them was it. **Dots work.**
+
+`Avalonia.Headless.XUnit` exists for exactly this and **cannot be used**: its 12.0.5 release depends
+on xunit **v3** while this suite is on 2.9.3, so adding it produced `CS0433` on every `[Fact]`,
+`[Theory]` and `[Collection]` in 865 tests. `HeadlessUnitTestSession` — the machinery that package
+is built on — ships inside `Avalonia.Headless` itself, so `AvaloniaUiThread` wraps it with no new
+dependency at all.
+
+**The asset-API risk — routed around rather than resolved.** `AssetLoader` does still exist in
+Avalonia 12.0.5, so the risk as written did not materialise. It was declined anyway: `AssetLoader`
+resolves through `AvaloniaLocator`, which would make "can this application read its own words"
+depend on the rendering platform being configured, and §8 says nothing in localisation may take
+down a screen. `EmbeddedResource` + `Assembly.GetManifestResourceStream` is BCL-only and is the
+fallback §13 already named. Recorded as a deviation from §5.
+
+**The warnings-as-errors risk — held, and earned its keep.** `CA1001` refused every view model that
+took a `LocalizedMessageSlot` without becoming `IDisposable`. A slot subscribes to
+`ILocalizer.LanguageChanged` on a process-lifetime singleton, so an undisposed one keeps its view
+model reachable forever — **the exact leak shape TD-34 removed from the messenger, reappearing
+through a different event.** The analyzer caught it before any test did.
+
+#### And a fourth thing, which the design could not have predicted
+
+`Item[]` is what `System.Windows.Data.Binding.IndexerName` is defined as, and §4 of the design
+assumed it. **Avalonia does not listen for it.** Measured against a bound `TextBlock` over a
+notifying indexer, on a pumping dispatcher:
+
+```
+notify 'Item[]'    : before -> before   (ignored)
+notify 'Item'      : before -> after    (re-evaluated)
+notify 'Item[a.b]' : before -> before   (ignored)
+notify ''          : before -> before   (ignored)
+```
+
+The last row is the surprising one: an empty name means "everything changed" under INPC, and it
+does not reach an indexer binding here either. `"Item"` is not a preference; it is the only string
+that works. `Localizer` raises both, `Item[]` first, because that costs one event and is what any
+non-Avalonia consumer would listen for.
+
+#### The glossary gate was taken before the strings, not after
+
+`41-Localization` §8.4 requires a per-locale glossary and the design's §10.1 names it as a gate
+before phase 2. Twelve financial terms were agreed with the product owner **first** and written
+into `41-Localization` §18: neutral Latin American Spanish, so *transacción* rather than
+*movimiento*, *estado de cuenta* rather than *extracto*, *recibo* rather than *ticket*, and
+*anular* rather than *eliminar* — because a ledger voids, it does not delete, which is a domain
+rule and not a wording preference. Deciding this afterwards would have meant revisiting 260 strings
+instead of one table.
+
+#### Five parallel agents, four of which died mid-edit
+
+Phase 2 was dispatched as five agents over disjoint view sets, each writing its keys to a private
+fragment file so concurrent edits could not collide. **Four hit a session rate limit and were
+killed after rewriting their `.axaml` files but before writing a single fragment.** The result was
+a tree full of `{loc:Tr Some.Key}` references with no values behind any of them.
+
+Recovered rather than redone: `git HEAD` still held the original English, so the pairs were
+reconstructed mechanically. **The first attempt was wrong and had to be thrown away** — it matched
+each new line to the globally most similar old line, which drifts between two nearly identical
+`<TextBlock Text="..." FontSize="14"/>` lines and produced `AddTransaction.AmountLabel = "To
+Account"`. The second pass walks `difflib` opcodes, pairs lines positionally inside each replace
+block and pairs attributes **by name**, and reports anything that does not align 1:1 instead of
+guessing: **205 exact, 6 reported, 0 guessed**. The 6 were resolved by reading `HEAD` directly.
+
+**The agents also produced one thing that could not work.** Two lines read
+`StringFormat={loc:Tr Key}` — a markup extension nested inside `StringFormat`, which takes a string
+and would have received a `Binding`. Avalonia's compiled bindings rejected it at build time, which
+is the right place to find out. Both moved into `ImportWizardViewModel` as composed properties.
+
+#### What was measured, and what the guard test then found anyway
+
+210 literals across 19 views, counted by attribute. After extraction, the guard test —
+`41-Localization` §14 ("a first-party UI string MUST NOT be hardcoded") turned into an executable
+rule — **found nine more the count had missed**: `AutomationProperties.Name` values, which a screen
+reader reads aloud. An untranslated one is a screen that is localised for sighted users and not for
+others, which `41-Localization` §11 names explicitly. The attribute was not in the original sweep;
+it is in the guard now.
+
+The allow-list holds five entries, each with its reason: the product name, three glyphs, and the
+log path template that is shown verbatim so it can be pasted into a shell.
+
+#### Phase 3, and the half of it that is deliberately not done
+
+38 status and error messages in eight view models became keys, and `ViewModels/` now contains
+**zero** user-facing literals — phase 3's exit condition, met exactly rather than approximately. They go through
+`LocalizedMessageSlot`, which holds the key and its arguments and re-renders on `LanguageChanged` —
+without it a screen would go half-translated, every label moving and the status line under them
+stranded in the previous language.
+
+**Not done, and named:** the `UserFacingError.Report(...)` fallback sentences, and the
+`IUserFacingFailure.UserFacingMessage` sentences in `Pine.Application` and `Pine.Core`. Those live
+outside `ViewModels/`, which is where phase 3's exit condition stops, and localising an exception's
+own message is a different problem — it crosses a layer boundary the UI deliberately does not
+reach across. Registered as **TD-139**.
+
+#### Falsification
+
+Seven mutations, **seven killed**.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | Delete `_localizer.SetLanguage(...)` from the picker's handler — the original defect, restored exactly | **Killed** — `SettingsLanguageTests`, 2 of 7 red |
+| M2 | Raise only `"Item[]"`, the name the design assumed | **Killed** — the live-switch test; the string that works is `"Item"` |
+| M3 | Remove one key from `es.json` | **Killed** — key parity (`41-Localization` §13) |
+| M4 | Put a hardcoded literal back into a view | **Killed** — the §14 guard |
+| M5 | Misspell a key in a view | **Killed** — every key a view asks for must exist; without this a typo ships as a button labelled `Shell.Nav.Budgetss`, because the fallback chain renders the key rather than throwing |
+| M6 | Stop the message slot unsubscribing from `LanguageChanged` | **Killed** — the disposal test; this is the TD-34 leak |
+| M7 | Render an unresolved key as an empty string instead of as the key | **Killed** — a blank button cannot be reported or described over the phone |
+
+#### A false pass worth recording
+
+An incremental `dotnet build` reported **0 errors on a tree that did not compile**: the two
+`ImportWizardViewModel` properties were missing and `--no-incremental` failed on them immediately
+afterwards. It cost nothing here because the next command caught it. It is recorded because
+"the build was green" was, for one command, not evidence of anything.
+
+#### Verified state
+
+- `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli`, both test projects: **0 warnings, 0 errors**.
+- Unit **865 → 903**, green. Integration **205**, green — *on a re-run*; see TD-140.
+- Coverage gate re-run and **passed**, and the ratchet turned: overall 61 → **63**,
+  `Pine.Ui.Avalonia` 28 → **37**, because the UI gained real tests for the first time. Floors
+  raised to match.
+- **260 keys**, `en` and `es`, with identical key sets asserted by a test that reads the shipped
+  resources rather than a fixture — 220 reached from XAML, 40 from C#, and **zero orphans**.
+
+#### New debt
+
+- **TD-139** — the user-facing sentences that live below `ViewModels/` and are still English only.
+- **TD-140** — the integration suite acquired an intermittent `ObjectDisposedException` on a
+  SQLite handle.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-139 | User-facing sentences below `ViewModels/` are still English only | 🟡 | TD-45 localised every string in the views and every status and error message in the view models. It stopped at the layer boundary, which is where phase 3's exit condition stops. Two sets remain: the `fallback` sentences passed to `UserFacingError.Report(...)` at 16 call sites, and the `IUserFacingFailure.UserFacingMessage` sentences carried by six exception types in `Pine.Application` and `Pine.Core`. The visible consequence is a Spanish screen whose error line is English — and it is the SAME screen, because `UserFacingError` is the one funnel a caught exception becomes a sentence through. `LocalizedMessageSlot.SetRendered` marks this explicitly: text arriving that way is shown as given and does not follow a language change, because the slot has no key to re-render from | Give `IUserFacingFailure` a key rather than a sentence, and let the UI resolve it. That inverts the current design deliberately — the domain would name the message and the presentation layer would word it — so it is a decision, not a chore | P2 | 🔴 **Open** — registered iteration 32, §12.66 |
+| TD-140 | The integration suite acquired an intermittent `ObjectDisposedException` on a SQLite handle | 🟠 | Observed twice in three consecutive runs of iteration 32, **on two different tests** — `VaultBackupServiceTests.PruneAsync_ShouldKeepExactlyTheMostRecentBackups` and `ScaledMoneyMigrationTests.EveryStoredAmount_ConvertsToItsExactCountOfTenThousandths` — with the same shape: `System.ObjectDisposedException: Cannot access a disposed object. Object name: 'SQLitePCL.sqlite3'`, reached through EF Core's `GetAppliedMigrationsAsync` from `VaultBackupService.GetCurrentSchemaVersionAsync`. A third run passed 205/205. **Not caused by the localisation work**: `Pine.Tests.Integration` references `Pine.Core`, `Pine.Application` and `Pine.Infrastructure` and does NOT reference `Pine.Ui.Avalonia`, so nothing this iteration changed is reachable from it. Neither test has been edited since `d608bad`. The cause is not established and is not claimed | It puts the integration suite where TD-117 put the unit suite for eight iterations: every count costs a re-run. Same first move — capture it rather than re-run until green. A pooled connection disposed while another test still holds a command against it is the obvious hypothesis and is unverified | P1 | 🔴 **Open** — registered iteration 32, §12.66 |
+
+### 12.65 Next (after iteration 31) - superseded
+
+- **TD-07 -- re-arm CI.** Sixteen iterations. It is now also the thing standing between the Android
+  and iOS heads and any evidence at all: this iteration gave them real application identities and
+  cannot compile either one.
+- **TD-117's remaining half** -- the misspelled configuration key. The abort is closed.
+- **TD-138** -- whether a trimmed AOT head keeps `SQLitePCLRaw.batteries_v2`. It is the only open
+  question left by the SQLite work, and it is unanswerable without TD-07.
+- **TD-120 -- the camera seam.** Phase 3's next platform-shaped row, and the half of item 1 that
+  narrowing deliberately did not buy.
+- **TD-132** -- the `Category` aggregate with no writer, which two open rows depend on.
+- **TD-121** -- the shipped navigation defect that drops the shell. Seven iterations old.
+- **TD-99 -- make the budgets screen true or take it down.** Deferred a fifteenth time.
+- **TD-109's second half** -- a bundle per platform, now that each head has a name to put on one.
+- **TD-115's second half** -- assert the capability table against a published artefact per RID.
+- **TD-130** -- whether the numbers in this document can be trusted at all. This iteration is a data
+  point for it in both directions: §12.63's "never compiled on any machine" was false, and the
+  falsification pass caught this iteration's own false finding before it shipped.
+- **TD-135** -- branch coverage is measured and ungated.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.68 Iteration 33 — Phase 3, item 3: attachments, and two mutations that survived
+
+**Ticket:** Phase 3 item 3, "Attachment storage — persist the receipt image encrypted in the vault,
+linked to its transaction. The missing half of the OCR feature's audit value."
+
+**The row's phrasing was exact.** Scanning a receipt worked: OCR read it, the fields were filled,
+the transaction was written. The image was decoded into a `Bitmap` for the screen and then dropped
+— `ScanReceiptViewModel` sent an `AddTransactionCommand` with no image parameter, and nothing in
+`src/` wrote a byte of a receipt anywhere. The feature produced a figure and destroyed the document
+it came from.
+
+#### The type existed before, and deleting it was right
+
+`Attachment` shipped until iteration 27 and was deleted by TD-37. That deletion is worth restating
+because it is the reason this iteration had a clean shape to build: the old entity had
+`FileName`, `ContentType`, `SizeBytes`, an unconstrained `TransactionId` that no foreign key
+constrained, **no hash at all** while `10-Domain-Model` §7 says "Hash MUST be set", and **no
+content** — it was a row describing a file that was never stored. It contradicted its own
+specification, so keeping it would have preserved a wrong guess rather than a head start.
+
+Every one of those is different now, and the differences are the feature: the hash exists, it is
+verified on the way out, the row is bound by a real foreign key, and the file is actually there.
+
+#### The storage decision went against the plan this document recorded
+
+TD-37 wrote the Phase 3 design down as "an encrypted blob written through `IVaultFileCipher`".
+**That was not taken.** Three findings decided it, and the first two are quotations from the
+codebase itself:
+
+1. **`IVaultFileCipher`'s own contract refuses the job.** Its remarks read: "THIS IS NOT A
+   STREAMING API, AND THAT IS A LIMIT... it is **the wrong shape for a large attachment. Say so
+   before reusing it for one.**" The instruction was followed.
+2. **A file beside the vault would be in no backup.** `VaultBackupService.CreateBackupAsync` runs
+   `VACUUM INTO` on the keyed SQLCipher connection: **it copies `pine.db` and nothing else** —
+   verified by reading it, there is no directory copy anywhere in the class. A receipt written to
+   `{vault}/attachments/`, following the `ai/` precedent, would have been silently absent from
+   every backup and every restore. For the one feature whose entire purpose is an audit trail,
+   that is the worst available failure.
+3. **A blob in the same database is written in the same unit of work.** There is no window in
+   which a file exists with no row, or a row points at no file.
+
+So the bytes are a `BLOB` column in `pine.db`. `10-Domain-Model` §6.2's "Attachments MUST be stored
+encrypted at rest" and FR-TXN-02 are satisfied by SQLCipher, which encrypts every page; sealing an
+already-encrypted database's contents a second time would add a key path and a failure mode without
+adding a guarantee. **The deviation from TD-37's recorded plan is written into the aggregate**, not
+left for a reader to reconstruct.
+
+#### What was built
+
+`Attachment` is an aggregate root, not a child of `Transaction`, and that is the one structural
+decision worth naming: owning it would mean loading a receipt photograph every time a transaction
+is read. It is loaded and saved through its own repository, and `IAttachmentRepository` splits
+listing from content deliberately — the bytes are a column on the same row, so the transaction
+list's paperclip is drawn from a projection that never names `Content`, and the photograph is read
+only when someone asks to see one.
+
+The scanner attaches the DISPLAY image rather than the OCR one: the OCR image is a deskewed,
+thresholded derivative made for a machine, and what belongs in an audit trail is the document a
+person would recognise. The attachment rides on `AddTransactionCommand` rather than following it,
+so `TransactionBehavior` commits the ledger row and its evidence together or neither.
+
+#### Falsification, and the two holes it found
+
+Seven mutations. **Five killed, two survived — and both survivors were real gaps that are now
+closed.**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | Change the foreign key to `ClientNoAction` in `PineDbContext` | **Survived, and the mutation was wrong, not the test.** The test asserts the DATABASE constraint, and editing the model does not re-run the migration. Re-run as M1b |
+| M1b | Delete the `table.ForeignKey` from the migration | **Killed** — the orphan saved happily, which is exactly what the old shape allowed |
+| M2 | `VerifyContent()` stops comparing the hash | **Killed** |
+| M3 | Remove the 25 MB size limit | **Killed** |
+| M4 | The listing stops projecting and materialises whole entities | **Killed** — the change tracker holds `Attachment` entries, i.e. photographs were read to draw a paperclip |
+| M5 | The vault stops being keyed | **Killed** — the raw-bytes scan of `pine.db` finds the receipt in plaintext |
+| M6 | The scanner attaches `null` instead of the image | **SURVIVED.** All 27 scan-screen tests stayed green |
+| M7 | The read path stops verifying the hash | **SURVIVED.** All 16 attachment tests stayed green |
+
+**M6 is the more embarrassing of the two.** The storage, the hash, the foreign key, the encryption
+and the backup were all tested, and the single step that puts a receipt into any of them was not —
+so reverting to "scan a receipt and throw it away", the exact defect this row exists to fix, broke
+nothing. `ScanReceiptAttachmentTests` closes it.
+
+**M7 means the hash was decoration.** `Attachment.VerifyContent` was covered, but the one call site
+that gives a mismatch consequences was not, so a tampered receipt would have been displayed as
+though it were the document that was scanned. `AttachmentQueryTests` closes it. Both mutations were
+re-run afterwards and both now die.
+
+#### The coverage gate refused, and was right
+
+The first run after the UI work reported `Pine.Ui.Avalonia` at **36%, below its floor of 37%** —
+the attachment view-model code was thinner on tests than the existing average. The gate's own
+message says "Raise the tests, not the floor." Twelve tests were written for the receipt viewer,
+the marker set and the multi-value converter, and only then did the floors move. Lowering the floor
+by one point would have taken thirty seconds and left the new code untested; this is the first time
+the gate iteration 30 built has actually blocked something.
+
+#### Four tripwires fired, all by design
+
+`AggregateRootMarkerTests` (the roots are enumerated), `MappedEntitySurfaceTests` (the mapped
+entities are an allow-list, and `Attachment` had to be moved from the "dropped" list back to the
+"allowed" one), and two migration-list assertions in the integration suite. Each was updated as the
+deliberate edit it is meant to require. `MappedEntitySurfaceTests`' own message named the history it
+exists to prevent: "Adding one to the model without adding it here is how Attachment, Rule and Tag
+came to sit in the schema for months with no repository, no query, no command and no consumer."
+
+#### Explicitly NOT done
+
+- **A manual file picker.** FR-TXN-02 says "receipt, contract, photo"; only the scanned receipt path
+  is built. Recorded as **TD-141**.
+- **Export or download of an attachment.** The image can be viewed and removed, not saved out.
+- **More than one attachment per transaction.** The schema supports many — the foreign key is
+  one-to-many and the repository returns a list — but the UI opens the first and the scanner writes
+  one. Nothing needs changing in the data model when that grows.
+- **Re-encoding or downscaling.** The bytes stored are the bytes read, which is what makes the hash
+  meaningful. The 25 MB limit is the only size control.
+- **Attachments on imported transactions.** A CSV row has no document.
+
+#### Verified state
+
+- `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli`, both test projects: **0 warnings, 0 errors**.
+- Unit **903 → 937**, integration **205 → 212**, both green.
+- Coverage gate re-run and **passed**, floors raised to match: overall 63 → **65**, `Pine.Core`
+  86 → **87**, `Pine.Infrastructure` 74 → **75**, `Pine.Ui.Avalonia` held at **37**.
+- The migration was generated by `dotnet ef`, not hand-written, so the model snapshot is consistent.
+
+#### New debt
+
+- **TD-141** — attachments exist only for scanned receipts; FR-TXN-02's manual file path is not built.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-141 | An attachment can only arrive from the receipt scanner | 🟢 | `07-Functional-Requirements` FR-TXN-02 reads "The system MUST allow attaching files (**receipt, contract, photo**) to a transaction". What exists is the receipt half: `ScanReceiptViewModel` attaches the image it scanned, and there is no file picker on a transaction, no drag-and-drop, and no way to attach anything to a transaction that was typed in or imported. The storage, the hash, the foreign key and the removal path are all general — an attachment does not know where its bytes came from — so this is a missing entry point rather than a missing capability, which is why it is 🟢 rather than 🟡 | Add a file picker to the transaction view that sends the same `Attachment.Create` path, with a media-type allow-list. The 25 MB limit and the hash already apply. A contract is a PDF, so the viewer would need to stop assuming an image | P3 | 🔴 **Open** — registered iteration 33, §12.68 |
+
+### 12.67 Next (after iteration 32) - superseded
+
+- **TD-07 — re-arm CI.** Seventeen iterations. Everything this iteration added — a guard test, a
+  key-parity test, a raised coverage floor — is inert until a commit triggers it.
+- **TD-140** — the integration flake. It failed twice in three runs, on two DIFFERENT tests, with
+  the same `ObjectDisposedException` on a SQLite handle reached through EF Core's
+  `GetAppliedMigrationsAsync`. It is not caused by localisation (the integration project does not
+  reference `Pine.Ui.Avalonia`), and it makes every integration count in this document cost a
+  re-run — which is precisely the position TD-117 put the unit suite in for eight iterations.
+- **TD-139** — the exception sentences below the UI layer.
+- **TD-117's remaining half** — the misspelled configuration key.
+- **TD-138** — whether a trimmed AOT head keeps `SQLitePCLRaw.batteries_v2`.
+- **TD-120 — the camera seam.** Phase 3's next platform-shaped row.
+- **TD-21 — locale-driven date and number formatting.** Adjacent to this iteration and deliberately
+  not bundled into it (design §12); now that a language is a real, user-chosen setting, the gap
+  between "the UI is in Spanish" and "`24.50` is still not `24,50`" is visible on screen.
+- **TD-132** — the `Category` aggregate with no writer.
+- **TD-121** — the shipped navigation defect that drops the shell.
+- **TD-99 — make the budgets screen true or take it down.** Deferred a sixteenth time, and it is
+  now the last surviving member of the class this iteration just emptied: a control that shows a
+  number it does not compute.
+- **TD-109's second half**, **TD-115's second half**, **TD-130**, **TD-135**.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.70 Iteration 34 — Phase 3, item 4: the rule engine, and the fourth false premise in a row
+
+**Ticket:** Phase 3 item 4, "Rule engine, on top of the now-real `CategoryId` relationship."
+
+**There is no such relationship, and this document already knew.** `TransactionSplit.Category` is a
+`string` with no foreign key. Iteration 29 rejected making it a `CategoryId` **in writing** (TD-32,
+§12.60) because the `Categories` table has no production writer: `CreateCategoryCommand` is called
+by tests only, no query lists categories, and every category input in the UI is a free `TextBox`
+(TD-132). Iteration 27 had flagged the same premise as untrue when it deleted the old `Rule`
+(§12.56). So the roadmap line has been wrong since before it was reachable, and this is the fourth
+consecutive Phase 3 row whose stated premise did not survive contact with the code.
+
+The engine is built on the string, for the reason §12.60 gave about the split: **it is the model
+that has instances.** A rule's action is a category NAME.
+
+#### What TD-132 made this iteration decide before writing any code
+
+TD-132's Fix column reads: "Either build category management ... or delete the `Category` aggregate
+and let the string be the model — **but not both, and not neither**." A `Rule` aggregate with no way
+to create a rule would have been that exact defect, shipped in the iteration immediately after the
+row that names it — and it would have been the third time (`Attachment`, `Rule`, `Tag` were all
+deleted for it under TD-37).
+
+So the rules screen is not an extra; it is the reason the engine is allowed to exist. Create, list,
+enable, disable, delete — all reachable, all tested. **It also makes the sidebar's "Rules" entry
+true**: that button was already there, disabled and dimmed with a "Coming soon" tooltip. Honest
+while nothing evaluated a rule, and a promise.
+
+#### The precedence decision, and why it is not a comparison
+
+A rule and the ML categoriser both want to decide the same field. The order is: **a matching rule
+wins outright, and the classifier is not consulted at all.**
+
+The alternative — compare the rule's priority against the model's confidence — was rejected because
+the two numbers share no units. A priority is an ordering the user invented; a confidence is a
+softmax score. Mixing them makes "why did this end up in Coffee?" unanswerable, which for a ledger
+is worse than being occasionally wrong in a predictable direction.
+
+`TheClassifierIsNotEvenConsulted_WhenARuleMatches` is the assertion that makes it real rather than
+incidental: asserting only on the resulting category would pass just as well if the model were
+called and then discarded — and on the Windows head that call is a real native inference.
+
+Two guardrails are equally deliberate and separately tested:
+
+- **A rule never overwrites a category the user typed.** On the manual path the rules run only when
+  the field is blank. An instruction written last week must not silently rewrite what someone typed
+  thirty seconds ago.
+- **A rule never overwrites a category the imported file supplied.** The CSV already decided.
+
+#### Determinism, which §6.2 asks for and does not fully specify
+
+`31-Rule-Engine` §6.2 says higher priority evaluates first and that a rule is idempotent. It settles
+nothing when two enabled rules share a priority and both match — and a user will give two rules the
+same priority within a day of having the feature. The evaluator's ordering is therefore **total**:
+priority, then creation time, then id. Both tie-breaks are stable, so the answer does not depend on
+the order the database happened to return rows in. `EqualPriorityBreaksDeterministically` reverses
+the input and requires the same winner.
+
+The repository applies the same ordering in SQL, and an integration test asserts it against a real
+vault — because a rules screen that listed rules in a different order from the one they fire in
+would be worse than an unordered list.
+
+#### Declared deviations from `31-Rule-Engine`
+
+| Clause | What was built | Why |
+|---|---|---|
+| §5.2, fourteen operators | Six: contains, equals, startsWith, matches, greaterThan, lessThan | `and`/`or`/`not` are not comparisons but a boolean tree, which is a grammar, a parser and an editor. An OR is written as two rules |
+| §5.1, a list of actions | One action: set category | It is the only action anything in this application could carry out today |
+| §5.1, YAML/JSON grammar | A form | Nothing reads or writes rule files; a grammar with no importer would be a shell |
+| §6.3 sandbox, §7 recurring detection, §8 notifications, §9 plugin packs, §12 conflict surfacing | Not built | Each depends on subsystems that do not exist. FR-BDG-03 and FR-SUB-02 route notifications "via the rule engine"; there are no notifications |
+
+The regex operator is supported because the document's own canonical example is one — and it runs
+under a 100 ms timeout, because a pattern a user typed is a pattern nobody reviewed and
+catastrophic backtracking on a background import is a hang with no error message.
+
+#### Falsification, and the mutation that found the hole
+
+Seven mutations. **Six killed outright; one survived and is now closed.**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | The rule branch stops applying in the import path | **Killed** — 2 of 8 precedence tests |
+| M2 | Remove the evaluator's ordering entirely | **Killed** — priority and the tie-break |
+| M3 | Accept a rule with no conditions | **Killed** — such a rule matches everything |
+| M4 | A disabled rule matches again | **Killed** — 3 tests |
+| M5 | Store operators as ordinals instead of names | **Killed** — inserting an enum member would silently reinterpret every stored rule |
+| M6 | Let a rule overwrite the category the user typed | **Killed** |
+| M7 | Remove the regex timeout | **SURVIVED.** The malformed-pattern test covers a regex that does not COMPILE and says nothing about one that compiles and then runs forever |
+
+M7's replacement test had to be written carefully: without the timeout the call does not return, so
+asserting on it directly would **hang** the suite rather than fail it. The match runs on the thread
+pool and is raced against a five-second deadline, so the mutation produces a failing test instead of
+a stuck one. Re-run afterwards, it dies.
+
+#### Six tripwires fired, all by design
+
+`AggregateRootMarkerTests` (roots enumerated — `Rule` is a root, its conditions are owned children),
+`MappedEntitySurfaceTests` twice (`Rule` moved from the "dropped" list back to the allow-list),
+`EfModel_DeclaresOwnedCollectionsOnTransactionOnly` (**`Rule.Conditions` is the second owned
+collection in this model, and that test's whole purpose is to demand a round-trip proof for each
+one** — `TogglingARule_KeepsItsConditions` is that proof, and it is the TD-13 shape exactly: a
+parent updated while its owned children are loaded), and two migration-list assertions.
+
+#### TD-140 recurred, on a third distinct test
+
+`ReceiptDuplicateLookupTests.The_lookup_is_scoped_to_the_account` failed once with the same
+`ObjectDisposedException` on a `SQLitePCL.sqlite3` handle, then passed on two consecutive re-runs.
+That is a third different test exhibiting the flake registered last iteration. It is not caused by
+this work — the failing test touches no rule — and it means every integration count in this document
+still costs a re-run.
+
+#### Explicitly NOT done
+
+- **Retroactive application.** §5.1's triggers are `transaction.created` and `transaction.updated`;
+  rewriting a reviewed ledger silently is a different feature with a different risk. **TD-142.**
+- **Editing a rule.** Rules are created, toggled and deleted. Changing conditions means deleting and
+  re-creating, which is why `Rule` has no update path for its conditions at all.
+- **Multiple conditions from the screen.** The engine takes up to eight; the form offers one.
+  **TD-143.**
+- **Actions other than "set category".** Nothing else exists to act on.
+- **Rule packs, sandboxing, notifications, conflict surfacing.** §6.3, §8, §9, §12.
+
+#### Verified state
+
+- `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli`, both test projects: **0 warnings, 0 errors**.
+  Three `AVLN5001` warnings appeared briefly — `TextBox.Watermark` is obsolete in Avalonia 12 — and
+  were fixed rather than tolerated.
+- Unit **937 → 990**, integration **212 → 219**, both green.
+- Coverage gate **blocked this iteration too**, at 36% against a floor of 37%, and was answered with
+  eleven view-model tests rather than a lowered floor. Floors then raised: overall 65 → **66**,
+  `Pine.Core` 87 → **88**, `Pine.Infrastructure` 75 → **77**, `Pine.Application` 55 → **57**.
+- The migration was generated by `dotnet ef`; one hand edit, commented, to satisfy CA1861.
+
+#### New debt
+
+- **TD-142** — rules do not apply to transactions already in the ledger.
+- **TD-143** — the rules screen writes one condition; the engine evaluates up to eight.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-142 | A rule never touches a transaction that is already in the ledger | 🟡 | Rules fire on import and on manual entry only. Writing a rule after importing a year of statements leaves that year exactly as it was, which is not what "payee contains STARBUCKS → Coffee" reads as to a person who has just typed it. `31-Rule-Engine` §5.1 names only `transaction.created` and `transaction.updated` as triggers, so this is inside the specification — but the specification was written before there was a ledger to disappoint | A preview-then-apply pass: count what would change, show it, and apply in one transaction with the whole set reversible. Retroactively rewriting reviewed financial records without a preview is the version of this feature that must NOT be built | P3 | 🔴 **Open** — registered iteration 34, §12.70 |
+| TD-143 | The rules screen writes one condition; the engine evaluates up to eight | 🟢 | `Rule.Create` accepts up to `Rule.MaximumConditions` and `Rule.Matches` ANDs all of them — tested. The form offers a single field/operator/value row, so a two-clause rule ("payee contains X **and** amount below Y") is expressible in the domain, in the database and in the evaluator, and not from the UI. This is a capability the user cannot reach, which is the mirror image of the defect class this project keeps removing rather than an instance of it — nothing is promised on screen that does not work | Let the form add and remove condition rows. The command already takes a list | P3 | 🔴 **Open** — registered iteration 34, §12.70 |
+
+### 12.69 Next (after iteration 33) - superseded
+
+- **TD-07 — re-arm CI.** Eighteen iterations.
+- **TD-140** — the integration flake. It did not recur across this iteration's runs, which is not
+  evidence that it is gone.
+- **TD-141** — the manual attachment path FR-TXN-02 asks for.
+- **TD-139** — the exception sentences below the UI layer, now with one more member:
+  `AttachmentCorruptedException`'s sentence is English-only like the rest.
+- **TD-126** — the undisposed `ReceiptCapturedMessage` streams. This iteration copied out of them
+  rather than holding one, which sidesteps the leak for the attachment path and does not fix it.
+- **TD-117's remaining half**, **TD-138**, **TD-120 — the camera seam**.
+- **TD-21 — locale-driven date and number formatting.**
+- **TD-132**, **TD-121**, **TD-99 — make the budgets screen true or take it down.**
+- **TD-60** — `ReplaceSplits` mints fresh ids on every save. Its stated risk was "any future
+  reference to a split id (rules, attachments, audit trail) would dangle"; attachments now exist,
+  and they reference the TRANSACTION rather than a split, so this row is unchanged rather than
+  worsened — but it is one consumer closer to mattering.
+- **TD-109's second half**, **TD-115's second half**, **TD-130**, **TD-135**.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.71 Next
+
+- **TD-07 — re-arm CI.** Nineteen iterations.
+- **TD-140** — the integration flake, now seen on three different tests across two iterations.
+- **TD-132** — still open, and this iteration sharpened it rather than closing it: a rule's action is
+  a category name, so the string is now load-bearing in a second subsystem. The row's "not both, and
+  not neither" is closer to being decided by default.
+- **TD-142**, **TD-143** — the two halves of the rule engine that were deliberately left.
+- **TD-139** — the exception sentences below the UI layer.
+- **TD-141** — the manual attachment path FR-TXN-02 asks for.
+- **TD-117's remaining half**, **TD-138**, **TD-120 — the camera seam**, **TD-21**.
+- **TD-121** — the shipped navigation defect that drops the shell.
+- **TD-99 — make the budgets screen true or take it down.** Deferred a seventeenth time, and now the
+  last surviving member of its class: the "Rules" placeholder became real this iteration, the
+  language picker became real in 32, and the receipt viewer in 33.
+- **TD-60** — `ReplaceSplits` mints fresh ids on every save. Its stated risk named "rules" as a
+  future consumer of split ids; rules do not reference splits, so the row is unchanged.
+- **TD-109's second half**, **TD-115's second half**, **TD-130**, **TD-135**.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
 - **TD-84** last, unchanged.

@@ -35,6 +35,7 @@ namespace Pine.Tests.Unit.Composition;
 /// asserted below, because both are the kind of defect that shows up as nothing at all.
 /// </para>
 /// </remarks>
+[Collection("ProcessWideState")]
 public class ViewModelFactoryTests
 {
     private static IViewModelFactory FactoryFor(ServiceProvider provider) =>

@@ -157,6 +157,7 @@ public class ConfidenceThresholdTests
             accounts,
             TimeProvider.System,
             AiPredicting(PredictedConfidence),
+            NoRules(),
             Options.Create(new PineAiOptions { CategorisationConfidenceThreshold = threshold }));
 
         await handler.Handle(
@@ -176,5 +177,23 @@ public class ConfidenceThresholdTests
         {
             parsed.Splits.Should().BeEmpty("a prediction below the configured gate must not be written to the ledger");
         }
+    }
+
+    /// <summary>
+    /// A rule repository with nothing in it.
+    /// </summary>
+    /// <remarks>
+    /// These tests are about the CLASSIFIER's behaviour, so the rule engine must be silent: an
+    /// empty rule set means <c>RuleEvaluator</c> returns no match and the handler falls through to
+    /// the AI path, which is exactly what they assert on. Rules taking precedence over the model is
+    /// asserted in <c>ImportRuleCategorisationTests</c>.
+    /// </remarks>
+    private static Pine.Core.Rules.IRuleRepository NoRules()
+    {
+        var rules = NSubstitute.Substitute.For<Pine.Core.Rules.IRuleRepository>();
+        rules.GetEnabledAsync(Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult<IReadOnlyList<Pine.Core.Rules.Rule>>(
+                System.Array.Empty<Pine.Core.Rules.Rule>()));
+        return rules;
     }
 }

@@ -7,10 +7,11 @@ using MediatR;
 using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class UnlockViewModel : ObservableObject
+public partial class UnlockViewModel : ObservableObject, IDisposable
 {
     /// <summary>
     /// Reads this vault's persisted accent theme once the vault is open.
@@ -22,6 +23,7 @@ public partial class UnlockViewModel : ObservableObject
     /// call site.
     /// </remarks>
     private readonly ISender _sender;
+    private readonly LocalizedMessageSlot _message;
 
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
@@ -69,8 +71,11 @@ public partial class UnlockViewModel : ObservableObject
         IViewModelFactory viewModels,
         IVaultHeaderStore vaultHeaderStore,
         IVaultKeyService vaultKeyService,
-        IVaultDatabaseOpener vaultDatabaseOpener)
+        IVaultDatabaseOpener vaultDatabaseOpener,
+        ILocalizer localizer)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
+        _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _sender = sender;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
@@ -91,16 +96,16 @@ public partial class UnlockViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(MasterPassword))
         {
-            StatusMessage = "Password cannot be empty.";
+            _message.Set("Unlock.Status.PasswordEmpty");
             return;
         }
 
         IsBusy = true;
-        StatusMessage = "Decrypting vault...";
+        _message.Set("Unlock.Status.Decrypting");
 
         if (_profile == null)
         {
-            StatusMessage = "No vault profile selected.";
+            _message.Set("Unlock.Status.NoProfileSelected");
             IsBusy = false;
             return;
         }
@@ -166,22 +171,22 @@ public partial class UnlockViewModel : ObservableObject
         {
             // The safety backup could not be written, so the migration was never attempted.
             _vaultSession.Lock();
-            StatusMessage = "Pine could not create a safety backup before updating the vault database, so the update was cancelled and your data is unchanged. Free up disk space and try again.";
+            _message.Set("Unlock.Status.BackupFailed");
         }
         catch (UnsupportedVaultHeaderException)
         {
             _vaultSession.Lock();
-            StatusMessage = "This vault was created by a newer version of Pine and cannot be opened by this one. Please update Pine.";
+            _message.Set("Unlock.Status.NewerVersion");
         }
         catch (VaultHeaderCorruptException)
         {
             _vaultSession.Lock();
-            StatusMessage = "This vault's header file is damaged, so Pine cannot tell how to unlock it. Restore the vault folder from a backup.";
+            _message.Set("Unlock.Status.HeaderDamaged");
         }
         catch (VaultHeaderNotFoundException)
         {
             _vaultSession.Lock();
-            StatusMessage = "No Pine vault was found in this folder.";
+            _message.Set("Unlock.Status.NoVaultFound");
         }
         catch (VaultKeyUnwrapException)
         {
@@ -193,7 +198,7 @@ public partial class UnlockViewModel : ObservableObject
             // Exception itself carries no detail for the same reason; this block must not undo that
             // by saying more than the generic path does.
             _vaultSession.Lock();
-            StatusMessage = "Incorrect password or corrupted vault.";
+            _message.Set("Unlock.Status.IncorrectPassword");
         }
         catch (LegacyVaultFormatException)
         {
@@ -202,21 +207,24 @@ public partial class UnlockViewModel : ObservableObject
             // the password would send the user to retype a password that was very possibly right.
             // The vault directory is deliberately not named (TD-24).
             _vaultSession.Lock();
-            StatusMessage = "This vault was created by a pre-release build of Pine, before encrypted key storage, and cannot be opened by this version. Please create a new vault.";
+            _message.Set("Unlock.Status.PreReleaseVault");
         }
         catch (VaultKeyWrapUnavailableException)
         {
             // The header is valid and another build could open it; this platform simply does not
-            // provide the AEAD the wrap needs (AesGcm.IsSupported is false on the browser runtime).
-            // Not an authentication failure, and must not be reported as one.
+            // provide the AEAD the wrap needs. Unreachable on the four shipped heads since the
+            // Phase 3 platform review deleted the Browser one -- kept for the same reason the
+            // cipher's own guard is kept: it is a statement about AesGcm.IsSupported, which is a
+            // runtime question on any target. Not an authentication failure, and must not be
+            // reported as one.
             _vaultSession.Lock();
-            StatusMessage = "This build of Pine cannot open vaults on this platform, because the encryption it requires is not available here. Your vault is undamaged -- open it with the desktop version of Pine.";
+            _message.Set("Unlock.Status.PlatformUnsupported");
         }
         catch (Exception)
         {
             // Genuine authentication failure: the actual exception is deliberately collapsed so it
             // cannot be used as an oracle. Usually a CryptographicException or SqliteException.
-            StatusMessage = "Incorrect password or corrupted vault.";
+            _message.Set("Unlock.Status.IncorrectPassword");
             
             // Re-lock the session just in case
             _vaultSession.Lock();
@@ -232,4 +240,21 @@ public partial class UnlockViewModel : ObservableObject
     {
         _navigationService.NavigateTo(_viewModels.CreateVaultSelection());
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

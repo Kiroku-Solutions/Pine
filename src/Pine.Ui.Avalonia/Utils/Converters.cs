@@ -1,4 +1,7 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
 using Avalonia.Data.Converters;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
@@ -64,4 +67,38 @@ public static class Converters
             ConfidenceBand.Low => "Low confidence — please check this.",
             _ => string.Empty,
         });
+
+    /// <summary>
+    /// Whether the first value (a transaction id) appears in the second (the set of ids that have
+    /// a receipt attached).
+    /// </summary>
+    /// <remarks>
+    /// A MULTI-VALUE CONVERTER BECAUSE THE ANSWER IS NOT A PROPERTY OF EITHER SIDE ALONE. The row's
+    /// DataContext is a <c>Pine.Core.Transactions.Transaction</c>, a domain entity that must not
+    /// grow a "has a receipt" flag to serve a list; and the set lives on the page view model. The
+    /// alternative -- wrapping every row in a row view model -- is a larger change than the marker
+    /// is worth, and would put a second object between the list and the ledger.
+    /// </remarks>
+    public static readonly IMultiValueConverter IsInIdSet = new IdSetMembershipConverter();
+
+    private sealed class IdSetMembershipConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (values.Count < 2 || values[0] is not Guid id || values[1] is not IEnumerable set)
+            {
+                return false;
+            }
+
+            foreach (var candidate in set)
+            {
+                if (candidate is Guid known && known == id)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }

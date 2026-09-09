@@ -69,6 +69,48 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.ToTable("Accounts");
                 });
 
+            modelBuilder.Entity("Pine.Core.Attachments.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionId");
+
+                    b.ToTable("Attachments");
+                });
+
             modelBuilder.Entity("Pine.Core.Budgets.Budget", b =>
                 {
                     b.Property<Guid>("Id")
@@ -183,6 +225,40 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.ToTable("ImportProfiles");
                 });
 
+            modelBuilder.Entity("Pine.Core.Rules.Rule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Priority", "CreatedAtUtc");
+
+                    b.ToTable("Rules");
+                });
+
             modelBuilder.Entity("Pine.Core.Settings.Setting", b =>
                 {
                     b.Property<Guid>("Id")
@@ -290,6 +366,15 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.ToTable("Transactions");
                 });
 
+            modelBuilder.Entity("Pine.Core.Attachments.Attachment", b =>
+                {
+                    b.HasOne("Pine.Core.Transactions.Transaction", null)
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Pine.Core.Budgets.Budget", b =>
                 {
                     b.HasOne("Pine.Core.Categories.Category", null)
@@ -305,6 +390,42 @@ namespace Pine.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ParentCategoryId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Pine.Core.Rules.Rule", b =>
+                {
+                    b.OwnsMany("Pine.Core.Rules.RuleCondition", "Conditions", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Field")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Operator")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("RuleId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Value")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("RuleId");
+
+                            b1.ToTable("RuleConditions", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("RuleId");
+                        });
+
+                    b.Navigation("Conditions");
                 });
 
             modelBuilder.Entity("Pine.Core.Transactions.Transaction", b =>

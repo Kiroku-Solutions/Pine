@@ -11,12 +11,14 @@ using Pine.Core.Accounts;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class CreateAccountViewModel : ObservableObject
+public partial class CreateAccountViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly LocalizedMessageSlot _message;
     
     // Action to call when creation is complete (to close the dialog/return)
     private readonly Action _onComplete;
@@ -56,10 +58,13 @@ public partial class CreateAccountViewModel : ObservableObject
 
     public CreateAccountViewModel(
         IMediator mediator,
+        ILocalizer localizer,
         Action onComplete,
         ILogger<CreateAccountViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
+        _message = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
         _onComplete = onComplete;
         _logger = logger;
     }
@@ -69,7 +74,7 @@ public partial class CreateAccountViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(AccountName))
         {
-            ErrorMessage = "Account name is required.";
+            _message.Set("CreateAccount.Error.NameRequired");
             return;
         }
 
@@ -110,4 +115,21 @@ public partial class CreateAccountViewModel : ObservableObject
     {
         _onComplete?.Invoke();
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

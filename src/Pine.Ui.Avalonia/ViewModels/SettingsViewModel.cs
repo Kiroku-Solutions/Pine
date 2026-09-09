@@ -17,6 +17,7 @@ using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Security;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
@@ -44,10 +45,31 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
     [ObservableProperty]
     public partial int SelectedPaletteIndex { get; set; }
 
+    /// <summary>The language the interface is rendered in.</summary>
+    /// <remarks>
+    /// A <see cref="LanguageOption"/> AND NO LONGER AN <c>int</c> INDEX (D6). This is a public
+    /// surface change on a view model and it is deliberate: an index is a position in a list, so
+    /// the day a third language is inserted in alphabetical order, every stored "1" starts meaning
+    /// a different language. It also could not be otherwise -- the two <c>ComboBoxItem</c>
+    /// elements the index selected were themselves hardcoded English literals, which is the thing
+    /// TD-45 is about.
+    /// </remarks>
     [ObservableProperty]
-    public partial int SelectedLanguageIndex { get; set; }
+    public partial LanguageOption? SelectedLanguage { get; set; }
 
-    /// <summary>Key of the persisted UI language setting.</summary>
+    /// <summary>The languages offered by the picker.</summary>
+    public IReadOnlyList<LanguageOption> Languages => _localizer.Available;
+
+    /// <summary>
+    /// Key of the UI language setting as it was persisted INSIDE the vault, before TD-45.
+    /// </summary>
+    /// <remarks>
+    /// KEPT ONLY SO THE VALUE CAN BE MIGRATED OUT AND THEN LEFT ALONE (D4, D5). The preference now
+    /// lives outside the vault, because the unlock and vault-selection screens are rendered before
+    /// any vault is open and would otherwise stay in a language the user did not choose. Writing
+    /// both stores would be duplicated state waiting to diverge, so this key is READ once, for
+    /// migration, and never written again.
+    /// </remarks>
     public const string LanguageSettingKey = "Appearance.Language";
 
     /// <summary>Accent palettes offered in the appearance picker.</summary>
@@ -74,19 +96,46 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
     public partial bool IsRecalculating { get; set; }
 
     private readonly ISender _sender;
+    private readonly ILocalizer _localizer;
+    private readonly LanguagePreferenceStore _languageStore;
     private readonly ILogger<SettingsViewModel>? _logger;
     private bool _isInitializing = true;
 
-    public SettingsViewModel(ISender sender, ILogger<SettingsViewModel>? logger = null)
+    public SettingsViewModel(
+        ISender sender,
+        ILocalizer localizer,
+        LanguagePreferenceStore languageStore,
+        ILogger<SettingsViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
+        ArgumentNullException.ThrowIfNull(localizer);
+        ArgumentNullException.ThrowIfNull(languageStore);
         _sender = sender;
+        _localizer = localizer;
+        _languageStore = languageStore;
         _logger = logger;
 
         // Default values
         SelectedThemeIndex = 2; // System
         SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
-        SelectedLanguageIndex = 0; // English
+
+        // The picker shows what the localizer is ACTUALLY on, not a hardcoded default. The two
+        // used to be unrelated, which is how a picker reading "English" could sit above an
+        // application that had never consulted it.
+        SelectedLanguage = CurrentOption();
+    }
+
+    private LanguageOption CurrentOption()
+    {
+        foreach (var option in _localizer.Available)
+        {
+            if (string.Equals(option.Code, _localizer.CurrentLanguage, StringComparison.Ordinal))
+            {
+                return option;
+            }
+        }
+
+        return _localizer.Available[0];
     }
 
     /// <inheritdoc />
@@ -161,11 +210,8 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
             SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
         }
 
-        var langSetting = await _sender.Send(new GetSettingQuery(LanguageSettingKey));
-        if (langSetting != null && int.TryParse(langSetting, out int langIndex))
-        {
-            SelectedLanguageIndex = langIndex;
-        }
+        await MigrateLegacyLanguageSettingAsync();
+        SelectedLanguage = CurrentOption();
 
         await LoadAccountsAsync();
     }
@@ -298,15 +344,77 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
             message => ErrorMessage = message);
     }
 
-    partial void OnSelectedLanguageIndexChanged(int value)
+    /// <summary>
+    /// Applies the chosen language, then persists it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// APPLY FIRST, PERSIST SECOND, MATCHING <c>ThemeManager</c> (§6.2). A failed write must not
+    /// leave the user looking at a language they did not choose; and since the write goes to a
+    /// plain file rather than through the vault's command pipeline, it cannot be awaited into the
+    /// UI thread's way.
+    /// </para>
+    /// <para>
+    /// THIS METHOD IS THE DEFECT'S FIX, IN ONE LINE. Before TD-45 this handler had exactly one leg
+    /// -- persist -- while its two siblings on the same panel had two. <c>SetLanguage</c> is the
+    /// missing leg, and <c>SettingsLanguageTests</c> is the assertion that never existed.
+    /// </para>
+    /// </remarks>
+    partial void OnSelectedLanguageChanged(LanguageOption? value)
     {
-        if (_isInitializing) return;
-        ObservedTask.Run(
-            () => SaveSettingAsync(LanguageSettingKey, value.ToString(CultureInfo.InvariantCulture)),
-            _logger,
-            "setting-save",
-            SettingNotSaved,
-            message => ErrorMessage = message);
+        if (value is null)
+        {
+            return;
+        }
+
+        _localizer.SetLanguage(value.Code);
+
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        if (!_languageStore.Write(value.Code))
+        {
+            // §8: the language HAS changed on screen. A preference that will not survive a restart
+            // is not worth interrupting anyone over, so this is a log line and not an ErrorMessage.
+            _logger?.LogWarning(
+                "The UI language preference could not be written; it applies to this session only.");
+        }
+    }
+
+    /// <summary>
+    /// Moves a pre-TD-45 in-vault language choice to the out-of-vault store, once (D5).
+    /// </summary>
+    /// <remarks>
+    /// ONE-WAY AND IDEMPOTENT. A populated store is never overwritten from a vault, so a user who
+    /// has chosen a language since upgrading keeps that choice even when they open an older vault
+    /// carrying a different one. The legacy value is an INDEX -- "0" or "1" -- which is exactly the
+    /// fragility D6 replaced; it is mapped positionally because that is what it meant when it was
+    /// written, and then never read again.
+    /// </remarks>
+    private async Task MigrateLegacyLanguageSettingAsync()
+    {
+        if (_languageStore.Read() is not null)
+        {
+            return;
+        }
+
+        var legacy = await _sender.Send(new GetSettingQuery(LanguageSettingKey));
+
+        if (legacy is null || !int.TryParse(legacy, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+        {
+            return;
+        }
+
+        if (index < 0 || index >= _localizer.Available.Count)
+        {
+            return;
+        }
+
+        var code = _localizer.Available[index].Code;
+        _localizer.SetLanguage(code);
+        _languageStore.Write(code);
     }
 
     /// <summary>

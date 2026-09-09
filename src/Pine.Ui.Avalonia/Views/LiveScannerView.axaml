@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
              x:Class="Pine.Ui.Avalonia.Views.LiveScannerView"
              x:DataType="vm:LiveScannerViewModel">
@@ -70,15 +71,15 @@
                    HorizontalAlignment="Center" />
 
         <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-          <Button Content="Start Camera"
+          <Button Content="{loc:Tr LiveScanner.StartCameraButton}"
                   Command="{Binding StartScanningCommand}"
                   IsVisible="{Binding !IsScanning}"
                   Classes="pine-accent" Padding="18,8" />
-          <Button Content="Capture Now"
+          <Button Content="{loc:Tr LiveScanner.CaptureNowButton}"
                   Command="{Binding CaptureManuallyCommand}"
                   IsVisible="{Binding IsScanning}"
                   Classes="pine-accent" Padding="18,8" />
-          <Button Content="Stop Camera"
+          <Button Content="{loc:Tr LiveScanner.StopCameraButton}"
                   Command="{Binding StopScanningCommand}"
                   IsVisible="{Binding IsScanning}"
                   Classes="pine-danger" Padding="18,8" />

@@ -14,6 +14,7 @@ using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -26,6 +27,7 @@ public record CameraOption(int Index, string Name);
 public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<RetakeRequestedMessage>, IDisposable
 {
     private readonly IAIProvider _aiProvider;
+    private readonly LocalizedMessageSlot _status;
     private readonly INavigationService _navigationService;
 
     /// <summary>
@@ -59,11 +61,14 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         IAIProvider aiProvider,
         INavigationService navigationService,
         IViewModelFactory viewModels,
+        ILocalizer localizer,
         ILogger<LiveScannerViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _aiProvider = aiProvider;
         _navigationService = navigationService;
         _viewModels = viewModels;
+        _status = new LocalizedMessageSlot(localizer, text => PostToUI(() => StatusMessage = text ?? string.Empty));
         _logger = logger;
 
         // Populate mock cameras (OpenCV index based)
@@ -94,7 +99,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
 
         _cts = new CancellationTokenSource();
         IsScanning = true;
-        StatusMessage = "Opening camera...";
+        _status.Set("LiveScanner.Status.OpeningCamera");
 
         // Fire-and-forget on the thread pool; errors are caught internally
         _ = Task.Run(() => CaptureLoopAsync(_cts.Token));
@@ -117,7 +122,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         _cts?.Dispose();
         _cts = null;
         IsScanning = false;
-        StatusMessage = "Camera stopped";
+        _status.Set("LiveScanner.Status.CameraStopped");
     }
 
     [RelayCommand]
@@ -133,7 +138,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                 using var frame = new Mat();
                 if (_capture.Read(frame) && !frame.Empty())
                 {
-                    PostToUI(() => StatusMessage = "Manual capture! Extracting text...");
+                    _status.Set("LiveScanner.Status.ManualCapture");
 
                     // OBSERVED, AND THE DISCARD HERE WAS THE ODD ONE OUT (TD-35).
                     // CaptureAndNavigateAsync is NOT `async` -- it returns Task.CompletedTask -- so
@@ -183,14 +188,14 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             
             if (!localCapture.IsOpened())
             {
-                PostToUI(() => StatusMessage = "Failed to open camera.");
+                _status.Set("LiveScanner.Status.CameraFailed");
                 return;
             }
 
             // Store for shared access
             lock (_captureLock) { _capture = localCapture; }
 
-            PostToUI(() => StatusMessage = "Looking for receipt...");
+            _status.Set("LiveScanner.Status.LookingForReceipt");
 
             using var frame = new Mat();
             int frameCounter = 0;
@@ -223,7 +228,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                         if (result.PassedFilters && result.CroppedImageStream != null)
                         {
                             _consecutiveDetections++;
-                            PostToUI(() => StatusMessage = $"Receipt detected! Hold still... ({_consecutiveDetections}/5)");
+                            _status.Set("LiveScanner.Status.HoldStillFormat", _consecutiveDetections);
                             
                             if (_consecutiveDetections >= 5)
                             {
@@ -238,11 +243,11 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                             // If confidence is high but filters failed, show the specific reason to the user
                             if (result.Confidence > 0.85f && !string.IsNullOrEmpty(result.StatusMessage))
                             {
-                                PostToUI(() => StatusMessage = $"⚠️ {result.StatusMessage}");
+                                _status.Set("LiveScanner.Status.ProviderWarningFormat", result.StatusMessage);
                             }
                             else
                             {
-                                PostToUI(() => StatusMessage = $"Scanning... (Max Conf: {result.Confidence:P1})");
+                                _status.Set("LiveScanner.Status.ScanningFormat", result.Confidence);
                             }
                         }
                     }
@@ -432,6 +437,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
     /// </summary>
     public void Dispose()
     {
+        _status.Dispose();
         if (_isDisposed) return;
         _isDisposed = true;
 

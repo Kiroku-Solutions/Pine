@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-41-LOCALIZATION`                                                            |
 | Status           | Aspirational — no localisation infrastructure exists                                 |
-| Reconciled       | 2026-08-31 · There is not one `.resx` file in `src/`. Every user-facing string is a literal in code or XAML (TD-45). |
+| Reconciled       | 2026-09-08 · Localisation now EXISTS and TD-45 is closed. There is still not one `.resx` file, deliberately: §5 mandates JSON keyed by stable string IDs, and the audit's `.resx` suggestion was overridden by this document — see the design spec's §3.3. The `es` glossary §8.4 requires is §18 below. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -230,6 +230,42 @@ graph LR
 - [x] CLDR + ICU named.
 - [x] No TODO placeholders.
 - [x] No contradiction with `00-Vision`..`40-Accessibility`.
+
+## 18. Spanish Glossary (`es`)
+
+> Added 2026-09-08, at the glossary gate §8.4 requires and the localisation
+> design's §10.1 names. It was agreed with the product owner **before** the
+> 210 UI strings were extracted, which is the whole point of the gate:
+> discovering a terminology disagreement afterwards means revisiting every
+> screen instead of one table.
+
+**Register: neutral Latin American Spanish.** Chosen over peninsular
+Spanish because `es-EC` is the locale the OCR field extractor already
+works in, and because the design ships a neutral `es` (D7) that
+`es-ES`, `es-419` and `es-MX` all resolve to. Where the two registers
+differ the neutral term is used: *transacción* rather than *movimiento*,
+*estado de cuenta* rather than *extracto*, *recibo* rather than *ticket*.
+
+| English | Spanish (`es`) | Note |
+|---|---|---|
+| vault | bóveda | The encrypted database file, not a folder. |
+| account | cuenta | A financial account, never a user login. |
+| transaction | transacción | Neutral; *movimiento* is peninsular. |
+| balance | saldo | Never *balance*, which reads as a balance **sheet**. |
+| opening balance | saldo inicial | |
+| budget | presupuesto | |
+| receipt | recibo | Neutral; *ticket* is peninsular and an anglicism. |
+| ledger | libro mayor | |
+| statement | estado de cuenta | Neutral; *extracto* is peninsular. |
+| void (a transaction) | anular | A verb. The ledger anula rather than *elimina* — nothing is deleted, which is the domain rule. |
+| import | importar | |
+| category | categoría | |
+
+**These twelve are binding on every `es` string.** A translation that
+uses a synonym for one of them is a defect, not a style preference:
+`41-Localization` §8.4 makes the glossary the thing per-locale
+consistency is measured against.
+
 
 ## 17. Revision History
 

@@ -295,7 +295,7 @@ public class ImportTransactionsCommandTests
                 .Returns(Task.FromResult(new CategorisationResult(string.Empty, 0d)));
 
             Handler = new ImportTransactionsCommandHandler(
-                Transactions, Accounts, TimeProvider.System, ai,
+                Transactions, Accounts, TimeProvider.System, ai, NoRules(),
                 Microsoft.Extensions.Options.Options.Create(new Pine.Core.Configuration.PineAiOptions()));
 
             Command = new ImportTransactionsCommand(
@@ -338,5 +338,23 @@ public class ImportTransactionsCommandTests
 
         public Task<ImportTransactionsResult> RunAsync()
             => Handler.Handle(Command, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A rule repository with nothing in it.
+    /// </summary>
+    /// <remarks>
+    /// These tests are about the CLASSIFIER's behaviour, so the rule engine must be silent: an
+    /// empty rule set means <c>RuleEvaluator</c> returns no match and the handler falls through to
+    /// the AI path, which is exactly what they assert on. Rules taking precedence over the model is
+    /// asserted in <c>ImportRuleCategorisationTests</c>.
+    /// </remarks>
+    private static Pine.Core.Rules.IRuleRepository NoRules()
+    {
+        var rules = NSubstitute.Substitute.For<Pine.Core.Rules.IRuleRepository>();
+        rules.GetEnabledAsync(Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult<IReadOnlyList<Pine.Core.Rules.Rule>>(
+                System.Array.Empty<Pine.Core.Rules.Rule>()));
+        return rules;
     }
 }

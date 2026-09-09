@@ -3,6 +3,7 @@
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:core="using:Pine.Core.Transactions"
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              x:Class="Pine.Ui.Avalonia.Views.Widgets.RecentTransactionsWidgetView"
              x:DataType="vm:RecentTransactionsWidgetViewModel">
     
@@ -39,7 +40,7 @@
         </ScrollViewer>
             
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding !Transactions.Count}">
-            <TextBlock Text="No transactions yet." Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
+            <TextBlock Text="{loc:Tr RecentTransactionsWidget.EmptyState}" Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
         </StackPanel>
     </Grid>
 </UserControl>

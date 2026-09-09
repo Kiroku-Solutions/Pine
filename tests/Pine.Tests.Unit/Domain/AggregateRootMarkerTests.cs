@@ -26,11 +26,24 @@ namespace Pine.Tests.Unit.Domain;
 /// </remarks>
 public class AggregateRootMarkerTests
 {
-    /// <summary>The four types a repository loads and saves as a whole.</summary>
+    /// <summary>The six types a repository loads and saves as a whole.</summary>
+    /// <remarks>
+    /// <c>Attachment</c> joined this list in the Phase 3 attachment work, and it is a root rather
+    /// than a child of <c>Transaction</c> on purpose. Owning it would mean loading a receipt
+    /// photograph every time a transaction is read, which is exactly what a ledger query must not
+    /// do -- so it is loaded and saved on its own, through its own repository, and bound to its
+    /// transaction by a foreign key instead of by ownership.
+    ///
+    /// <c>Rule</c> joined it in the Phase 3 rule-engine work, and its conditions did NOT: a
+    /// condition has no life without its rule, is never loaded alone, and is deleted with it, so it
+    /// is an owned child exactly as a split is.
+    /// </remarks>
     private static readonly Type[] ExpectedAggregateRoots =
     {
         typeof(Pine.Core.Accounts.Account),
+        typeof(Pine.Core.Attachments.Attachment),
         typeof(Pine.Core.Categories.Category),
+        typeof(Pine.Core.Rules.Rule),
         typeof(Pine.Core.Settings.Setting),
         typeof(Pine.Core.Transactions.Transaction),
     };

@@ -5,6 +5,7 @@ using Pine.Application.Security;
 using Pine.Core.Configuration;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
 using System.IO;
@@ -44,7 +45,8 @@ public class SetupViewModelTests
             _viewModels,
             _vaultHeaderStore,
             _vaultKeyService,
-            _vaultDatabaseOpener);
+            _vaultDatabaseOpener,
+            new Localizer());
     }
 
     [Fact]

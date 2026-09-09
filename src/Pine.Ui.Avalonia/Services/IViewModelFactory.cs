@@ -55,6 +55,9 @@ public interface IViewModelFactory
     /// <summary>Creates the budgets page. The caller kicks off <c>InitializeAsync</c>.</summary>
     BudgetsViewModel CreateBudgets();
 
+    /// <summary>The rules screen.</summary>
+    RulesViewModel CreateRules();
+
     /// <summary>Creates the settings page.</summary>
     SettingsViewModel CreateSettings();
 

@@ -15,15 +15,18 @@ using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels.Importing;
 
-public partial class ImportWizardViewModel : ObservableObject
+public partial class ImportWizardViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator _mediator;
     private readonly Action _onClose;
     private readonly TimeProvider _timeProvider;
     private readonly IImporterFactory _importerFactory;
+    private readonly ILocalizer _localizer;
+    private readonly LocalizedMessageSlot _status;
     private readonly ILogger<ImportWizardViewModel>? _logger;
 
     private int _stepIndex;
@@ -121,11 +124,35 @@ public partial class ImportWizardViewModel : ObservableObject
 
     /// <summary>Gets or sets how many rows the target account already held from an earlier import.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SkippedAlreadyInAccountSentence))]
     public partial int SkippedAlreadyInAccountCount { get; set; }
 
     /// <summary>Gets or sets how many rows repeated an earlier row of the same file.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SkippedDuplicateInFileSentence))]
     public partial int SkippedDuplicateInFileCount { get; set; }
+
+    /// <summary>How many rows the account already held, as a sentence.</summary>
+    /// <remarks>
+    /// <para>
+    /// THIS IS A PROPERTY BECAUSE <c>StringFormat</c> CANNOT TAKE A TRANSLATION. The XAML used to
+    /// read <c>StringFormat='{}{0} already in this account'</c>, and the obvious localisation --
+    /// <c>StringFormat={loc:Tr Key}</c> -- does not work: <c>StringFormat</c> expects a string and
+    /// a markup extension hands back a <c>Binding</c>. Avalonia's compiled bindings caught it at
+    /// build time rather than at run time, which is the one place this project would rather find
+    /// out.
+    /// </para>
+    /// <para>
+    /// So the sentence is composed here, where a localizer is in reach, and the view binds a plain
+    /// string. <c>NotifyPropertyChangedFor</c> on the count keeps the two in step.
+    /// </para>
+    /// </remarks>
+    public string SkippedAlreadyInAccountSentence =>
+        _localizer.Format("ImportWizard.Review.AlreadyInAccountFormat", SkippedAlreadyInAccountCount);
+
+    /// <summary>How many rows repeated inside the file, as a sentence.</summary>
+    public string SkippedDuplicateInFileSentence =>
+        _localizer.Format("ImportWizard.Review.DuplicateInFileFormat", SkippedDuplicateInFileCount);
 
     public bool HasSkippedRows => SkippedCount > 0;
 
@@ -151,12 +178,16 @@ public partial class ImportWizardViewModel : ObservableObject
         IMediator mediator,
         TimeProvider timeProvider,
         IImporterFactory importerFactory,
+        ILocalizer localizer,
         Action onClose,
         ILogger<ImportWizardViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _timeProvider = timeProvider;
         _importerFactory = importerFactory;
+        _localizer = localizer;
+        _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _onClose = onClose;
         // NOT MOVED ONTO IAsyncInitializable, AND THE REASON IS STRUCTURAL (TD-35). That interface
         // is driven by PageActivation, which only ever sees a page assigned to a navigator's
@@ -238,7 +269,7 @@ public partial class ImportWizardViewModel : ObservableObject
         {
             if (string.IsNullOrEmpty(SelectedFilePath) || SelectedAccount == null)
             {
-                StatusMessage = "Please select a file and an account first.";
+                _status.Set("ImportWizard.Status.SelectFileAndAccount");
                 return;
             }
             StatusMessage = "";
@@ -265,7 +296,7 @@ public partial class ImportWizardViewModel : ObservableObject
         if (SelectedAccount == null || string.IsNullOrEmpty(SelectedFilePath)) return;
 
         IsExecuting = true;
-        StatusMessage = "Generating preview...";
+        _status.Set("ImportWizard.Status.GeneratingPreview");
         PreviewTransactions.Clear();
 
         try
@@ -309,7 +340,7 @@ public partial class ImportWizardViewModel : ObservableObject
                 PreviewTransactions.Add(tx);
             }
             
-            StatusMessage = $"Previewing {PreviewTransactions.Count} transactions (out of {transactions.Count}).";
+            _status.Set("ImportWizard.Status.PreviewingFormat", PreviewTransactions.Count, transactions.Count);
         }
         catch (Exception ex)
         {
@@ -334,7 +365,7 @@ public partial class ImportWizardViewModel : ObservableObject
         if (SelectedAccount == null || string.IsNullOrEmpty(SelectedFilePath)) return;
 
         IsExecuting = true;
-        StatusMessage = "Importing transactions...";
+        _status.Set("ImportWizard.Status.Importing");
 
         try
         {
@@ -457,6 +488,19 @@ public partial class ImportWizardViewModel : ObservableObject
     {
         _onClose?.Invoke();
     }
+
+    /// <summary>Releases the localized message slot.</summary>
+    /// <remarks>
+    /// CA1001 again, and the same reason as everywhere else: the slot subscribes to a
+    /// process-lifetime singleton, so not releasing it keeps this wizard reachable for the life of
+    /// the application.
+    /// </remarks>
+    public void Dispose()
+    {
+        _status.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }
 
 /// <summary>

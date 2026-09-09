@@ -9,6 +9,9 @@ using MediatR;
 using Pine.Application.Common;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
+using System.IO;
+using Avalonia.Media.Imaging;
+using Pine.Application.Attachments;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
@@ -42,6 +45,29 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     public partial AddTransactionViewModel? AddTransactionVm { get; set; }
 
     public ObservableCollection<Transaction> Transactions { get; } = new();
+
+    /// <summary>
+    /// The ids of the transactions that have a receipt attached, so the list can show a marker.
+    /// </summary>
+    /// <remarks>
+    /// A SET OF IDS, NOT AN ATTACHMENT PER ROW, AND THE DIFFERENCE IS THE BLOB. The attachment
+    /// table holds the file in the same row as its metadata, so anything that materialises an
+    /// <c>Attachment</c> reads the photograph with it. Showing a paperclip on a page of
+    /// transactions must never do that, so the page loads summaries -- which the repository
+    /// projects without the content column -- and keeps only the ids.
+    /// </remarks>
+    public ObservableCollection<Guid> TransactionsWithReceipts { get; } = new();
+
+    /// <summary>The receipt currently open in the viewer, if any.</summary>
+    [ObservableProperty]
+    public partial Bitmap? ReceiptImage { get; set; }
+
+    /// <summary>Whether the receipt viewer is open.</summary>
+    [ObservableProperty]
+    public partial bool IsReceiptOpen { get; set; }
+
+    /// <summary>The attachment the viewer is showing, so it can be removed from there.</summary>
+    private Guid? _openAttachmentId;
 
     private int _currentPage = 1;
 
@@ -182,6 +208,8 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 Transactions.Add(t);
             }
 
+            await RefreshReceiptMarkersAsync();
+
             if (_currentPage * _pageSize >= pagedResult.TotalCount)
             {
                 HasMorePages = false;
@@ -314,6 +342,127 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         finally
         {
             IsVoiding = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the receipt attached to a transaction.
+    /// </summary>
+    /// <param name="transaction">The row whose receipt to show.</param>
+    /// <remarks>
+    /// <para>
+    /// THE CONTENT IS READ HERE AND NOWHERE EARLIER. Loading the page reads summaries only; the
+    /// bytes are fetched when a user asks to see one, which is the whole reason
+    /// <c>IAttachmentRepository</c> separates the two operations.
+    /// </para>
+    /// <para>
+    /// The query verifies the stored hash and throws <c>AttachmentCorruptedException</c> when it
+    /// does not match. That exception implements <c>IUserFacingFailure</c>, so
+    /// <c>UserFacingError.Report</c> shows its sentence verbatim rather than the generic fallback --
+    /// the user is told the image does not match its fingerprint and that the transaction is fine.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task ViewReceiptAsync(Transaction? transaction)
+    {
+        if (transaction is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var summaries = await _mediator.Send(new GetTransactionAttachmentsQuery(transaction.Id));
+
+            if (summaries.Count == 0)
+            {
+                return;
+            }
+
+            var content = await _mediator.Send(new GetAttachmentContentQuery(summaries[0].Id));
+
+            if (content is null)
+            {
+                return;
+            }
+
+            using var buffer = new MemoryStream(content.Content);
+            ReceiptImage = new Bitmap(buffer);
+            _openAttachmentId = summaries[0].Id;
+            IsReceiptOpen = true;
+        }
+        catch (Exception ex)
+        {
+            VoidError = UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-view",
+                "The receipt could not be opened.");
+        }
+    }
+
+    /// <summary>Closes the receipt viewer.</summary>
+    [RelayCommand]
+    private void CloseReceipt()
+    {
+        IsReceiptOpen = false;
+        ReceiptImage = null;
+        _openAttachmentId = null;
+    }
+
+    /// <summary>
+    /// Removes the receipt currently open in the viewer.
+    /// </summary>
+    /// <remarks>
+    /// DELETING EVIDENCE IS A DELIBERATE ACT AND IS TREATED AS ONE: it is reachable only from the
+    /// open viewer, so the user is looking at the image they are about to remove. The transaction
+    /// is untouched -- Pine voids ledger rows rather than deleting them, and removing a receipt is
+    /// not a correction to the figure.
+    /// </remarks>
+    [RelayCommand]
+    private async Task RemoveReceiptAsync()
+    {
+        if (_openAttachmentId is not { } attachmentId)
+        {
+            return;
+        }
+
+        try
+        {
+            await _mediator.Send(new RemoveAttachmentCommand(attachmentId));
+            CloseReceipt();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            VoidError = UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-remove",
+                "The receipt could not be removed. Nothing was changed.");
+        }
+    }
+
+    /// <summary>
+    /// Refreshes which of the loaded transactions carry a receipt.
+    /// </summary>
+    /// <remarks>
+    /// One query per loaded page rather than one per row: the summaries are cheap because the
+    /// projection leaves the blob behind, but a query per row on a fifty-row page would still be
+    /// fifty round trips.
+    /// </remarks>
+    private async Task RefreshReceiptMarkersAsync()
+    {
+        TransactionsWithReceipts.Clear();
+
+        foreach (var transaction in Transactions)
+        {
+            var summaries = await _mediator.Send(new GetTransactionAttachmentsQuery(transaction.Id));
+
+            if (summaries.Count > 0)
+            {
+                TransactionsWithReceipts.Add(transaction.Id);
+            }
         }
     }
 }

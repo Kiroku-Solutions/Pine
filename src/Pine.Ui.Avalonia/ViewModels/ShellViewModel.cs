@@ -137,6 +137,7 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
         IsDashboardActive = page is DashboardViewModel;
         IsTransactionsActive = page is TransactionsViewModel;
         IsBudgetsActive = page is BudgetsViewModel;
+        IsRulesActive = page is RulesViewModel;
         IsDiagnosticsActive = page is DiagnosticsViewModel;
         IsScanReceiptActive = page is ScanReceiptViewModel;
         IsLiveScannerActive = page is LiveScannerViewModel;
@@ -151,6 +152,10 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
 
     [ObservableProperty]
     public partial bool IsBudgetsActive { get; set; }
+
+    /// <summary>Whether the rules screen is the current page.</summary>
+    [ObservableProperty]
+    public partial bool IsRulesActive { get; set; }
 
     [ObservableProperty]
     public partial bool IsDiagnosticsActive { get; set; }
@@ -184,6 +189,18 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
         // initialisation path for every page instead of a per-navigation-command discard.
         var budgets = _viewModels.CreateBudgets();
         NavigateTo(budgets);
+    }
+
+    /// <summary>Opens the rules screen.</summary>
+    /// <remarks>
+    /// This command is new, and the button that calls it was already in the sidebar -- disabled,
+    /// dimmed, with a "Coming soon" tooltip. That was honest while nothing evaluated a rule; it is
+    /// now a page.
+    /// </remarks>
+    [RelayCommand]
+    private void NavigateToRules()
+    {
+        NavigateTo(_viewModels.CreateRules());
     }
 
     [RelayCommand]

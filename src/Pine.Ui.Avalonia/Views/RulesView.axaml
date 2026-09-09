@@ -1,0 +1,127 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
+             x:Class="Pine.Ui.Avalonia.Views.RulesView"
+             x:DataType="vm:RulesViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="24" Margin="40">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="{loc:Tr Rules.Title}" FontSize="28" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr Rules.Subtitle}" FontSize="14"
+                           Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- The form. One condition, because a rule with several is written by creating
+                 several conditions in a grammar this screen does not have yet; the engine
+                 supports up to eight and the audit records the gap. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Rules.New.Section}" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+
+                    <Grid ColumnDefinitions="*, 12, *" RowDefinitions="Auto, Auto">
+                        <StackPanel Grid.Column="0" Grid.Row="0" Spacing="4">
+                            <TextBlock Text="{loc:Tr Rules.New.TitleLabel}" FontSize="13"
+                                       Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBox Text="{Binding NewTitle}"
+                                     PlaceholderText="{loc:Tr Rules.New.TitlePlaceholder}"
+                                     AutomationProperties.Name="{loc:Tr Rules.New.TitleLabel}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Grid.Row="0" Spacing="4">
+                            <TextBlock Text="{loc:Tr Rules.New.CategoryLabel}" FontSize="13"
+                                       Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBox Text="{Binding NewCategory}"
+                                     PlaceholderText="{loc:Tr Rules.New.CategoryPlaceholder}"
+                                     AutomationProperties.Name="{loc:Tr Rules.New.CategoryLabel}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="Auto, 12, Auto, 12, *, 12, Auto">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding Fields}"
+                                  SelectedItem="{Binding SelectedField}" MinWidth="130"
+                                  AutomationProperties.Name="{loc:Tr Rules.New.FieldLabel}" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding Operators}"
+                                  SelectedItem="{Binding SelectedOperator}" MinWidth="140"
+                                  AutomationProperties.Name="{loc:Tr Rules.New.OperatorLabel}" />
+                        <TextBox Grid.Column="4" Text="{Binding NewValue}"
+                                 PlaceholderText="{loc:Tr Rules.New.ValuePlaceholder}"
+                                 AutomationProperties.Name="{loc:Tr Rules.New.ValueLabel}" />
+                        <NumericUpDown Grid.Column="6" Value="{Binding NewPriority}"
+                                       Minimum="0" Maximum="1000" Increment="10" Width="120"
+                                       AutomationProperties.Name="{loc:Tr Rules.New.PriorityLabel}" />
+                    </Grid>
+
+                    <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="13"
+                               Foreground="{DynamicResource PineDanger}"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <Button Content="{loc:Tr Rules.New.CreateButton}" Classes="pine-accent"
+                            Padding="16,9" HorizontalAlignment="Right"
+                            IsEnabled="{Binding !IsBusy}"
+                            Command="{Binding CreateRuleCommand}" />
+                </StackPanel>
+            </Border>
+
+            <!-- The list, in the order the rules actually fire. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Rules.List.Section}" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+
+                    <TextBlock Text="{loc:Tr Rules.List.Empty}" FontSize="13"
+                               Foreground="{DynamicResource PineTextMuted}"
+                               IsVisible="{Binding IsEmpty}" TextWrapping="Wrap" />
+
+                    <ItemsControl ItemsSource="{Binding Rules}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:RuleRowViewModel">
+                                <Border BorderBrush="{DynamicResource PineBorder}" BorderThickness="0,0,0,1"
+                                        Padding="0,12">
+                                    <Grid ColumnDefinitions="*, Auto, Auto, Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2">
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Medium"
+                                                       Foreground="{DynamicResource PineText}" />
+                                            <TextBlock Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource PineTextMuted}" />
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="1" Text="{Binding Category}" FontSize="13"
+                                                   VerticalAlignment="Center" Margin="16,0"
+                                                   Foreground="{DynamicResource PineText}" />
+
+                                        <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsEnabled, Mode=OneWay}"
+                                                      VerticalAlignment="Center" Margin="8,0"
+                                                      AutomationProperties.Name="{loc:Tr Rules.List.ToggleAutomationName}"
+                                                      Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).ToggleRuleCommand}"
+                                                      CommandParameter="{Binding}" />
+
+                                        <Button Grid.Column="3" Classes="pine-danger" FontSize="12" Padding="10,5"
+                                                VerticalAlignment="Center"
+                                                Content="{loc:Tr Rules.List.Delete}"
+                                                AutomationProperties.Name="{loc:Tr Rules.List.DeleteAutomationName}"
+                                                Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).DeleteRuleCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

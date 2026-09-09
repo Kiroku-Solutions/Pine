@@ -125,7 +125,6 @@ pine/
 │   ├── Pine.Ui.Android/           # Android shell
 │   ├── Pine.Ui.Macos/             # macOS shell
 │   ├── Pine.Ui.Windows/           # Windows shell
-│   ├── Pine.Ui.Web/               # Web shell
 │   └── Pine.Docs/                 # Docs site (Mermaid, Astro)
 ├── tests/
 │   ├── Pine.Tests.Unit/

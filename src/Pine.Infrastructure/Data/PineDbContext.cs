@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Pine.Core.Accounts;
+using Pine.Core.Attachments;
+using Pine.Core.Rules;
 using Pine.Infrastructure.Data.Converters;
 using Pine.Core.Transactions;
 using Pine.Core.Categories;
@@ -26,6 +28,8 @@ public sealed class PineDbContext : DbContext
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<ImportProfile> ImportProfiles => Set<ImportProfile>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<Rule> Rules => Set<Rule>();
 
     public PineDbContext(string databasePath, byte[] encryptionKey)
     {
@@ -270,6 +274,70 @@ public sealed class PineDbContext : DbContext
              .HasConversion(
                  v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                  v => JsonSerializer.Deserialize<Dictionary<string, string>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, string>());
+        });
+
+        modelBuilder.Entity<Attachment>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.FileName).IsRequired();
+            e.Property(a => a.ContentType).IsRequired();
+            e.Property(a => a.Sha256).IsRequired();
+            e.Property(a => a.Content).IsRequired();
+
+            // A REAL FOREIGN KEY, WHICH THE DELETED Attachment DID NOT HAVE (TD-37). The old shape
+            // carried an unconstrained Guid, so nothing stopped a row pointing at a transaction that
+            // had never existed. Restrict matches every other relationship here: an attachment must
+            // be removed deliberately, and a transaction that still has evidence attached cannot be
+            // deleted out from under it. Pine voids rather than deletes transactions, so this is a
+            // guard against a programming error rather than a workflow.
+            //
+            // No navigation property, for the same reason Transaction declares none against Account:
+            // they are separate aggregate roots and a navigation would invite loading the blob by
+            // accident.
+            e.HasOne<Transaction>()
+             .WithMany()
+             .HasForeignKey(a => a.TransactionId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Listing attachments for a transaction is the only query this table serves.
+            e.HasIndex(a => a.TransactionId);
+        });
+
+        modelBuilder.Entity<Rule>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Title).IsRequired();
+
+            // The action's value. A NAME, not a CategoryId, and that is the Phase 3 roadmap item's
+            // premise corrected rather than followed: TransactionSplit.Category is a string and
+            // iteration 29 rejected making it a foreign key in writing, because the Categories
+            // table has no production writer (TD-32, TD-132). A rule that pointed at a Category row
+            // would point into an empty table.
+            e.Property(r => r.Category).IsRequired();
+
+            e.Property(r => r.IsEnabled).IsRequired();
+            e.Property(r => r.Priority).IsRequired();
+
+            // Serves the evaluator's tie-break and the rules screen's ordering, which are the same
+            // ordering on purpose.
+            e.HasIndex(r => new { r.Priority, r.CreatedAtUtc });
+
+            // Conditions are OWNED: a condition has no life without its rule, is never loaded on its
+            // own, and is deleted with it. That is the same relationship Transaction has with its
+            // splits, and it is why deleting a rule needs no cascade configuration of its own.
+            e.OwnsMany(r => r.Conditions, condition =>
+            {
+                condition.WithOwner().HasForeignKey(c => c.RuleId);
+                condition.HasKey(c => c.Id);
+                condition.ToTable("RuleConditions");
+
+                condition.Property(c => c.Field).HasConversion<string>();
+                condition.Property(c => c.Operator).HasConversion<string>();
+                condition.Property(c => c.Value).IsRequired();
+            });
+
+            // The backing field, because Conditions is a read-only projection over it.
+            e.Navigation(r => r.Conditions).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         ConfigureConcurrencyTokens(modelBuilder);

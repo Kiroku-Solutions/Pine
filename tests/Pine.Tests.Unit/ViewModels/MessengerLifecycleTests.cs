@@ -20,6 +20,7 @@ using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.ViewModels.Widgets;
@@ -54,24 +55,7 @@ namespace Pine.Tests.Unit.ViewModels;
 /// that does. Each test here retires what it activated before it returns.
 /// </para>
 /// </remarks>
-/// <summary>
-/// Serialised against every other test that touches the messenger.
-/// </summary>
-/// <remarks>
-/// <c>WeakReferenceMessenger.Default</c> is a PROCESS-WIDE singleton, and these tests activate real
-/// view models against it. Run in parallel with any other test that broadcasts a
-/// <c>DataChangedMessage</c>, a recipient activated here receives that broadcast too and the
-/// "exactly once" assertions count a delivery this test never sent. That is not a flaky test, it is
-/// a shared-state test being run concurrently -- so the collection is serialised rather than the
-/// assertions loosened. It was observed exactly once: this class passed alone and failed in a full
-/// run, which is the signature.
-/// </remarks>
-[CollectionDefinition("Messenger", DisableParallelization = true)]
-public sealed class MessengerTestGroup
-{
-}
-
-[Collection("Messenger")]
+[Collection("ProcessWideState")]
 public class MessengerLifecycleTests
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();
@@ -184,7 +168,7 @@ public class MessengerLifecycleTests
 
         for (var visit = 0; visit < 3; visit++)
         {
-            shell.NavigateTo(new ScanReceiptViewModel(_mediator, _navigation, _viewModels));
+            shell.NavigateTo(new ScanReceiptViewModel(_mediator, _navigation, _viewModels, new Localizer()));
         }
 
         using var png = OnePixelPng();
@@ -244,7 +228,7 @@ public class MessengerLifecycleTests
     public void Navigating_away_from_the_live_scanner_disposes_it()
     {
         var shell = CreateShell();
-        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), _navigation, _viewModels);
+        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), _navigation, _viewModels, new Localizer());
 
         shell.NavigateTo(scanner);
         WeakReferenceMessenger.Default.IsRegistered<RetakeRequestedMessage>(scanner).Should().BeTrue();

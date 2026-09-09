@@ -93,9 +93,13 @@ however, taken — in code.
   place rather than left to read as satisfied.
 - **There is no platform secure storage.** `15-Security` §4 offers "keychain OR passphrase-derived";
   only the second half exists, so there is no biometric unlock (**TD-87**).
-- **The browser head cannot open any vault at all**, because the WASM runtime provides no AES-GCM and
-  therefore cannot unwrap the key (**TD-88**). It fails with a distinct exception that says so rather
-  than reporting a wrong password.
+- **The browser head could not open any vault at all**, because the WASM runtime provides no AES-GCM
+  and therefore cannot unwrap the key (**TD-88**). It failed with a distinct exception that said so
+  rather than reporting a wrong password. That head was deleted in the Phase 3 platform review —
+  this consequence is one of the three reasons — so TD-88 is closed by decision rather than by a
+  WASM-safe wrap. **The guard itself stays**: `AesGcmVaultFileCipher` still refuses to proceed where
+  `AesGcm.IsSupported` is false, because that is a correct statement about the primitive and not a
+  statement about one head.
 - Refusing v1 vaults is a breaking change. It was taken deliberately, while no vault existed outside
   a developer machine, because carrying a second key path forever is a larger cost than deleting one
   now.

@@ -71,7 +71,7 @@ Full audit of every screen (dashboard → live scanner) and a state-of-the-art p
   controls tint too.
 - `Utils/ThemeManager.cs`: static, pure-Avalonia controller — swaps the palette in
   `Application.Resources.MergedDictionaries` and sets `RequestedThemeVariant`. **No
-  DI, no per-OS-head code** → all heads (Windows/macOS/Web/Android/iOS) inherit it.
+  DI, no per-OS-head code** → all heads (Windows/macOS/Android/iOS) inherit it.
 - Persistence via existing `ISettingRepository` (per-vault); applied on unlock.
 - Picker UI: swatch selector in **Settings → Appearance**.
 

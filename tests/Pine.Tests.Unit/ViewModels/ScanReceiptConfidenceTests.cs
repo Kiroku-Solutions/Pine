@@ -7,6 +7,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -39,7 +40,7 @@ public class ScanReceiptConfidenceTests
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
 
-        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>());
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), new Localizer());
         viewModel.SelectedAccount = account;
         return viewModel;
     }

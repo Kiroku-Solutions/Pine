@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -24,12 +25,15 @@ using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>, IAsyncInitializable
+public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>, IAsyncInitializable, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly LocalizedMessageSlot _status;
+    private readonly LocalizedMessageSlot _error;
     private readonly INavigationService _navigationService;
 
     /// <summary>
@@ -52,6 +56,17 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
     [ObservableProperty]
     public partial Bitmap? ReceiptImage { get; set; }
+
+    /// <summary>
+    /// The scanned image as stored bytes, kept until the transaction is saved.
+    /// </summary>
+    /// <remarks>
+    /// A byte array rather than the <see cref="Stream"/> that arrived, because the streams carried
+    /// by <c>ReceiptCapturedMessage</c> have no owner and are disposed by nobody (TD-126) -- so
+    /// holding one here would extend a lifetime that is already unclear. Copying costs one buffer
+    /// on a path that has already decoded a bitmap.
+    /// </remarks>
+    private byte[]? _receiptBytes;
 
     [ObservableProperty]
     public partial string Merchant { get; set; } = string.Empty;
@@ -201,11 +216,15 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         IMediator mediator,
         INavigationService navigationService,
         IViewModelFactory viewModels,
+        ILocalizer localizer,
         ILogger<ScanReceiptViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _navigationService = navigationService;
         _viewModels = viewModels;
+        _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
         _logger = logger;
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
@@ -322,11 +341,42 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// pool and only the ASSIGNMENT happens here, back on the UI thread where the await resumes.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The scanned receipt as an attachment for the save command, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// The file name carries the merchant and the date because that is what makes an exported or
+    /// restored file identifiable without the database beside it. It is sanitised: a merchant name
+    /// is OCR output and can contain anything.
+    /// </remarks>
+    private AddTransactionAttachmentCommand? BuildAttachment()
+    {
+        if (_receiptBytes is not { Length: > 0 } bytes)
+        {
+            return null;
+        }
+
+        var merchant = string.Concat((Merchant ?? string.Empty)
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '_'))
+            .Trim();
+
+        if (merchant.Length == 0)
+        {
+            merchant = "receipt";
+        }
+
+        var name = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{merchant}-{Date:yyyy-MM-dd}.png");
+
+        return new AddTransactionAttachmentCommand(name, "image/png", bytes);
+    }
+
     public async Task ProcessReceiptImageAsync(Stream imageStream, Stream? ocrImageStream = null)
     {
         IsBusy = true;
         ErrorMessage = string.Empty;
-        StatusMessage = "Loading the image...";
+        _status.Set("ScanReceipt.Status.LoadingImage");
 
         // A second scan must not inherit the first scan's confidence bands or ambiguity: without
         // this reset, a clean re-scan after a weak one would keep showing the old warnings until
@@ -343,6 +393,21 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             imageStream.Position = 0;
             ReceiptImage = await Task.Run(() => new Bitmap(imageStream));
 
+            // KEEP THE BYTES, WHICH IS THE HALF OF THIS FEATURE THAT NEVER EXISTED. Until now the
+            // image was decoded into a Bitmap for the screen and then dropped: scanning a receipt
+            // produced a transaction and threw the document away, which is what §10 Phase 3 meant
+            // by "the missing half of the OCR feature's audit value". The DISPLAY image is kept
+            // rather than the OCR one, because the OCR image is a deskewed, thresholded derivative
+            // produced for a machine -- what belongs in an audit trail is the document a person
+            // would recognise.
+            imageStream.Position = 0;
+            _receiptBytes = await Task.Run(() =>
+            {
+                using var buffer = new MemoryStream();
+                imageStream.CopyTo(buffer);
+                return buffer.ToArray();
+            });
+
             // Use the OCR optimized image if available, else fallback to standard image
             var streamForOcr = ocrImageStream ?? imageStream;
             streamForOcr.Position = 0;
@@ -354,7 +419,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
             var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr, progress));
 
-            StatusMessage = "Filling in the details...";
+            _status.Set("ScanReceipt.Status.FillingDetails");
 
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
@@ -388,7 +453,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // Suggest category if merchant is known
             if (!string.IsNullOrWhiteSpace(Merchant))
             {
-                StatusMessage = "Suggesting a category...";
+                _status.Set("ScanReceipt.Status.SuggestingCategory");
                 var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Merchant, Amount));
                 if (!string.IsNullOrWhiteSpace(categoryName))
                 {
@@ -435,19 +500,19 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     {
         if (SelectedAccount == null)
         {
-            ErrorMessage = "Please select an account.";
+            _error.Set("ScanReceipt.Error.NoAccount");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Merchant))
         {
-            ErrorMessage = "Merchant is required.";
+            _error.Set("ScanReceipt.Error.MerchantRequired");
             return;
         }
 
         if (Amount <= 0)
         {
-            ErrorMessage = "Amount must be greater than zero.";
+            _error.Set("ScanReceipt.Error.AmountPositive");
             return;
         }
 
@@ -467,7 +532,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         DuplicateWarning = string.Empty;
         // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
         // user gets a scrim with no sentence under it.
-        StatusMessage = "Saving the transaction...";
+        _status.Set("ScanReceipt.Status.Saving");
 
         try
         {
@@ -528,7 +593,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 Notes,
                 Category,
                 lineItemsCommands,
-                importKey
+                importKey,
+                BuildAttachment()
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
@@ -710,4 +776,22 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
         IsReconciled = !HasLineItems || UnreconciledDifference == 0m;
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _status.Dispose();
+        _error.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

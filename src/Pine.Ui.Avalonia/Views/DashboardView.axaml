@@ -10,6 +10,7 @@
              xmlns:idd="using:Avalonia.Xaml.Interactions.DragAndDrop"
              xmlns:wvm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:wv="using:Pine.Ui.Avalonia.Views.Widgets"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.DashboardView"
              x:DataType="vm:DashboardViewModel"
@@ -23,13 +24,18 @@
             <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="Here's your financial overview for today." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+                    <TextBlock Text="{loc:Tr Dashboard.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Button Content="Scan Receipt" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
-                    <Button Content="Import Data" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
-                    <Button Content="+ New Account" Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Dashboard.Actions.ImportData}" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="+" />
+                            <TextBlock Text="{loc:Tr Dashboard.Actions.NewAccount}" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
 
@@ -59,8 +65,8 @@
                                 <Grid RowDefinitions="Auto, *, Auto">
                                     
                                     <!-- Header / Drag Handle -->
-                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder"
-                                            AutomationProperties.Name="Widget drag handle">
+                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="{loc:Tr Dashboard.Widget.DragToReorder}"
+                                            AutomationProperties.Name="{loc:Tr Dashboard.Widget.DragHandleAutomationName}">
                                         <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Border>
                                     
@@ -76,7 +82,7 @@
                                             <DataTemplate DataType="wvm:IDashboardWidgetViewModel">
                                                 <!-- Fallback for empty widgets -->
                                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
-                                                    <TextBlock Text="No data yet" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                                                    <TextBlock Text="{loc:Tr Dashboard.Widget.NoData}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ContentControl.DataTemplates>
@@ -86,8 +92,8 @@
                                     <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                            Width="15" Height="15" Cursor="BottomRightCorner"
                                            DragDelta="ResizeThumb_DragDelta"
-                                           ToolTip.Tip="Drag to resize"
-                                           AutomationProperties.Name="Resize widget">
+                                           ToolTip.Tip="{loc:Tr Dashboard.Widget.DragToResize}"
+                                           AutomationProperties.Name="{loc:Tr Dashboard.Widget.ResizeAutomationName}">
                                         <Thumb.Template>
                                             <ControlTemplate>
                                                 <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource PineTextMuted}" />

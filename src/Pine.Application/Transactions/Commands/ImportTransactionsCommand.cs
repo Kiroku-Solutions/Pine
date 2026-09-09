@@ -10,6 +10,7 @@ using Pine.Application.Common;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Core.Accounts;
+using Pine.Core.Rules;
 using Pine.Core.Ai;
 using Pine.Core.Configuration;
 using Pine.Core.Categories;
@@ -110,6 +111,7 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
     private readonly IAccountRepository _accountRepository;
     private readonly TimeProvider _timeProvider;
     private readonly IAIProvider _aiProvider;
+    private readonly IRuleRepository _ruleRepository;
     private readonly PineAiOptions _aiOptions;
 
     /// <summary>Creates the handler.</summary>
@@ -119,18 +121,21 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
     /// <c>CategorizeTransactionQueryHandler</c>; the two are now one value (TD-27).
     /// </param>
     public ImportTransactionsCommandHandler(
-        ITransactionRepository transactionRepository, 
-        IAccountRepository accountRepository, 
+        ITransactionRepository transactionRepository,
+        IAccountRepository accountRepository,
         TimeProvider timeProvider,
         IAIProvider aiProvider,
+        IRuleRepository ruleRepository,
         IOptions<PineAiOptions> aiOptions)
     {
         ArgumentNullException.ThrowIfNull(aiOptions);
+        ArgumentNullException.ThrowIfNull(ruleRepository);
 
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
         _timeProvider = timeProvider;
         _aiProvider = aiProvider;
+        _ruleRepository = ruleRepository;
         _aiOptions = aiOptions.Value;
     }
 
@@ -254,12 +259,38 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
             throw new RequestValidationException(currencyErrors);
         }
 
+        // 4.5 The user's rules, read once for the whole run rather than once per row. They are
+        //     evaluated in memory because RuleEvaluator is pure: it takes rules and values and
+        //     returns a match, which is what makes `31-Rule-Engine` §6.2's idempotence checkable.
+        var rules = await _ruleRepository.GetEnabledAsync(cancellationToken);
+
         // 5. Save each unique transaction and update account balance
         foreach (var tx in importedTransactions)
         {
-            // Apply AI Categorization if no category was provided by the CSV
+            // Categorise, if the file itself supplied no category.
             if (tx.Splits.Count == 0)
             {
+                // A RULE BEATS THE CLASSIFIER, ALWAYS, AND THE ORDER IS THE DECISION. A rule is an
+                // instruction the user wrote down; the categoriser is a statistical guess with a
+                // confidence threshold. When a rule matches, the model is not consulted at all --
+                // not compared against, not used as a tie-break. Comparing a rule's priority with a
+                // model's confidence would mix two scales that share no units and would make "why
+                // did this end up in Coffee?" unanswerable.
+                var match = RuleEvaluator.FirstMatch(
+                    rules,
+                    new RuleInput(tx.Payee ?? string.Empty, tx.Notes ?? string.Empty, tx.TotalAmount.Amount));
+
+                if (match is not null)
+                {
+                    // The rule's title is the split's note, so the ledger records WHY it was filed
+                    // here. "AI" appears in that slot for the classifier's guesses for the same
+                    // reason.
+                    tx.ReplaceSplits(new[] { new SplitDefinition(tx.TotalAmount, match.Category, match.Title) });
+                    await _transactionRepository.SaveAsync(tx, cancellationToken);
+                    ApplyToBalance(account, tx);
+                    continue;
+                }
+
                 string transactionText = $"{tx.Payee} {tx.Notes}".Trim();
                 var aiResult = await _aiProvider.CategorizeTransactionAsync(transactionText, tx.TotalAmount.Amount, cancellationToken);
                 
@@ -276,22 +307,35 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
             }
 
             await _transactionRepository.SaveAsync(tx, cancellationToken);
-            
-            var absoluteAmount = new Pine.Core.Common.ValueObjects.Money(Math.Abs(tx.TotalAmount.Amount), tx.TotalAmount.Currency);
-            if (tx.TotalAmount.Amount < 0)
-            {
-                account.Withdraw(absoluteAmount, _timeProvider);
-            }
-            else
-            {
-                account.Deposit(absoluteAmount, _timeProvider);
-            }
+            ApplyToBalance(account, tx);
         }
 
         await _accountRepository.SaveAsync(account, cancellationToken);
 
         // 6. Return every row, imported or not, with the reason. Nothing is discarded silently.
         return new ImportTransactionsResult(reviewRows);
+    }
+
+    /// <summary>
+    /// Applies one imported transaction to the account balance.
+    /// </summary>
+    /// <remarks>
+    /// Extracted when the rule branch gained its own early <c>continue</c>: two copies of a
+    /// deposit-or-withdraw would be two places to get a sign wrong.
+    /// </remarks>
+    private void ApplyToBalance(Account account, Transaction tx)
+    {
+        var absoluteAmount = new Pine.Core.Common.ValueObjects.Money(
+            Math.Abs(tx.TotalAmount.Amount), tx.TotalAmount.Currency);
+
+        if (tx.TotalAmount.Amount < 0)
+        {
+            account.Withdraw(absoluteAmount, _timeProvider);
+        }
+        else
+        {
+            account.Deposit(absoluteAmount, _timeProvider);
+        }
     }
 }
 

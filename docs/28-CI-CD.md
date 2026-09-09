@@ -159,7 +159,11 @@ The build matrix is *platform × configuration × component*:
 | Windows-arm64| `Pine.Ui.Windows`       | `Release`     |
 | iOS       | `Pine.Ui.Ios`                | `Release`     |
 | Android   | `Pine.Ui.Android`            | `Release`     |
-| Web       | `Pine.Ui.Web`                | `Release`     |
+
+> **There is no Web row, and there was one until the Phase 3 platform review.** `Pine.Ui.Web` and
+> the `browser-wasm` leg of `.github/workflows/dotnet-ci.yml` were both deleted: it was the only
+> job in this pipeline that compiled a head which could never run the product, and a green light
+> over that is worse than no light. See `60-Production-Readiness-Audit` §12.64.
 
 ### 8.1 Docker Images
 

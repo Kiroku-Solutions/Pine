@@ -10,12 +10,13 @@ using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 using Microsoft.Extensions.Options;
 using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class SetupViewModel : ObservableObject
+public partial class SetupViewModel : ObservableObject, IDisposable
 {
     /// <summary>
     /// Pre-TD-05 vaults recorded only a raw salt file with no KDF metadata. Its presence still
@@ -33,6 +34,7 @@ public partial class SetupViewModel : ObservableObject
     /// -- only the reach has gone.
     /// </remarks>
     private readonly VaultManager _vaultManager;
+    private readonly LocalizedMessageSlot _message;
 
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
@@ -240,9 +242,12 @@ public partial class SetupViewModel : ObservableObject
         IVaultHeaderStore vaultHeaderStore,
         IVaultKeyService vaultKeyService,
         IVaultDatabaseOpener vaultDatabaseOpener,
+        ILocalizer localizer,
         IOptions<PineSecurityOptions>? securityOptions = null,
         ILogger<SetupViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
+        _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _securityOptions = securityOptions?.Value ?? new PineSecurityOptions();
         _vaultManager = vaultManager;
         _vaultSession = vaultSession;
@@ -271,7 +276,7 @@ public partial class SetupViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(VaultName))
         {
-            StatusMessage = "Vault name cannot be empty.";
+            _message.Set("Setup.Status.VaultNameEmpty");
             return;
         }
 
@@ -292,12 +297,12 @@ public partial class SetupViewModel : ObservableObject
         // loss, not an inconvenience, so a mismatch must refuse rather than warn.
         if (MasterPassword != ConfirmPassword)
         {
-            StatusMessage = "Passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
+            _message.Set("Setup.Status.PasswordMismatch");
             return;
         }
 
         IsBusy = true;
-        StatusMessage = "Encrypting vault... (this takes a moment)";
+        _message.Set("Setup.Status.Encrypting");
 
         try
         {
@@ -344,7 +349,7 @@ public partial class SetupViewModel : ObservableObject
                 await _vaultDatabaseOpener.CreateSchemaAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
-            StatusMessage = "Vault initialized!";
+            _message.Set("Setup.Status.Initialized");
 
             // No settings are written here (TD-47/TD-48/TD-80): the storage-mode and telemetry
             // choices this step used to record described capabilities Pine does not have --
@@ -373,4 +378,21 @@ public partial class SetupViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

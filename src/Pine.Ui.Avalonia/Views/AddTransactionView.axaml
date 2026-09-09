@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="650"
              x:Class="Pine.Ui.Avalonia.Views.AddTransactionView"
              x:DataType="vm:AddTransactionViewModel">
@@ -17,15 +18,15 @@
             BoxShadow="0 8 24 0 #20000000">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="15">
-                <TextBlock Text="New Transaction" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr AddTransaction.Title}" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
 
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 
             <!-- Type Toggle -->
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,0,0,10">
-                <RadioButton Content="Expense" IsChecked="{Binding IsExpense}" GroupName="TxType" />
-                <RadioButton Content="Income" IsChecked="{Binding IsIncome}" GroupName="TxType" />
-                <RadioButton Content="Transfer" IsChecked="{Binding IsTransfer}" GroupName="TxType" />
+                <RadioButton Content="{loc:Tr AddTransaction.TypeExpense}" IsChecked="{Binding IsExpense}" GroupName="TxType" />
+                <RadioButton Content="{loc:Tr AddTransaction.TypeIncome}" IsChecked="{Binding IsIncome}" GroupName="TxType" />
+                <RadioButton Content="{loc:Tr AddTransaction.TypeTransfer}" IsChecked="{Binding IsTransfer}" GroupName="TxType" />
             </StackPanel>
 
             <StackPanel Spacing="5">
@@ -40,7 +41,7 @@
             </StackPanel>
 
             <StackPanel Spacing="5" IsVisible="{Binding IsTransfer}">
-                <TextBlock Text="To Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="{loc:Tr AddTransaction.ToAccountLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedDestinationAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
@@ -53,35 +54,35 @@
             <!-- Stacked vertically: the Fluent DatePicker's 296px MinWidth overflows
                  (and overlaps) a narrow star column in this ~450px dialog. -->
             <StackPanel Spacing="5">
-                <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="{loc:Tr AddTransaction.DateLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <StackPanel Spacing="5">
-                <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="{loc:Tr AddTransaction.AmountLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                 <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
             </StackPanel>
 
             <StackPanel Spacing="5" IsVisible="{Binding !IsTransfer}">
-                <TextBlock Text="Payee / Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                <TextBox Text="{Binding Payee}" PlaceholderText="e.g. Walmart, Salary..." IsEnabled="{Binding !IsBusy}" />
+                <TextBlock Text="{loc:Tr AddTransaction.PayeeLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBox Text="{Binding Payee}" PlaceholderText="{loc:Tr AddTransaction.PayeePlaceholder}" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <StackPanel Spacing="5" IsVisible="{Binding !IsTransfer}">
-                <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                <TextBox Text="{Binding Category}" PlaceholderText="e.g. Groceries" IsEnabled="{Binding !IsBusy}" />
+                <TextBlock Text="{loc:Tr AddTransaction.CategoryLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBox Text="{Binding Category}" PlaceholderText="{loc:Tr AddTransaction.CategoryPlaceholder}" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
             
             <StackPanel Spacing="5">
-                <TextBlock Text="Notes" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                <TextBox Text="{Binding Notes}" PlaceholderText="Optional notes..." IsEnabled="{Binding !IsBusy}" />
+                <TextBlock Text="{loc:Tr AddTransaction.NotesLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBox Text="{Binding Notes}" PlaceholderText="{loc:Tr AddTransaction.NotesPlaceholder}" IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
 
             <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
 
             <Grid ColumnDefinitions="*, 10, *" Margin="0,20,0,0">
-                <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                <Button Grid.Column="2" Content="Save" Command="{Binding CreateCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                <Button Grid.Column="0" Content="{loc:Tr AddTransaction.CancelButton}" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                <Button Grid.Column="2" Content="{loc:Tr AddTransaction.SaveButton}" Command="{Binding CreateCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
             </Grid>
             </StackPanel>
           </ScrollViewer>

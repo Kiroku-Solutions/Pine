@@ -7,6 +7,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -48,7 +49,7 @@ public class ScanReceiptReconciliationTests
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
 
-        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>());
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), new Localizer());
 
         // The constructor kicks the account load off without awaiting it; assign explicitly so the
         // test does not race the fire-and-forget task for the currency the arithmetic depends on.

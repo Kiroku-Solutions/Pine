@@ -124,6 +124,12 @@ public class ImportKeyMigrationTests
     /// </remarks>
     private const string CategoryParentForeignKeySchemaVersion = "20260908152526_AddCategoryParentForeignKey";
 
+    /// <summary>The head of the migration list: the Phase 3 attachment table.</summary>
+    private const string AttachmentsSchemaVersion = "20260909155223_AddTransactionAttachments";
+
+    /// <summary>The head of the migration list: the Phase 3 rule engine.</summary>
+    private const string RulesSchemaVersion = "20260909165749_AddCategorisationRules";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -281,7 +287,9 @@ public class ImportKeyMigrationTests
             ScaledMoneySchemaVersion,
             ConcurrencyTokenSchemaVersion,
             DropDeadEntitiesSchemaVersion,
-            CategoryParentForeignKeySchemaVersion
+            CategoryParentForeignKeySchemaVersion,
+            AttachmentsSchemaVersion,
+            RulesSchemaVersion
         });
     }
 

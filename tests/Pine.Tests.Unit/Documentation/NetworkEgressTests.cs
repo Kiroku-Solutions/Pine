@@ -168,12 +168,13 @@ public class NetworkEgressTests
             + "reaching them and both assertions above are passing vacuously");
 
         ProjectFiles().Should().HaveCountGreaterThanOrEqualTo(
-            10,
-            "there are ten projects under src/ — Core, Application, Infrastructure, Cli, the shared "
-            + "UI and five OS heads. It was fourteen until iteration 27 deleted the two AI and two "
-            + "plugin projects, which had held zero .cs files each (TD-38). This count is a "
-            + "deliberate tripwire and it did its job: the deletion had to come past this assertion "
-            + "rather than past nobody");
+            9,
+            "there are nine projects under src/ — Core, Application, Infrastructure, Cli, the shared "
+            + "UI and four OS heads. It was fourteen until iteration 27 deleted the two AI and two "
+            + "plugin projects, which had held zero .cs files each (TD-38), and ten until iteration "
+            + "31 deleted the Browser head (Phase 3, item 1). This count is a deliberate tripwire "
+            + "and it has now done its job twice: both deletions had to come past this assertion "
+            + "rather than past nobody. Lowering it is the deliberate act it is meant to require");
     }
 
     private static List<string> SourceFiles()

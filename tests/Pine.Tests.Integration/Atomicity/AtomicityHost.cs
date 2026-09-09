@@ -137,6 +137,8 @@ internal sealed class AtomicityHost : IAsyncDisposable
 
             services.AddScoped<IAccountRepository, SqliteAccountRepository>();
             services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
+            services.AddScoped<Pine.Core.Attachments.IAttachmentRepository, SqliteAttachmentRepository>();
+            services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
             services.AddScoped<ICategoryRepository, SqliteCategoryRepository>();
             services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
             services.AddScoped<ISettingRepository, SqliteSettingRepository>();

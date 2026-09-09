@@ -89,8 +89,10 @@ public sealed class PineStorageOptions
     /// <summary>The root directory for vaults, logs and the vault registry.</summary>
     /// <remarks>
     /// Defaults to <c>%LOCALAPPDATA%/Pine</c>, falling back to a <c>data</c> directory beside the
-    /// executable where the platform has no local-application-data folder — which is the Browser
-    /// head, where <c>Environment.GetFolderPath</c> returns an empty string.
+    /// executable where <c>Environment.GetFolderPath</c> returns an empty string. The Browser head
+    /// was the known instance of that and was deleted in the Phase 3 platform review; the fallback
+    /// stays because it is a statement about the API's contract, not about one head — the same
+    /// call returns empty on a stripped container image and on some Linux configurations.
     /// </remarks>
     public string DataDirectory { get; set; } = DefaultDataDirectory();
 

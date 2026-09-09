@@ -12,12 +12,14 @@ using Pine.Core.Accounts;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class AddTransactionViewModel : ObservableObject
+public partial class AddTransactionViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly LocalizedMessageSlot _message;
     private readonly Action _onComplete;
     private readonly ILogger<AddTransactionViewModel>? _logger;
 
@@ -95,10 +97,13 @@ public partial class AddTransactionViewModel : ObservableObject
 
     public AddTransactionViewModel(
         IMediator mediator,
+        ILocalizer localizer,
         Action onComplete,
         ILogger<AddTransactionViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
+        _message = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
         _onComplete = onComplete;
         // NOT MOVED ONTO IAsyncInitializable, AND THE REASON IS STRUCTURAL (TD-35). That interface
         // is driven by PageActivation, which only ever sees a page assigned to a navigator's
@@ -132,19 +137,19 @@ public partial class AddTransactionViewModel : ObservableObject
     {
         if (SelectedAccount == null)
         {
-            ErrorMessage = "Please select an account.";
+            _message.Set("AddTransaction.Error.NoAccount");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Payee))
         {
-            ErrorMessage = "Payee is required.";
+            _message.Set("AddTransaction.Error.PayeeRequired");
             return;
         }
 
         if (Amount <= 0)
         {
-            ErrorMessage = "Amount must be greater than zero.";
+            _message.Set("AddTransaction.Error.AmountPositive");
             return;
         }
 
@@ -159,7 +164,7 @@ public partial class AddTransactionViewModel : ObservableObject
             {
                 if (SelectedDestinationAccount == null)
                 {
-                    ErrorMessage = "Please select a destination account.";
+                    _message.Set("AddTransaction.Error.NoDestinationAccount");
                     IsBusy = false;
                     return;
                 }
@@ -215,4 +220,21 @@ public partial class AddTransactionViewModel : ObservableObject
     {
         _onComplete?.Invoke();
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

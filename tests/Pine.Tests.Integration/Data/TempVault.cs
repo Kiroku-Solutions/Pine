@@ -100,6 +100,25 @@ internal sealed class TempVault : IDisposable
         return command.ExecuteScalar() as string;
     }
 
+    /// <summary>
+    /// Disposes every context handed out so far, so the WAL is checkpointed into the database file.
+    /// </summary>
+    /// <remarks>
+    /// A test that inspects the RAW BYTES of pine.db needs the pages actually to be in pine.db. With
+    /// a connection still open, recent writes can be sitting in the write-ahead log instead, and the
+    /// test would be reading a file that does not yet contain what it is asserting about.
+    /// </remarks>
+    public void CloseContexts()
+    {
+        foreach (var context in _contexts)
+        {
+            context.Dispose();
+        }
+
+        _contexts.Clear();
+        SqliteConnection.ClearAllPools();
+    }
+
     public void Dispose()
     {
         foreach (var context in _contexts)

@@ -6,6 +6,7 @@ using NSubstitute.ExceptionExtensions;
 using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
 using System.Threading.Tasks;
@@ -41,7 +42,8 @@ public class UnlockViewModelTests
             _viewModels,
             _vaultHeaderStore,
             _vaultKeyService,
-            _vaultDatabaseOpener);
+            _vaultDatabaseOpener,
+            new Localizer());
 
         vm.Initialize(new VaultProfile { Name = "Personal", Path = @"C:\vaults\personal" });
         vm.MasterPassword = "correct horse battery staple";

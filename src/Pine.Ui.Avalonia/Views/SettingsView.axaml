@@ -5,6 +5,7 @@
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              xmlns:accounts="using:Pine.Core.Accounts"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -13,8 +14,8 @@
         <StackPanel Spacing="24" Margin="40">
             <!-- Header -->
             <StackPanel Spacing="4" Margin="0,0,0,8">
-                <TextBlock Text="Settings" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="Manage your preferences and vault security." FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock Text="{loc:Tr Settings.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr Settings.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
             </StackPanel>
 
             <!-- Appearance Section -->
@@ -22,18 +23,18 @@
                     BorderBrush="{DynamicResource PineBorder}" 
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Appearance" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr Settings.Appearance.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
 
                     <Grid ColumnDefinitions="*, Auto">
                         <StackPanel>
-                            <TextBlock Text="Application Theme" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Choose how Pine looks on your device." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Tr Settings.Appearance.Theme.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Appearance.Theme.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" Width="180" SelectedIndex="{Binding SelectedThemeIndex}" VerticalAlignment="Center">
-                            <ComboBoxItem>Light</ComboBoxItem>
-                            <ComboBoxItem>Dark</ComboBoxItem>
-                            <ComboBoxItem>System Auto</ComboBoxItem>
+                            <ComboBoxItem Content="{loc:Tr Settings.Appearance.Theme.Light}" />
+                            <ComboBoxItem Content="{loc:Tr Settings.Appearance.Theme.Dark}" />
+                            <ComboBoxItem Content="{loc:Tr Settings.Appearance.Theme.SystemAuto}" />
                         </ComboBox>
                     </Grid>
 
@@ -42,8 +43,8 @@
                     <!-- Accent Palette Picker -->
                     <Grid ColumnDefinitions="*, Auto">
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Accent Color" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Tint the entire app with your favourite hue." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Tr Settings.Appearance.Accent.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Appearance.Accent.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                         </StackPanel>
 
                         <ListBox Grid.Column="1"
@@ -51,7 +52,7 @@
                                  SelectedIndex="{Binding SelectedPaletteIndex}"
                                  Background="Transparent" BorderThickness="0" Padding="0"
                                  VerticalAlignment="Center"
-                                 AutomationProperties.Name="Accent color palette">
+                                 AutomationProperties.Name="{loc:Tr Settings.Appearance.Accent.AutomationName}">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="12" />
@@ -102,18 +103,23 @@
                     BorderBrush="{DynamicResource PineBorder}" 
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Language &amp; Locale" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr Settings.Language.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
 
                     <Grid ColumnDefinitions="*, Auto">
                         <StackPanel>
-                            <TextBlock Text="Display Language" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Select the language for the interface." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Tr Settings.Language.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Language.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <ComboBox Grid.Column="1" Width="180" SelectedIndex="{Binding SelectedLanguageIndex}" VerticalAlignment="Center">
-                            <ComboBoxItem>English</ComboBoxItem>
-                            <ComboBoxItem>Spanish</ComboBoxItem>
-                        </ComboBox>
+                        <!--
+                            ItemsSource over the localizer's own list, SelectedItem by object.
+                            The two hardcoded ComboBoxItem elements this replaces were themselves
+                            untranslatable English literals sitting inside the language picker, and
+                            SelectedIndex made the persisted value a list position (D6, D8, D9).
+                        -->
+                        <ComboBox Grid.Column="1" Width="180" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Languages}"
+                                  SelectedItem="{Binding SelectedLanguage}" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -123,9 +129,9 @@
                     BorderBrush="{DynamicResource PineBorder}" 
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Security &amp; Vault" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr Settings.Security.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
-                    <TextBlock Text="Manage your vault's encryption and access controls." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"/>
+                    <TextBlock Text="{loc:Tr Settings.Security.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"/>
 
                     <!-- "Change Master Password" used to be a button here, wired to a stub command
                          that did nothing. It is now the real "Master Password" card below: the
@@ -134,18 +140,18 @@
 
                     <Grid ColumnDefinitions="*, Auto" Margin="0,4">
                         <StackPanel>
-                            <TextBlock Text="Export Vault" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Save a decrypted backup to disk." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Export..." Command="{Binding ExportVaultCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="{loc:Tr Settings.Security.ExportVault.Button}" Command="{Binding ExportVaultCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
 
                     <Grid ColumnDefinitions="*, Auto" Margin="0,4">
                         <StackPanel>
-                            <TextBlock Text="Lock Vault Now" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="Require the master password to continue." FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Tr Settings.Security.LockVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Security.LockVault.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Lock Vault" Command="{Binding LockVaultCommand}" Classes="pine-danger" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="{loc:Tr Settings.Security.LockVault.Button}" Command="{Binding LockVaultCommand}" Classes="pine-danger" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -159,24 +165,24 @@
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Master Password" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr Settings.MasterPassword.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
                     <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"
-                               Text="Change the password that unlocks this vault. Your data is not re-encrypted and your vault stays open — only the key that protects it is re-wrapped. There is no recovery: if you forget the new password, the vault cannot be opened." />
+                               Text="{loc:Tr Settings.MasterPassword.Description}" />
 
-                    <TextBlock Text="Current Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    <TextBox PlaceholderText="Enter your current master password"
+                    <TextBlock Text="{loc:Tr Settings.MasterPassword.CurrentLabel}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBox PlaceholderText="{loc:Tr Settings.MasterPassword.CurrentPlaceholder}"
                              Text="{Binding CurrentPassword}"
                              PasswordChar="●"
                              IsEnabled="{Binding !IsChangingPassword}"
-                             AutomationProperties.Name="Current master password" />
+                             AutomationProperties.Name="{loc:Tr Settings.MasterPassword.CurrentAutomationName}" />
 
-                    <TextBlock Text="New Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
-                    <TextBox PlaceholderText="Enter a strong new password"
+                    <TextBlock Text="{loc:Tr Settings.MasterPassword.NewLabel}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                    <TextBox PlaceholderText="{loc:Tr Settings.MasterPassword.NewPlaceholder}"
                              Text="{Binding NewPassword}"
                              PasswordChar="●"
                              IsEnabled="{Binding !IsChangingPassword}"
-                             AutomationProperties.Name="New master password" />
+                             AutomationProperties.Name="{loc:Tr Settings.MasterPassword.NewAutomationName}" />
 
                     <!-- Strength meter (TD-11), the same shape SetupView uses. Value/colour move as
                          the user types; the pass/fail state is also carried in
@@ -196,18 +202,18 @@
                                TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
                                IsVisible="{Binding NewPasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-                    <TextBlock Text="Confirm New Password" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
-                    <TextBox PlaceholderText="Re-enter the same new password"
+                    <TextBlock Text="{loc:Tr Settings.MasterPassword.ConfirmLabel}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                    <TextBox PlaceholderText="{loc:Tr Settings.MasterPassword.ConfirmPlaceholder}"
                              Text="{Binding ConfirmNewPassword}"
                              PasswordChar="●"
                              IsEnabled="{Binding !IsChangingPassword}"
-                             AutomationProperties.Name="Confirm new master password" />
-                    <TextBlock Text="Passwords do not match. There is no recovery -- a typo here is permanent."
+                             AutomationProperties.Name="{loc:Tr Settings.MasterPassword.ConfirmAutomationName}" />
+                    <TextBlock Text="{loc:Tr Settings.MasterPassword.Mismatch}"
                                TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
                                Foreground="{DynamicResource PineDanger}"
                                IsVisible="{Binding !NewPasswordsMatch}" />
 
-                    <Button Content="Change Password"
+                    <Button Content="{loc:Tr Settings.MasterPassword.ChangeButton}"
                             Command="{Binding ChangePasswordCommand}"
                             IsEnabled="{Binding !IsChangingPassword}"
                             Classes="pine-accent" Width="180"
@@ -239,10 +245,10 @@
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Data Integrity" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr Settings.DataIntegrity.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
                     <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"
-                               Text="Recompute an account's balance from its own transactions. Voided transactions are excluded. Nothing is changed unless the two disagree." />
+                               Text="{loc:Tr Settings.DataIntegrity.Description}" />
 
                     <ItemsControl ItemsSource="{Binding Accounts}">
                         <ItemsControl.ItemTemplate>
@@ -252,10 +258,10 @@
                                         <TextBlock Text="{Binding Name}" FontSize="15" Foreground="{DynamicResource PineText}" />
                                         <TextBlock Text="{Binding Balance}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="Check Balance"
+                                    <Button Grid.Column="1" Content="{loc:Tr Settings.DataIntegrity.CheckBalanceButton}"
                                             Classes="pine-outline" Width="160"
                                             HorizontalContentAlignment="Center" VerticalAlignment="Center"
-                                            AutomationProperties.Name="Recompute this account's balance from its transactions"
+                                            AutomationProperties.Name="{loc:Tr Settings.DataIntegrity.CheckBalanceAutomationName}"
                                             Command="{Binding #IntegritySection.((vm:SettingsViewModel)DataContext).RecalculateBalanceCommand}"
                                             CommandParameter="{Binding}" />
                                 </Grid>

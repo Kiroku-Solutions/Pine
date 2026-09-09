@@ -18,9 +18,11 @@ namespace Pine.Infrastructure.Ai;
 /// four methods are the receipt pipeline -- YOLO detection, OpenCV geometry, PaddleOCR -- and every
 /// one of those depends on a native binary that arrives through <c>OpenCvSharp4.runtime.win</c> and
 /// <c>Sdcb.PaddleInference.runtime.win64.mkl</c>. Those two packages have <em>win-x64 assets and no
-/// others</em>, which is a fact about the package graph rather than a policy: the macOS, Android,
-/// iOS and Browser heads reference <c>Pine.Infrastructure</c> and therefore compile against the
-/// managed wrappers, and would fail at the first P/Invoke.
+/// others</em> IN THIS REPOSITORY'S PIN SET: the macOS, Android and iOS heads reference
+/// <c>Pine.Infrastructure</c> and therefore compile against the managed wrappers, and would fail at
+/// the first P/Invoke. For macOS that is a pin this project chose not to add -- the osx runtime
+/// packages exist at the pinned versions -- and the Phase 3 platform review left it that way for
+/// want of a machine to test on. For Android and iOS no such package exists at all.
 /// </para>
 /// <para>
 /// WHY REFUSING IS BETTER THAN THE TWO ALTERNATIVES. Returning an empty
