@@ -28,6 +28,16 @@ name: CI
 # skipped on pull_request (see its own `if:`) and runs on push/dispatch. If the budget ever becomes
 # the blocker again, narrow this to `pull_request` ALONE -- never to nothing. A gate on the way in is
 # worth more than a gate after the fact, and both are worth more than an obligation to remember.
+# HOW EVERY LOOP IN THIS FILE IS WRITTEN, AND WHY IT MATTERS MORE THAN IT LOOKS.
+# Each build/test step asks `scripts/ci-projects.sh` for its projects, captures the answer in a
+# variable, and reads it line by line. The obvious spelling -- `for p in $(bash ...)` -- was
+# written first and is wrong in a way that no test would have shown: a command substitution in a
+# `for` word list DOES NOT propagate its exit status, even under `set -euo pipefail`, so a script
+# that failed would leave the loop iterating zero times and the step reporting SUCCESS. A
+# pipeline that builds nothing and goes green is worse than one that does not run. It also
+# word-splits, so a project path containing a space would reach dotnet in fragments. The
+# assignment propagates the failure and `read -r` keeps the path whole.
+#
 on:
   pull_request:
     branches: [main]
@@ -53,8 +63,19 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Desktop / shared surface: every project whose TFM is plain `net10.0`.
-  # Verified TFM-by-TFM against each .csproj on 2026-08-26 (11 projects).
+  # Desktop / shared surface: every project whose TFM is plain `net10.0` and which
+  # is not a test project.
+  #
+  # THE LIST IS NOT WRITTEN HERE ANY MORE (TD-54, plan item 0.2). It used to be,
+  # and a comment recorded that it had been "verified TFM-by-TFM against each
+  # .csproj on 2026-08-26 (11 projects)" -- which was true, and was the problem: a
+  # twelfth project would have changed nothing in this file and been built by
+  # nobody, under a green tick. `scripts/ci-projects.sh` derives each leg from
+  # `Pine.slnx` instead, and `BuildHygieneTests` fails the suite if the legs stop
+  # covering the solution exactly. See that script's header for why this is not
+  # simply `dotnet build Pine.slnx` (NETSDK1147: the solution cannot be built in
+  # one command on any runner that lacks the android and ios workloads).
+  #
   # Built on BOTH ubuntu and windows: the code contains no Windows-only P/Invoke
   # and the Windows-only NuGet packages in Pine.Infrastructure
   # (OpenCvSharp4.runtime.win, Sdcb.PaddleInference.runtime.win64.mkl) are
@@ -97,37 +118,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in \
-            src/Pine.Core/Pine.Core.csproj \
-            src/Pine.Application/Pine.Application.csproj \
-            src/Pine.Infrastructure/Pine.Infrastructure.csproj \
-            src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
-            src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
-            src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
-            src/Pine.Cli/Pine.Cli.csproj
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh desktop)"
+          while IFS= read -r p
           do
             echo "::group::restore $p"
             dotnet restore "$p"
             echo "::endgroup::"
-          done
+          done <<< "$projects"
 
       - name: Build desktop/shared projects (Release, warnings are errors)
         shell: bash
         run: |
           set -euo pipefail
-          for p in \
-            src/Pine.Core/Pine.Core.csproj \
-            src/Pine.Application/Pine.Application.csproj \
-            src/Pine.Infrastructure/Pine.Infrastructure.csproj \
-            src/Pine.Ui.Avalonia/Pine.Ui.Avalonia.csproj \
-            src/Pine.Ui.Windows/Pine.Ui.Windows.csproj \
-            src/Pine.Ui.Macos/Pine.Ui.Macos.csproj \
-            src/Pine.Cli/Pine.Cli.csproj
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh desktop)"
+          while IFS= read -r p
           do
             echo "::group::build $p"
             dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
             echo "::endgroup::"
-          done
+          done <<< "$projects"
 
   # ---------------------------------------------------------------------------
   # Platform heads that require a .NET workload. These are NOT skipped: they are
@@ -151,14 +164,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # No `project:` here any more (TD-54, plan item 0.2). `head` doubles as
+          # the leg name that `scripts/ci-projects.sh` answers to, so a second
+          # android or ios project added to Pine.slnx joins this job on its own.
+          # What still has to be written by hand is a NEW platform: the script
+          # refuses to classify an unknown TFM suffix rather than guessing a
+          # runner for it, so adding one fails loudly here instead of quietly
+          # everywhere.
           - head: android
             os: ubuntu-latest
             workload: android
-            project: src/Pine.Ui.Android/Pine.Ui.Android.csproj
           - head: ios
             os: macos-latest
             workload: ios
-            project: src/Pine.Ui.Ios/Pine.Ui.Ios.csproj
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -187,11 +205,33 @@ jobs:
       - name: Install ${{ matrix.workload }} workload
         run: dotnet workload install ${{ matrix.workload }} --skip-manifest-update
 
-      - name: Restore ${{ matrix.project }}
-        run: dotnet restore ${{ matrix.project }}
+      - name: Restore the ${{ matrix.head }} projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+          while IFS= read -r p
+          do
+            echo "::group::restore $p"
+            dotnet restore "$p"
+            echo "::endgroup::"
+          done <<< "$projects"
 
-      - name: Build ${{ matrix.project }} (Release, warnings are errors)
-        run: dotnet build ${{ matrix.project }} --configuration Release --no-restore
+      - name: Build the ${{ matrix.head }} projects (Release, warnings are errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+          while IFS= read -r p
+          do
+            echo "::group::build $p"
+            dotnet build "$p" --configuration Release --no-restore
+            echo "::endgroup::"
+          done <<< "$projects"
 
   # ---------------------------------------------------------------------------
   # Tests. Pine.Tests.Unit and Pine.Tests.Integration are the whole suite
@@ -235,35 +275,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in \
-            tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj \
-            tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh test)"
+          while IFS= read -r p
           do
+            echo "::group::restore $p"
             dotnet restore "$p"
-          done
+            echo "::endgroup::"
+          done <<< "$projects"
 
       - name: Build the test projects
         shell: bash
         run: |
           set -euo pipefail
-          dotnet build tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj --configuration Release --no-restore
-          dotnet build tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj --configuration Release --no-restore
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh test)"
+          while IFS= read -r p
+          do
+            echo "::group::build $p"
+            dotnet build "$p" --configuration Release --no-restore
+            echo "::endgroup::"
+          done <<< "$projects"
 
-      - name: Run unit tests
+      # One step for every test project, rather than one step per NAMED test
+      # project. The .trx file is named after the project rather than after the
+      # word "unit" or "integration", so a third suite lands in the artefact with
+      # a name that says what it is instead of overwriting one of the other two.
+      - name: Run the test suites
         shell: bash
-        run: >
-          dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
-          --configuration Release --no-build
-          --logger "trx;LogFileName=unit-${{ matrix.os }}.trx"
-          --results-directory TestResults
-
-      - name: Run integration tests
-        shell: bash
-        run: >
-          dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
-          --configuration Release --no-build
-          --logger "trx;LogFileName=integration-${{ matrix.os }}.trx"
-          --results-directory TestResults
+        run: |
+          set -euo pipefail
+          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+          projects="$(bash scripts/ci-projects.sh test)"
+          while IFS= read -r p
+          do
+            suite="$(basename "$p" .csproj)"
+            echo "::group::test $suite"
+            dotnet test "$p" \
+              --configuration Release --no-build \
+              --logger "trx;LogFileName=$suite-${{ matrix.os }}.trx" \
+              --results-directory TestResults
+            echo "::endgroup::"
+          done <<< "$projects"
 
       # -----------------------------------------------------------------------
       # Coverage floor (Phase 2 item 9). The gate is a script rather than a flag

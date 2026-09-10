@@ -549,7 +549,7 @@ any other single change.
 | TD-51 | Draft comments and `<!-- asdasda` in source | 🔵 | Signals unreviewed code | Clean up; enforce in review | P2 | 🟡 **Partial** |
 | TD-52 | Web/Android/iOS roots omit `TimeProvider.System` + 9 other registrations Windows has | 🔴 | Heads compile, then throw on the first command dispatched | Shared `AddPine*()` roots (TD-29) | P1 | ✅ **Done** — iteration 22, §12.46. There is one list of registrations and every head gets all of it; `ValidateOnBuild` now turns an omission into a startup failure in front of a test rather than a throw on the screen that needed it |
 | TD-53 | `Pine.Ui.Web` now passes `":memory:"`, but `PineDbContext` unconditionally builds a **keyed SQLCipher** connection, whose native lib the WASM build does not link | 🔴 | Web head still fails at first DB access — an in-memory *SQLCipher* database needs the same native library | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** — wording corrected, see §12.12. Iteration 22 deleted the false comment when the Web head lost its private composition root (§12.46): it now builds the same `PineDbContext` every head builds, from the real vault directory. **The defect is untouched** — the head still cannot open a vault, for the separate reason recorded as TD-88. **Closed by deletion, iteration 31 (§12.64), and this row's stated cause was wrong**: `SQLitePCLRaw.lib.e_sqlcipher` does ship a `browser-wasm` native asset. Every build of that head printed `the native references won't be linked in, because neither $(WasmBuildNative), nor $(RunAOTCompilation) are 'true'` and named `e_sqlcipher.a`. It was not that WASM could not link it; it was that nothing asked. The outcome the row describes was real; the reason was not — ✅ **Done (by decision)** |
-| TD-54 | CI enumerates projects instead of building `Pine.slnx` | 🟠 | A newly added project is silently outside CI — the TD-07 drift class again | Build the solution, or assert slnx coverage in CI | P1 | 🔴 **Open** |
+| TD-54 | CI enumerated projects instead of building `Pine.slnx` | 🟠 | A newly added project was silently outside CI — the TD-07 drift class again | **Done** (2026-09-10, plan item 0.2), by the second of the two options this column offered. The first is not available: `dotnet build Pine.slnx` aborts at restore with two NETSDK1147 errors on any runner without the android and ios workloads, which this audit has measured three times. So `scripts/ci-projects.sh` derives each leg from `Pine.slnx` — platform suffix, then test SDK, then desktop — and refuses to classify a TFM it has no leg for rather than dropping it. The workflow names no project at all. `BuildHygieneTests.EveryProjectInTheSolutionIsBuiltBySomeCiLeg` runs that script and asserts the legs cover the solution exactly, with nothing in two legs and nothing in none | P1 | ✅ **Closed** — iteration 38 |
 | TD-55 | `TreatWarningsAsErrors` promotes NuGet audit warnings (NU19xx) to build errors | 🟡 | A new CVE advisory turns CI red with no code change | Set `NuGetAuditMode`; triage advisories separately | P2 | 🔴 **Open** |
 | TD-56 | No restore-from-backup path; `ExportVaultBackupCommand` has no UI entry point | 🟠 | Recovery requires the user to copy files by hand | Restore command + UI affordance | P1 | 🔴 **Open** **HALF DONE — iteration 37 (§12.76).** The export half is closed: the Settings button was an empty method bound to a visible control while `ExportVaultBackupCommand` and `VaultBackupService` sat complete and unused; it now runs the backup and names the file it wrote. `LockVault()` was the same shape and also bound to a visible button, so it was wired rather than deleted. **A false security sentence was found beside it**: the panel described the result as "a **decrypted** backup", when `VACUUM INTO` on the keyed connection encrypts the copy with the very same key — proven by `CreateBackupAsync_ShouldProduceBackupEncryptedWithSameKey`. Corrected. **The restore half remains open and is what keeps this row 🟠 P1**: recovery still means copying a file by hand, and a backup nobody can restore from the application is a backup only in name |
 | TD-57 | `IVaultMigrator` lives in `Pine.Core` because Infrastructure cannot see Application | 🟡 | A persistence-orchestration port sits in the domain project | Add the ProjectReference, then move the port | P2 | 🔴 **Open** |
@@ -709,14 +709,19 @@ refuses to fall.
 
 **Why it is still not "production ready".** Three reasons, in order of weight:
 
-1. **Nothing arms the regression net (TD-07).** The CI workflow is `workflow_dispatch:` only, by an
+1. ~~**Nothing arms the regression net (TD-07).** The CI workflow is `workflow_dispatch:` only, by an
    explicit and documented decision about compute cost. Every guard built across three phases —
    architecture rules, the coverage gate, the egress scan, the documentation status tests — is real
-   and runs only when a human asks it to. This is the single largest gap and it is not technical.
-2. **Sixty-eight open debt rows**, of which six are 🟠 P1: no restore-from-backup path (TD-56),
-   a navigation defect that replaces the whole shell (TD-121), an unsigned release artefact
-   (TD-108), CI enumerating projects instead of the solution (TD-54), and an intermittent SQLite
-   handle disposal in the integration suite (TD-140).
+   and runs only when a human asks it to. This is the single largest gap and it is not technical.~~
+   **Closed 2026-09-10** (plan items 0.1 and 0.2). The workflow fires on `pull_request` into `main`
+   and on `push` to `main`, and it now asks `scripts/ci-projects.sh` which projects to build rather
+   than carrying a hand-written list, so a project added to `Pine.slnx` tomorrow is built by CI
+   without anyone remembering to add it. **What is left of this reason** is item 0.3: a job can run,
+   skip its own gate on a condition, and still report green.
+2. **Open debt rows**, of which four are 🟠 P1: no restore-from-backup path (TD-56), a navigation
+   defect that replaces the whole shell (TD-121), an unsigned release artefact (TD-108), and an
+   intermittent SQLite handle disposal in the integration suite (TD-140). TD-07 and TD-54, which
+   were on this list, are closed.
 3. **The product is narrower than the document set.** Budgets, sync, notifications, forecasting and
    investments are specified and unbuilt. That is a scope statement, not a defect.
 
@@ -735,9 +740,9 @@ works end to end against the encrypted store.
   the workflow fires on `pull_request` into `main` and on `push` to `main`. This is struck through
   rather than deleted because the sentence is the one `62-Post-Audit-Plan` §9 named as the plan's
   definition of done, and a definition of done that quietly disappears proves nothing. **The
-  weakness that replaces it** is narrower: CI enumerates projects instead of building `Pine.slnx`,
-  so a project added later is outside it silently (TD-54), and a job that skips its own gate still
-  reports green (plan item 0.3).
+  weakness that replaces it** is narrower, and narrowed again on the same day: the project list
+  drift (TD-54) is closed by plan item 0.2, and what remains is that a job which skips its own gate
+  still reports green (plan item 0.3).
 - **Biggest production risk** — No restore path. `VaultBackupService` produces backups and, until
   iteration 37, the Settings button that should trigger one did nothing; restoring one still means
   copying files by hand (TD-56).

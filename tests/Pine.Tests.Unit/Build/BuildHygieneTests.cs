@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -430,6 +431,299 @@ public partial class BuildHygieneTests
             + "nobody, while still being a tracked file carrying its own dependencies. One such "
             + "project -- a committed reflection probe under scratch/ -- was found by this row and "
             + "deleted");
+    }
+
+    /// <summary>
+    /// Every project in <c>Pine.slnx</c> is built by exactly one CI leg, and no leg builds a project
+    /// twice (TD-54, plan item 0.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the second half of a chain, and it is worth naming both halves because neither is
+    /// worth much alone. <see cref="EveryProjectFileIsInTheSolution"/> says every <c>.csproj</c> on
+    /// disk is in the solution. This says every project in the solution is on a CI leg. Together
+    /// they say the thing anyone actually cares about: **a project cannot be added to this
+    /// repository and stay outside CI**. Before item 0.2 the second half did not exist, and the
+    /// workflow answered it with three hand-written lists that were correct on the day they were
+    /// written and could never notice a twelfth project.
+    /// </para>
+    /// <para>
+    /// IT RUNS THE SCRIPT RATHER THAN REIMPLEMENTING IT, which is the only arrangement that proves
+    /// anything. A C# copy of the classification rules would be a second implementation that agrees
+    /// with the first until someone edits one of them, and the test would then be asserting its own
+    /// opinion about which projects CI ought to build rather than the answer CI is actually given.
+    /// The cost is a dependency on <c>bash</c> — already a hard dependency of this repository, since
+    /// the coverage gate, the packaging script and every non-trivial workflow step are bash.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryProjectInTheSolutionIsBuiltBySomeCiLeg()
+    {
+        var solution = File.ReadAllText(Path.Combine(RepositoryRoot(), "Pine.slnx"));
+
+        var listed = Regex
+            .Matches(solution, @"Path=""([^""]+)""", RegexOptions.None, TimeSpan.FromSeconds(5))
+            .Select(match => match.Groups[1].Value.Replace('\\', '/'))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        listed.Should().NotBeEmpty("Pine.slnx must have been parsed");
+
+        // The legs the workflow actually has. If a leg is added there and not here, the union check
+        // below fails with the projects it builds listed as uncovered, which is the right way round:
+        // this test is not a list of legs, it is a list of what the workflow is known to run.
+        var legs = new[] { "desktop", "test", "android", "ios" };
+
+        var covered = legs
+            .SelectMany(leg => CiProjectsFor(leg).Select(project => (Leg: leg, Project: project)))
+            .ToArray();
+
+        var uncovered = listed
+            .Except(covered.Select(entry => entry.Project), StringComparer.Ordinal)
+            .ToArray();
+
+        uncovered.Should().BeEmpty(
+            "a project in the solution that no CI leg builds is compiled by nothing and tested by "
+            + "nothing, while the pipeline reports green over it. That is TD-54, and it is the exact "
+            + "shape of the three broken platform heads TD-07 recorded");
+
+        var duplicated = covered
+            .GroupBy(entry => entry.Project, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key + " -> " + string.Join(", ", group.Select(entry => entry.Leg)))
+            .ToArray();
+
+        duplicated.Should().BeEmpty(
+            "a project on two legs is built twice on every run. It is not a correctness defect, it "
+            + "is a bill, and it means the classification rules overlap where they were meant to be "
+            + "ordered");
+
+        // The other half of the drift: the workflow must not go back to naming projects itself. A
+        // hand-written path here would still build and still pass, and would silently stop being
+        // answerable by the script.
+        var workflow = File
+            .ReadAllLines(Path.Combine(RepositoryRoot(), ".github", "workflows", "dotnet-ci.yml"))
+            .Where(line => !line.TrimStart().StartsWith('#'))
+            .Where(line => line.Contains(".csproj", StringComparison.Ordinal))
+            .Where(line => !line.Contains("basename", StringComparison.Ordinal))
+            .Where(line => !line.Contains("hashFiles", StringComparison.Ordinal))
+            .ToArray();
+
+        workflow.Should().BeEmpty(
+            "the workflow must ask scripts/ci-projects.sh which projects to build rather than "
+            + "naming any of them. The two exemptions above are the `basename` that derives a .trx "
+            + "file name and the `hashFiles` glob in the cache key, neither of which enumerates "
+            + "anything");
+    }
+
+    /// <summary>
+    /// Each CI leg is claimed by exactly one job, and that job builds what it claims (TD-54).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS TEST EXISTS BECAUSE THE FIRST VERSION OF THE ROW'S GUARD DID NOT CATCH THE OBVIOUS
+    /// MUTATION. <see cref="EveryProjectInTheSolutionIsBuiltBySomeCiLeg"/> proves the script agrees
+    /// with the solution, and proves the workflow names no project of its own. It says nothing about
+    /// whether any job still calls the script — an adversarial pass deleted the entire
+    /// <c>desktop</c> job from the workflow and the suite stayed green, which is TD-54's own failure
+    /// mode moved one layer up: seven projects would have stopped being built, under a green tick.
+    /// </para>
+    /// <para>
+    /// EXACTLY ONE JOB PER LEG, and not merely "at least one", because at-least-one is what let the
+    /// second mutation through: pointing the <c>desktop</c> job's restore step at the <c>test</c>
+    /// leg leaves every leg referenced by something while restoring the wrong projects. Two jobs
+    /// claiming one leg is either duplicated work or a mis-typed leg name, and neither is intended.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryCiLegIsClaimedByExactlyOneJobThatBuildsIt()
+    {
+        var jobs = WorkflowJobs();
+
+        jobs.Should().NotBeEmpty("the workflow must declare jobs");
+
+        var heads = jobs
+            .SelectMany(job => job.Value)
+            .Where(line => line.TrimStart().StartsWith("- head:", StringComparison.Ordinal))
+            .Select(line => line.Split(':', 2)[1].Trim())
+            .ToArray();
+
+        heads.Should().NotBeEmpty(
+            "the platform-heads matrix names its legs as `head:` values, and the workflow passes "
+            + "`${{ matrix.head }}` to the script rather than a literal leg name");
+
+        foreach (var leg in new[] { "desktop", "test", "android", "ios" })
+        {
+            var claiming = jobs
+                .Where(job => job.Value.Any(line => InvokesLeg(line, leg, heads)))
+                .Select(job => job.Key)
+                .ToArray();
+
+            claiming.Should().HaveCount(
+                1,
+                "leg '{0}' must be built by exactly one job, and is claimed by [{1}]. Zero means "
+                + "those projects are built by nothing while CI still reports green; two means one "
+                + "of the jobs is running the wrong leg",
+                leg,
+                string.Join(", ", claiming));
+
+            var steps = jobs[claiming[0]];
+
+            steps.Should().Contain(
+                line => line.Contains("dotnet restore", StringComparison.Ordinal),
+                "the job claiming the '{0}' leg must restore it", leg);
+
+            steps.Should().Contain(
+                line => line.Contains("dotnet build", StringComparison.Ordinal),
+                "the job claiming the '{0}' leg must build it", leg);
+
+            if (leg == "test")
+            {
+                steps.Should().Contain(
+                    line => line.Contains("dotnet test", StringComparison.Ordinal),
+                    "a test project that is built and never run is the green-light-over-an-empty-"
+                    + "file case iteration 27 deleted three projects over");
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when this workflow line hands <paramref name="leg"/> to <c>scripts/ci-projects.sh</c>,
+    /// resolving <c>${{ matrix.head }}</c> against the matrix's declared heads.
+    /// </summary>
+    private static bool InvokesLeg(string line, string leg, IReadOnlyCollection<string> heads)
+    {
+        if (line.TrimStart().StartsWith('#') || !line.Contains("ci-projects.sh", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Everything after the script name up to the closing paren of the command substitution.
+        // `${{ matrix.head }}` contains braces but no parenthesis, so this survives it.
+        var argument = line[(line.IndexOf("ci-projects.sh", StringComparison.Ordinal) + "ci-projects.sh".Length)..]
+            .Split(')')[0]
+            .Trim();
+
+        return argument == leg
+            || (argument.Contains("matrix.head", StringComparison.Ordinal) && heads.Contains(leg));
+    }
+
+    /// <summary>
+    /// The workflow's jobs, as job name to the lines belonging to it.
+    /// </summary>
+    /// <remarks>
+    /// Text, not a YAML parser: this repository references no YAML library, and adding one so a test
+    /// can read four job names would be a dependency taken for a convenience. A job is a line
+    /// indented by exactly two spaces under <c>jobs:</c> and ending in a colon; the job owns every
+    /// line until the next one.
+    /// </remarks>
+    private static Dictionary<string, List<string>> WorkflowJobs()
+    {
+        var lines = File.ReadAllLines(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "dotnet-ci.yml"));
+
+        var jobs = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var current = (List<string>?)null;
+        var inJobs = false;
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("jobs:", StringComparison.Ordinal))
+            {
+                inJobs = true;
+                continue;
+            }
+
+            if (!inJobs)
+            {
+                continue;
+            }
+
+            var isJobHeader = Regex.IsMatch(
+                line,
+                @"^  [A-Za-z][A-Za-z0-9_-]*:\s*$",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(5));
+
+            if (isJobHeader)
+            {
+                current = new List<string>();
+                jobs[line.Trim().TrimEnd(':')] = current;
+                continue;
+            }
+
+            current?.Add(line);
+        }
+
+        return jobs;
+    }
+
+    /// <summary>
+    /// Runs <c>scripts/ci-projects.sh</c> for one leg and returns the projects it names, failing the
+    /// test with the script's own stderr if it refuses.
+    /// </summary>
+    private static string[] CiProjectsFor(string leg)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo(BashExecutable())
+            {
+                WorkingDirectory = RepositoryRoot(),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            },
+        };
+
+        process.StartInfo.ArgumentList.Add("scripts/ci-projects.sh");
+        process.StartInfo.ArgumentList.Add(leg);
+
+        process.Start();
+
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+
+        process.WaitForExit(milliseconds: 60_000).Should().BeTrue(
+            "scripts/ci-projects.sh reads a handful of small files and must not hang");
+
+        process.ExitCode.Should().Be(
+            0,
+            "scripts/ci-projects.sh refused the '{0}' leg. Its own message: {1}",
+            leg,
+            string.IsNullOrWhiteSpace(error) ? "(nothing on stderr)" : error.Trim());
+
+        return output
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Finds a <c>bash</c> that understands this repository's paths.
+    /// </summary>
+    /// <remarks>
+    /// On Windows, <c>bash</c> on the PATH may be WSL's, which would resolve <c>J:\Kiroku\Pine</c>
+    /// into a filesystem the script cannot see. Git for Windows ships the bash that every other
+    /// bash-shaped thing in this repository is run under, so it is preferred explicitly and the PATH
+    /// is only the fallback.
+    /// </remarks>
+    private static string BashExecutable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "bash";
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Git", "bin", "bash.exe"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Git", "usr", "bin", "bash.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? "bash";
     }
 
     private readonly record struct PackageReferenceEntry(string Name, string? Version);

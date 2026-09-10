@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-10 — Stage 0 item 0.1 executed and recorded in §3.1                          |
+| Last Updated     | 2026-09-10 — Stage 0 items 0.1 and 0.2 executed and recorded in §3.1 and §3.2        |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -38,13 +38,14 @@ Three rules decide the order below, in priority:
 
 **One row, and it was first by a wide margin.** CI *was* `workflow_dispatch:` only — a broken head, a
 failing test, a coverage regression or a new network dependency all reached `main` unless a person
-remembered to dispatch the workflow. **Item 0.1 closed that on 2026-09-10** (§3.1). Items 0.2 and 0.3
-remain: an armed trigger fires the jobs that exist, over the projects those jobs happen to name.
+remembered to dispatch the workflow. **Items 0.1 and 0.2 closed that on 2026-09-10** (§3.1, §3.2). Item 0.3
+remains: an armed trigger fires the jobs that exist, and a job can still skip its own gate and
+report green.
 
 | # | Work | Closes | Notes |
 |---|---|---|---|
 | 0.1 | ✅ **Done** (2026-09-10) — Re-arm `pull_request: branches: [main]`, and `push:` on `main` | TD-07, TD-136 | Both were armed, not just `pull_request`: the compute case was answered by holding back one job rather than one trigger (see §3.1 below) |
-| 0.2 | Build `Pine.slnx` instead of enumerating projects | TD-54 | A project added later is currently outside CI silently. This is the same drift class as TD-07 |
+| 0.2 | ✅ **Done** (2026-09-10) — Build `Pine.slnx` instead of enumerating projects | TD-54 | Done by the row's second option, not its first: the solution cannot be built in one command at all. See §3.2 |
 | 0.3 | Assert the gate actually ran | — (TD-136 closed by 0.1) | A workflow that runs and skips its own gate is worse than one that does not run, because it reports green. TD-136's Fix column asked only for the trigger, which 0.1 delivered, so this item now stands on its own reasoning rather than on a register row |
 
 **Definition of done:** open a pull request with a deliberately failing test and watch CI reject it.
@@ -82,6 +83,75 @@ diff plus a unit test. A trigger block can be correct while no run ever happens 
 workflow, a repository whose Actions are off, a branch-protection rule that was never configured to
 require the check. `61-Manual-Test-Plan` §3.2 is the step that closes that gap, and it needs a real
 pull request against the real remote.
+
+### 3.2 Item 0.2, as built (2026-09-10, iteration 38)
+
+**The row's first option is not available, and saying so is half the item.** `dotnet build Pine.slnx`
+aborts at restore with two `NETSDK1147` errors on any machine without the android and ios workloads
+— this audit has measured that three separate times, and NETSDK1147 is an error, not a warning, so
+nothing compiles. A whole-solution build would have to run on macOS with both workloads installed,
+on every event, for every project: slower, dearer, and verifying nothing the four legs do not
+already verify. So the row's **second** option was taken — *"or assert slnx coverage in CI"* — and
+taken further than the wording required.
+
+`scripts/ci-projects.sh <leg>` derives each leg from `Pine.slnx`. First rule that matches wins: a
+platform suffix in the TFM (`-android`, `-ios`) picks that platform's leg; a `Microsoft.NET.Test.Sdk`
+reference picks the `test` leg; anything else is `desktop`. A project is classified by what it **is**
+rather than by where it sits, because a `tests/` folder is a convention and this had to be a fact.
+The workflow now names **no project at all** — the seven-path `desktop` list, the two `project:`
+entries in the `platform-heads` matrix and the two hard-coded `dotnet test` commands are gone.
+
+**It fails rather than skips, everywhere**, because the failure being designed out is a silent
+omission. A project in the solution whose file is missing, whose TFM cannot be read, or whose
+platform suffix has no leg, stops the script with a message naming it. So does a leg that matches no
+project at all: a job that builds nothing still reports a green tick, so an emptied leg has to be
+noticed rather than quietly succeed.
+
+**The chain, which is the actual deliverable:**
+
+1. `EveryProjectFileIsInTheSolution` — every `.csproj` on disk is in `Pine.slnx`. Already existed.
+2. `scripts/ci-projects.sh` — every project in `Pine.slnx` lands on exactly one leg, or CI fails.
+3. `EveryProjectInTheSolutionIsBuiltBySomeCiLeg` — **new**: runs that script, and asserts the legs
+   cover the solution exactly, with nothing in two legs and nothing in none. It also asserts the
+   workflow contains no `.csproj` path of its own, so the lists cannot creep back.
+
+Link 3 runs the script rather than reimplementing its rules. A C# copy would agree with the shell
+until someone edited one of them, and the test would then be asserting its own opinion about what CI
+ought to build instead of the answer CI is actually given.
+
+**Verified by falsification, four mutations:** a twelfth project added to the solution as plain
+`net10.0` was picked up on the `desktop` leg with **no edit to the workflow at all** and the suite
+stayed green — which is the whole point of the row, demonstrated rather than argued. The same project
+given a `net10.0-windows10.0.19041.0` TFM turned the suite red. Re-hardcoding one project path back
+into the workflow turned it red. Making the `desktop` and `test` legs overlap turned it red. A fifth
+defect was found this way and fixed: under `set -euo pipefail` a project with no `<TargetFramework>`
+element killed the script with a bare exit 1 and no message — the silent failure the script exists to
+prevent, reproduced inside the script itself.
+
+**The adversarial pass found four defects, and the first one mattered.** The guard written above —
+"the script agrees with the solution, and the workflow names no project" — said nothing about whether
+any job still *calls* the script. Deleting the entire `desktop` job from the workflow left the suite
+**green**: seven projects would have stopped being built, which is TD-54's own failure mode moved one
+layer up. `EveryCiLegIsClaimedByExactlyOneJobThatBuildsIt` now asserts that each leg is claimed by
+exactly one job and that the job restores, builds, and — for the `test` leg — runs it. Exactly one,
+not at least one: at-least-one is what let the second mutation through, pointing the `desktop` job's
+restore step at the `test` leg while every leg stayed referenced by something.
+
+The other three were latent but real. A csproj with a commented-out `<TargetFramework>` above the
+live one was classified from the **comment**, so XML comments are stripped before anything is
+matched. A csproj with two `Condition`-scoped target frameworks was classified by whichever the
+developer typed first; that is now refused outright, because deciding it means evaluating MSBuild
+conditions and a shell script must not pretend to. And every call site read the script's output as
+`for p in $(...)`, which is wrong twice over: it word-splits a path containing a space, and — the
+part that would never have been noticed — **a command substitution in a `for` word list does not
+propagate its exit status, even under `set -euo pipefail`**. A failing `ci-projects.sh` would have
+left the loop iterating zero times and the step reporting success. Every loop in the workflow now
+captures the list into a variable first and reads it with `read -r`.
+
+**What is NOT closed by this.** Adding a whole new *platform* is still a hand edit in two files: the
+script refuses to classify an unknown TFM suffix, so the failure is loud and immediate rather than
+silent, but it is still a failure someone has to answer. That is the honest boundary — this item
+removes the drift for projects, not for platforms.
 
 ## 4. Stage 1 — Finish what the user can already see
 
