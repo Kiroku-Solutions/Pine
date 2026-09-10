@@ -16,7 +16,6 @@
     <PackageReference Include="Microsoft.ML.Tokenizers" />
     <PackageReference Include="OpenCvSharp4" />
     <PackageReference Include="OpenCvSharp4.runtime.win" />
-    <PackageReference Include="PdfPig" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" />
     <PackageReference Include="Sdcb.PaddleInference" />

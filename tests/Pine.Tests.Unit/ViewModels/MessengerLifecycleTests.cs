@@ -15,7 +15,6 @@ using Pine.Application.Security;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
-using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Composition;
@@ -100,8 +99,8 @@ public class MessengerLifecycleTests
     [Fact]
     public void Navigating_to_a_page_starts_its_initialisation()
     {
-        _mediator.Send(Arg.Any<GetBudgetsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IEnumerable<Budget>>(Array.Empty<Budget>()));
+        _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(Array.Empty<BudgetProgress>()));
 
         var shell = CreateShell();
         var budgets = new BudgetsViewModel(_mediator, _navigation);
@@ -109,7 +108,7 @@ public class MessengerLifecycleTests
         _mediator.ClearReceivedCalls();
         shell.NavigateTo(budgets);
 
-        _mediator.Received().Send(Arg.Any<GetBudgetsQuery>(), Arg.Any<CancellationToken>());
+        _mediator.Received().Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>());
 
         shell.CurrentPage = null!;
     }
@@ -320,8 +319,8 @@ public class MessengerLifecycleTests
     [Fact]
     public void The_budgets_page_now_actually_receives_DataChangedMessage()
     {
-        _mediator.Send(Arg.Any<GetBudgetsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IEnumerable<Budget>>(Array.Empty<Budget>()));
+        _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(Array.Empty<BudgetProgress>()));
 
         var shell = CreateShell();
         var budgets = new BudgetsViewModel(_mediator, _navigation);
@@ -331,7 +330,7 @@ public class MessengerLifecycleTests
 
         WeakReferenceMessenger.Default.Send(new DataChangedMessage());
 
-        _mediator.Received(1).Send(Arg.Any<GetBudgetsQuery>(), Arg.Any<CancellationToken>());
+        _mediator.Received(1).Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>());
 
         shell.CurrentPage = null!;
     }

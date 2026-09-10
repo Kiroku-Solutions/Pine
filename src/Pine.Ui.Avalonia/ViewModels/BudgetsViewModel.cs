@@ -12,11 +12,9 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Budgets.Commands;
 using Pine.Application.Budgets.Queries;
-using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
-using Pine.Core.Categories;
 using Pine.Core.Common;
-using Pine.Core.Transactions;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.ViewModels.Messages;
@@ -52,12 +50,44 @@ public partial class BudgetProgressViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(LimitAmountText))]
     public partial string CurrencyCode { get; set; } = string.Empty;
 
-    public double ProgressPercentage => LimitAmount > 0 ? (double)(SpentAmount / LimitAmount) * 100 : 0;
+    /// <summary>
+    /// Whether a real spend figure was measured for this budget.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FALSE MEANS "NOT KNOWN", NOT "ZERO" (TD-99). <c>GetBudgetProgressQuery</c> returns a null
+    /// spend for a budget whose category or period cannot be resolved, and this row must carry that
+    /// distinction all the way to the screen: rendering an unknown spend as 0 is precisely the
+    /// fabrication this row exists to remove — it is a bar reading "0% of your limit used", which
+    /// is a factual claim about the user's money that nothing checked.
+    /// </para>
+    /// <para>
+    /// It defaults to <see langword="true"/> so that a row built from a measured figure needs no
+    /// extra ceremony, and so the formatting tests that construct a bare row keep meaning what they
+    /// meant.
+    /// </para>
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SpentAmountText))]
+    [NotifyPropertyChangedFor(nameof(ProgressPercentage))]
+    [NotifyPropertyChangedFor(nameof(IsExceeded))]
+    public partial bool IsSpendKnown { get; set; } = true;
 
-    public bool IsExceeded => SpentAmount > LimitAmount;
+    /// <summary>
+    /// What stands in for the spend when it is not known. Supplied by the page from the localizer,
+    /// because this row is constructed by hand and must not reach into a static one.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SpentAmountText))]
+    public partial string UnknownSpendText { get; set; } = "—";
 
-    /// <summary>The spent figure, rendered at its currency's scale (TD-75).</summary>
-    public string SpentAmountText => FormatAtCurrencyScale(SpentAmount);
+    public double ProgressPercentage =>
+        IsSpendKnown && LimitAmount > 0 ? (double)(SpentAmount / LimitAmount) * 100 : 0;
+
+    public bool IsExceeded => IsSpendKnown && SpentAmount > LimitAmount;
+
+    /// <summary>The spent figure, rendered at its currency's scale (TD-75), or said to be unknown.</summary>
+    public string SpentAmountText => IsSpendKnown ? FormatAtCurrencyScale(SpentAmount) : UnknownSpendText;
 
     /// <summary>The limit figure, rendered at its currency's scale (TD-75).</summary>
     public string LimitAmountText => FormatAtCurrencyScale(LimitAmount);
@@ -104,12 +134,29 @@ public partial class BudgetProgressViewModel : ObservableObject
 /// the fix rather than deleting the interface, because the interface described the intended
 /// behaviour correctly; it was the wiring that was missing. Activation now registers it like every
 /// other page.
+/// <para>
+/// AND FOR THOSE SAME MONTHS THE NUMBERS ON IT WERE INVENTED (TD-99). This page set
+/// <c>SpentAmount = 0m</c> for every budget behind a comment reading "Will be calculated from
+/// transactions", and named each row <c>"Category " + b.CategoryId.ToString()[..4]</c> — four hex
+/// digits of a GUID, presented where a category name goes. So every bar read 0%,
+/// <c>IsExceeded</c> was never true and the over-budget warning in <c>BudgetsView.axaml</c> was
+/// markup no user could ever see. The figures now come from <see cref="GetBudgetProgressQuery"/>,
+/// which measures them against the ledger; this page only renders what it is handed, including the
+/// case where the answer is "not known".
+/// </para>
 /// </remarks>
 public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable
 {
     private readonly IMediator _mediator;
     private readonly INavigationService _navigationService;
+    private readonly ILocalizer _localizer;
     private readonly ILogger<BudgetsViewModel>? _logger;
+
+    /// <summary>
+    /// The swatch a row falls back to when its category could not be resolved and so has no colour
+    /// of its own. Pine orange -- a colour, not a claim about the category.
+    /// </summary>
+    private const string UnresolvedCategorySwatch = "#FF8C00";
 
     public string Title { get; set; } = "Budgets";
     public int ColumnSpan { get; set; } = 2;
@@ -124,13 +171,23 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
+    /// <param name="mediator">The request pipeline.</param>
+    /// <param name="navigationService">Shell navigation.</param>
+    /// <param name="localizer">
+    /// The string table. Optional, and defaulting to <see cref="Localizer.Instance"/> -- the same
+    /// instance the container registers -- so that a test constructing this page by hand still gets
+    /// real English rather than a key, and so the container keeps resolving it as before.
+    /// </param>
+    /// <param name="logger">Diagnostics.</param>
     public BudgetsViewModel(
         IMediator mediator,
         INavigationService navigationService,
+        ILocalizer? localizer = null,
         ILogger<BudgetsViewModel>? logger = null)
     {
         _mediator = mediator;
         _navigationService = navigationService;
+        _localizer = localizer ?? Localizer.Instance;
         _logger = logger;
     }
 
@@ -184,22 +241,23 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
 
         try
         {
-            var budgets = await _mediator.Send(new GetBudgetsQuery());
-            
-            // To calculate progress, we need categories and transactions for the current month
-            // For brevity in MVP, we would inject a query to get transactions.
-            // Using dummy progress for visual setup, later wired to GetTransactionsQuery
-            
-            foreach (var b in budgets)
+            var unknownSpend = _localizer["Budgets.Progress.SpendUnknown"];
+            var unresolvedCategory = _localizer["Budgets.Category.Unresolved"];
+
+            var progress = await _mediator.Send(new GetBudgetProgressQuery());
+
+            foreach (var row in progress)
             {
                 Budgets.Add(new BudgetProgressViewModel
                 {
-                    BudgetId = b.Id,
-                    CategoryName = "Category " + b.CategoryId.ToString()[..4], // Requires Category lookup
-                    CategoryColorHex = "#FF8C00", // Pine Orange
-                    LimitAmount = b.Limit.Amount,
-                    SpentAmount = 0m, // Will be calculated from transactions
-                    CurrencyCode = b.Limit.Currency.Value
+                    BudgetId = row.BudgetId,
+                    CategoryName = row.CategoryName ?? unresolvedCategory,
+                    CategoryColorHex = row.CategoryColorHex ?? UnresolvedCategorySwatch,
+                    LimitAmount = row.Limit.Amount,
+                    CurrencyCode = row.Limit.Currency.Value,
+                    IsSpendKnown = row.IsSpendKnown,
+                    SpentAmount = row.Spent?.Amount ?? 0m,
+                    UnknownSpendText = unknownSpend,
                 });
             }
         }

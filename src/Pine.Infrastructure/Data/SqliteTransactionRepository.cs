@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Pine.Core.Transactions;
 
 namespace Pine.Infrastructure.Data;
@@ -109,15 +111,19 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             // and the TotalAmount complex property but never touches owned collections (TD-13), so
             // both collections are replaced explicitly, through the domain, on the tracked instance.
             _dbContext.Entry(existing).CurrentValues.SetValues(transaction);
+
+            // The ids travel with the definitions (TD-60). Without them every child here would be a
+            // new child, and the merge below would delete and re-insert the whole collection on a
+            // save that changed one word of one note.
             existing.ReplaceSplits(transaction.Splits
-                .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes)));
+                .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes, s.Id)));
             existing.ReplaceLineItems(transaction.LineItems
-                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind)));
+                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind, li.Id)));
         }
 
         // Runs for the already-tracked case too: the caller mutated the very instance this context
         // tracks, and its new owned children still need their state corrected.
-        ReconcileOwnedChildren(existing);
+        await ReconcileOwnedChildrenAsync(existing, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -129,33 +135,70 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
     /// <see cref="TransactionLineItem"/> carry a client-assigned <see cref="Guid"/> key, which is
     /// never the default, so EF always guesses <see cref="EntityState.Modified"/> and emits an
     /// UPDATE against a row that does not exist yet — the flush then fails with a zero-rows-affected
-    /// concurrency error. Neither type exposes a mutator, so a child that came from the database can
-    /// never legitimately be modified: every Modified child here is a new one EF mis-classified, and
-    /// promoting it to <see cref="EntityState.Added"/> is the only correct reading. Removed children
-    /// are orphaned owned dependents and are deleted by EF without help.
+    /// concurrency error.
+    /// <para>
+    /// THE RULE THIS METHOD USED TO APPLY IS NO LONGER TRUE, AND THAT IS WHY IT ASKS THE DATABASE.
+    /// It used to promote EVERY Modified child, on the stated grounds that "neither type exposes a
+    /// mutator, so a child that came from the database can never legitimately be modified". TD-60's
+    /// fix gives both types a mutator, so a Modified child is now genuinely ambiguous: it is either
+    /// a new child EF mis-classified or an existing one that was actually edited, and promoting the
+    /// second kind would INSERT a row whose primary key is already taken. The only thing that
+    /// distinguishes them is whether the row exists, so that is what gets asked — once per
+    /// collection, on the update path only, never on an insert.
+    /// </para>
+    /// Removed children are orphaned owned dependents and are deleted by EF without help.
     /// </remarks>
-    private void ReconcileOwnedChildren(Transaction transaction)
+    private async Task ReconcileOwnedChildrenAsync(Transaction transaction, CancellationToken cancellationToken)
     {
         // Attach the children the caller added to the navigation collections before inspecting them.
         _dbContext.ChangeTracker.DetectChanges();
 
+        var persistedSplitIds = await PersistedChildIdsAsync(
+            transaction.Id, t => t.Splits.Select(s => s.Id), cancellationToken).ConfigureAwait(false);
+
+        var persistedLineItemIds = await PersistedChildIdsAsync(
+            transaction.Id, t => t.LineItems.Select(li => li.Id), cancellationToken).ConfigureAwait(false);
+
         foreach (var split in transaction.Splits)
         {
-            var entry = _dbContext.Entry(split);
-            if (entry.State == EntityState.Modified)
-            {
-                entry.State = EntityState.Added;
-            }
+            PromoteIfUnwritten(_dbContext.Entry(split), split.Id, persistedSplitIds);
         }
 
         foreach (var lineItem in transaction.LineItems)
         {
-            var entry = _dbContext.Entry(lineItem);
-            if (entry.State == EntityState.Modified)
-            {
-                entry.State = EntityState.Added;
-            }
+            PromoteIfUnwritten(_dbContext.Entry(lineItem), lineItem.Id, persistedLineItemIds);
         }
+    }
+
+    private static void PromoteIfUnwritten(EntityEntry entry, Guid id, HashSet<Guid> persistedIds)
+    {
+        if (entry.State == EntityState.Modified && !persistedIds.Contains(id))
+        {
+            entry.State = EntityState.Added;
+        }
+    }
+
+    /// <summary>
+    /// The ids of one owned collection as the database currently holds them.
+    /// </summary>
+    /// <remarks>
+    /// <c>AsNoTracking</c> is not an optimisation here, it is a requirement: this reads the very
+    /// rows whose in-memory counterparts the change tracker is holding, and tracking the result
+    /// would attach a second instance of each under a key already taken.
+    /// </remarks>
+    private async Task<HashSet<Guid>> PersistedChildIdsAsync(
+        Guid transactionId,
+        Expression<Func<Transaction, IEnumerable<Guid>>> childIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Id == transactionId)
+            .SelectMany(childIds)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new HashSet<Guid>(ids);
     }
 
     /// <summary>

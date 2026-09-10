@@ -34,6 +34,12 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<long?>("OpeningBalanceAmount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -90,6 +96,12 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -125,6 +137,12 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<string>("Period")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("StartDate")
@@ -172,6 +190,12 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ParentCategoryId")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
@@ -213,6 +237,12 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -244,6 +274,12 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -267,6 +303,12 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<string>("Key")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Value")
@@ -316,6 +358,12 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<string>("Payee")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Type")

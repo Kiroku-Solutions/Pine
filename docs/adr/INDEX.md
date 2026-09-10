@@ -16,6 +16,7 @@ index and it is real.
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted | — |
 | [0012](0012-no-telemetry.md) | Pine collects no telemetry, and performs no network I/O at all | Accepted | OD-10 |
 | [0013](0013-encryption-baseline.md) | Encryption baseline: SQLCipher at rest, Argon2id auth key, AES-256-GCM key envelope | Accepted | OD-03 |
+| [0021](0021-no-plugin-host.md) | Pine will not load third-party code; the plugin host and SDK are withdrawn | Accepted | OD-01 |
 
 ## What is NOT here, and why that matters
 

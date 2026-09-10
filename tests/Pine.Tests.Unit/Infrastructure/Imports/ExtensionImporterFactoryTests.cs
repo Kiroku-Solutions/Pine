@@ -25,6 +25,14 @@ namespace Pine.Tests.Unit.Infrastructure.Importing;
 /// not throw; it yields nonsense rows or none, with nothing on screen saying the wrong reader was
 /// used. So the assertions below are about WHICH reader is chosen and about the refusal, not about
 /// "the import succeeded" -- the old behaviour would have satisfied the latter.
+/// <para>
+/// UPDATED: THE PICKER NO LONGER OFFERS THAT LIST, AND TD-28's FIX IS WHY IT HAD TO CHANGE. Routing
+/// by extension sent <c>.pdf</c> to a `PdfImporter` that parsed nothing and returned success —
+/// which was harmless only while the wizard hard-coded `CsvImporter` and never called the factory.
+/// TD-67 was filed 🟡 P2 on exactly that reasoning, and TD-28 invalidated it without anyone
+/// re-reading the row. The picker now offers <c>.csv .xlsx .xls</c> only, `PdfImporter` is deleted,
+/// and a PDF reaches the refusal branch.
+/// </para>
 /// </remarks>
 public class ExtensionImporterFactoryTests
 {
@@ -32,7 +40,6 @@ public class ExtensionImporterFactoryTests
     [InlineData("statement.csv", typeof(CsvImporter))]
     [InlineData("statement.xlsx", typeof(ExcelImporter))]
     [InlineData("statement.xls", typeof(ExcelImporter))]
-    [InlineData("statement.pdf", typeof(PdfImporter))]
     public void ForFile_SelectsTheImporter_ForTheFilesExtension(string fileName, Type expected)
     {
         var factory = new ExtensionImporterFactory(TimeProvider.System);
@@ -51,7 +58,6 @@ public class ExtensionImporterFactoryTests
     [InlineData("STATEMENT.CSV", typeof(CsvImporter))]
     [InlineData("Statement.XlSx", typeof(ExcelImporter))]
     [InlineData("statement.XLS", typeof(ExcelImporter))]
-    [InlineData("Statement.PDF", typeof(PdfImporter))]
     public void ForFile_MatchesTheExtension_IgnoringCase(string fileName, Type expected)
     {
         var factory = new ExtensionImporterFactory(TimeProvider.System);
@@ -59,6 +65,33 @@ public class ExtensionImporterFactoryTests
         var importer = factory.ForFile(fileName);
 
         importer.Should().BeOfType(expected);
+    }
+
+    /// <summary>
+    /// A PDF is REFUSED, and that is an improvement rather than a regression.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// `PdfImporter` used to sit on this branch. It opened the document, walked every page, and
+    /// returned an empty list **reporting success** — so a user who imported a bank statement was
+    /// told nothing had gone wrong and received no transactions, indistinguishable from a statement
+    /// that genuinely held none.
+    /// </para>
+    /// <para>
+    /// TD-67 offered "implement or delete" and this is the second. A PDF statement has no columns,
+    /// no delimiter and no two banks in agreement about layout; parsing one is a project, not a
+    /// missing method body. Deleting it makes the picker's promise and the factory's behaviour say
+    /// the same thing, which is the property that was actually broken.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ForFile_WithAPdf_IsRefusedRatherThanSilentlyImportingNothing()
+    {
+        var factory = new ExtensionImporterFactory(TimeProvider.System);
+
+        var act = () => factory.ForFile("statement.pdf");
+
+        act.Should().Throw<UnsupportedImportFormatException>();
     }
 
     /// <summary>

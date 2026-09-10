@@ -12,6 +12,7 @@ using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Common;
+using Pine.Application.Security;
 using Pine.Application.Security.Commands;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
@@ -37,7 +38,7 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// encryption key - for the rest of the session. The mediator is a singleton that opens a fresh
 /// scope per request, and it is also what commits the writes: repositories no longer flush.
 /// </remarks>
-public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
+public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, IDisposable
 {
     [ObservableProperty]
     public partial int SelectedThemeIndex { get; set; }
@@ -99,13 +100,24 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
     private readonly ILocalizer _localizer;
     private readonly LanguagePreferenceStore _languageStore;
     private readonly ILogger<SettingsViewModel>? _logger;
+
+    /// <summary>
+    /// The session the Lock button asks to lock (TD-56). Optional so the shorter construction used
+    /// by the designer and by the existing tests keeps compiling; the container always supplies it.
+    /// </summary>
+    private readonly IVaultSession? _vaultSession;
+
+    /// <summary>Holds the vault-export sentence as a KEY, so it survives a language switch.</summary>
+    private readonly LocalizedMessageSlot _exportMessage;
+
     private bool _isInitializing = true;
 
     public SettingsViewModel(
         ISender sender,
         ILocalizer localizer,
         LanguagePreferenceStore languageStore,
-        ILogger<SettingsViewModel>? logger = null)
+        ILogger<SettingsViewModel>? logger = null,
+        IVaultSession? vaultSession = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -114,6 +126,8 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
         _localizer = localizer;
         _languageStore = languageStore;
         _logger = logger;
+        _vaultSession = vaultSession;
+        _exportMessage = new LocalizedMessageSlot(localizer, text => VaultExportMessage = text);
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -740,18 +754,126 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable
         }
     }
 
-#pragma warning disable CA1822
+    // ----------------------------------------------------------------------------------------
+    // Vault backup, and the lock button (TD-56).
+    //
+    // WHAT THESE TWO USED TO BE. `ExportVault` was an empty method body carrying the comment "To
+    // be implemented via DialogService/FilePicker", and `LockVault` was an empty method body
+    // carrying "Restart the app or navigate to UnlockAccountViewModel". Both are bound to real,
+    // enabled, visible buttons in SettingsView -- so the shipped Security section offered two
+    // actions that did nothing at all, gave no error and left no trace. That is worse than
+    // offering nothing: a user who presses "Lock Vault" and walks away believes the vault is
+    // locked.
+    //
+    // NO FILE PICKER, AND THAT IS A DECISION RATHER THAN A SHORTCUT. The destination is not the
+    // user's to choose. The copy is produced by SQLite VACUUM INTO executed on the vault's OWN
+    // keyed SQLCipher connection (see VaultBackupService), which is what makes it encrypted with
+    // the same key and transactionally consistent -- so it is written into the vault's `backups`
+    // directory and nowhere else. A folder picker would imply the user could drop a readable copy
+    // on a USB stick, which is not what this produces. The honest UI is therefore: make the
+    // backup, then say exactly which file was written, so the user can copy that file wherever
+    // they like.
+    // ----------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Where the last backup was written, or why one was not. <see langword="null"/> until asked.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? VaultExportMessage { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="VaultExportMessage"/> reports a failure. Styling only: as on the password
+    /// card, the sentence itself says which it is, so nothing depends on colour alone.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool VaultExportFailed { get; set; }
+
+    /// <summary>Whether a backup is being written. The button is disabled while it is.</summary>
+    [ObservableProperty]
+    public partial bool IsExportingVault { get; set; }
+
+    /// <summary>
+    /// Writes an encrypted, point-in-time copy of the open vault and reports where it went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE PATH IS SHOWN DELIBERATELY, and it is not the leak TD-24 is about. That rule is about
+    /// internals reaching the screen because some layer below happened to name them in an
+    /// exception. This is the one fact the user asked for: they pressed a button called "Export
+    /// Vault", and the answer to "where did it go?" is the file. It comes from
+    /// <c>VaultBackupInfo.Path</c>, which the handler returns on success -- never from
+    /// <see cref="Exception.Message"/>.
+    /// </para>
+    /// <para>
+    /// A locked vault arrives here as <c>VaultLockedException</c>, which implements
+    /// <c>IUserFacingFailure</c> and therefore reaches the user in its own words. Everything else
+    /// gets the fallback sentence, which is true because <c>VaultBackupService</c> deletes a
+    /// partially written destination before it throws: a failed export leaves no half-backup
+    /// behind to be mistaken for one.
+    /// </para>
+    /// </remarks>
     [RelayCommand]
-    private void ExportVault()
+    private async Task ExportVaultAsync()
     {
-        // To be implemented via DialogService/FilePicker
+        if (IsExportingVault) return;
+
+        IsExportingVault = true;
+        VaultExportFailed = false;
+        _exportMessage.Clear();
+
+        try
+        {
+            var backup = await _sender.Send(new ExportVaultBackupCommand());
+
+            VaultExportFailed = false;
+            _exportMessage.Set("Settings.Security.ExportVault.Success", backup.Path);
+        }
+        catch (Exception ex)
+        {
+            VaultExportFailed = true;
+            _exportMessage.SetRendered(UserFacingError.Report(
+                _logger,
+                ex,
+                "export-vault-backup",
+                _localizer["Settings.Security.ExportVault.Failed"]));
+        }
+        finally
+        {
+            IsExportingVault = false;
+        }
     }
 
+    /// <summary>
+    /// Locks the vault, by exactly the path <c>ShellViewModel.LockVaultCommand</c> uses.
+    /// </summary>
+    /// <remarks>
+    /// ONE LOCK PATH, TWO BUTTONS. <c>MainViewModel</c> owns reacting to <c>IVaultSession.Locked</c>
+    /// -- navigating out of the shell and explaining why -- so asking for the lock is the whole job
+    /// here, as it is in the shell. The two buttons must not diverge: a settings-page "lock" that
+    /// merely navigated somewhere would leave the data key in memory with the screen claiming
+    /// otherwise.
+    /// </remarks>
     [RelayCommand]
     private void LockVault()
     {
-        // Restart the app or navigate to UnlockAccountViewModel
+        // Null only in the designer and in tests that construct this view model without a session;
+        // the container always supplies one. A null session cannot lock anything, and pretending
+        // otherwise is the defect this ticket is about.
+        _vaultSession?.Lock(VaultLockReason.UserRequested);
     }
-#pragma warning restore CA1822
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// Same reason as every other page that owns one (CA1001): the slot subscribes to
+    /// <c>ILocalizer.LanguageChanged</c> and the localizer lives for the whole process, so an
+    /// unreleased slot keeps this view model -- and the accounts it has loaded -- alive for the
+    /// life of the application. <c>PageActivation.Deactivate</c> calls this on navigation away.
+    /// </remarks>
+    public void Dispose()
+    {
+        _exportMessage.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

@@ -4,7 +4,7 @@
 |---|---|
 | Document ID | `PINE-DOC-60-AUDIT` |
 | Status | Non-normative — audit and remediation log                                                                                                     |
-| Reconciled| 2026-09-09 · A record of findings and of the work done against them, through **iteration 34**, which closed **Phase 3 item 4** — the rule engine. **The row's premise was false, and this document had already recorded why, twice**: there is no "now-real `CategoryId` relationship" to build on — `TransactionSplit.Category` is a `string`, iteration 29 rejected changing that in writing (TD-32, TD-132) because nothing in production writes a category, and iteration 27 flagged the same premise when it deleted the old `Rule` shell. **Fourth consecutive Phase 3 row whose stated premise did not survive contact with the code.** The engine is built on the name, because that is the model with instances. **TD-132 decided the scope before any code was written**: a `Rule` aggregate with no way to write a rule would have been that row's defect again — the third time, after `Attachment`, `Rule` and `Tag` were deleted for it under TD-37 — so the rules screen is not an extra, it is why the engine is allowed to exist, and it makes the sidebar's disabled "Coming soon" Rules button real. **A matching rule beats the classifier outright and the model is not consulted at all**, because a user's priority and a softmax confidence share no units and mixing them makes "why is this in Coffee?" unanswerable; a rule never overwrites a category the user typed or the file supplied. Ordering is **total** — §6.2 settles nothing when two rules share a priority, so ties break by creation time then id, and the repository applies the same order in SQL. Six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, one action — all declared deviations. **Seven mutations, six killed and one survived**: nothing tested the regex timeout, so a user-authored pattern could hang an import; closed with a test that races the match against a deadline, because asserting on it directly would hang the suite rather than fail it. **The coverage gate blocked this iteration too** and was obeyed rather than lowered — 937 → **990** unit, 212 → **219** integration, floors raised to overall 66, `Pine.Core` 88, `Pine.Infrastructure` 77, `Pine.Application` 57, `Pine.Ui.Avalonia` 37. New rows: TD-142, TD-143. See **§12.70**. Through **iteration 33**, which closed **Phase 3 item 3** — attachment storage. **The row's phrasing was exact**: scanning a receipt produced a transaction and destroyed the document it came from, because the image was decoded for the screen and then dropped. **The storage decision went against the plan this document itself recorded.** TD-37 wrote it down as "an encrypted blob written through `IVaultFileCipher`"; that cipher's own contract says it is "**the wrong shape for a large attachment. Say so before reusing it for one**", and `VaultBackupService` runs `VACUUM INTO` and **copies `pine.db` and nothing else** — so a receipt beside the database would have been absent from every backup, for the one feature whose purpose is an audit trail. The bytes are a BLOB in the vault, encrypted by SQLCipher and committed in the same unit of work as the ledger row. The SHA-256 §7 demands is computed by the aggregate and **verified on every read**. **Seven mutations, five killed and two survived — and both survivors were real holes**: nothing tested that the scanner attaches anything (reverting to discarding the image broke no test), and nothing tested that the read path refuses a tampered file. Both closed; both mutations now die. **The coverage gate blocked this iteration for the first time**, at 36% against a floor of 37%, and was obeyed rather than lowered. Suite 903 → **937** unit, 205 → **212** integration; floors raised to overall 65, `Pine.Core` 87, `Pine.Infrastructure` 75. New row: TD-141. See **§12.68**. Through **iteration 32**, which closed **Phase 3 item 2** — localisation. **The row read as infrastructure and the defect underneath it was a shipped control that did nothing**: a "Display Language" picker offering English and Spanish, persisting a number into the vault and changing not one character on screen, because nothing in `src/` ever read that key. Its two siblings on the same panel each applied AND persisted; it only persisted. Implemented against an already-approved design spec, which **overrode this document's own `.resx` prescription** in favour of `41-Localization` §5 — TD-45's Fix column is corrected. **260 keys**, `en` and `es`, switching live with no restart; the preference stored OUTSIDE the vault so the pre-unlock screens follow it; the glossary agreed BEFORE the strings rather than across them. **Three risks were declared unverified and none of them was the one that bit**: dotted keys work, and the real finding was that **no binding in this test suite had ever been evaluated** — `SetupWithoutStarting()` starts no dispatcher, so `Bind` succeeds and the property reads back `null`, in silence. Also **Avalonia does not listen for `Item[]`**, the BCL convention the design assumed. **Four of five parallel agents died mid-edit on a rate limit**, leaving keys with no values; recovered from `git HEAD` after the first recovery pass produced wrong English and was discarded — 205 exact, 6 reported, 0 guessed. The §14 guard test then found **nine more literals the manual count had missed**. Seven mutations, **7 killed**. Suite 865 → **903** unit, **205** integration; coverage ratchet turned, `Pine.Ui.Avalonia` 28 → **37**. New rows: TD-139, TD-140. See **§12.66**. Through **iteration 31**, which opened **Phase 3** by closing its first row: the platform story. **The decision is to narrow.** The Browser head is deleted — project, solution entry, CI leg, package pin, enum member, capability row and test rows. Three technical grounds hold, and **the decisive one was in no row at all**: `02-Product-Scope` has listed browser-only distribution as an explicit non-goal since before that head was scaffolded, so it contradicted this project's own scope document from day one. Two register entries were corrected on the way — **TD-53's stated cause was wrong** (`SQLitePCLRaw` does ship a `browser-wasm` asset; the build was never asking for it), and **§12.63's "it has never compiled on any machine" was false** — it was built here, 0 errors, before deletion, which is exactly why deleting beat leaving it as source. The row's *invest* branch was priced instead of dismissed: the macOS and Linux runtime packages for OpenCV and PaddleInference **exist at the exact versions already pinned**, four lines in total, and were still not taken — **the blocker is a runner, not a package**, and an untested `true` in the capability table is worse than an honest `false`. Android and iOS gained real application identities, closing half of TD-109. **The iteration's loudest finding was wrong, and the falsification pass is what caught it**: a missing `Batteries_V2.Init()` on three heads was written up as a vault-breaking defect, one mutation refused to die, and a clean-process probe showed `Microsoft.Data.Sqlite` arms the bundle by reflection. It was relabelled rather than patched into looking right. **TD-117's abort is closed** as an enabler — the first two full runs here aborted, and without the fix no number in this iteration could have been measured. Seven mutations, 5 killed, 1 survived deliberately, 1 needed three runs to kill. Suite 874 → **865** unit (the count fell with the deleted head's profile), **205** integration, both green; coverage gate re-run and passed. New rows: TD-137, TD-138. See **§12.64**. Through **iteration 30**, which closed **Phase 2 item 9** and with it **Phase 2**. The row read as an afternoon — pick a number, add a flag — and neither half existed. **The suite went red the moment coverage was measured**: coverlet injects a tracker type into each instrumented assembly and NetArchTest threw `TypeLoadException` materialising it, so iteration 25's reflection allow-list failed under `--collect` and passed without it — a failure visible only in the configuration about to be made mandatory. The architecture rules are now scoped to the `Pine` namespace and the suite is 873/873 under instrumentation. And no threshold flag was available: `coverlet.collector`'s own documentation states the VSTest integration lacks "threshold validation", and `coverlet.msbuild` is neither referenced nor cached — so `scripts/coverage-gate.sh` parses the cobertura report itself. **No exclusions** — EF migrations, code-behind and generated properties all count, making every figure lower than a tuned configuration would report. Floors are a ratchet set just below measured: overall 61, `Pine.Core` 86, `Pine.Infrastructure` 74, `Pine.Application` 55, `Pine.Ui.Avalonia` 28. The script was **executed end to end**, not written and assumed. **Its honest limit is TD-07**: nothing triggers the workflow, so every regression net Phase 2 built into that file is inert (TD-136). Five mutations, 4 killed, **1 survived and exposed a real hole** — the guard test was reading the gate's name out of a CI *comment* — and its first re-run was a false pass caught only by reading the build output. Suite 873 → **874** unit, **205** integration, both green. **Phase 2 is closed: two of its nine rows were closed by finding the row's own premise wrong, and the phase's largest finding was in no row at all.** New rows: TD-135, TD-136. See **§12.62**. Through **iteration 29**, which closed **Phase 2 item 8** (TD-32, TD-33) and found that the row filed as a modelling complaint was hiding **a feature that had never once run**. The categoriser's training projection parsed a split's category NAME as a `Guid` and discarded everything that failed, so the training set was empty on every poll, `TrainModelAsync` was never reached and the watermark was never written — with no exception, no log line and no red test. The same mismatch broke the other end: both the suggestion and the import paths resolved a predicted `Guid` through a `Categories` table **nothing in this application has ever inserted a row into**, so every prediction was discarded. **TD-32's prescribed remedy was rejected in writing** — storing a `CategoryId` on the split needs categories to exist, and nothing creates one (TD-132) — so the string won, because it is the model with instances. The row's second clause was taken verbatim: `ParentCategoryId` now has a real `Restrict` foreign key with a migration and six integration tests, written as integration tests because a SQLite foreign key does nothing unless `PRAGMA foreign_keys` is on. TD-33 was closed by **removal**: no dispatcher ever existed on any branch, the two mutations that raised events already commit their effects synchronously, and **the deleted types did not implement `10-Domain-Model` §5 anyway**. Eight mutations, 7 killed, 1 survived and was fixed — and the decisive one restored the exact shipped projection and turned 6 of 7 tests red, which is the difference between claiming the defect and demonstrating it. Suite 863 → **873** unit, 199 → **205** integration, both green. New rows: TD-132, TD-133, TD-134. See **§12.60**. Through **iteration 28**, which closed **Phase 2 item 7** (TD-41, TD-42, TD-43) and found that **all three of that row’s sub-claims needed correcting** — one was already fixed, one was impossible as written, and one was false in a way that took three attempts to measure. Central package management moved every version into `Directory.Packages.props`, closing a real `EFCore.Sqlite.Core` 10.0.9 / `Design` 10.0.11 split that NuGet had been unifying silently. TD-41’s “keep one” could not be done — `Models.Local` is a facade whose own `.nuspec` requires `Models.LocalV5` — so the answer is two, with `LocalV3` and `LocalV4` (472 MB) removed. **The largest finding is not in the row at all:** `PP-OCRv4-det.onnx` (113 MB), `PP-OCRv4-rec.onnx` (90 MB) and `dict.txt` were shipped in every artefact by a glob and named by **no commit on any branch in the repository’s history**, having been superseded by the PP-OCRv5 weights embedded in the NuGet assembly before they were ever wired. The artefact went **1.08 GiB → 658 MiB unpacked, 680 MB → 292 MiB compressed**, measured by running `package.sh`. **And an agent sent to verify TD-43 returned a confident refutation that was wrong** — caught only because a second run of the same pipeline produced an impossible result, exposing a silently broken `awk` that had reported “no blob over 500 KB” while three blobs of 113 MB, 90 MB and 13 MB sat in `.git/objects`; TD-130 registers the class. Ten mutations, 9 killed, 1 survived by design, 1 discarded as invalid — and one kill only counts because the mutation exposed a real gap in the test, which was then fixed and re-falsified. Suite 855 → **863** unit, **199** integration, both green. New rows: TD-129, TD-130, TD-131. See **§12.58**. Through **iteration 27**, which closed **Phase 2 item 6** (TD-36, TD-37, TD-38) by deleting seven projects, three entities and one dead inference session — and found that two of that row’s own claims were wrong, and that the compiler already refused two of the three ways the deleted code could return. Through **iteration 26**, which closed **Phase 2 item 5** (TD-34, TD-35), found and reproduced the cause of **TD-117**, and watched a mutation survive all 853 tests — proving the suite had never checked that navigation actually initialises a page. Through **iteration 25**, which closed **Phase 2 item 4** (TD-26) by deleting the reflection call that wrote half of every transfer’s link — and which found, in doing so, that `Transaction` had never carried the public-surface tripwire `Account` has had since iteration 6. Through **iteration 24**, which closed **Phase 2 item 3** (TD-28) and TD-58 with it — and which began by discovering, with a throwaway experiment, that the two layer-dependency assertions this repository has relied on since early on were **conjunctive and therefore near-vacuous**. Through **iteration 23**, which closed **Phase 2 item 2** (TD-27) and half of TD-81, after iteration 22 closed **Phase 2 item 1** and, with it, TD-29, TD-52, TD-72, TD-83, TD-85 and TD-90 — six rows removed by removing one cause. It is the document that required all the others to carry a status, and §12.44 is where it was turned on the four root documents — `README.md`, `STATUS.md`, `PRODUCT.md`, `CHANGELOG.md` — that the first pass could not see. |
+| Reconciled| 2026-09-09 · A record of findings and of the work done against them, through **iteration 37**, which closed the three findings of the audit that was run across all four phases once Phase 3 was ticked. **The phases were genuinely closed — 37 of 37 rows — and the app was not, and the audit's own conclusion was the last thing still saying otherwise.** **(1) The worst defect still shipping was import.** `ExcelImporter` and `PdfImporter` opened the file, walked it, and returned an empty list **reporting success**, while the picker offered "Spreadsheets" and "PDF Statements" by name — a user could select their bank statement, be told it worked, and receive nothing. **The register had it at 🟡 P2 because of a mitigation a later iteration had removed**: TD-67 said the stubs were unreachable "because the wizard hardcodes `CsvImporter`", and TD-28 wired them up five iterations later while fixing something else. Both of TD-67's branches were taken — **Excel implemented** against the same profile mapping and key derivation CSV uses, **PDF deleted** along with its `PdfPig` reference, because a PDF statement has no columns and no two banks agree on layout. **(2) TD-99 closed after nineteen deferrals**: budget spend is measured rather than hard-coded to zero, and where the `Guid`-versus-string category join cannot be resolved the screen says **not known** instead of inventing a number — which is the whole point of the row. **(3) TD-56's export half closed**, and beside it a shipped sentence that was false: the panel called the backup "a **decrypted** backup" when `VACUUM INTO` on the keyed connection encrypts it with the same key, as an existing test already proved. The restore half stays open and keeps the row P1. **(4) §11 was rewritten.** It still read 2.3/5, "11.7k lines, 28 tests", "no unit of work, no concurrency control", and named as the most important next action the work TD-01 finished in Phase 1. It is now **3.4/5, still not production ready** — the difference being that the blockers are a bounded punch list, which is exactly what the original said they were not. **The original verdict is preserved verbatim as §11.2** rather than overwritten. Three mutations, three killed; M1's first attempt patched the wrong `return` and looked like a survivor, and "the tests are vacuous" would have been the wrong conclusion. `BuildHygieneTests` caught this iteration's own orphaned `PdfPig` version. 1004 → **1049** unit, **234** integration; floors raised to overall 68, `Pine.Application` 59, `Pine.Ui.Avalonia` 38. New row: TD-148. See **§12.76**. **TD-07 is now the largest single gap in the project: nothing arms any of this automatically.** Through **iteration 36**, which closed **Phase 3 item 6 and with it PHASE 3**. **The row had two defective premises, and one of them was this document's own.** The empty projects it asks to delete were already gone — commit `9771a85`, iteration 27, verified in git — and **TD-38 had already recorded the retirement branch as satisfied**, on the argument that deleting them made the two plugin documents "more precisely `Aspirational`". That does not hold: `Aspirational` is defined as "nothing in the tree does this — **it may still be a good plan**", a claim about scaffolding plus an open question about the plan. Deletion sharpened the first and left the second untouched, which is exactly why this checkbox sat unticked for nine iterations while a debt row called it done. **The decision is ADR-0021, Accepted: Pine will not load third-party code.** The deciding argument is not effort but impossibility: `12-Plugin-Architecture` §5 loads a plugin "in an isolated load context", which in .NET is an `AssemblyLoadContext` and **is not a security boundary**, while `15-Security` §10 requires that "a plugin has no access to the data key" — and `VaultSession.Key` returns the live key array by deliberate design. §5's mechanism cannot deliver §10's requirement, and the design that could is out-of-process isolation, a subsystem larger than this application. Two invisible collisions surfaced on the way: **a plugin could violate ADR-0012 while `NetworkEgressTests` stayed green**, because that test scans `src/` and a plugin is not there; and **nothing in this repository can verify a signature**, so the mandatory manifest signature described a check no code could perform. **A fifth document status, `Withdrawn`, was added — the one iteration 27 declined to invent — and it carries a price**: a document may only claim it if its Status row names an ADR that resolves to a file. **Sync was re-homed rather than retired alongside it**, since §12.72 had left it gated on this row; `ISyncProvider` becomes `14-Synchronization`'s own and providers are compiled in. Three mutations: **M1 survived its first run and exposed a real hole in the new rule** — it accepted an incidental ADR-0012 mention elsewhere in the header — and was killed once the rule was narrowed to the Status row. **No source file changed; there was nothing left to remove.** 1003 → **1004** unit, **234** integration. New row: TD-147. See **§12.74**. **Phase 3 is closed: six rows, five of which had a false or stale premise, and the sixth had two.** Through **iteration 35**, which closed **Phase 3 item 5** — the gate in front of sync. **The row is a precondition, not a feature**: it forbids sync until row versions, audit columns and stable natural keys exist, so the work was to establish all three and build the two that did not. Row versions were already real and enforced (TD-17). **Audit columns were not, and unevenly**: `Transaction` had a creation stamp and no update stamp, `Category`, `Setting` and `Budget` had neither, and the five roots that had any disagreed on both name and type — they are now shadow columns on all eight roots stamped by the context, so no future write path can forget them. **The `Row` prefix is load-bearing**, because two roots already own a `CreatedAtUtc` and a colliding shadow name binds silently to the domain property and creates nothing; that exact collision is mutation M6 and it kills seven of eight tests. **TD-60 is closed, and the row understated where the loss happened**: the repository never passed a child id at all, so loading a transaction and saving it back unchanged moved every child's primary key — the defect needed no edit to fire. Closing it forced the retraction of a load-bearing comment: `ReconcileOwnedChildren` promoted every `Modified` child because "neither type exposes a mutator", and both types have one now. **The third precondition is still not true as the row words it** — what exists is stable SURROGATE keys, and the only unique constraint in the schema is `Settings.Key` (TD-146), so the gate is not recorded as fully open when a third of it is only mostly open. **Nothing beyond the gate was built, and that is the row obeying itself**: `02-Product-Scope` §7.2 scopes sync to plugins only, `14-Synchronization` §8 hands the provider contract to `33-Plugin-SDK`, and the plugin host is the next row in this phase and does not exist — so item 6 now gates sync outright rather than being an independent choice. Also missing and registered: a logical clock (TD-144) and tombstones (TD-145). **Nine mutations, nine killed.** The coverage gate blocked again — `Pine.Core` fell below its floor because the new domain code was covered only by integration tests — and was answered with thirteen unit tests. 990 → **1003** unit, 219 → **234** integration; floors raised to overall 67 and `Pine.Infrastructure` 78. See **§12.72**. Through **iteration 34**, which closed **Phase 3 item 4** — the rule engine. **The row's premise was false, and this document had already recorded why, twice**: there is no "now-real `CategoryId` relationship" to build on — `TransactionSplit.Category` is a `string`, iteration 29 rejected changing that in writing (TD-32, TD-132) because nothing in production writes a category, and iteration 27 flagged the same premise when it deleted the old `Rule` shell. **Fourth consecutive Phase 3 row whose stated premise did not survive contact with the code.** The engine is built on the name, because that is the model with instances. **TD-132 decided the scope before any code was written**: a `Rule` aggregate with no way to write a rule would have been that row's defect again — the third time, after `Attachment`, `Rule` and `Tag` were deleted for it under TD-37 — so the rules screen is not an extra, it is why the engine is allowed to exist, and it makes the sidebar's disabled "Coming soon" Rules button real. **A matching rule beats the classifier outright and the model is not consulted at all**, because a user's priority and a softmax confidence share no units and mixing them makes "why is this in Coffee?" unanswerable; a rule never overwrites a category the user typed or the file supplied. Ordering is **total** — §6.2 settles nothing when two rules share a priority, so ties break by creation time then id, and the repository applies the same order in SQL. Six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, one action — all declared deviations. **Seven mutations, six killed and one survived**: nothing tested the regex timeout, so a user-authored pattern could hang an import; closed with a test that races the match against a deadline, because asserting on it directly would hang the suite rather than fail it. **The coverage gate blocked this iteration too** and was obeyed rather than lowered — 937 → **990** unit, 212 → **219** integration, floors raised to overall 66, `Pine.Core` 88, `Pine.Infrastructure` 77, `Pine.Application` 57, `Pine.Ui.Avalonia` 37. New rows: TD-142, TD-143. See **§12.70**. Through **iteration 33**, which closed **Phase 3 item 3** — attachment storage. **The row's phrasing was exact**: scanning a receipt produced a transaction and destroyed the document it came from, because the image was decoded for the screen and then dropped. **The storage decision went against the plan this document itself recorded.** TD-37 wrote it down as "an encrypted blob written through `IVaultFileCipher`"; that cipher's own contract says it is "**the wrong shape for a large attachment. Say so before reusing it for one**", and `VaultBackupService` runs `VACUUM INTO` and **copies `pine.db` and nothing else** — so a receipt beside the database would have been absent from every backup, for the one feature whose purpose is an audit trail. The bytes are a BLOB in the vault, encrypted by SQLCipher and committed in the same unit of work as the ledger row. The SHA-256 §7 demands is computed by the aggregate and **verified on every read**. **Seven mutations, five killed and two survived — and both survivors were real holes**: nothing tested that the scanner attaches anything (reverting to discarding the image broke no test), and nothing tested that the read path refuses a tampered file. Both closed; both mutations now die. **The coverage gate blocked this iteration for the first time**, at 36% against a floor of 37%, and was obeyed rather than lowered. Suite 903 → **937** unit, 205 → **212** integration; floors raised to overall 65, `Pine.Core` 87, `Pine.Infrastructure` 75. New row: TD-141. See **§12.68**. Through **iteration 32**, which closed **Phase 3 item 2** — localisation. **The row read as infrastructure and the defect underneath it was a shipped control that did nothing**: a "Display Language" picker offering English and Spanish, persisting a number into the vault and changing not one character on screen, because nothing in `src/` ever read that key. Its two siblings on the same panel each applied AND persisted; it only persisted. Implemented against an already-approved design spec, which **overrode this document's own `.resx` prescription** in favour of `41-Localization` §5 — TD-45's Fix column is corrected. **260 keys**, `en` and `es`, switching live with no restart; the preference stored OUTSIDE the vault so the pre-unlock screens follow it; the glossary agreed BEFORE the strings rather than across them. **Three risks were declared unverified and none of them was the one that bit**: dotted keys work, and the real finding was that **no binding in this test suite had ever been evaluated** — `SetupWithoutStarting()` starts no dispatcher, so `Bind` succeeds and the property reads back `null`, in silence. Also **Avalonia does not listen for `Item[]`**, the BCL convention the design assumed. **Four of five parallel agents died mid-edit on a rate limit**, leaving keys with no values; recovered from `git HEAD` after the first recovery pass produced wrong English and was discarded — 205 exact, 6 reported, 0 guessed. The §14 guard test then found **nine more literals the manual count had missed**. Seven mutations, **7 killed**. Suite 865 → **903** unit, **205** integration; coverage ratchet turned, `Pine.Ui.Avalonia` 28 → **37**. New rows: TD-139, TD-140. See **§12.66**. Through **iteration 31**, which opened **Phase 3** by closing its first row: the platform story. **The decision is to narrow.** The Browser head is deleted — project, solution entry, CI leg, package pin, enum member, capability row and test rows. Three technical grounds hold, and **the decisive one was in no row at all**: `02-Product-Scope` has listed browser-only distribution as an explicit non-goal since before that head was scaffolded, so it contradicted this project's own scope document from day one. Two register entries were corrected on the way — **TD-53's stated cause was wrong** (`SQLitePCLRaw` does ship a `browser-wasm` asset; the build was never asking for it), and **§12.63's "it has never compiled on any machine" was false** — it was built here, 0 errors, before deletion, which is exactly why deleting beat leaving it as source. The row's *invest* branch was priced instead of dismissed: the macOS and Linux runtime packages for OpenCV and PaddleInference **exist at the exact versions already pinned**, four lines in total, and were still not taken — **the blocker is a runner, not a package**, and an untested `true` in the capability table is worse than an honest `false`. Android and iOS gained real application identities, closing half of TD-109. **The iteration's loudest finding was wrong, and the falsification pass is what caught it**: a missing `Batteries_V2.Init()` on three heads was written up as a vault-breaking defect, one mutation refused to die, and a clean-process probe showed `Microsoft.Data.Sqlite` arms the bundle by reflection. It was relabelled rather than patched into looking right. **TD-117's abort is closed** as an enabler — the first two full runs here aborted, and without the fix no number in this iteration could have been measured. Seven mutations, 5 killed, 1 survived deliberately, 1 needed three runs to kill. Suite 874 → **865** unit (the count fell with the deleted head's profile), **205** integration, both green; coverage gate re-run and passed. New rows: TD-137, TD-138. See **§12.64**. Through **iteration 30**, which closed **Phase 2 item 9** and with it **Phase 2**. The row read as an afternoon — pick a number, add a flag — and neither half existed. **The suite went red the moment coverage was measured**: coverlet injects a tracker type into each instrumented assembly and NetArchTest threw `TypeLoadException` materialising it, so iteration 25's reflection allow-list failed under `--collect` and passed without it — a failure visible only in the configuration about to be made mandatory. The architecture rules are now scoped to the `Pine` namespace and the suite is 873/873 under instrumentation. And no threshold flag was available: `coverlet.collector`'s own documentation states the VSTest integration lacks "threshold validation", and `coverlet.msbuild` is neither referenced nor cached — so `scripts/coverage-gate.sh` parses the cobertura report itself. **No exclusions** — EF migrations, code-behind and generated properties all count, making every figure lower than a tuned configuration would report. Floors are a ratchet set just below measured: overall 61, `Pine.Core` 86, `Pine.Infrastructure` 74, `Pine.Application` 55, `Pine.Ui.Avalonia` 28. The script was **executed end to end**, not written and assumed. **Its honest limit is TD-07**: nothing triggers the workflow, so every regression net Phase 2 built into that file is inert (TD-136). Five mutations, 4 killed, **1 survived and exposed a real hole** — the guard test was reading the gate's name out of a CI *comment* — and its first re-run was a false pass caught only by reading the build output. Suite 873 → **874** unit, **205** integration, both green. **Phase 2 is closed: two of its nine rows were closed by finding the row's own premise wrong, and the phase's largest finding was in no row at all.** New rows: TD-135, TD-136. See **§12.62**. Through **iteration 29**, which closed **Phase 2 item 8** (TD-32, TD-33) and found that the row filed as a modelling complaint was hiding **a feature that had never once run**. The categoriser's training projection parsed a split's category NAME as a `Guid` and discarded everything that failed, so the training set was empty on every poll, `TrainModelAsync` was never reached and the watermark was never written — with no exception, no log line and no red test. The same mismatch broke the other end: both the suggestion and the import paths resolved a predicted `Guid` through a `Categories` table **nothing in this application has ever inserted a row into**, so every prediction was discarded. **TD-32's prescribed remedy was rejected in writing** — storing a `CategoryId` on the split needs categories to exist, and nothing creates one (TD-132) — so the string won, because it is the model with instances. The row's second clause was taken verbatim: `ParentCategoryId` now has a real `Restrict` foreign key with a migration and six integration tests, written as integration tests because a SQLite foreign key does nothing unless `PRAGMA foreign_keys` is on. TD-33 was closed by **removal**: no dispatcher ever existed on any branch, the two mutations that raised events already commit their effects synchronously, and **the deleted types did not implement `10-Domain-Model` §5 anyway**. Eight mutations, 7 killed, 1 survived and was fixed — and the decisive one restored the exact shipped projection and turned 6 of 7 tests red, which is the difference between claiming the defect and demonstrating it. Suite 863 → **873** unit, 199 → **205** integration, both green. New rows: TD-132, TD-133, TD-134. See **§12.60**. Through **iteration 28**, which closed **Phase 2 item 7** (TD-41, TD-42, TD-43) and found that **all three of that row’s sub-claims needed correcting** — one was already fixed, one was impossible as written, and one was false in a way that took three attempts to measure. Central package management moved every version into `Directory.Packages.props`, closing a real `EFCore.Sqlite.Core` 10.0.9 / `Design` 10.0.11 split that NuGet had been unifying silently. TD-41’s “keep one” could not be done — `Models.Local` is a facade whose own `.nuspec` requires `Models.LocalV5` — so the answer is two, with `LocalV3` and `LocalV4` (472 MB) removed. **The largest finding is not in the row at all:** `PP-OCRv4-det.onnx` (113 MB), `PP-OCRv4-rec.onnx` (90 MB) and `dict.txt` were shipped in every artefact by a glob and named by **no commit on any branch in the repository’s history**, having been superseded by the PP-OCRv5 weights embedded in the NuGet assembly before they were ever wired. The artefact went **1.08 GiB → 658 MiB unpacked, 680 MB → 292 MiB compressed**, measured by running `package.sh`. **And an agent sent to verify TD-43 returned a confident refutation that was wrong** — caught only because a second run of the same pipeline produced an impossible result, exposing a silently broken `awk` that had reported “no blob over 500 KB” while three blobs of 113 MB, 90 MB and 13 MB sat in `.git/objects`; TD-130 registers the class. Ten mutations, 9 killed, 1 survived by design, 1 discarded as invalid — and one kill only counts because the mutation exposed a real gap in the test, which was then fixed and re-falsified. Suite 855 → **863** unit, **199** integration, both green. New rows: TD-129, TD-130, TD-131. See **§12.58**. Through **iteration 27**, which closed **Phase 2 item 6** (TD-36, TD-37, TD-38) by deleting seven projects, three entities and one dead inference session — and found that two of that row’s own claims were wrong, and that the compiler already refused two of the three ways the deleted code could return. Through **iteration 26**, which closed **Phase 2 item 5** (TD-34, TD-35), found and reproduced the cause of **TD-117**, and watched a mutation survive all 853 tests — proving the suite had never checked that navigation actually initialises a page. Through **iteration 25**, which closed **Phase 2 item 4** (TD-26) by deleting the reflection call that wrote half of every transfer’s link — and which found, in doing so, that `Transaction` had never carried the public-surface tripwire `Account` has had since iteration 6. Through **iteration 24**, which closed **Phase 2 item 3** (TD-28) and TD-58 with it — and which began by discovering, with a throwaway experiment, that the two layer-dependency assertions this repository has relied on since early on were **conjunctive and therefore near-vacuous**. Through **iteration 23**, which closed **Phase 2 item 2** (TD-27) and half of TD-81, after iteration 22 closed **Phase 2 item 1** and, with it, TD-29, TD-52, TD-72, TD-83, TD-85 and TD-90 — six rows removed by removing one cause. It is the document that required all the others to carry a status, and §12.44 is where it was turned on the four root documents — `README.md`, `STATUS.md`, `PRODUCT.md`, `CHANGELOG.md` — that the first pass could not see. |
 | Created | 2026-08-26 |
 | Audited commit | `c1c8844` on `feat-ui-production-theming` |
 | Method | Full source read + `dotnet build` + `dotnet test` execution. No claim below is taken from documentation. |
@@ -428,6 +428,18 @@ tokens, no audit columns, no logical clock, stored rather than derived balances,
 stable natural key. Fix those first; adding sync on the current schema would not go
 well.
 
+**AMENDED, iteration 35 (§12.72).** Three of those five have since been fixed and this
+paragraph is kept above as written rather than edited, because what it got right and what
+it got wrong are both worth keeping. Concurrency tokens arrived with TD-17 (§12.34); audit
+columns and stable owned-child identity arrived with Phase 3 item 5 (TD-60 closed). **Two
+remain, and a third has been added by being looked at properly:** there is still no logical
+clock (**TD-144** — the row version is a random GUID, which cannot order anything), balances
+are still stored rather than derived, and "stable natural key" turns out to name something
+this schema still does not have — identity is stable now, but surrogate, and the only unique
+constraint anywhere is `Settings.Key` (**TD-146**). Deletion is the gap this paragraph never
+mentioned: every delete is physical, so a row deleted on one device would be invisible to a
+merge (**TD-145**). The sentence's advice was right and has been followed.
+
 ---
 
 ## 7. Over- vs under-engineering
@@ -500,7 +512,7 @@ any other single change.
 | TD-14 | No `ILogger`; `AddConsole` in a WinExe — in **two** heads (Windows and macOS), not one | 🟠 | No incident evidence | Structured file logging + redaction | P1 | ✅ **Done** — iteration 11, §12.24. One `AddPineLogging()` in all five roots writing JSONL to `%LOCALAPPDATA%/Pine/logs`; every `Console.WriteLine` and `File.AppendAllText` outside `Pine.Cli` is gone, and a NetArchTest forbids `Pine.Infrastructure` from depending on `System.Console` so they cannot come back |
 | TD-15 | Diagnostics screen shows mock data | 🟠 | Misleads during incidents | Wire to real sinks or remove | P1 | ✅ **Done** — iteration 12, §12.25. Every value on the page is now measured: `ILogTailReader` over the TD-14 JSONL files, `IDatabaseHealthProbe` over the keyed connection, `IRuntimeInfoProvider` for version/OS/heap. The two dishonest buttons (`Export DIB`, `Seed Demo Data`) are removed rather than reimplemented. Seven falsification mutations, all killed |
 | TD-16 | ML model plaintext, cross-vault, outside vault | 🟠 | Privacy-claim violation | Per-vault encrypted model | P1 | 🟢 **Closed** (§12.29) |
-| TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🟢 **Fixed** (§12.34) — a `Version` shadow property on all nine non-owned entities, assigned a fresh GUID by `PineDbContext` on every insert and update, and translated at the persistence boundary into `ConcurrencyConflictException` so EF does not leak upwards. A change to an owned collection promotes its owner, because the aggregate is the unit of concurrency. **The cause this row used to give was false** and was corrected in iteration 15: the background trainer only reads, and its one write is a `Setting` watermark. The real contention is two `ScopedMediator` sends read-modify-writing the same row. No automatic retry — see §12.34 |
+| TD-17 | No optimistic concurrency token | 🟠 | Lost updates | Row version on aggregates | P1 | 🟢 **Fixed** (§12.34). **AMENDED, iteration 35 (§12.72): this row's mechanism was reused wholesale, and its own forward-looking comment was checked and found correct.** The audit columns Phase 3 gates sync behind are shadow properties stamped in the same `SaveChanges` override, excluded from owned types by the same rule, and reaching the owner through the same promotion — because a column nothing in the domain can write is a column nobody can forget to write. The token itself is unchanged, and its limit is now registered: a random GUID detects a change and cannot order two of them, which is what `14-Synchronization` §7 needs (**TD-144**). Originally: — a `Version` shadow property on all nine non-owned entities, assigned a fresh GUID by `PineDbContext` on every insert and update, and translated at the persistence boundary into `ConcurrencyConflictException` so EF does not leak upwards. A change to an owned collection promotes its owner, because the aggregate is the unit of concurrency. **The cause this row used to give was false** and was corrected in iteration 15: the background trainer only reads, and its one write is a `Setting` watermark. The real contention is two `ScopedMediator` sends read-modify-writing the same row. No automatic retry — see §12.34 |
 | TD-18 | No `Money` scale or rounding policy | 🟠 | Sub-cent drift; undefined split remainders | Normalise + `Allocate` | P1 | ✅ **Closed** — iteration 8, §12.18. `Money` normalises in its constructor to the currency's ISO 4217 minor units (`ToEven`), rejects a fractional amount in a zero-minor-unit currency, and gains `Allocate`/`Multiply`/`Negate`/`Round`/`Scale`. `CurrencyCode` validates membership and offers `TryCreate`. Six falsification mutations, all killed |
 | TD-19 | Line items unreconciled against total | 🟠 | Internally contradictory records | `LineItemKind` represents the difference instead of tolerating it; the invariant is enforced at the persistence boundary and the receipt confirmation UI offers a one-click adjustment | P1 | ✅ **Closed** — iteration 9, §12.20 |
 | TD-20 | No receipt duplicate detection | 🟠 | Double-counted expenses | Content-hash check | P1 | ✅ **Closed** — `s1:` receipt key on the existing `(AccountId, ImportKey)` index; non-blocking warning re-checked immediately before the write. See §12.38 |
@@ -521,7 +533,7 @@ any other single change.
 | TD-35 | Fire-and-forget async in ctor / messenger | 🟡 | Unobserved exceptions; init races | Awaited `InitializeAsync` | P1 | ✅ **Done** — iteration 26, §12.54. Both halves, and they needed different fixes: `ObservedTask` for the unobserved exceptions (25 sites), `IAsyncInitializable` for the init races (nine constructors that returned while their object was still filling itself in). Held by `ObservedTaskTests`, `AsyncInitialisationTests` and `Navigating_to_a_page_starts_its_initialisation` — the last written only because a mutation proved the other two did not connect |
 | TD-36 | Dead `InferenceSession`; missing model file | 🟡 | Startup cost; misleads readers | Delete | P2 | ✅ **Done** — iteration 27, §12.56. The session, the `ModelPath` constant, the model-load log record, `LoadModel()` and `IDisposable` are all gone; the extraction was always heuristic and is unchanged. **The `Microsoft.ML.OnnxRuntime` package reference stays**, because `ReceiptDetector` really does run inference — this row implied otherwise. Held by `TheOnlyTypeUsingTheOnnxRuntime_IsTheOneThatRunsInference`, an allow-list of one |
 | TD-37 | Dead entities: Attachment, Rule, Tag | 🟡 | Schema noise; implies features | Implement or drop | P2 | ✅ **Done** — dropped. `Attachment`, `Rule` and `Tag` and their three tables are gone (migration `DropAttachmentRuleAndTagTables`). Pure subtraction: there were no foreign keys in either direction, so `Attachment.TransactionId`, `Rule.TargetCategoryId` and `Rule.TargetTagId` were unconstrained `Guid` columns and nothing was orphaned. **Not saved work**: `Attachment` had no `Hash` despite `10-Domain-Model` §7 requiring one, and Phase 3's designs — an encrypted blob through `IVaultFileCipher`, a rule engine over a real `CategoryId` relationship — are different shapes. `10-Domain-Model` §6.14 and §7 now mark the design *(not built)*; `31-Rule-Engine` is kept, because nine documents cross-reference it. **AMENDED, iteration 34 (§12.70): `Rule` is built too, and — like `Attachment` — the type that came back is not the one that was dropped.** The shell had a `TargetCategoryId` and a `TargetTagId` the database knew nothing about, no conditions and no evaluator. The replacement has conditions, a pure evaluator with a total ordering, a rules screen, and a place in the import and manual-entry pipelines. `Tag` is still nothing but a name in a document. **AMENDED, iteration 33 (§12.68): `Attachment` is built, and this row's own reasoning is why it could be built cleanly.** The replacement has the hash this row identified as missing, and it is verified on read rather than merely stored; it has a real foreign key where the old one had a loose `Guid`; and it holds the file, which the old one never did. **One clause of this row turned out to be wrong**: the Phase 3 design is NOT "an encrypted blob through `IVaultFileCipher`" — that cipher's contract explicitly refuses large attachments, and a file outside `pine.db` would be excluded from every backup. `Rule` and `Tag` remain deleted |
-| TD-38 | Four empty projects; three stub test projects | 🟡 | False signal in solution and CI | Remove until needed | P2 | ✅ **Done** — iteration 27, §12.56. All seven deleted; zero functionality, zero assertions and zero packaged output were lost, because there were none. §10 Phase 3 had made this conditional on "formally retiring the two plugin documents" — satisfied without inventing a new status value, since `Aspirational` already means "nothing in the tree does this", which an absent project states more precisely than an empty one |
+| TD-38 | Four empty projects; three stub test projects | 🟡 | False signal in solution and CI | Remove until needed | P2 | ✅ **Done** — iteration 27, §12.56. All seven deleted; zero functionality, zero assertions and zero packaged output were lost, because there were none. §10 Phase 3 had made this conditional on "formally retiring the two plugin documents" — satisfied without inventing a new status value, since `Aspirational` already means "nothing in the tree does this", which an absent project states more precisely than an empty one. **CORRECTED, iteration 36 (§12.74): that second sentence was wrong, and the deletion this row records was only ever one third of the instruction.** `Aspirational` is defined by `DocumentStatusTests` as "nothing in the tree does this. **It may still be a good plan**" — a claim about the scaffolding plus an open question about the plan. Deleting the projects sharpened the first and left the second untouched, so nothing had been retired and a reader was still entitled to expect a plugin host. The fifth status value this row says was unnecessary turned out to be exactly what retirement required. The deletion itself stands and was correct; only the claim to have closed the Phase 3 row is withdrawn. Retired for real by **ADR-0021** |
 | TD-39 | Docs contradict implementation (§6.12) | 🟠 | Misleads every new contributor | Mark aspirational; reconcile | P1 | ✅ **Done** — iterations 20 and 21 (§12.44). All 62 files in `docs/` plus `README.md`, `STATUS.md`, `PRODUCT.md` and `CHANGELOG.md` carry a status from a closed vocabulary and a `Reconciled` date, and `DocumentStatusTests` is the workflow step that keeps it true. **What it does not do is judge accuracy** — no test can — so TD-113 records the residue |
 | TD-40 | Code cites ADR-0013/0012; only ADR-0001 exists | 🟡 | Dangling decision references | Write them or drop the citations | P2 | ✅ **Done** — iterations 20 and 21 (§12.44). Both ADRs were written from the code, `EveryAdrCitedInSourceHasAFile` fails the build on a dangling citation from source, and ADR-0012's citations were converted from line numbers to quotations after every one of them was found to be wrong **within the same commit that wrote them** |
 | TD-41 | Four PaddleOCR model packages referenced | 🟡 | Large duplicated payload | Keep one | P2 | ✅ **Done** — iteration 28 (§12.58). Down to two, not one, and **"keep one" was not achievable**: `Models.Local` is the 36 MB facade holding `LocalFullModels`, and its own `.nuspec` requires `Models.LocalV5 >= 3.0.0`, so dropping the weights package would only float it to that floor. `LocalV3` (238 MB) and `LocalV4` (234 MB) removed; neither defines `LocalFullModels` and no source file named either. The row's "three `.onnx` files committed separately" half turned out to be the larger finding — see TD-131 |
@@ -539,18 +551,18 @@ any other single change.
 | TD-53 | `Pine.Ui.Web` now passes `":memory:"`, but `PineDbContext` unconditionally builds a **keyed SQLCipher** connection, whose native lib the WASM build does not link | 🔴 | Web head still fails at first DB access — an in-memory *SQLCipher* database needs the same native library | Decide the Browser story or wire a real provider | P1 | 🔴 **Open** — wording corrected, see §12.12. Iteration 22 deleted the false comment when the Web head lost its private composition root (§12.46): it now builds the same `PineDbContext` every head builds, from the real vault directory. **The defect is untouched** — the head still cannot open a vault, for the separate reason recorded as TD-88. **Closed by deletion, iteration 31 (§12.64), and this row's stated cause was wrong**: `SQLitePCLRaw.lib.e_sqlcipher` does ship a `browser-wasm` native asset. Every build of that head printed `the native references won't be linked in, because neither $(WasmBuildNative), nor $(RunAOTCompilation) are 'true'` and named `e_sqlcipher.a`. It was not that WASM could not link it; it was that nothing asked. The outcome the row describes was real; the reason was not — ✅ **Done (by decision)** |
 | TD-54 | CI enumerates projects instead of building `Pine.slnx` | 🟠 | A newly added project is silently outside CI — the TD-07 drift class again | Build the solution, or assert slnx coverage in CI | P1 | 🔴 **Open** |
 | TD-55 | `TreatWarningsAsErrors` promotes NuGet audit warnings (NU19xx) to build errors | 🟡 | A new CVE advisory turns CI red with no code change | Set `NuGetAuditMode`; triage advisories separately | P2 | 🔴 **Open** |
-| TD-56 | No restore-from-backup path; `ExportVaultBackupCommand` has no UI entry point | 🟠 | Recovery requires the user to copy files by hand | Restore command + UI affordance | P1 | 🔴 **Open** |
+| TD-56 | No restore-from-backup path; `ExportVaultBackupCommand` has no UI entry point | 🟠 | Recovery requires the user to copy files by hand | Restore command + UI affordance | P1 | 🔴 **Open** **HALF DONE — iteration 37 (§12.76).** The export half is closed: the Settings button was an empty method bound to a visible control while `ExportVaultBackupCommand` and `VaultBackupService` sat complete and unused; it now runs the backup and names the file it wrote. `LockVault()` was the same shape and also bound to a visible button, so it was wired rather than deleted. **A false security sentence was found beside it**: the panel described the result as "a **decrypted** backup", when `VACUUM INTO` on the keyed connection encrypts the copy with the very same key — proven by `CreateBackupAsync_ShouldProduceBackupEncryptedWithSameKey`. Corrected. **The restore half remains open and is what keeps this row 🟠 P1**: recovery still means copying a file by hand, and a backup nobody can restore from the application is a backup only in name |
 | TD-57 | `IVaultMigrator` lives in `Pine.Core` because Infrastructure cannot see Application | 🟡 | A persistence-orchestration port sits in the domain project | Add the ProjectReference, then move the port | P2 | 🔴 **Open** |
 | TD-58 | `AddTransactionViewModel` / `CreateAccountViewModel` take an unregistered `Action onComplete` ctor parameter | 🟡 | Blocks `ValidateOnBuild`; the container cannot self-check at startup | Typed VM factories (TD-28) or a registered callback | P2 | ✅ **Done** — iteration 24, §12.50. The premise had already been half-dissolved by iteration 22, which turned `ValidateOnBuild` on by deleting the dead registration; what remained was that these three view models (`ImportWizardViewModel` is the third) could only be built by hand, which is why their `ILogger` was `null` on every real run. `IViewModelFactory` builds all three through `ActivatorUtilities`, so the callback is supplied by the caller and everything else comes from the container — **without** a registration, so the flag is not re-endangered |
 | TD-59 | `ReconcileOwnedChildren` infers owned-child state from EF's Modified/Added guess | 🟡 | A client-keyed owned child is promoted Modified→Added; if either owned type ever gains a public setter, a real update is silently rewritten as an insert | Set owned-child state explicitly, or key them server-side | P2 | 🟡 **Partial** — assumption pinned by `OwnedTransactionChildren_ShouldNot_ExposePublicSetters` |
 | TD-61 | `CurrencyCodeText.TryNormalise` restates `CurrencyCode`'s shape rule outside the domain | 🟡 | Two copies of one rule can drift — most concretely when `CurrencyCode` gains ISO 4217 *membership* validation (TD-18), after which the validator would still wave `"ZZZ"` through | Expose a non-throwing `CurrencyCode.TryCreate` and delete the copy | P2 | ✅ **Closed** — iteration 8, §12.18. The helper now delegates to `CurrencyCode.TryCreate`; the copy is deleted. Pinned by a theory asserting `TryCreate` and the constructor agree on every input, and by falsification M6 |
 | TD-62 | Validators cover currency only; other pre-conditions still fail inside the domain | 🟡 | `AddTransactionCommand` with `Amount == 0` still reaches `account.Deposit(...)` and surfaces "Deposit amount must be strictly positive."; `ImportTransactionsCommandHandler` still throws a bare `ArgumentException` for a missing account. Same wrong-layer class TD-12 fixed, different fields | Extend the existing validators; the seam is already in place | P2 | 🔴 **Open** |
 | TD-63 | `CreateBudgetCommand` carries a currency anchored to nothing | 🟡 | A budget's `CurrencyCode` is validated for shape only — it has no account to be checked against, so a EUR budget can sit against a USD-only vault and no total is comparable | Decide whether a budget is per-account or per-vault, then anchor it | P2 | 🔴 **Open** |
-| TD-60 | `ReplaceSplits` / `ReplaceLineItems` mint fresh `Guid` ids on every detached save | 🔵 | Owned children are deleted and re-inserted with new ids on each update; any future reference to a split id (rules, attachments, audit trail) would dangle | Diff by identity instead of replacing wholesale | P2 | 🔴 **Open** |
+| TD-60 | `ReplaceSplits` / `ReplaceLineItems` mint fresh `Guid` ids on every detached save | 🔵 | Owned children are deleted and re-inserted with new ids on each update; any future reference to a split id (rules, attachments, audit trail) would dangle | Diff by identity instead of replacing wholesale | P2 | ✅ **Done** — iteration 35 (§12.72), **and the row understated where the loss happened.** The aggregate re-minted ids, but the repository never passed one in the first place: it rebuilt `SplitDefinition` from three fields and dropped the key at the boundary. **Loading a transaction and saving it back unchanged moved every child's primary key** — the defect needed no edit at all to fire. The prescribed fix was taken as written: a diff by identity, with a definition carrying a known id updating that child in place. Doing so required the first mutator either owned child has ever had, which **invalidated the stated reasoning of `ReconcileOwnedChildren`** ("neither type exposes a mutator, so every Modified child is a new one EF mis-classified"); it now asks the database which ids exist, once per collection, on the update path only. The severity was right to be 🔵: nothing outside the aggregate referenced a split id, so this was latent rather than shipped-broken. It stopped being latent the moment Phase 3 gated sync behind stable identity |
 | TD-64 | The import currency guard inspects only the rows it is about to save | 🟡 | A skipped duplicate in the wrong currency is never reported, so a bad file looks clean on re-import while its first import was rejected | Validate parsed rows before the dedup split, or report currency per review row | P2 | 🔴 **Open** |
 | TD-65 | Import de-duplication has a check-then-insert race; the `(AccountId, ImportKey)` index is deliberately non-unique | 🟡 | Two concurrent imports of one file can both pass the existence probe before either inserts, and both write | Unique index + conflict handling, or serialise imports per account | P2 | 🔴 **Open** |
 | TD-66 | The derived import key's `source` field is `ImportProfile.Name`, the only source identifier reachable inside `ImportAsync` | 🟡 | Renaming or duplicating a profile changes every derived key, so the next import of an already-imported file reports every row as new | Key the source to something stable (profile id, or the file's own identity) | P2 | 🔴 **Open** |
-| TD-67 | `ExcelImporter` and `PdfImporter` parse nothing — both open the file, loop, and return an empty list | 🟡 | Two of three advertised import formats are stubs; neither is reachable from the wizard, which hardcodes `CsvImporter` | Implement or delete; they are documented as stubs as of iteration 5 | P2 | 🔴 **Open** |
+| TD-67 | `ExcelImporter` and `PdfImporter` parse nothing — both open the file, loop, and return an empty list | 🟠 | ~~Two of three advertised import formats are stubs; neither is reachable from the wizard, which hardcodes `CsvImporter`~~ **THE SEVERITY WAS SET ON A MITIGATION THAT A LATER ITERATION REMOVED, AND NOBODY RE-READ THE ROW.** 🟡 was justified by the second clause: the stubs could not be reached. **TD-28 (iteration 24) made them reachable** — it replaced the wizard's hard-coded `CsvImporter` with `ExtensionImporterFactory.ForFile`, which routes `.xlsx`/`.xls` and `.pdf` straight to them — and the file picker offered "Spreadsheets" and "PDF Statements" as named categories. From that iteration until iteration 37 a user could select their bank's Excel or PDF statement, be told the import SUCCEEDED, and receive zero transactions, indistinguishable from a statement that genuinely held none. **Fixing one row silently promoted another.** Raised 🟡 → 🟠: this is the defect class the whole audit exists to remove — a shipped affordance that does nothing — and it is the only instance of it that touches whether a user believes their financial records were saved | Implement or delete; they are documented as stubs as of iteration 5 | P1 | ✅ **Done** — iteration 37 (§12.76), taking BOTH branches: `ExcelImporter` implemented against the same `ImportProfile` column mapping CSV uses, `PdfImporter` **deleted** along with the `PdfPig` package reference, because a PDF statement has no columns, no delimiter and no two banks agreeing on layout — parsing one is a project, not a missing method body. A `.pdf` now reaches `UnsupportedImportFormatException`, which says so in a sentence |
 | TD-68 | No update/edit path for a transaction; correction is void-then-re-enter | 🟡 | Two rows where the user made one mistake, and the re-entered row carries no link back to the one it replaces | Update command — but close TD-59 and TD-60 first, which it makes load-bearing | P2 | 🔴 **Open** — deliberate scope decision, iteration 6 |
 | TD-69 | A void cannot be undone | 🟡 | A mis-voided transaction can only be re-entered as a new one, losing its id and its import key | Unvoid command, or fold into TD-68 | P2 | 🔴 **Open** |
 | TD-70 | Accounts created before `20260828005910` have no recorded opening balance, so their FIRST recalculation anchors instead of checking | 🟡 | Pre-existing drift on those accounts is undetectable and unrecoverable — reported honestly (`OpeningBalanceWasInferred`) but not fixable | An explicit "set opening balance" gesture, so the user supplies the figure instead of the system inferring it | P2 | 🔴 **Open** |
@@ -664,58 +676,128 @@ a day of work now and an impossible migration later.
 - [x] ✅ **2.** Localisation infrastructure before the view count grows (TD-45) — **DONE, AND THE ROW WAS NOT ABOUT INFRASTRUCTURE.** Underneath it was a **shipped control that did nothing**: the Settings language picker persisted a number into the vault and changed no string on screen, because nothing ever read it. Implemented against the already-approved design spec, which **overrode this document's own `.resx` suggestion** in favour of `41-Localization` §5's JSON — corrected in TD-45's Fix column. **260 keys across `en` and `es`**, live switching with no restart, preference stored outside the vault so the pre-unlock screens follow it, glossary agreed before the strings rather than across them. **Three declared risks, and none of them was the one that bit**: dotted keys work; the real finding was that **no binding in this test suite had ever been evaluated** — `SetupWithoutStarting()` starts no dispatcher, so `Bind` succeeds and the property reads back `null`, silently. `Avalonia.Headless.XUnit` could not be used (it needs xunit v3 against this suite's 2.9.3), so `HeadlessUnitTestSession` was used directly. And **Avalonia does not listen for `Item[]`**, the BCL indexer convention the design assumed — only `"Item"` works, measured. **Four of five parallel agents died mid-edit on a rate limit**, leaving keys with no values; recovered from `git HEAD` mechanically after the first recovery pass produced wrong English and was thrown away — 205 exact, 6 reported, 0 guessed. The §14 guard test then found **nine more literals the count had missed**. Seven mutations, **7 killed**. 865 → **903** unit, **205** integration. Coverage ratchet turned: overall 61 → 63, UI 28 → 37. Rows registered: **TD-139**, **TD-140**. See **§12.66**.
 - [x] ✅ **3.** Attachment storage — **DONE, AND THE ROW'S PHRASING WAS EXACT.** Scanning worked and then destroyed the document: the image was decoded for the screen and dropped, and `AddTransactionCommand` had no image parameter at all. **The storage decision went AGAINST the plan this document recorded.** TD-37 wrote it down as "an encrypted blob written through `IVaultFileCipher`"; that cipher's own contract says "it is **the wrong shape for a large attachment. Say so before reusing it for one**", and — decisively — `VaultBackupService` runs `VACUUM INTO` on the keyed connection and **copies `pine.db` and nothing else**, so a receipt written beside the database would have been missing from every backup and every restore. The bytes are therefore a `BLOB` in the vault database: SQLCipher already encrypts them (§6.2, FR-TXN-02), and they commit in the SAME unit of work as the ledger row. `Attachment` is an aggregate root rather than a child of `Transaction`, so a ledger query never reads a photograph; the repository splits listing from content, and the transaction list's marker comes from a projection that never names `Content`. The SHA-256 `10-Domain-Model` §7 demands is computed by the aggregate and **verified on every read**, with a typed refusal rather than a warning beside a picture. **Seven mutations, five killed and two survived — and both survivors were real holes**: nothing tested that the scanner attaches anything (reverting to throwing the image away broke no test), and nothing tested that the read path refuses a tampered file. Both are closed and both mutations now die. **The coverage gate refused the first attempt** at 36% against a floor of 37% and was obeyed rather than lowered. 903 → **937** unit, 205 → **212** integration. Rows registered: **TD-141**. See **§12.68**.
 - [x] ✅ **4.** Rule engine — **DONE, AND THE PREMISE IN THIS LINE IS FALSE.** There is no "now-real `CategoryId` relationship": `TransactionSplit.Category` is a `string` with no foreign key, iteration 29 rejected changing that **in writing** (TD-32, §12.60) because the `Categories` table has no production writer (TD-132), and iteration 27 flagged the same premise when it deleted the old `Rule` (§12.56). **Fourth consecutive Phase 3 row whose stated premise did not survive contact with the code.** The engine is built on the name, for §12.60's reason: it is the model that has instances. **TD-132 decided the scope before any code was written**: its Fix column says "either build category management ... but not both, and not neither", and a `Rule` aggregate with no way to create a rule would have been that defect again — the third time, after `Attachment`, `Rule` and `Tag` were deleted for it under TD-37. So the rules screen is not an extra; it is why the engine is allowed to exist. It also makes the sidebar's disabled "Coming soon" Rules button real. **A matching rule beats the classifier outright and the model is not consulted at all** — comparing a user's priority with a softmax confidence mixes two scales that share no units and makes "why is this in Coffee?" unanswerable. A rule never overwrites a category the user typed or the file supplied. Ordering is TOTAL, not just by priority: §6.2 settles nothing when two rules share one, so ties break by creation time then id, and the repository applies the same order in SQL. Six of §5.2's fourteen operators, conditions ANDed rather than a boolean tree, one action — all declared deviations. **Seven mutations, six killed and one survived**: nothing tested the regex timeout, so a user-authored pattern could hang an import. Closed with a test that races the match against a deadline, because asserting on it directly would hang the suite rather than fail it. **The coverage gate blocked this iteration too** and was obeyed rather than lowered. 937 → **990** unit, 212 → **219** integration. Rows registered: **TD-142**, **TD-143**. See **§12.70**.
-- [ ] Sync — **only** after row versions, audit columns and stable natural keys exist
-- [ ] Plugin host, or formally retire the two plugin documents and delete the empty projects
+- [x] ✅ **5.** Sync — **THE GATE IS DONE; SYNC IS DELIBERATELY NOT.** This row is a precondition, not a feature: it forbids sync until three things exist, so the work was to establish all three and build the two that did not. **Row versions were already real** and genuinely enforced (TD-17, §12.34) — and `ConfigureConcurrencyTokens` had said in a comment that the Phase 3 sync work would need them on everything, which turned out to be right. **Audit columns did not exist**, unevenly: `Transaction` had a creation stamp and no update stamp, `Category`, `Setting` and `Budget` had neither, and the five that did disagreed on both the name and the type. They are now `RowCreatedAtUtc`/`RowUpdatedAtUtc` shadow columns on all eight roots, stamped by the context so no future write path can forget them — the `Row` prefix is load-bearing, because two roots already own a `CreatedAtUtc` and a colliding shadow name binds silently to the domain property instead of creating anything. **Stable identity did not exist for owned children**: TD-60, closed here — a split kept no id across its own edit, and the repository discarded the id before the aggregate could. Closing it forced the retraction of a load-bearing comment in `ReconcileOwnedChildren`, which promoted every `Modified` child because "neither type exposes a mutator"; both types have one now. **The third precondition is still not true as this line words it** — what exists is stable SURROGATE keys; there are no natural keys and the only unique constraint in the schema is `Settings.Key` (**TD-146**). **Nothing on the far side of the gate was built, and that is the row obeying itself**: `02-Product-Scope` §7.2 scopes sync to plugins only, `14-Synchronization` §8 hands the provider contract to `33-Plugin-SDK`, and the plugin host is the NEXT row in this phase and does not exist. Also missing and registered rather than glossed: a logical clock (**TD-144**) and tombstones (**TD-145**). **Nine mutations, nine killed.** The coverage gate blocked this iteration too and was answered with thirteen unit tests. 990 → **1003** unit, 219 → **234** integration. See **§12.72**.
+- [x] ✅ **6.** Plugin host, or formally retire the two plugin documents and delete the empty projects — **RETIRED, AND THIS ROW HAD TWO DEFECTIVE PREMISES, ONE OF THEM THIS DOCUMENT'S OWN.** The empty projects were already gone: commit `9771a85` deleted both in iteration 27, verified in git. And **TD-38 already recorded the retirement branch as satisfied**, arguing that deleting the projects made the two documents "more precisely `Aspirational`". That argument does not hold: `Aspirational` is defined as "nothing in the tree does this — **it may still be a good plan**", which is a claim about scaffolding plus an open question about the plan. Deletion sharpened the first half and left the second untouched, which is why this checkbox stayed unticked for nine iterations while a debt row called it done. **The decision is ADR-0021, Accepted: Pine will not load third-party code**, and the deciding argument is not effort — it is that `12-Plugin-Architecture` §5's mechanism cannot satisfy `15-Security` §10's requirement. An `AssemblyLoadContext` is not a security boundary, and `VaultSession.Key` returns the live key array, so "a plugin has no access to the data key" is unsatisfiable in-process. Two invisible collisions were found on the way: a plugin could break ADR-0012 while `NetworkEgressTests` stayed green, because it scans `src/` and a plugin is not in it; and nothing in this repository can verify a signature, so the mandatory manifest signature described a check no code could perform. **A fifth document status, `Withdrawn`, was added — the one iteration 27 declined to invent — and it carries a price**: `EveryWithdrawnDocumentCitesAnAdrThatExists` fails the build unless the Status row names an ADR with a file. **Sync was re-homed rather than retired with it** (`ISyncProvider` moves to `14-Synchronization`, providers compiled in), because §12.72 had left sync gated on this row. Three mutations: **M1 survived its first run and exposed a real hole** — the rule accepted an incidental ADR-0012 mention — then was killed after the rule was tightened to read the Status row only. No source file changed; there was nothing left to remove. New row: **TD-147**. See **§12.74**. **This closes Phase 3.**
 
 ---
 
 ## 11. Final verdict
 
+> **This section was written at iteration 0 and was never amended through thirty-six iterations of
+> remediation.** It is preserved verbatim below the line, because an audit that silently rewrites its
+> own conclusion is worth less than one that shows what it got right and what it outgrew. Everything
+> above the line is the current verdict; everything below it is the original, and the gap between
+> them is the record.
+
+### 11.1 Current verdict (iteration 36)
+
 | | |
 |---|---|
-| **Current rating** | **2.3 / 5 ★★☆☆☆** |
-| **Production status** | **Not Production Ready** |
+| **Current rating** | **3.4 / 5 ★★★☆☆** |
+| **Production status** | **Not production ready — but the blockers are now a bounded punch list, which is the thing that changed** |
 
-**Why not "Prototype / Early Development":** the architecture is coherent, the
-domain is properly modelled, the privacy posture is genuine and the Windows head
-builds clean and runs. This is well past prototype.
+**What the original verdict named as disqualifying no longer holds.** Its four blockers were: a
+data-integrity defect in the core write path, no correction mechanism for bad data, an irreversible
+security decision, and a pipeline that could not detect regressions in any of it. Three are closed
+and verified. Every repository stages and commits nothing (TD-01); a `TransactionBehavior` opens one
+database transaction per command; every aggregate root carries a concurrency token that is bumped on
+write and surfaced as a typed failure (TD-17); money is stored as scaled integers rather than text
+(TD-31); a transaction is voided rather than deleted, with the balance effect reversed in the same
+unit of work (TD-02); balances can be recalculated from the ledger from a real button (TD-30). The
+suite went from **28 tests to 1,238**, source from 11.7k to ~39.9k lines, and a coverage ratchet
+refuses to fall.
 
-**Why not "Production Ready with Conditions":** the blockers are not a bounded
-punch list. They include a data-integrity defect in the core write path, the
-absence of any correction mechanism for bad data, a security-architecture decision
-that becomes irreversible the moment real vaults exist, and a verification pipeline
-that cannot detect regressions in any of it.
+**Why it is still not "production ready".** Three reasons, in order of weight:
 
-- **Biggest strength** — The privacy and trust architecture is real where it counts: no network egress anywhere in the codebase, and OCR output that cannot reach the ledger without explicit human confirmation.
-- **Biggest weakness** — No transactional boundary in the write path, and no mechanism to correct the result.
-- **Biggest production risk** — Silent, permanent financial data corruption: partial writes, silently dropped imports and misdated receipts all fail invisibly, and nothing in the application can detect or repair them afterwards.
-- **Most important next action** — Register `PineDbContext` as scoped, open a DI scope per MediatR request, remove `SaveChangesAsync` from every repository, and commit once per command inside an explicit database transaction — with tests for the transaction-plus-balance path written at the same time.
+1. **Nothing arms the regression net (TD-07).** The CI workflow is `workflow_dispatch:` only, by an
+   explicit and documented decision about compute cost. Every guard built across three phases —
+   architecture rules, the coverage gate, the egress scan, the documentation status tests — is real
+   and runs only when a human asks it to. This is the single largest gap and it is not technical.
+2. **Sixty-eight open debt rows**, of which six are 🟠 P1: no restore-from-backup path (TD-56),
+   a navigation defect that replaces the whole shell (TD-121), an unsigned release artefact
+   (TD-108), CI enumerating projects instead of the solution (TD-54), and an intermittent SQLite
+   handle disposal in the integration suite (TD-140).
+3. **The product is narrower than the document set.** Budgets, sync, notifications, forecasting and
+   investments are specified and unbuilt. That is a scope statement, not a defect.
 
-### Architecture verdict
+**What is genuinely good, and load-bearing.** The privacy posture is real rather than asserted: no
+network egress anywhere in `src/`, enforced by a test that fails on the mere mention of a networking
+type; a vault encrypted by SQLCipher with an Argon2id-wrapped key; OCR output that cannot reach the
+ledger without explicit human confirmation; and receipts stored inside the vault so they survive a
+backup. The core loop — create a vault, add accounts, enter or import transactions, scan a receipt,
+categorise by rule or classifier, review a paginated ledger with attachments and an audit trail —
+works end to end against the encrypted store.
 
-The architecture is fundamentally sound and does not need restructuring. The
-hexagonal decomposition is real rather than nominal: `Pine.Core` holds no external
-dependency, ports are defined in the domain and implemented in infrastructure, the
-AI engine is genuinely swappable, and the UI dispatches through MediatR rather than
-reaching for repositories. That skeleton is worth keeping, and a rewrite would
-discard a correct structure to fix defects that live inside it.
+- **Biggest strength** — The write path is now atomic and correctable, and the privacy claims are
+  enforced by tests rather than by intention.
+- **Biggest weakness** — **Nothing runs the tests automatically.** A regression reaches `main`
+  unless a human dispatches the workflow.
+- **Biggest production risk** — No restore path. `VaultBackupService` produces backups and, until
+  iteration 37, the Settings button that should trigger one did nothing; restoring one still means
+  copying files by hand (TD-56).
+- **Most important next action** — Re-arm `pull_request:` on the CI workflow. Everything else in
+  this document is already guarded by something; that guard is the one that is switched off.
 
-What has not been built is the layer between the architecture and the data: no unit
-of work, no validation stage, no configuration, no logging, no concurrency control,
-no correction path. These are all cross-cutting concerns, all insertable at the
-composition root and the MediatR pipeline, and all addressable without touching the
-domain model or the views. That is why the recommendation is remediation rather
-than restructuring.
+**On the method, because it is the most transferable output.** Thirty-six iterations were run as
+implement → mutate → verify: after each change, deliberate defects were introduced to check that
+some test died. It repeatedly found what review did not — a survived mutation exposed that nothing
+tested the regex timeout, that the scanner attached no image, that a read path accepted a tampered
+file, and that a new documentation rule accepted an unrelated citation. **More consequentially, five
+of Phase 3's six roadmap rows turned out to rest on a false or stale premise, and one of those was
+this document's own.** Checking a ticket's claim before obeying it caught more defects than any
+other single practice here.
 
-The honest summary is that this project has the shape of a mature system and the
-substance of an early one. Sixty specification documents, six platform heads, five
-test projects, four empty modules and a plugin SDK sit on top of 11.7k lines of
-source, 28 tests, and a write path that cannot guarantee a transaction and its
-balance are saved together. The scaffolding was built to the plan; the load-bearing
-work was not. Nothing in that ordering is fatal — the foundations are good and the
-fixes are well-defined — but the project is considerably further from production
-than `STATUS.md` ("Phase 1 and 2: 100% Completed") represents, and closing that gap
-starts with making the write path atomic and the CI pipeline honest.
+### 11.2 Original verdict, iteration 0 — superseded, kept as the record
+
+> | | |
+> |---|---|
+> | **Current rating** | **2.3 / 5 ★★☆☆☆** |
+> | **Production status** | **Not Production Ready** |
+>
+> **Why not "Prototype / Early Development":** the architecture is coherent, the
+> domain is properly modelled, the privacy posture is genuine and the Windows head
+> builds clean and runs. This is well past prototype.
+>
+> **Why not "Production Ready with Conditions":** the blockers are not a bounded
+> punch list. They include a data-integrity defect in the core write path, the
+> absence of any correction mechanism for bad data, a security-architecture decision
+> that becomes irreversible the moment real vaults exist, and a verification pipeline
+> that cannot detect regressions in any of it.
+>
+> - **Biggest strength** — The privacy and trust architecture is real where it counts: no network egress anywhere in the codebase, and OCR output that cannot reach the ledger without explicit human confirmation.
+> - **Biggest weakness** — No transactional boundary in the write path, and no mechanism to correct the result.
+> - **Biggest production risk** — Silent, permanent financial data corruption: partial writes, silently dropped imports and misdated receipts all fail invisibly, and nothing in the application can detect or repair them afterwards.
+> - **Most important next action** — Register `PineDbContext` as scoped, open a DI scope per MediatR request, remove `SaveChangesAsync` from every repository, and commit once per command inside an explicit database transaction — with tests for the transaction-plus-balance path written at the same time.
+>
+> ### Architecture verdict
+>
+> The architecture is fundamentally sound and does not need restructuring. The
+> hexagonal decomposition is real rather than nominal: `Pine.Core` holds no external
+> dependency, ports are defined in the domain and implemented in infrastructure, the
+> AI engine is genuinely swappable, and the UI dispatches through MediatR rather than
+> reaching for repositories. That skeleton is worth keeping, and a rewrite would
+> discard a correct structure to fix defects that live inside it.
+>
+> What has not been built is the layer between the architecture and the data: no unit
+> of work, no validation stage, no configuration, no logging, no concurrency control,
+> no correction path. These are all cross-cutting concerns, all insertable at the
+> composition root and the MediatR pipeline, and all addressable without touching the
+> domain model or the views. That is why the recommendation is remediation rather
+> than restructuring.
+>
+> The honest summary is that this project has the shape of a mature system and the
+> substance of an early one. Sixty specification documents, six platform heads, five
+> test projects, four empty modules and a plugin SDK sit on top of 11.7k lines of
+> source, 28 tests, and a write path that cannot guarantee a transaction and its
+> balance are saved together. The scaffolding was built to the plan; the load-bearing
+> work was not. Nothing in that ordering is fatal — the foundations are good and the
+> fixes are well-defined — but the project is considerably further from production
+> than `STATUS.md` ("Phase 1 and 2: 100% Completed") represents, and closing that gap
+> starts with making the write path atomic and the CI pipeline honest.
+>
+> ---
+>
+>
 
 ---
 
@@ -3337,7 +3419,7 @@ until someone runs them the honest status of this fix is "believed correct, unob
 | TD-96 | `Budget.StartDate` / `EndDate` are `DateTimeOffset` columns with the same offset-in-the-text defect as `Transaction.Date` | 🟡 | Any future `ORDER BY` or range predicate over a budget period will either throw, exactly as TD-94 did, or compare local wall clocks. Neither column reaches SQL today | The same treatment as TD-94, if and when a query needs it | P3 | 🔴 **Open** — opened by iteration 15 |
 | TD-97 | `Importing/ImportKeyMigrationTests` fails intermittently under the full integration run and passes in isolation | 🟡 | A flaky test is a test nobody trusts, and this suite's whole value is that a red result means something. At this rate it will be re-run rather than read. Observed **three times, in three DIFFERENT tests** — iteration 15 (`ImportKeyMigrationTests`, 18 s against a 2 s norm), iteration 16 (name not captured before the re-run passed), iteration 17 (`BalanceRecalculationTests.Recalculate_OfALedgerADoubleWouldGetWrong_IsExactToTheCent`, 10 s, passing in isolation immediately afterwards). That it moves between tests is the diagnosis: this is not a flaky assertion anywhere, it is file contention between `TempVault` directories under xUnit's default per-class parallelism. Roughly one full run in four | Serialise the vault-backed classes into one xUnit collection, or give `TempVault` a retry on the lock | P2 | 🔴 **Open** — opened by iteration 15  **Amended, iteration 24: a sixth observation, in a sixth different test** — `Atomicity/BalanceRecalculationTests.Recalculate_WhenTheLedgerHoldsAForeignCurrencyRow_IsRefusedAndChangesNothing` failed once in a full run and passed on the immediately following one, with no code change between them. Six observations, six different tests, one diagnosis nobody has acted on  **Amended again, iteration 25: a seventh observation, in a seventh different test** — `Atomicity/CurrencyValidationTests.TransferFunds_WithACurrencyMatchingNeitherAccount_IsRejectedBeforeAnythingIsWritten` failed in a full run, passed when its class was run alone, and passed on the next full run, with no code change between the three. Seven observations, seven different tests, every one of them a vault-backed integration class under parallelism — which is the diagnosis this row has carried since iteration 15  **Amended again, iteration 26: three further observations, in three further tests, two of them in a single run** — `RecordTransactionAtomicityTests.RecordTransaction_WhenTheBalanceWriteFails_PersistsNeitherTheRowNorTheBalance`, `CurrencyValidationTests.AddTransaction_WithALowercaseCurrency_IsNormalisedAndSucceeds` and `ConcurrencyTokenTests.TwoOverlappingSplitEdits_Conflict_ThoughOnTheChildRowNotTheOwnersToken`. **Eleven observations in eleven distinct tests.** That iteration changed only `Pine.Ui.Avalonia`, which the integration project does not reference, so it cannot have been the cause — which is one more piece of evidence for the shared-vault-under-parallelism diagnosis this row has carried since iteration 15 **Amended again, iteration 27: two further observations, in two further tests** — `ImportKeyMigrationTests.AfterTheMigration_LegacyRowsMatchNoKey_AndANewlyKeyedRowMatchesItsOwn` and `CurrencyValidationTests.AddTransaction_WithAMatchingCurrency_StillPersistsTheRowAndTheBalance`, on consecutive full runs, green on the third. **Thirteen observations in thirteen distinct tests.** The diagnosis has not changed since iteration 15 and neither has the code |
 | TD-98 | Nothing catches `ConcurrencyConflictException`; a refused write reaches the user as an unhandled exception | 🟡 | TD-17 turned a silent lost update into a loud refusal, which is strictly better — but the loudness currently lands wherever an unhandled exception lands. The user is told something failed without being told to reload, which is the one instruction that resolves it | Handle it in the view models as part of TD-24's exception taxonomy (Phase 1 item 8) | P2 | ✅ **Done** — opened by iteration 16, closed by iteration 19 (§12.40). The type now implements `IUserFacingFailure`, so its "Reload and try again." survives to the screen on every write path instead of being flattened |
-| TD-99 | The budgets screen is a mock wearing a real screen's clothes | 🟠 | `BudgetsViewModel:148` sets `SpentAmount = 0m` with the comment "Will be calculated from transactions", so the progress bar is **always** at 0% and `IsExceeded` is **never** true — a budget can be blown wide open and the screen says nothing. `:145` renders `CategoryName` as `"Category " + b.CategoryId.ToString()[..4]`, a fragment of a GUID where a category name belongs. Both are visible on a shipped screen and neither is a placeholder the user can recognise as one | A query summing non-voided transactions per category over the budget's period, and a real category lookup | P1 | 🔴 **Open** — opened by iteration 17 |
+| TD-99 | The budgets screen is a mock wearing a real screen's clothes | 🟠 | `BudgetsViewModel:148` sets `SpentAmount = 0m` with the comment "Will be calculated from transactions", so the progress bar is **always** at 0% and `IsExceeded` is **never** true — a budget can be blown wide open and the screen says nothing. `:145` renders `CategoryName` as `"Category " + b.CategoryId.ToString()[..4]`, a fragment of a GUID where a category name belongs. Both are visible on a shipped screen and neither is a placeholder the user can recognise as one | A query summing non-voided transactions per category over the budget's period, and a real category lookup | P1 | 🔴 **Open** — opened by iteration 17 **✅ Done — iteration 37 (§12.76), after nineteen deferrals.** Spend is measured by `GetBudgetProgressQuery`: voided transactions excluded on the ledger's own rule, expenses only, inside a half-open window `Budget.ResolveWindow` derives from the stored dates or the calendar period. The category name is the real name. **The part worth reading is what it does when it cannot answer**: `Budget.CategoryId` is a `Guid` and `TransactionSplit.Category` is a string (TD-32/TD-132), so the join runs `CategoryId → Category.Name → split.Category` — exact where a category row exists, impossible where one does not, which given TD-132 is what a user-created budget looks like today. There, and for a `BiWeekly` budget with no stored dates (a fortnight has no calendar anchor), the screen reports **not known** rather than zero. Cross-currency splits are excluded rather than converted and the exclusion is counted. Mutation M2 restores the `Money.Zero` this row is about and kills ten tests |
 | TD-100 | `ScanReceiptViewModel.RecomputeReconciliation` computes the difference two ways | 🔵 | With an account selected the arithmetic goes through `Money` and rounds each line to the currency's scale; without one it sums raw decimals. Iteration 17 verified the divergence is **not** load-bearing — `SaveTransactionAsync` refuses with "Please select an account" before it ever consults `IsReconciled`, so every save is judged by the `Money` path — but the figure shown on screen while the form is being filled can still differ from the one that will decide the save | Nothing, until an account can be defaulted; the branch is commented rather than unified, because unifying it means guessing a currency | P3 | 🔴 **Open** — opened by iteration 17 |
 
 ### 12.32 Iteration 15 — Phase 1, item 5a (TD-31, TD-30, TD-79)
@@ -5014,7 +5096,7 @@ to the measured 1021 (824 + 197), and `STATUS.md` now carries the observation ne
 |---|---|---|---|---|---|---|
 | TD-120 | `LiveScannerViewModel` drives the camera through OpenCvSharp directly, so the UI's clean bill of health stops at `Pine.Infrastructure` types | 🟠 | The two architecture tests added this iteration assert that no view model names a `Pine.Infrastructure` type. They say nothing about `OpenCvSharp`, which is a third-party native wrapper reaching the UI transitively through that same project reference — `VideoCapture`, `Mat` and `Cv2` appear in a view model and in `Utils/OpenCvAvaloniaBridge`. Dropping the project reference to make the rule compiler-enforced fails on exactly these two files, which is how this was found. A reader of the passing tests would reasonably conclude the UI is free of infrastructure; it is free of *Pine's* infrastructure | A camera seam (`ICameraCaptureSession` or similar) owned by the infrastructure layer, handing the UI frames rather than `Mat`s. That also unblocks splitting composition into its own project, and it is the same seam §10 Phase 3 needs for a non-DirectShow camera | P2 | 🔴 **Open** |
 | TD-121 | Every in-shell page's `INavigationService` is the **window-level** navigator, so navigating replaces the whole shell | 🟠 | `MainViewModel` and `ShellViewModel` both implement `INavigationService`, but only `MainViewModel` is registered under it — `ShellViewModel` is registered as itself and can therefore never be the one injected. Verified by resolving `INavigationService` from the real container: it is not a `ShellViewModel`. So `ScanReceiptViewModel` navigating to Transactions, and `CropReceiptViewModel` navigating back to Scan, set the *window's* content and drop the shell, its sidebar and its active-tab state. `BudgetsViewModel` injects the navigator and never calls it, which is why nothing has failed loudly. This predates TD-28 and was not introduced by it; the typed factory ran straight through it | Give the shell its own navigator seam, or make the shell register itself as the `INavigationService` its children resolve. Decide which of the two navigators a page is entitled to, then assert it — the probe that found this is three lines | P1 | 🔴 **Open** |
-| TD-122 | The import picker offers file types Pine cannot import, and two it can only pretend to | 🟡 | `ImportWizardView.axaml.cs` offers `*.png, *.jpg, *.jpeg` under "Receipt Images" — the statement-import path has no image importer at all, and those belong to receipt scanning. It also offers `*.xlsx, *.xls, *.pdf`, whose importers are documented stubs that parse zero rows. Before this iteration every one of them was fed to `CsvImporter`; now an image raises a sentence and a spreadsheet reaches an empty preview. The refusal is honest, but the affordance that produces it is still wrong | Narrow the picker to what each head can actually import, or route the image extensions to the receipt-scanning path where the user plainly meant them to go | P2 | 🔴 **Open** |
+| TD-122 | The import picker offers file types Pine cannot import, and two it can only pretend to | 🟡 | **✅ Done — iteration 37 (§12.76).** The picker now offers `.csv`, `.xlsx` and `.xls` and nothing else: the image patterns are gone (they belong to receipt scanning, a different screen with a different pipeline) and so is the PDF category. `UnsupportedImportFormatException`'s own remarks had predicted this — "the picker's filter list should be narrowed; until it is, the failure is at least stated rather than silent" — and that paragraph is kept, because it called it correctly. Originally: | `ImportWizardView.axaml.cs` offers `*.png, *.jpg, *.jpeg` under "Receipt Images" — the statement-import path has no image importer at all, and those belong to receipt scanning. It also offers `*.xlsx, *.xls, *.pdf`, whose importers are documented stubs that parse zero rows. Before this iteration every one of them was fed to `CsvImporter`; now an image raises a sentence and a spreadsheet reaches an empty preview. The refusal is honest, but the affordance that produces it is still wrong | Narrow the picker to what each head can actually import, or route the image extensions to the receipt-scanning path where the user plainly meant them to go | P2 | 🔴 **Open** |
 | TD-123 | The wizard's column-mapping step is meaningless for every format except CSV | 🟡 | Steps 1–2 build an `ImportProfile` carrying `Date`/`Payee`/`Amount`/`Category` column names and a `','` delimiter. `ReadCsvHeaders` only runs for `.csv`, so `AvailableColumns` stays empty for a spreadsheet or a PDF, and both importers ignore `ColumnMappings` entirely. The user is asked to map columns that were never read, for a file whose importer would not use the answer | Make the wizard's steps a function of the chosen format, once TD-122 has decided which formats it offers. Not a redesign to attempt while two of the three importers parse nothing | P3 | 🔴 **Open** |
 
 ### 12.52 Iteration 25 — Phase 2, item 4 (TD-26), and a workaround that had outlived its reason
@@ -6867,7 +6949,148 @@ still costs a re-run.
 
 ---
 
-### 12.71 Next
+### 12.72 Iteration 35 — Phase 3, item 5: the gate in front of sync, and what was actually behind it
+
+**Ticket:** Phase 3 item 5, "Sync — **only** after row versions, audit columns and stable natural
+keys exist."
+
+**This row is a gate, not a feature, and the work was to find out whether it opens.** It does not
+say "build sync"; it names three preconditions and forbids sync until they hold. So the honest
+reading of the item is: establish the three, build the ones that are missing, and do not build the
+thing on the other side. That is what was done.
+
+#### The three preconditions, checked rather than assumed
+
+| Precondition | Before | After |
+|---|---|---|
+| Row versions | **Present and genuinely enforced.** A `Version` shadow GUID on all eight non-owned roots, re-minted inside an overridden `SaveChanges`, with owner-promotion so a child-only edit still bumps the aggregate, and eight integration tests racing two real writers over one keyed file (TD-17, §12.34) | Unchanged — and the comment in `ConfigureConcurrencyTokens` saying "the Phase 3 sync work needs a version on everything regardless" turned out to be right |
+| Audit columns | **Absent, and unevenly so.** `Account` and `ImportProfile` had `CreatedAt`/`UpdatedAt` as `DateTimeOffset`; `Attachment` and `Rule` had `CreatedAtUtc` as `DateTime`; `Transaction` had a creation stamp and **no update stamp at all**; `Category`, `Setting` and `Budget` had neither. Every one hand-written at each mutator | `RowCreatedAtUtc` and `RowUpdatedAtUtc` on all eight roots, stamped by the context |
+| Stable natural keys | **Provably false for owned children.** `ReplaceSplits` cleared the collection and rebuilt it with `new TransactionSplit(...)` calling `base(Guid.NewGuid())`, and the repository dropped the id entirely on the way in — a split's identity did not survive its own edit (TD-60) | Closed: a child keeps its key across an edit |
+
+#### The audit columns are shadow properties, and the prefix is not decoration
+
+The mechanism is TD-17's, deliberately: a column nothing in the domain can write is a column nobody
+can forget to write. The hand-written stamps that already existed are the argument for it —
+`Transaction` having a `CreatedAt` and no `UpdatedAt` is not an oversight anyone would defend, it is
+what happens when stamping is a convention rather than a mechanism.
+
+`Row` is in the name because **five of the eight roots already have a creation stamp of their own**,
+two of them called exactly `CreatedAtUtc`. A shadow property with a colliding name does not fail —
+it silently binds to the domain property and creates nothing, which would have left two of the eight
+roots unstamped while every test still passed. `Row` also says the right thing: the domain stamp is
+when the money moved, this one is when the row was written, and an edit three months later moves one
+and not the other. **Mutation M6 is that exact collision, and it kills seven of eight tests.**
+
+They are `DateTime` in UTC rather than `DateTimeOffset`, for the reason TD-31 found the hard way:
+SQLite cannot ORDER BY a `DateTimeOffset`, and an audit column that cannot be ordered is worth very
+little, since "what changed since" is the only question anyone asks of one.
+
+**Rows written before the migration read `0001-01-01`, and that is deliberate.** Nothing in the
+database can recover when an existing row was created, so it says "never stamped" instead of
+claiming the migration's own timestamp — which would have made every row in an existing vault assert
+it was created at one instant, on a date no user did anything. An audit column is precisely the
+wrong place to tell that lie. They correct themselves on first write.
+
+#### TD-60, and the comment that had to be retracted with it
+
+The register's wording was exact: `ReplaceSplits`/`ReplaceLineItems` "mint fresh `Guid` ids on every
+detached save". Both halves were true, and the repository's half was worse than the aggregate's — it
+built `new SplitDefinition(s.Amount, s.Category, s.Notes)` and never passed the id at all, so
+identity was discarded at the boundary before the aggregate got the chance to discard it too.
+**Loading a transaction and saving it back unchanged moved every child's primary key.**
+
+The fix is a diff by identity: a definition carrying a known id updates that child in place, one
+carrying none is a new child, one nobody names is gone. That required the first mutator either owned
+child has ever had — and **that invalidated a load-bearing comment elsewhere.**
+`ReconcileOwnedChildren` promoted every `Modified` child to `Added`, on the stated grounds that
+"neither type exposes a mutator, so a child that came from the database can never legitimately be
+modified". With a mutator, `Modified` is genuinely ambiguous, and promoting the wrong kind INSERTs a
+row whose primary key is already taken. The method now asks the database which child ids exist —
+once per collection, on the update path only, never on an insert — because that is the only thing
+that actually distinguishes the two cases. **Mutation M7 restores the old rule and kills four tests.**
+
+The atomicity guarantee had to be preserved through this and nearly was not: the old code built
+children and validated afterwards, which was safe only because it threw before assigning them. The
+new code edits in place, so the sum is checked over DEFINITIONS before anything is touched.
+**Mutation M3 moves that check after the apply, and exactly one test dies — the one written for it.**
+
+#### What was NOT built, and why that is the row obeying itself
+
+- **No transport, no provider, no envelope, no merge.** `02-Product-Scope` §7.2 puts sync in scope
+  *only* as "Local + cloud sync **via plugins**", §7.3 lists synchronisation providers as a plugin
+  extension point, and `14-Synchronization` §8 hands the `ISyncProvider` contract to `33-Plugin-SDK`.
+  **The plugin host is the next row in this very phase and does not exist** — its two stub projects
+  were deleted in iteration 27. Sync cannot be built before the thing the scope document says it
+  must be built inside.
+- **No network egress.** `NetworkEgressTests` fails on any file under `src/` that so much as names a
+  networking type, in a comment included. Its own failure message says the rule is superseded by an
+  ADR or not at all. Nothing here goes near it.
+- **No logical clock.** The row version is a random GUID. It answers "did this change" and cannot
+  answer "which came first", which is what §7's last-writer-wins by `(device_id, lamport_clock)`
+  needs. **TD-144.**
+- **No tombstones.** Every delete in six repositories is a physical `Remove`; there is no
+  `IsDeleted` and no `HasQueryFilter` anywhere. A row deleted on one device is invisible to a merge.
+  **TD-145.**
+
+#### The precondition that is still not true as written
+
+The row says "stable natural keys". What now exists is **stable surrogate keys**. Identity survives
+an edit, which it did not before — but `Account.Name`, `Category.Name` and `ImportProfile.Name` have
+no unique index, and the only genuine unique constraint in the whole schema is `Settings.Key`.
+`Transaction.ImportKey` is the closest thing to a business key and is deliberately nullable and
+deliberately non-unique. So two vaults can now each keep their rows' identities and still have no
+way to recognise that they hold the same account. **TD-146**, registered rather than glossed, so the
+gate is not recorded as fully open when one third of it is only mostly open.
+
+#### Falsification
+
+**Nine mutations, nine killed.** No survivors.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | The repository stops passing child ids | **Killed** — 6 of 7 |
+| M2 | A matching id never reuses its split | **Killed** — 5 |
+| M3 | The split sum is validated after the children are mutated | **Killed** — the atomicity test |
+| M4 | Nothing stamps the audit columns | **Killed** — 4 |
+| M5 | An update rewrites the creation stamp too | **Killed** — 2 |
+| M6 | The shadow column takes the domain's `CreatedAtUtc` name | **Killed** — 7 of 8 |
+| M7 | Every `Modified` child is promoted to `Added`, as the old rule said | **Killed** — 4 |
+| M8 | A child-only edit no longer promotes its owner | **Killed** — the owner-stamp test |
+| M9 | Owned children get their own audit columns | **Killed** — 7 of 8 |
+
+One test had to be rewritten rather than kept: `EditingOnlyTheSplits_MovesTheOwnersStamp` first
+wrote through a bare `PineDbContext` and failed with a zero-rows-affected concurrency error. **That
+was verified against the unmodified code before anything was concluded from it** — it fails there
+identically, so it is pre-existing and not a regression: a bare context has never been a write path
+this application has, because the repository is the only thing that corrects EF's state guess.
+
+#### Verified state
+
+- `Pine.Ui.Windows`, `Pine.Ui.Macos`, `Pine.Cli`, both test projects: **0 warnings, 0 errors**.
+- Unit **990 → 1003**, integration **219 → 234**, both green.
+- **The coverage gate blocked this iteration too**, and for an instructive reason: `Pine.Core` fell
+  to 87% against its floor of 88% because the new domain code was covered only by INTEGRATION tests
+  and the gate measures the unit suite. Answered with thirteen unit tests over the diff rule itself,
+  never a lowered floor. Floors then raised: overall 66 → **67**, `Pine.Infrastructure` 77 → **78**.
+- One integration failure on the first full run — `BalanceRecalculationTests`, a test this work does
+  not touch — passed in isolation and on two consecutive full re-runs. That is TD-140 on a fourth
+  distinct test.
+- The migration was generated by `dotnet ef`; one hand edit, commented, recording why the default is
+  `0001-01-01`.
+
+#### New debt
+
+- **TD-144** — the row version detects change but cannot order it.
+- **TD-145** — every delete is physical, so a deletion cannot be merged.
+- **TD-146** — identity is stable but surrogate; there are still no natural keys.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-144 | The row version detects that a row changed but cannot order two changes | 🟡 | `Version` is `Guid.NewGuid()`, chosen in TD-17 for a good reason — a counter has to be read before it can be incremented, and two writers reading the same counter increment it to the same number. For optimistic concurrency that is exactly right, and nothing about it is wrong today. For a merge it is not enough: `14-Synchronization` §6 orders a change set by "a Lamport clock keyed on the device" and §7 resolves account name, currency and opening balance by last-writer-wins on `(device_id, lamport_clock)`. Neither a device id nor a logical clock exists anywhere in `src/` — a grep for `device_id`, `lamport` and `tombstone` returns nothing at all. The new `RowUpdatedAtUtc` is a wall clock, and wall clocks on two machines disagree | A stable per-installation device id plus a monotonic per-row counter, alongside the token rather than replacing it — the two answer different questions. Do NOT resolve conflicts by wall-clock time; that is the silent-data-loss shape §4 rejected by name | P3 | 🔴 **Open** — registered iteration 35, §12.72 |
+| TD-145 | Every delete is physical, so a deletion cannot be merged | 🟡 | Six repositories call `DbSet.Remove` and the row is gone; there is no `IsDeleted`, no `HasQueryFilter` and no deletion record anywhere in the model. `14-Synchronization` §6 says a change set MAY contain tombstones, which presumes a deletion leaves something behind to carry. It does not here: a merge between a vault where a row was deleted and one where it was not cannot tell deletion from absence, and absence loses — the row comes back. `Transaction.Void` is NOT the counter-example; it is a cancellation that deliberately keeps the row, and a voided transaction can still be physically deleted afterwards | Tombstones on the roots, with a retention policy, gated behind the same decision as sync itself. Worth noting that this is the one item of the four where the local-only product is currently BETTER off: a hard delete is a hard delete, which is what a privacy-first ledger should mean by the word | P3 | 🔴 **Open** — registered iteration 35, §12.72 |
+| TD-146 | Identity is stable now, but it is surrogate — there are still no natural keys | 🟡 | Phase 3's gate says "stable natural keys" and iteration 35 delivered the first half only. Every id is a client-minted `Guid` that now survives an edit, which it did not before (TD-60). What no aggregate has is a key derived from what the thing IS: `Account.Name`, `Category.Name` and `ImportProfile.Name` carry no unique index, and the only genuine unique constraint in the entire schema is `IX_Settings_Key`. `Transaction.ImportKey` is the closest thing to a business key and is deliberately nullable and deliberately non-unique (see the reasoning on that index). The consequence is precise: two vaults can each keep their rows' identities perfectly and still have no way to recognise that they hold the same account | Decide per aggregate whether a natural key exists at all — for `Account` it plausibly does not, and a merge may have to ask the user, which `14-Synchronization` §4 layer (3) already anticipates. Do not manufacture one from a name a user can edit | P3 | 🔴 **Open** — registered iteration 35, §12.72 |
+
+### 12.71 Next (after iteration 34) - superseded
 
 - **TD-07 — re-arm CI.** Nineteen iterations.
 - **TD-140** — the integration flake, now seen on three different tests across two iterations.
@@ -6893,3 +7116,378 @@ still costs a re-run.
   **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
   **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
 - **TD-84** last, unchanged.
+
+---
+
+### 12.74 Iteration 36 — Phase 3, item 6: the plugin host is withdrawn, and this document's own prior answer was wrong
+
+**Ticket:** Phase 3 item 6, "Plugin host, or formally retire the two plugin documents and delete the
+empty projects." **This closes Phase 3.**
+
+**One third of the instruction was already done, and this document had already recorded a wrong
+answer to the rest.** The empty projects were deleted in iteration 27 — verified in git: commit
+`9771a85` removed `src/Pine.Plugins.Host/Pine.Plugins.Host.csproj` and
+`src/Pine.Plugins.Sdk/Pine.Plugins.Sdk.csproj`, and no plugin project is in `Pine.slnx`. That makes
+this the **sixth consecutive Phase 3 row whose premise did not survive contact with the code** — and
+the only one where the defective premise was written by this audit rather than inherited.
+
+#### TD-38 claimed this row was satisfied. It was not, and the argument is worth dismantling
+
+TD-38's Status column reads: the retirement condition was *"satisfied without inventing a new status
+value, since `Aspirational` already means 'nothing in the tree does this', which an absent project
+states more precisely than an empty one."* §12.56 makes the same argument at length.
+
+The premise is true. The conclusion does not follow. `DocumentStatusTests` defines `Aspirational` as
+**"nothing in the tree does this. *It may still be a good plan.*"** That is two claims: one about the
+scaffolding, one left open about the plan. Deleting the empty projects sharpened the first and did
+not touch the second. A reader opening 646 lines of host design marked `Aspirational` was still
+entitled to conclude that somebody intended to build it — and nothing had decided otherwise.
+
+Retirement answers the open half. No amount of precision about scaffolding can express that answer,
+so the fifth status value iteration 27 declined to invent was in fact required. **The checkbox
+staying unticked for nine iterations while a debt row called it done is the visible symptom of the
+same gap.**
+
+#### The decision, and why it is not about effort
+
+**Pine will not load third-party code.** ADR-0021, Accepted.
+
+The deciding argument is that the specification cannot be satisfied in-process, which is a stronger
+claim than "this would be a lot of work":
+
+- `12-Plugin-Architecture` §5 loads a plugin **"in an isolated load context"**. In .NET that is an
+  `AssemblyLoadContext`, and an `AssemblyLoadContext` **is not a security boundary** — it isolates
+  type identity and enables unloading. Code Access Security and partial-trust `AppDomain`s, the
+  mechanisms that once made in-process sandboxing conceivable, were removed in .NET Core and nothing
+  replaced them.
+- `15-Security` §10 requires that **"a plugin has no access to the data key."** Verified in this
+  codebase: `VaultSession.Key` returns the live `byte[]`, not a defensive copy — deliberately, and
+  the class says why, because copies multiply the number of copies of the key in memory. Anything in
+  the process that can reach the session can read it.
+
+So §5's mechanism cannot deliver §10's requirement. Two further collisions were found and are worth
+recording because both are invisible rather than merely unbuilt:
+
+- **A plugin could break ADR-0012 while every test defending it stayed green.** `NetworkEgressTests`
+  scans `src/` and `.csproj` files. A plugin is neither, so a plugin opening a socket would violate
+  "no network I/O anywhere in the application" without tripping the guard that exists precisely to
+  make that impossible.
+- **Nothing in this repository can verify a signature.** No certificate handling, no trust store, no
+  signature verification of any kind. `12-Plugin-Architecture` §6's "a manifest without a valid
+  signature MUST be rejected by the loader" described a check no code could perform.
+
+The design that would work is out-of-process isolation, and the ADR says so rather than pretending
+the idea is bad: one process per plugin, an IPC surface carrying only granted projections, the key
+never crossing it. It is a subsystem larger than this application currently is, and it sits beneath
+a marketplace and a signing infrastructure that do not exist. That is a proportion argument, and it
+is made in the open.
+
+#### `Withdrawn` — a fifth status value, with a price attached
+
+`Aspirational` costs nothing to write and commits nobody, which is right for a plan not yet built.
+`Withdrawn` makes the opposite claim — that a decision was taken — and `docs/adr/INDEX.md` already
+documents what that claim is worth without a record: *"An 'Accepted' decision with no record is not a
+decision that was made and written down badly — it is a claim about the project's history that
+nothing supports."*
+
+So the label has a price: `EveryWithdrawnDocumentCitesAnAdrThatExists` fails the build unless the
+document's **Status row** names an ADR that resolves to a file. The fifth value is not a new place to
+evade, because it is the only one of the five that cannot be written without also writing something
+else.
+
+The ADR is numbered **0021**, not 0014. `25-ADR` §11 seeds `0001`–`0020` and assigns 0014 to "Plugin
+manifests MUST be signed" and 0005 to "Adopt in-process plugin host"; taking either number would
+have produced a file whose number asserts the opposite of its content.
+
+#### The blast radius, handled where the promises were made
+
+Twenty-four documents mention plugins. The ones rewritten are the ones that make a **normative**
+promise:
+
+| Document | What changed |
+|---|---|
+| `12-Plugin-Architecture`, `33-Plugin-SDK` | `Withdrawn — ADR-0021`. Bodies kept unedited: a design specified and then declined is worth more as a record than as a deletion |
+| `07-Functional-Requirements` | `FR-PLUGIN-01`…`06` struck through in place, `FR-SYNC-01` superseded. Struck rather than deleted because `19-Traceability-Matrix` counts them, and a requirement that vanishes is harder to audit than one visibly retracted |
+| `02-Product-Scope` | §7.3 withdrawn; §7.2's "via plugins" struck. SCOPE-22 will not be built |
+| `15-Security` | §10 withdrawn — **and annotated as the section that decided the question**, because it was right and the specification it constrained could not satisfy it |
+| `14-Synchronization` | `ISyncProvider` re-homed from `33-Plugin-SDK` to this document; providers are compiled in |
+
+**Sync was the collateral damage and it is repaired rather than mourned.** §12.72 had recorded that
+`02-Product-Scope` §7.2 scoped sync to plugins only, which made the plugin host gate sync outright.
+Withdrawing plugins without re-homing sync would have retired sync by accident — one iteration after
+its persistence preconditions were deliberately built. `FR-SYNC-01`'s "no sync provider may be
+hard-coded" is superseded on its own terms: the clause existed to stop one vendor being welded into
+the product, and an interface with several compiled implementations serves that purpose without
+executing anyone else's code.
+
+Non-normative documents — `00-Vision`, `23-Roadmap`, `55-Future-Vision`, `05-Personas` and the
+`SH-PLUGIN-AUTHOR` stakeholder — still describe a plugin ecosystem. They are **not** edited here:
+they are not specifications, and revising a product's stated direction is a decision to take
+deliberately rather than as the side effect of a technical one. **TD-147.**
+
+#### Falsification, and the mutation that found a real hole in the new test
+
+**Three mutations, three killed — but the first one survived its first run and exposed a genuine
+weakness.**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | A `Withdrawn` document whose Status names no ADR | **SURVIVED, then killed.** See below |
+| M2 | A `Withdrawn` document citing `ADR-0099`, which has no file | **Killed** |
+| M3 | `Withdrawn` removed from the closed vocabulary | **Killed** — both documents rejected |
+
+M1's first version of the rule read the Status **and** the Reconciled line, reasoning that the
+evidence could sit in either row. It could — but so could an unrelated citation. Removing the
+ADR-0021 reference left the test green, because the same paragraph mentions **ADR-0012** in passing
+while explaining the egress collision. "Cites some ADR somewhere" is not the property worth having.
+The rule now reads the Status row only: the status must name the decision that withdrew the
+document. **The mutation is the only reason that distinction was noticed** — the test passed in
+exactly the way a vacuous test passes.
+
+#### Verified state
+
+- Unit **1003 → 1004**, integration **234**, both green. `Pine.Ui.Windows`, `Pine.Ui.Macos`,
+  `Pine.Cli` and both test projects: 0 warnings, 0 errors.
+- **No source file changed in this iteration**, and that is the point: there was nothing to remove.
+  The empty projects went in iteration 27; what was left was a decision nobody had taken.
+- `EveryAdrQuotationStillAppearsInTheDocumentItCites` passes with the new ADR, so ADR-0021's
+  quotations of `15-Security` §10 are verbatim rather than paraphrased.
+
+#### New debt
+
+- **TD-147** — the non-normative documents still promise a plugin ecosystem.
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-147 | The non-normative documents still describe a plugin ecosystem that will not exist | 🔵 | ADR-0021 withdrew the plugin surface and every NORMATIVE document was amended with it. Six non-normative ones were deliberately not touched: `00-Vision` Pillar F promises "a community-driven ecosystem of plugins, themes, importers, exporters, financial providers and languages"; `01-Business-Requirements` carries three key results that count third-party plugins (`KR-01-2`, `KR-01-3`, `KR-05-1`); `23-Roadmap` schedules a marketplace at v0.5; `17-Risk-Analysis` R-10 mitigates "a plugin ecosystem never forms" with "stable Plugin SDK; public SDK roadmap; sample plugins"; `55-Future-Vision` calls plugins "a first-class extension surface"; and `05-Personas` PERS-07 is a plugin author, with `04-Stakeholders` `SH-PLUGIN-AUTHOR` beside her. None of these specifies software behaviour, so none of them can mislead a reader about what the code does — which is why they were left rather than swept along | Revise the product's stated direction deliberately, as a decision about what Pine is for, rather than as the side effect of a technical ADR. R-10 in particular is now answered rather than mitigated: the ecosystem will not form because there will not be one. A persona whose goal the product has declined to serve should either be retired or re-aimed at the compiled-in extension seams | P3 | 🔴 **Open** — registered iteration 36, §12.74 |
+
+#### Phase 3 is closed
+
+Six rows. **Five of the six had a false or stale premise**, and the sixth — this one — had two: the
+projects it asked to delete were already gone, and the retirement it asked for had been recorded as
+done on an argument that did not hold. The phase's most useful output was not any single feature; it
+was that every row was checked before it was obeyed.
+
+### 12.73 Next (after iteration 35) - superseded
+
+- **TD-07 — re-arm CI.** Twenty iterations.
+- **TD-140** — the integration flake, now seen on four different tests across three iterations.
+- **Phase 3 item 6 — the plugin host, or the formal retirement of the two plugin documents.** It is
+  the last unchecked row in the phase, and iteration 35 made it load-bearing rather than optional:
+  sync is scoped to plugins, so `12-Plugin-Architecture` now gates `14-Synchronization` outright.
+- **TD-144**, **TD-145**, **TD-146** — the three things still between this schema and a merge.
+- **TD-132** — still open; the string is now load-bearing in two subsystems.
+- **TD-142**, **TD-143** — the two halves of the rule engine deliberately left.
+- **TD-139** — the exception sentences below the UI layer.
+- **TD-141** — the manual attachment path FR-TXN-02 asks for.
+- **TD-117's remaining half**, **TD-138**, **TD-120 — the camera seam**, **TD-21**.
+- **TD-121** — the shipped navigation defect that drops the shell.
+- **TD-99 — make the budgets screen true or take it down.** Deferred an eighteenth time, and still
+  the last surviving member of its class.
+- **TD-109's second half**, **TD-115's second half**, **TD-130**, **TD-135**.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+- **TD-84** last, unchanged.
+
+---
+
+### 12.76 Iteration 37 — the three findings of the cross-phase audit, closed
+
+**Ticket:** the closing audit of all four phases asked one question — can this be called closed? —
+and returned three things that had to be fixed before the answer could be yes. This iteration is
+those three. Two of them were defects nobody had noticed; the third was this document's own
+conclusion.
+
+#### 1. Excel and PDF import: the worst defect still shipping, and a severity that had gone stale
+
+`ExcelImporter` and `PdfImporter` each opened the file, walked the rows or pages, and returned an
+empty list **reporting success**. The import wizard's file picker offered "Spreadsheets
+(*.xlsx, *.xls)" and "PDF Statements (*.pdf)" as named categories. So a user could select their
+bank's statement, be told the import had succeeded, and receive nothing — indistinguishable from a
+statement that genuinely held no rows.
+
+**The register had this at 🟡 P2, and the reason it was low is instructive.** TD-67's Impact column
+reads: "neither is reachable from the wizard, which hardcodes `CsvImporter`". That was true when it
+was written. **TD-28, five iterations later, made it false** — it replaced the hard-coded importer
+with `ExtensionImporterFactory.ForFile`, precisely to stop a `.xlsx` being read as CSV, and in doing
+so wired both stubs to the picker for the first time. Fixing one row promoted another, and the
+severity was never re-read.
+
+TD-67 offered "implement or delete" and **both branches were taken, one each**:
+
+- **Excel is implemented**, against the same `ImportProfile` column mapping, date format, amount
+  inversion and `ImportKeyFactory` derivation that CSV uses, so a statement exported as `.csv` and
+  as `.xlsx` derives identical import keys and de-duplicates against itself. Typed cells are handled
+  — an Excel date arrives as a `DateTime` and an amount as a `double`, neither of which is a string
+  — with the string forms as fallback. One deliberate divergence from CSV is documented in the code:
+  a blank spreadsheet cell is `DBNull` where CsvHelper yields `""`, so without an explicit
+  row-has-any-value guard every trailing blank row in a bank export would have imported as an
+  "Unknown" transaction of zero.
+- **PDF is deleted** — the file, its tests, and the `PdfPig` package reference with it. A PDF
+  statement has no columns, no delimiter, and no two banks that agree on layout; parsing one is a
+  project, not a missing method body. A `.pdf` now reaches `UnsupportedImportFormatException`, which
+  says in a sentence that this screen cannot read it.
+
+The picker now offers `.csv`, `.xlsx` and `.xls` and nothing else. The image patterns are gone too
+(TD-122): they belong to receipt scanning, a different screen with a different pipeline.
+`UnsupportedImportFormatException`'s own remarks had predicted this — *"the picker's filter list
+should be narrowed; until it is, the failure is at least stated rather than silent"* — and that
+paragraph is kept, because it called it correctly.
+
+#### 2. TD-99: the budgets screen stops fabricating numbers
+
+`BudgetsViewModel` set `SpentAmount = 0m` with the comment "Will be calculated from transactions",
+so every progress bar read 0% and `IsExceeded` was never true, and rendered the category as
+`"Category " + CategoryId.ToString()[..4]` — a truncated GUID where a name belongs. Deferred
+nineteen times, and the last screen in the application showing a number that was not measured.
+
+Spend is now computed in the application layer by `GetBudgetProgressQuery`: voided transactions
+excluded on the same rule the ledger uses, expenses only, inside a half-open period window
+`Budget.ResolveWindow` derives from the stored dates or the calendar period.
+
+**The honest part is what it does when it cannot answer.** `Budget.CategoryId` is a `Guid`;
+`TransactionSplit.Category` is a string (TD-32, and TD-132 for why nothing writes a `Categories`
+row). The only available join is `CategoryId → Category.Name → split.Category`, which is exact where
+a category row exists and impossible where one does not — which, given TD-132, is what a
+user-created budget looks like today. **Where the join or the window cannot be resolved, the answer
+is "not known", not zero**, and the screen says so. A `BiWeekly` budget with no stored dates reports
+unknown for the same reason: a fortnight has no calendar anchor and the aggregate stores no origin,
+so inventing one would put a fabricated number back on the screen this row exists to clean up.
+Cross-currency splits are excluded rather than converted — there is no exchange-rate source — and
+counted, so the exclusion is visible.
+
+#### 3. TD-56's shipped half: the export button, and a security sentence that was false
+
+`SettingsViewModel.ExportVault()` was an empty method bound to a visible button, while
+`ExportVaultBackupCommand` and `VaultBackupService` sat complete and unused. It now runs the backup
+and tells the user the path it wrote to. `LockVault()` was the same shape — an empty body — and
+**it was bound to a visible "Lock Vault" button too**, so it was wired to the session rather than
+deleted.
+
+**And the panel was telling users something untrue about their own encryption.** The description
+string read *"Save a **decrypted** backup to disk."* The backup is produced by `VACUUM INTO` on the
+already-keyed SQLCipher connection: it is encrypted with the very same key, and an existing test —
+`CreateBackupAsync_ShouldProduceBackupEncryptedWithSameKey` — proves it by opening the result with
+the right key and then the wrong one. The string is corrected. It is a one-line fix and it was the
+only place in the product where a shipped sentence misdescribed the security posture, in the
+direction that would make a careful user avoid a feature that was safe.
+
+The restore half of TD-56 is NOT done: recovery still means copying a file by hand. The row stays
+open, narrowed.
+
+#### 4. §11, the audit's own conclusion, which was thirty-six iterations stale
+
+The Final verdict still read **2.3 / 5**, described "11.7k lines of source, 28 tests" against today's
+~39.9k and 1,238, asserted "no unit of work, no validation stage, no concurrency control, no
+correction path" — all four built in Phases 1 and 2 — and named as the **most important next
+action** exactly the work TD-01 completed. Anyone reading the document's conclusion got a picture of
+a different codebase.
+
+It is rewritten as §11.1, and **the original is preserved verbatim as §11.2 rather than replaced**,
+because an audit that silently rewrites its own conclusion is worth less than one that shows what it
+outgrew. The new verdict is **3.4 / 5, still not production ready** — the difference is that the
+blockers are now a bounded punch list, which is precisely what the original said they were not.
+
+#### Falsification
+
+**Three mutations, three killed — and the first attempt at M1 was invalid, which is worth recording.**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `ExcelImporter` discards the rows it parsed and returns an empty list | **Killed** — 11 of 12 |
+| M2 | `GetBudgetProgressQuery` reports `Money.Zero` again — the exact TD-99 defect | **Killed** — 10 |
+| M3 | The export path is never entered — the button does nothing again | **Killed** — 5 of 6 |
+
+M1's first attempt patched the wrong `return`: a regex took the first match, which is the
+invalid-file guard, not the accumulator at the end of the method. Twelve tests passed and the
+mutation appeared to survive. **The conclusion "the tests are vacuous" was available and would have
+been wrong** — re-reading the patched line showed it had landed on line 75 rather than 233. Applied
+to the real return, eleven tests died. A mutation that does not compile or does not apply is not a
+survivor; it is a mutation that was not run.
+
+#### Verified state
+
+- Unit **1004 → 1049**, integration **234**, both green. `Pine.Ui.Windows`, `Pine.Ui.Macos`,
+  `Pine.Cli` and both test projects: 0 warnings, 0 errors.
+- **`BuildHygieneTests.NoCentralVersionIsUnreferenced` caught this iteration's own mistake**:
+  removing `PdfPig` from `Pine.Infrastructure.csproj` left its `PackageVersion` orphaned in
+  `Directory.Packages.props`. The tripwire TD-41 installed did exactly what it was built for.
+- Coverage rose rather than fell: overall 67 → **68**, `Pine.Application` 57 → **59**,
+  `Pine.Ui.Avalonia` 37 → **38**. Floors raised to match.
+- Three mechanical fixes on agent-written code, all of the recurring kind: `--` inside an XAML
+  comment (which breaks the parser outright), and CA1848/CA1873/CA1859, resolved with the same
+  scoped `#pragma` `CategorizationTrainingBackgroundService` already uses.
+
+#### What this does NOT close
+
+- **TD-07.** CI is still `workflow_dispatch:` only. It is now the largest single gap in the project.
+- **TD-56's restore half**, **TD-121**, **TD-108**, **TD-54**, **TD-140** — the remaining 🟠 P1s.
+- `GetBudgetsQuery` now has no callers. Left in place rather than deleted unilaterally. **TD-148.**
+
+| ID | Row | Sev | Impact | Fix | Pri | Status |
+|---|---|---|---|---|---|---|
+| TD-148 | `GetBudgetsQuery` is unreferenced now that the budgets screen reads progress instead | 🟢 | The budgets page was its only caller and now sends `GetBudgetProgressQuery`, which returns the budget's limit, period and category alongside the measured spend. Nothing else in `src/` or `tests/` sends the old query. It is dead code of the mildest kind — a query handler that compiles, is registered by the MediatR assembly scan, and answers nobody | Delete it, or keep it deliberately if a caller that wants budgets WITHOUT the ledger read is coming. Not deleted in the iteration that orphaned it, because deciding the fate of a public request type is a separate judgement from fixing a screen, and TD-37's lesson is that deleting a type is cheap only when nothing was going to use it | P3 | 🔴 **Open** — registered iteration 37, §12.76 |
+
+### 12.75 Next (after iteration 36) - superseded
+
+**Phase 3 is closed. There is no Phase 4 in §10, so the next iteration begins with the register
+rather than the roadmap.**
+
+- **TD-07 — re-arm CI.** Twenty-one iterations. It is now the single largest gap: every regression
+  net built across three phases is inert until something triggers the workflow.
+- **TD-140** — the integration flake, seen on four different tests across three iterations.
+- **TD-147** — the non-normative documents still describe a plugin ecosystem that will not exist.
+- **TD-144**, **TD-145**, **TD-146** — the three things still between this schema and a merge. Sync
+  is now reachable: its preconditions exist and its delivery mechanism is no longer a plugin host
+  that will never be built.
+- **TD-132** — still open; the category string is load-bearing in two subsystems.
+- **TD-142**, **TD-143** — the two halves of the rule engine deliberately left.
+- **TD-139** — the exception sentences below the UI layer.
+- **TD-141** — the manual attachment path FR-TXN-02 asks for.
+- **TD-117's remaining half**, **TD-138**, **TD-120 — the camera seam**, **TD-21**.
+- **TD-121** — the shipped navigation defect that drops the shell.
+- **TD-99 — make the budgets screen true or take it down.** Deferred a nineteenth time, and now the
+  last placeholder of its class still standing.
+- **TD-109's second half**, **TD-115's second half**, **TD-130**, **TD-135**.
+- **TD-84** — the Diagnostic Information Bundle. Its Fix column says "build the DIB once metrics,
+  SLOs and a plugin host exist"; one third of that condition can now never be met, so the row needs
+  re-scoping rather than waiting.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.
+
+---
+
+### 12.77 Next
+
+- **TD-07 — re-arm CI.** Twenty-two iterations, and now unambiguously first: every guard this audit
+  built across four phases runs only when a human asks it to.
+- **TD-56's restore half** — backups can be made from the UI as of this iteration and still cannot
+  be restored from it.
+- **TD-121** — the navigation defect that replaces the whole shell.
+- **TD-108** — the unsigned release artefact. **TD-54** — CI enumerates projects, not the solution.
+- **TD-140** — the integration flake, four tests across three iterations.
+- **TD-148** — `GetBudgetsQuery` is now unreferenced.
+- **TD-147** — the non-normative documents still promise a plugin ecosystem.
+- **TD-144**, **TD-145**, **TD-146** — the three things between this schema and a merge.
+- **TD-132** — the category string is load-bearing in three subsystems now, budgets included: this
+  iteration had to route budget spend through a name because the id relationship does not exist.
+- **TD-142**, **TD-143**, **TD-139**, **TD-141**, **TD-138**, **TD-120**, **TD-21**,
+  **TD-117's remaining half**.
+- **TD-84** — the DIB, whose Fix column waits on a plugin host that will now never exist.
+- **TD-97**, **TD-129**, **TD-126**, **TD-127**, **TD-128**, **TD-124**, **TD-119**, **TD-113**,
+  **TD-114**, **TD-108**, **TD-106**, **TD-111**, **TD-104**, **TD-107**, **TD-101**, **TD-102**,
+  **TD-105**, then **TD-103**.
+- **TD-94's lesson**, unchanged and still the largest.
+- **TD-133**, **TD-134**, **TD-125**, **TD-122**, **TD-123**, **TD-46**, **TD-50**, **TD-118**,
+  **TD-110**'s remaining half, **TD-93**, **TD-89**, **TD-86**, **TD-78**, **TD-75**'s siblings
+  **TD-95**, **TD-96**, **TD-100**, **TD-91**, **TD-112**, **TD-131**, and **TD-116**.

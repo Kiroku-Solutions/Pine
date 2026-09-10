@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-15-SECURITY`                                                               |
 | Status           | Partially implemented — see the clause-by-clause table already in §4                 |
-| Reconciled       | 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). |
+| Reconciled       | 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). **AMENDED 2026-09-09 (ADR-0021):** §10 Plugin Security Boundaries is **withdrawn, and it is the section that decided the question** — its "a plugin has no access to the data key" is unsatisfiable in-process, because an `AssemblyLoadContext` isolates type identity rather than access and `VaultSession.Key` returns the live key array. The section was right; the specification it constrained could not satisfy it. Kept unedited as the record of the constraint. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-08-29                                                                           |
@@ -190,7 +190,13 @@ sequenceDiagram
 - Secrets are scrubbed from any file the user is encouraged to share
   (logs, support bundles) by an allow-list of fields.
 
-## 10. Plugin Security Boundaries
+## 10. Plugin Security Boundaries — **WITHDRAWN (ADR-0021)**
+
+> **This section is why there are no plugins.** Its second bullet is a requirement no in-process
+> plugin host can meet: an `AssemblyLoadContext` isolates type identity, not access, and
+> `VaultSession.Key` hands out the live key array to anything in the process that can reach the
+> session. The section was not wrong — it was right, and the specification it constrained could not
+> satisfy it. It is kept unedited below as the record of the constraint that decided the question.
 
 - A plugin runs in an isolated load context.
 - A plugin has no access to the data key.

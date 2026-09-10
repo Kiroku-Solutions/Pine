@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-09 · Extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-09 · Extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -16,6 +16,11 @@ Nothing has been released. The build is stamped `0.1.0-alpha.1`; there is no ins
 signed artefact and no update mechanism, so "unreleased" is literal.
 
 ### Added
+- **Every record now carries when it was written and when it was last changed.** Two columns on
+  every table, filled in by the database layer rather than by each feature, so nothing can forget
+  them. They are not shown anywhere yet: this is the groundwork multi-device sync is gated behind,
+  and rows written before this release read as "never stamped" rather than pretending to a date
+  nobody chose.
 - **A rule engine, and a screen to write rules in.** A rule is a title, a priority, a category and
   up to eight conditions over a transaction's payee, notes or amount — all of which must hold. Rules
   are evaluated on every import and on manual entry, and a matching rule **beats the on-device
@@ -73,6 +78,27 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **Importing an Excel statement now actually imports it.** Selecting a `.xlsx` or `.xls` file used
+  to report success and add nothing — indistinguishable from a statement with no rows in it. Excel
+  files are now read with the same column mapping, date format and duplicate detection as CSV, so
+  the same statement exported either way imports identically and will not double up.
+- **PDF statements are now refused instead of silently importing nothing.** The picker offered "PDF
+  Statements" and the reader behind it parsed no rows at all. Rather than leave a promise that
+  cannot be kept, PDF has been removed: picking one now says plainly that this screen cannot read
+  it. Receipt images were removed from that picker too — they belong to receipt scanning.
+- **Budgets show what you have actually spent.** Every budget used to display 0% spent, whatever you
+  had spent, and named its category with a fragment of an internal identifier. Spend is now measured
+  from your transactions within the budget's period, ignoring voided ones. Where Pine genuinely
+  cannot match a budget to your spending it says so rather than showing you a zero.
+- **The "Export Vault" button works.** It was connected to nothing at all. It now writes an
+  encrypted backup and tells you where it went. The panel beside it also claimed the backup was
+  *decrypted*; it never was, and the text has been corrected. "Lock Vault" in Settings was dead in
+  the same way and now locks the vault.
+- **Editing a transaction no longer silently rebuilds its splits.** Saving a transaction used to
+  delete every one of its splits and its receipt line items and write them back as brand-new rows,
+  even when nothing about them had changed — so the parts of a transaction had no lasting identity
+  of their own. They keep it now. Nothing you can see changes today; what changes is that a split
+  can be referred to, which is what an audit trail, and eventually multi-device merging, both need.
 - **Automatic transaction categorisation now works at all.** The feature shipped unable to run:
   the component that learns from your existing categories discarded every example before training,
   so no model was ever built; and any suggestion it did produce was thrown away before it reached
@@ -81,6 +107,14 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   correctly.
 
 ### Changed
+- **Pine will not load third-party code, and that is now a decision on the record rather than an
+  absence.** The plugin host, the plugin SDK and the plugin marketplace were specified in detail and
+  never built; they are now formally withdrawn (ADR-0021). The reason is not effort: the security
+  specification required that a plugin never see your vault key, and no plugin running inside the
+  application can be prevented from reaching it. Extensibility continues as features built into
+  Pine and shipped with it — every line of code that touches your vault is code this project wrote.
+  Cloud sync, which had been specified as something only a plugin could provide, is unaffected and
+  keeps its place on the roadmap.
 - **Categories can no longer reference a parent that does not exist.** The parent link was an
   unconstrained column; it is now a real foreign key, so the database refuses to strand a
   sub-category. Existing vaults are migrated in place.

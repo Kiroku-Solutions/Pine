@@ -64,11 +64,11 @@ set -euo pipefail
 # lowest because a headless test of a view is worth little; that is a statement about where testing
 # effort is worth spending, not permission for it to rot -- the floor still ratchets.
 # ---------------------------------------------------------------------------
-FLOOR_OVERALL=66
+FLOOR_OVERALL=68
 FLOOR_PINE_CORE=88
-FLOOR_PINE_INFRASTRUCTURE=77
-FLOOR_PINE_APPLICATION=57
-FLOOR_PINE_UI_AVALONIA=37
+FLOOR_PINE_INFRASTRUCTURE=78
+FLOOR_PINE_APPLICATION=59
+FLOOR_PINE_UI_AVALONIA=38
 
 RUN_TESTS=1
 REPORT=""

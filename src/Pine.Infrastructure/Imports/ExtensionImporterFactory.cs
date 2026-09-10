@@ -64,7 +64,6 @@ public sealed class ExtensionImporterFactory : IImporterFactory
         {
             ".csv" => new CsvImporter(_timeProvider),
             ".xlsx" or ".xls" => new ExcelImporter(_timeProvider),
-            ".pdf" => new PdfImporter(_timeProvider),
 
             // NOT a default branch by omission. Before TD-28 this position was occupied by
             // CsvImporter, so a .png reached the CSV reader. See UnsupportedImportFormatException

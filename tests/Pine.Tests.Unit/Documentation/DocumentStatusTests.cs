@@ -55,10 +55,26 @@ public class DocumentStatusTests
     /// glossary, a persona set, a backlog, a working record. It cannot be implemented or
     /// unimplemented, and forcing one of the three labels above onto it would be a category error
     /// dressed as rigour.</item>
+    /// <item><c>Withdrawn</c> — this will not be built, and the decision is recorded in an ADR. See
+    /// the remarks below on why this had to be a fifth value rather than a shade of the third.</item>
     /// </list>
     /// There is deliberately no "Draft" and no "pending review": both are statements about the
     /// document's editorial state, and a reader deciding whether to trust a specification needs a
     /// statement about the SOFTWARE.
+    /// <para>
+    /// WHY <c>Withdrawn</c> EXISTS, AND WHY ITERATION 27's ARGUMENT AGAINST IT WAS WRONG. §12.56
+    /// considered adding this value for the plugin documents and rejected it, reasoning that
+    /// <c>Aspirational</c> already covered the case because deleting the empty projects made the
+    /// documents "more precisely `Aspirational` than they were". The premise is true and the
+    /// conclusion does not follow. <c>Aspirational</c> is defined immediately above as "nothing in
+    /// the tree does this. **It may still be a good plan**" — it is a statement about the SCAFFOLDING
+    /// plus an open question about the PLAN. Retiring a document answers that question in the
+    /// negative, and no amount of precision about the scaffolding can express it. A reader who opens
+    /// a 646-line specification marked <c>Aspirational</c> is entitled to conclude somebody still
+    /// intends to build it; after ADR-0021 that conclusion is false, and a vocabulary that cannot
+    /// say so is a vocabulary that misleads. The fifth value was not evasion — it was the missing
+    /// word.
+    /// </para>
     /// </remarks>
     private static readonly string[] AllowedStatusPrefixes =
     {
@@ -66,6 +82,7 @@ public class DocumentStatusTests
         "Partially implemented",
         "Aspirational",
         "Non-normative",
+        "Withdrawn",
     };
 
     private const string BannedStatus = "Draft — pending review";
@@ -97,6 +114,78 @@ public class DocumentStatusTests
 
         unknown.Should().BeEmpty(
             "an open vocabulary is not a classification; it is a place to write a new evasion");
+    }
+
+    /// <summary>
+    /// A document may only be <c>Withdrawn</c> if an ADR file says so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS IS WHAT STOPS THE FIFTH VALUE BECOMING THE EVASION THE OTHER FOUR WERE DESIGNED AGAINST.
+    /// <c>Aspirational</c> costs nothing to write and commits nobody; that is appropriate, because
+    /// it is the honest label for a plan not yet built. <c>Withdrawn</c> makes the opposite claim —
+    /// that a decision was taken — and a claim about a decision with no record of the decision is
+    /// exactly the defect `docs/adr/INDEX.md` documents at length: "An 'Accepted' decision with no
+    /// record is not a decision that was made and written down badly — it is a claim about the
+    /// project's history that nothing supports."
+    /// </para>
+    /// <para>
+    /// So the label has a price, and the price is writing the ADR. The citation must resolve to a
+    /// FILE, on the same rule <see cref="EveryAdrCitedInSourceHasAFile"/> applies to source: a
+    /// pointer to `25-ADR` §11's seeded backlog is not a decision record, and the numbering there is
+    /// already known to be unreliable.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryWithdrawnDocumentCitesAnAdrThatExists()
+    {
+        var adrDirectory = Path.Combine(RepositoryRoot(), "docs", "adr");
+
+        var existing = Directory
+            .GetFiles(adrDirectory, "*.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(name => name is not null && name.Length >= 4)
+            .Select(name => name![..4])
+            .ToHashSet(StringComparer.Ordinal);
+
+        var citation = new System.Text.RegularExpressions.Regex(
+            @"ADR-(\d{4})",
+            System.Text.RegularExpressions.RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+
+        var offenders = new List<string>();
+
+        foreach (var document in Documents().Where(d =>
+                     d.Status?.StartsWith("Withdrawn", StringComparison.Ordinal) == true))
+        {
+            // THE STATUS ROW, NOT THE WHOLE HEADER, AND A MUTATION IS WHY. The first version of this
+            // rule read the Reconciled line too, on the reasoning that the evidence could sit in
+            // either row. It could — but so could an ADR citation that has nothing to do with the
+            // withdrawal: removing `12-Plugin-Architecture`'s ADR-0021 citation left the test green,
+            // because the same paragraph mentions ADR-0012 in passing while explaining an unrelated
+            // collision. "Cites some ADR somewhere" is not the property worth having. The status
+            // itself must name the decision that withdrew the document.
+            var cited = citation.Matches(document.Status ?? string.Empty)
+                .Select(match => match.Groups[1].Value)
+                .ToList();
+
+            if (cited.Count == 0)
+            {
+                offenders.Add($"{document.Name}: Withdrawn, but its Status names no ADR");
+                continue;
+            }
+
+            foreach (var serial in cited.Where(serial => !existing.Contains(serial)))
+            {
+                offenders.Add($"{document.Name}: cites ADR-{serial}, which has no file");
+            }
+        }
+
+        offenders.Should().BeEmpty(
+            "Withdrawn asserts that a decision was taken, so it must point at the record of it — "
+            + "otherwise it is the same unsupported claim about the project's history that "
+            + "docs/adr/INDEX.md exists to warn about. Write it as "
+            + "\"Withdrawn - ADR-NNNN; short reason\"");
     }
 
     /// <summary>

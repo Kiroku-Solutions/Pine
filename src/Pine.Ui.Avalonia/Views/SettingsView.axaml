@@ -138,13 +138,34 @@
                          change needs three fields and a strength meter, which does not fit the
                          one-line-per-action shape of this section. -->
 
-                    <Grid ColumnDefinitions="*, Auto" Margin="0,4">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="{loc:Tr Settings.Security.ExportVault.Button}" Command="{Binding ExportVaultCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
-                    </Grid>
+                    <!-- TD-56: this button was bound to an empty method and did nothing at all.
+                         It now runs ExportVaultBackupCommand, and the sentence below it names the
+                         file that was written. The destination is the vault's own backups
+                         directory, chosen by the backup service and not by a picker, so telling
+                         the user where it went is the only way they can find it. -->
+                    <StackPanel Spacing="8" Margin="0,4">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Security.ExportVault.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="{loc:Tr Settings.Security.ExportVault.Button}" Command="{Binding ExportVaultCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsExportingVault}" />
+
+                        <!-- Success and failure are both sentences that say in words which they
+                             are; VaultExportFailed only tints them. -->
+                        <Border IsVisible="{Binding VaultExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                CornerRadius="8" Padding="14,10"
+                                Background="{DynamicResource PineSurfaceElevated}"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource PineBorder}">
+                            <TextBlock Text="{Binding VaultExportMessage}" TextWrapping="Wrap" FontSize="13"
+                                       Classes.pine-strength-danger="{Binding VaultExportFailed}"
+                                       Classes.pine-strength-success="{Binding !VaultExportFailed}" />
+                        </Border>
+                    </StackPanel>
 
                     <Grid ColumnDefinitions="*, Auto" Margin="0,4">
                         <StackPanel>

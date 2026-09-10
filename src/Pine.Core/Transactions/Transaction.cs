@@ -330,9 +330,21 @@ public sealed class Transaction : AggregateRoot
     /// validated first, so a rejected set leaves the aggregate completely unmutated.
     /// An empty (or null) sequence clears the splits, which is a valid state.
     /// </summary>
+    /// <remarks>
+    /// A DEFINITION CARRYING AN ID THAT IS ALREADY HERE UPDATES THAT SPLIT INSTEAD OF REPLACING IT
+    /// (TD-60). The set is still replaced wholesale as far as the caller is concerned — anything not
+    /// named is gone — but a split that survives the replacement keeps the identity it had, rather
+    /// than being deleted and re-inserted under a new <see cref="Guid"/> on every save.
+    /// <para>
+    /// The staging is now over DEFINITIONS rather than over freshly built splits, and that is what
+    /// preserves this method's stated guarantee: the sum is checked before a single existing child
+    /// is touched, so a rejected set still leaves the aggregate completely unmutated. Building the
+    /// children first and validating them afterwards would have been a mutation before a throw.
+    /// </para>
+    /// </remarks>
     public void ReplaceSplits(IEnumerable<SplitDefinition> splits)
     {
-        var staged = new List<TransactionSplit>();
+        var staged = new List<SplitDefinition>();
 
         if (splits is not null)
         {
@@ -344,14 +356,38 @@ public sealed class Transaction : AggregateRoot
                 if (definition.Amount.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Split currency must match transaction currency.", nameof(splits));
 
-                staged.Add(new TransactionSplit(Id, definition.Amount, definition.Category, definition.Notes));
+                staged.Add(definition);
             }
         }
 
-        ValidateSplitSum(staged);
+        ValidateAmountsSumToTotal(
+            staged.ConvertAll(definition => definition.Amount),
+            "The sum of splits must equal the total transaction amount.");
+
+        var survivors = new Dictionary<Guid, TransactionSplit>();
+        foreach (var split in _splits)
+        {
+            survivors[split.Id] = split;
+        }
+
+        var applied = new List<TransactionSplit>(staged.Count);
+        foreach (var definition in staged)
+        {
+            // Remove on match, so a set naming the same id twice produces two rows rather than one
+            // instance tracked under one key twice — which EF Core refuses outright.
+            if (definition.Id != Guid.Empty && survivors.Remove(definition.Id, out var existing))
+            {
+                existing.Update(definition.Amount, definition.Category, definition.Notes);
+                applied.Add(existing);
+            }
+            else
+            {
+                applied.Add(new TransactionSplit(Id, definition.Amount, definition.Category, definition.Notes));
+            }
+        }
 
         _splits.Clear();
-        _splits.AddRange(staged);
+        _splits.AddRange(applied);
     }
 
     /// <summary>
@@ -393,7 +429,7 @@ public sealed class Transaction : AggregateRoot
     /// </remarks>
     public void ReplaceLineItems(IEnumerable<LineItemDefinition> lineItems)
     {
-        var staged = new List<TransactionLineItem>();
+        var staged = new List<LineItemDefinition>();
 
         if (lineItems is not null)
         {
@@ -405,14 +441,34 @@ public sealed class Transaction : AggregateRoot
                 if (definition.UnitPrice.Currency != TotalAmount.Currency || definition.TotalPrice.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Line item currency must match transaction currency.", nameof(lineItems));
 
-                staged.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind));
+                staged.Add(definition);
             }
         }
 
-        ValidateLineItemSum(staged);
+        ValidateStagedLineItemSum(staged);
+
+        var survivors = new Dictionary<Guid, TransactionLineItem>();
+        foreach (var lineItem in _lineItems)
+        {
+            survivors[lineItem.Id] = lineItem;
+        }
+
+        var applied = new List<TransactionLineItem>(staged.Count);
+        foreach (var definition in staged)
+        {
+            if (definition.Id != Guid.Empty && survivors.Remove(definition.Id, out var existing))
+            {
+                existing.Update(definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind);
+                applied.Add(existing);
+            }
+            else
+            {
+                applied.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind));
+            }
+        }
 
         _lineItems.Clear();
-        _lineItems.AddRange(staged);
+        _lineItems.AddRange(applied);
     }
 
     /// <summary>
@@ -502,15 +558,30 @@ public sealed class Transaction : AggregateRoot
     /// </summary>
     public bool HasLineItemsPredatingKinds => _lineItems.Exists(li => li.Kind is null);
 
-    private void ValidateSplitSum(List<TransactionSplit> splits)
+    private void ValidateSplitSum(List<TransactionSplit> splits) =>
+        ValidateAmountsSumToTotal(
+            splits.ConvertAll(split => split.Amount),
+            "The sum of splits must equal the total transaction amount.");
+
+    /// <summary>
+    /// The shared core of both sum invariants, over amounts rather than over children.
+    /// </summary>
+    /// <remarks>
+    /// Taking amounts is what lets <see cref="ReplaceSplits"/> check a candidate set before it has
+    /// built anything, which is how "a rejected set leaves the aggregate unmutated" survived the
+    /// TD-60 change from building children to updating them.
+    /// </remarks>
+    private void ValidateAmountsSumToTotal(List<Money> amounts, string message)
     {
-        if (splits.Count > 0)
+        if (amounts.Count == 0)
         {
-            var sum = splits.Aggregate(Money.Zero(TotalAmount.Currency), (current, split) => current + split.Amount);
-            if (sum != TotalAmount)
-            {
-                throw new InvalidOperationException("The sum of splits must equal the total transaction amount.");
-            }
+            return;
+        }
+
+        var sum = amounts.Aggregate(Money.Zero(TotalAmount.Currency), (current, amount) => current + amount);
+        if (sum != TotalAmount)
+        {
+            throw new InvalidOperationException(message);
         }
     }
 
@@ -563,12 +634,46 @@ public sealed class Transaction : AggregateRoot
         var sum = SumOfLineItems(lineItems, TotalAmount.Currency);
         if (sum != TotalAmount)
         {
-            throw new InvalidOperationException(
-                $"The sum of the line items ({sum}) must equal the total transaction amount ({TotalAmount}). " +
-                $"Record the {TotalAmount - sum} difference as an adjustment line — tax, tip, discount, " +
-                "deposit, rounding or unattributed — rather than leaving it unexplained.");
+            throw LineItemSumFailure(sum);
         }
     }
+
+    /// <summary>
+    /// The TD-19 invariant checked over a candidate set, before any child has been touched.
+    /// </summary>
+    /// <remarks>
+    /// The null-kind escape hatch is repeated here rather than shared, and it has to be: a legacy
+    /// row whose kind is absent still suspends the invariant, and a staged set is where a legacy
+    /// row's kind arrives — the repository's detached path re-describes materialised children and
+    /// carries a null kind through deliberately. Losing the check here would reconcile a set the
+    /// data has never reconciled.
+    /// </remarks>
+    private void ValidateStagedLineItemSum(List<LineItemDefinition> staged)
+    {
+        if (staged.Count == 0)
+        {
+            return;
+        }
+
+        if (staged.Exists(definition => definition.Kind is null))
+        {
+            return;
+        }
+
+        var sum = staged.Aggregate(
+            Money.Zero(TotalAmount.Currency),
+            (current, definition) => current + definition.TotalPrice);
+
+        if (sum != TotalAmount)
+        {
+            throw LineItemSumFailure(sum);
+        }
+    }
+
+    private InvalidOperationException LineItemSumFailure(Money sum) =>
+        new($"The sum of the line items ({sum}) must equal the total transaction amount ({TotalAmount}). " +
+            $"Record the {TotalAmount - sum} difference as an adjustment line — tax, tip, discount, " +
+            "deposit, rounding or unattributed — rather than leaving it unexplained.");
 
     private static Money SumOfLineItems(List<TransactionLineItem> lineItems, CurrencyCode currency) =>
         lineItems.Aggregate(Money.Zero(currency), (current, lineItem) => current + lineItem.TotalPrice);

@@ -26,6 +26,14 @@ namespace Pine.Core.Importing;
 /// is at least stated rather than silent.
 /// </para>
 /// <para>
+/// THE FILTER LIST HAS SINCE BEEN NARROWED, and the paragraph above is kept because it called this
+/// correctly. <c>ImportWizardView</c> now offers <c>.csv</c>, <c>.xlsx</c> and <c>.xls</c> only:
+/// the image patterns are gone, and so is <c>PdfImporter</c>, which was worse than the images —
+/// an image at least reached this exception, while a PDF reached a reader that returned an empty
+/// list and reported success. This type is now the refusal for a genuinely unsupported file rather
+/// than the visible edge of a picker that promised more than the application could read.
+/// </para>
+/// <para>
 /// It implements <see cref="IUserFacingFailure"/> (TD-24) because the sentence is the entire point:
 /// a user who picked the wrong file needs to know which files this screen accepts, and nothing else.
 /// <see cref="Exception.Message"/> is the engineer's version and names the extension for the log;

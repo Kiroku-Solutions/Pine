@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Pine.Core.Accounts;
 using Pine.Core.Attachments;
 using Pine.Core.Rules;
@@ -21,6 +22,7 @@ public sealed class PineDbContext : DbContext
 {
     private readonly string _databasePath;
     private readonly byte[] _encryptionKey;
+    private readonly TimeProvider _timeProvider;
 
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
@@ -31,10 +33,18 @@ public sealed class PineDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
 
-    public PineDbContext(string databasePath, byte[] encryptionKey)
+    /// <param name="databasePath">Path to the keyed SQLite file.</param>
+    /// <param name="encryptionKey">The SQLCipher key.</param>
+    /// <param name="timeProvider">
+    /// Clock used to stamp the audit columns. Optional because this constructor has ninety call
+    /// sites and almost all of them are tests that do not care what time it is; the ones that DO
+    /// care pass a fake and get a deterministic stamp.
+    /// </param>
+    public PineDbContext(string databasePath, byte[] encryptionKey, TimeProvider? timeProvider = null)
     {
         _databasePath = databasePath;
         _encryptionKey = encryptionKey;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -341,6 +351,59 @@ public sealed class PineDbContext : DbContext
         });
 
         ConfigureConcurrencyTokens(modelBuilder);
+        ConfigureAuditColumns(modelBuilder);
+    }
+
+    /// <summary>When the row was first written. A fact about the row, not about the domain.</summary>
+    public const string CreatedAtColumnName = "RowCreatedAtUtc";
+
+    /// <summary>When the row was last written.</summary>
+    public const string UpdatedAtColumnName = "RowUpdatedAtUtc";
+
+    /// <summary>
+    /// Gives every aggregate root the two audit columns Phase 3 gates synchronisation behind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE PREFIX IS NOT DECORATION. Five of these types already have a creation stamp of their own
+    /// — <c>Account.CreatedAt</c>, <c>Transaction.CreatedAt</c> and <c>ImportProfile.CreatedAt</c>
+    /// as <see cref="DateTimeOffset"/>, <c>Attachment.CreatedAtUtc</c> and <c>Rule.CreatedAtUtc</c>
+    /// as <see cref="DateTime"/> — and a shadow property that collided with one of those names
+    /// would silently bind to the domain property instead of creating anything. <c>Row</c> says
+    /// which of the two a reader is looking at, and says the right thing: the domain stamp is when
+    /// the user's money moved, this one is when the row was written, and an edit three months later
+    /// moves one and not the other.
+    /// </para>
+    /// <para>
+    /// SHADOW, FOR TD-17's REASON. The existing stamps are hand-written in each mutator, which is
+    /// why <c>Transaction</c> has a <c>CreatedAt</c> and no <c>UpdatedAt</c> at all, and why
+    /// <c>Category</c>, <c>Setting</c> and <c>Budget</c> have neither: every new write path is
+    /// another chance to forget. A column nothing in the domain can write cannot be forgotten.
+    /// </para>
+    /// <para>
+    /// <see cref="DateTime"/> IN UTC, NOT <see cref="DateTimeOffset"/>, for the reason TD-31 found
+    /// the hard way: SQLite stores a <see cref="DateTimeOffset"/> as text carrying its offset and
+    /// cannot ORDER BY it correctly. An audit column that cannot be ordered would be worth very
+    /// little, since "what changed since" is the only question anyone asks of one.
+    /// </para>
+    /// <para>
+    /// ROOTS ONLY, matching <see cref="ConfigureConcurrencyTokens"/>. A split is part of its
+    /// transaction; the transaction's stamp is the aggregate's stamp, and
+    /// <see cref="PromoteOwnersOfChangedChildren"/> already guarantees a child-only edit reaches it.
+    /// </para>
+    /// </remarks>
+    private static void ConfigureAuditColumns(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (entityType.IsOwned())
+            {
+                continue;
+            }
+
+            modelBuilder.Entity(entityType.ClrType).Property<DateTime>(CreatedAtColumnName);
+            modelBuilder.Entity(entityType.ClrType).Property<DateTime>(UpdatedAtColumnName);
+        }
     }
 
     /// <summary>The shadow property every aggregate root carries as its optimistic concurrency token.</summary>
@@ -440,6 +503,11 @@ public sealed class PineDbContext : DbContext
 
         PromoteOwnersOfChangedChildren();
 
+        // Read once, so every row written by one SaveChanges carries the same instant. Two rows
+        // saved together are one change, and a merge that saw them a few ticks apart could order
+        // them against each other, which is a distinction this system does not have.
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified))
@@ -456,7 +524,33 @@ public sealed class PineDbContext : DbContext
             // overwriting it here would compare the row against the token being written and match
             // every time — a concurrency token that never detects anything.
             entry.CurrentValues[ConcurrencyTokenName] = Guid.NewGuid();
+
+            StampAuditColumns(entry, now);
         }
+    }
+
+    /// <summary>
+    /// Writes the row's audit stamps. An insert sets both; an update moves only the second.
+    /// </summary>
+    /// <remarks>
+    /// The creation stamp is left alone on an update rather than re-written, which is the whole
+    /// point of having two: if both moved together the pair would carry exactly as much information
+    /// as one column, and the question "has this row ever been touched since it was written" — the
+    /// question a merge asks first — could not be answered at all.
+    /// </remarks>
+    private static void StampAuditColumns(EntityEntry entry, DateTime now)
+    {
+        if (entry.Metadata.FindProperty(UpdatedAtColumnName) is null)
+        {
+            return;
+        }
+
+        if (entry.State == EntityState.Added)
+        {
+            entry.CurrentValues[CreatedAtColumnName] = now;
+        }
+
+        entry.CurrentValues[UpdatedAtColumnName] = now;
     }
 
     private void PromoteOwnersOfChangedChildren()

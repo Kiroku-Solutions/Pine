@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-07-FUNCTIONAL-REQUIREMENTS`                                               |
 | Status           | Partially implemented — no FR-to-code traceability exists                            |
-| Reconciled       | 2026-08-31 · Some requirements are met and some are not, and nothing links an `FR-*` id to the code or the test that would show which (`19-Traceability-Matrix` is aspirational). Read requirement by requirement, not as a whole. |
+| Reconciled       | 2026-08-31 · Some requirements are met and some are not, and nothing links an `FR-*` id to the code or the test that would show which (`19-Traceability-Matrix` is aspirational). Read requirement by requirement, not as a whole. **AMENDED 2026-09-09 (ADR-0021):** the whole `FR-PLUGIN-*` block is **withdrawn** and `FR-SYNC-01` is superseded — Pine does not load third-party code, and sync providers are compiled in rather than loaded. The requirements are struck through in place rather than deleted, because `19-Traceability-Matrix` counts them and a requirement that vanishes is harder to audit than one visibly retracted. FR-PLUGIN-03 is the one that could not be met: "a documented isolation boundary" is an `AssemblyLoadContext` in .NET, which is not a security boundary, and `15-Security` §10 requires a plugin have no access to the data key. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -141,29 +141,52 @@ Out of scope: quality attributes (performance, security, etc.) →
 - **FR-AI-08.** The system MUST allow the user to disable any AI
   capability entirely.
 
-### 5.5 FR-PLUGIN-* — Plugin surface
+### 5.5 FR-PLUGIN-* — Plugin surface — **WITHDRAWN (ADR-0021)**
 
-- **FR-PLUGIN-01.** The system MUST expose a stable, versioned
-  Plugin SDK (`33-Plugin-SDK`).
-- **FR-PLUGIN-02.** The system MUST support at least the following
+> **Every requirement in this section is withdrawn.** Pine does not load third-party code. The
+> requirements are struck through rather than deleted, because `19-Traceability-Matrix` counts them
+> and a requirement that vanishes is harder to audit than one that is visibly retracted.
+>
+> The decisive reason is that FR-PLUGIN-03 cannot be satisfied as written. "A documented isolation
+> boundary" resolves, in .NET, to an `AssemblyLoadContext`, which is not a security boundary; and
+> `15-Security` §10 requires that a plugin have no access to the data key, which nothing in-process
+> can guarantee. Enforcing declared permissions against code that shares the process with the
+> decryption key is enforcement against accidents, not against adversaries.
+>
+> Extensibility is re-homed onto compiled-in implementations behind existing ports.
+
+- ~~**FR-PLUGIN-01.** The system MUST expose a stable, versioned
+  Plugin SDK (`33-Plugin-SDK`).~~ **Withdrawn, ADR-0021.**
+- ~~**FR-PLUGIN-02.** The system MUST support at least the following
   plugin categories: sync, widget, theme, AI model, OCR, financial
   provider, importer, exporter, report, analytics, chart,
-  notification, recommendation, investment provider, language.
-- **FR-PLUGIN-03.** The system MUST execute plugins in a documented
-  isolation boundary and MUST enforce declared permissions.
-- **FR-PLUGIN-04.** The system MUST provide an in-app Plugin
-  Marketplace (SCOPE-22) for discovery, install, update and removal.
-- **FR-PLUGIN-05.** The system MUST record the trust signals of a
+  notification, recommendation, investment provider, language.~~
+  **Withdrawn, ADR-0021.**
+- ~~**FR-PLUGIN-03.** The system MUST execute plugins in a documented
+  isolation boundary and MUST enforce declared permissions.~~
+  **Withdrawn, ADR-0021 — and this is the one that could not be met.**
+- ~~**FR-PLUGIN-04.** The system MUST provide an in-app Plugin
+  Marketplace (SCOPE-22) for discovery, install, update and removal.~~
+  **Withdrawn, ADR-0021.**
+- ~~**FR-PLUGIN-05.** The system MUST record the trust signals of a
   plugin (signature, source, version, author) and present them to
-  the user before install.
-- **FR-PLUGIN-06.** The system MUST support offline use of
+  the user before install.~~ **Withdrawn, ADR-0021.** Nothing in the
+  repository can verify a signature; this requirement described a
+  check no code could perform.
+- ~~**FR-PLUGIN-06.** The system MUST support offline use of
   previously installed plugins; plugins that require network MUST
-  declare so and MUST NOT silently fail.
+  declare so and MUST NOT silently fail.~~ **Withdrawn, ADR-0021.**
 
 ### 5.6 FR-SYNC-* — Synchronisation
 
-- **FR-SYNC-01.** The system MUST implement sync as a plugin
-  contract; no sync provider may be hard-coded.
+- **FR-SYNC-01.** ~~The system MUST implement sync as a plugin
+  contract; no sync provider may be hard-coded.~~ **Superseded by
+  ADR-0021.** Sync providers are compiled in, behind one interface.
+  The clause's purpose — that no single vendor may be welded into the
+  product — is preserved by the interface; it did not require that the
+  implementations be loaded from outside. This requirement was the
+  reason `12-Plugin-Architecture` gated `14-Synchronization` outright,
+  and removing the gate is what keeps sync reachable.
 - **FR-SYNC-02.** The system MUST encrypt data client-side before
   sync; the sync provider MUST see only ciphertext.
 - **FR-SYNC-03.** The system MUST allow the user to choose any

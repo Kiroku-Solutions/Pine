@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-14-SYNCHRONIZATION`                                                        |
-| Status           | Aspirational — no synchronisation code exists                                        |
-| Reconciled       | 2026-08-31 · A repo-wide grep for sync services, conflict resolution or a sync envelope returns nothing. The `CloudSync` setting this document implied was removed by TD-48. |
+| Status           | Aspirational — no synchronisation code exists; its persistence preconditions now do  |
+| Reconciled       | 2026-09-09 · **Still no sync code, and that is now a decision rather than an absence.** A repo-wide grep for sync services, conflict resolution or a sync envelope still returns nothing, and the `CloudSync` setting this document implied was removed by TD-48. What changed is underneath: `60-Production-Readiness-Audit` §10 Phase 3 gates sync behind "row versions, audit columns and stable natural keys", and all three now exist — row versions since TD-17, audit columns and stable owned-child identity as of §12.72 (TD-60 closed). **Three things this document specifies are still missing and are registered rather than glossed:** §6's Lamport clock and the `device_id` §7 pairs with it (TD-144 — the row version is a random GUID, which detects a change but cannot order two of them), §6's tombstones (TD-145 — every delete in this codebase is physical), and natural keys (TD-146 — identity is stable now, but it is a surrogate; nothing recognises "the same account" across two vaults). **The plugin gate is gone as of ADR-0021** (§12.74): §8's `ISyncProvider` was owned by `33-Plugin-SDK`, which is now Withdrawn, and the contract is this document's own — sync providers are compiled in rather than loaded, so this document no longer waits on a plugin host that will never be built. Any network transport would also trip `NetworkEgressTests`, which per ADR-0012 is deleted deliberately or not at all. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -36,7 +36,7 @@ Out of scope: storage envelope → `15-Security`; data shapes →
 
 | Term                  | Working definition                                                                                |
 |-----------------------|------------------------------------------------------------------------------------------------------|
-| Provider              | A plugin that implements `ISyncProvider`.                                                            |
+| Provider              | A built-in implementation of `ISyncProvider`, shipped with Pine (ADR-0021).                          |
 | Envelope              | The encrypted payload exchanged with a provider.                                                     |
 | Change set            | The set of changes since the last successful sync.                                                  |
 | Cursor                | A provider-specific token identifying the last synchronised point.                                  |
@@ -91,7 +91,7 @@ properties of the envelope are:
 ```mermaid
 sequenceDiagram
     participant A as Device A
-    participant P as Sync Provider (plugin)
+    participant P as Sync Provider (built in)
     participant B as Device B
     A->>P: PUT envelope (ciphertext + cursor + sig)
     P-->>A: ack
@@ -132,6 +132,11 @@ explicitly; "everything is LWW" is rejected.
 
 ## 8. Provider Contract (high level)
 
+> **Amended by ADR-0021.** This section previously handed `ISyncProvider` to `33-Plugin-SDK`, which
+> is withdrawn. The interface is unchanged and becomes Pine's own: providers are compiled in and
+> shipped with the application, not loaded from outside it. Nothing else in this section changes,
+> because nothing else in it depended on who wrote the implementation.
+
 A provider implements `ISyncProvider` with the following surface:
 
 | Method                                | Purpose                                                                 |
@@ -143,8 +148,8 @@ A provider implements `ISyncProvider` with the following surface:
 | `Delete(envelopeId)`                  | Deletes a previously uploaded envelope (GDPR support).                   |
 | `Health()`                            | Returns the provider health (reachability, quota).                       |
 
-The contract is owned by `33-Plugin-SDK`; the security rules are
-owned by `15-Security`.
+~~The contract is owned by `33-Plugin-SDK`~~ — the contract is owned by this
+document (ADR-0021); the security rules are owned by `15-Security`.
 
 ## 9. Offline Behaviour
 
