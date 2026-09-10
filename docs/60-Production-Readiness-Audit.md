@@ -7469,6 +7469,13 @@ rather than the roadmap.**
 
 ### 12.77 Next
 
+**The ordered plan lives in `62-Post-Audit-Plan`.** §10's four phases are closed and it has no Phase
+4, so without a successor the next iteration would begin by picking a row out of a register of
+sixty-eight. That document orders what remains on three rules — a guard that does not run is not a
+guard; anything a user can see that is not true comes next; then correctness they cannot see, then
+breadth — and its Stage 0 is a single row.
+
+
 - **TD-07 — re-arm CI.** Twenty-two iterations, and now unambiguously first: every guard this audit
   built across four phases runs only when a human asks it to.
 - **TD-56's restore half** — backups can be made from the UI as of this iteration and still cannot
