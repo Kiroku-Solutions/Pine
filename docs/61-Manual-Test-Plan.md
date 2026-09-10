@@ -149,18 +149,26 @@ open half of TD-10.
 
 ---
 
-## 3. CI — item 3, TD-07 / TD-08 (regressed)
+## 3. CI — item 3, TD-07 / TD-08 (armed 2026-09-10)
 
-**3.1 [G] CI is manual-only.**
+**3.1 [G] CI is armed.**
 Open `.github/workflows/dotnet-ci.yml`.
-*Expected:* `on: workflow_dispatch:` and nothing else. The `push` / `pull_request` triggers were
-removed in `79c5364` to save compute minutes, so the regression net exists but is never armed.
-This item was ticked in iteration 1 and regressed afterwards — see §12.12 of the audit.
+*Expected:* the `on:` block carries `pull_request: branches: [main]`, `push: branches: [main]` and
+`workflow_dispatch:`. The first two were removed in `79c5364` and restored by plan item 0.1; a
+regression here is not a matter of taste, and `BuildHygieneTests.CiIsArmedOnPullRequestAndPushToMain`
+fails the suite if either goes missing.
 
-**3.2 [M] Dispatch it once by hand.**
-Run the workflow manually from the Actions tab.
-*Expected:* unknown — **it has never executed.** Whatever happens is new information worth
-recording in the audit.
+**3.2 [M] Open a pull request that must fail, and watch it be rejected.**
+Branch from `main`, add a test that asserts something false, push, open a pull request into `main`.
+*Expected:* the `test` job goes red without anyone starting it, and the pull request shows the
+failure. This is the step that distinguishes an armed workflow from a YAML diff — the trigger block
+can be right while the run never happens (a disabled workflow, a fork's default permissions, a
+branch-protection rule that was never configured). `package` is expected NOT to appear on the pull
+request: it is held back by an `if:`, deliberately.
+
+**3.3 [M] Then check the same commit on `main`.**
+After the pull request merges, open the Actions tab.
+*Expected:* a second run, from the `push` trigger, this time including `package`.
 
 ---
 

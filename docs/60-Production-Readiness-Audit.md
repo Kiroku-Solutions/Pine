@@ -502,7 +502,7 @@ any other single change.
 | TD-04 | `AddSplit` validates eagerly | 🔴 | Multi-split throws | Validate at aggregate boundary | P0 | ✅ **Done** |
 | TD-05 | No KDF version marker beside the salt | 🔴 | Parameter change bricks all vaults | Versioned vault header | P0 | ✅ **Done** |
 | TD-06 | ~~Key = password-derived key; no envelope~~ | 🔴 | ~~No password change, no biometric~~ | Wrapped data key | P0 | ✅ **Closed (iteration 13, §12.27)** — random data key wrapped with AES-256-GCM under the Argon2id auth key, bound to the header; password change shipped. Biometric is architecturally possible and **not built** (TD-87); the data key itself is still never rotated (TD-86) |
-| TD-07 | CI workflow is **manual-only** (`workflow_dispatch:`). The `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364`; iteration 6 took the second of the two options this row offered — **CI is opt-in by an explicit project decision** (compute-minute cost), not by accident | 🟠 | The regression net exists and is real, but nothing arms it: a broken head reaches `main` unless a human dispatches the workflow. Severity dropped 🔴→🟠 because the gap is now a known, chosen operating mode rather than an unnoticed regression — the *risk* is unchanged | Dispatch the workflow by hand before any release; re-arm `pull_request:` when compute budget allows | P1 | 🟡 **Accepted** — documented decision, iteration 6; see §12.12 and §12.14 |
+| TD-07 | CI workflow was **manual-only** (`workflow_dispatch:`). The `push`/`pull_request` triggers iteration 1 wrote were deleted in `79c5364`; iteration 6 took the second of the two options this row offered and recorded **CI is opt-in by an explicit project decision** (compute-minute cost). The post-audit plan reversed that decision: leverage, not cost, was the deciding term once the workflow gated five things it had not gated in `79c5364` | 🟠 | The regression net existed and was real, but nothing armed it: a broken head reached `main` unless a human dispatched the workflow. That was true for thirty-one iterations | **Done** (2026-09-10, plan item 0.1): `on:` now carries `pull_request: branches: [main]` and `push: branches: [main]`, keeping `workflow_dispatch`. `package` alone is held back from pull requests (a ~680 MB artefact no reviewer reads); every gate a reviewer needs runs. `BuildHygieneTests.CiIsArmedOnPullRequestAndPushToMain` reddens the suite if either trigger is deleted again — verified by deleting them and watching it fail | P1 | ✅ **Closed** — iteration 38; see §12.12, §12.14 and the note in `62-Post-Audit-Plan` §3 |
 | TD-08 | Web/Android/iOS reference a non-existent namespace | 🔴 | 3 of 6 heads uncompilable | Fix or remove; add to CI | P0 | 🟡 **Partial** |
 | TD-09 | Money-path tests cover atomicity, split-sum, owned-collection round trip, currency match, import dedup, void + balance recalculation, and — since iterations 8 and 9 — `Money` scale/rounding/`Allocate` (TD-18) and line-item reconciliation (TD-19) | 🟠 | The regression net now covers every closed P0 and both remaining money-path invariants; eleven falsification mutations across the two iterations, all killed | — | P1 | ✅ **Closed** — iteration 9, §12.20 |
 | TD-10 | No backup before migration | 🟠 | Unrecoverable data loss | Pre-migration copy + export | P0 | 🟡 **Partial** |
@@ -730,13 +730,20 @@ works end to end against the encrypted store.
 
 - **Biggest strength** — The write path is now atomic and correctable, and the privacy claims are
   enforced by tests rather than by intention.
-- **Biggest weakness** — **Nothing runs the tests automatically.** A regression reaches `main`
-  unless a human dispatches the workflow.
+- **Biggest weakness** — ~~**Nothing runs the tests automatically.** A regression reaches `main`
+  unless a human dispatches the workflow.~~ **Closed 2026-09-10** (TD-07, TD-136; plan item 0.1):
+  the workflow fires on `pull_request` into `main` and on `push` to `main`. This is struck through
+  rather than deleted because the sentence is the one `62-Post-Audit-Plan` §9 named as the plan's
+  definition of done, and a definition of done that quietly disappears proves nothing. **The
+  weakness that replaces it** is narrower: CI enumerates projects instead of building `Pine.slnx`,
+  so a project added later is outside it silently (TD-54), and a job that skips its own gate still
+  reports green (plan item 0.3).
 - **Biggest production risk** — No restore path. `VaultBackupService` produces backups and, until
   iteration 37, the Settings button that should trigger one did nothing; restoring one still means
   copying files by hand (TD-56).
-- **Most important next action** — Re-arm `pull_request:` on the CI workflow. Everything else in
-  this document is already guarded by something; that guard is the one that is switched off.
+- **Most important next action** — ~~Re-arm `pull_request:` on the CI workflow.~~ Done, 2026-09-10.
+  Next: restore from a backup, in the application (TD-56, plan item 1.1). A backup nobody can
+  restore is a backup in name, and it is now the largest thing a user can lose.
 
 **On the method, because it is the most transferable output.** Thirty-six iterations were run as
 implement → mutate → verify: after each change, deliberate defects were introduced to check that
@@ -6144,7 +6151,8 @@ never been trained, under a green suite, for the entire life of the project.
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-135 | Branch coverage is measured on every run and gated on nothing | 🟢 | The cobertura report carries `branch-rate` — **50.94% overall**, against 61.93% line — and `scripts/coverage-gate.sh` reads only line coverage. Branch coverage is the stricter and more useful signal: a line executed once with its `if` never taken is counted as covered, which is precisely how a money-path guard can be "covered" and never exercised. The gap between the two numbers (eleven points overall, twenty-three in `Pine.Infrastructure`, where it is 51.72% against 74.44% line) is the size of what the line floor cannot see | Add branch floors alongside the line floors, set the same way — measure, round down, ratchet. The script already parses the attribute it would need | P3 | 🔴 **Open** |
-| TD-136 | The coverage gate's CI half cannot fire, and neither can anything else in the workflow | 🟡 | This is TD-07 restated as a consequence rather than a cause, because iteration 30 is the first row whose deliverable is **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` now contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite — and it runs only on `workflow_dispatch`. Every regression net Phase 2 built into that file is inert. The local script is the working half, and it works only when a person remembers to run it | Re-arm `pull_request: branches: [main]`. One line. The compute-budget decision that removed it in `79c5364` was taken when the workflow tested almost nothing; it now gates five things that did not exist then | P1 | 🔴 **Open** |
+| TD-136 | The coverage gate's CI half could not fire, and neither could anything else in the workflow | 🟡 | This was TD-07 restated as a consequence rather than a cause, because iteration 30 was the first row whose deliverable was **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite, and it ran only on `workflow_dispatch`. Every regression net Phase 2 built into that file was inert | **Done** (2026-09-10, plan item 0.1), by the one line this column asked for: the coverage floor now runs on every pull request into `main`. It remains a one-command local script as well, so a contributor can answer it before pushing. **What this row did NOT cover, and plan item 0.3 does:** a workflow can run, skip its own gate on a condition, and still report green — nothing yet asserts the gate executed | P1 | ✅ **Closed** — iteration 38; the residual concern is tracked as plan item 0.3, not here |
+
 ### 12.64 Iteration 31 - Phase 3, item 1: the platform story, and a finding that was wrong
 
 **Ticket:** Phase 3 item 1, "Decide the platform story honestly. Either invest in per-RID native

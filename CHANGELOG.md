@@ -157,8 +157,10 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - The **budgets screen computes nothing**: its progress bar is hard-coded to zero and a budget can
   be exceeded without the screen saying so (TD-99).
 - The encrypted vault export has **no UI entry point and no restore path** (TD-56).
-- **CI runs only on manual dispatch**, so no commit is verified automatically and the Android and
-  iOS heads are compiled by nobody (TD-07).
+- ~~**CI runs only on manual dispatch**, so no commit is verified automatically and the Android and
+  iOS heads are compiled by nobody (TD-07).~~ **Fixed 2026-09-10:** the workflow runs on every pull
+  request into `main` and on every push to it, and the Android and iOS heads are among what it
+  compiles. Nothing yet runs either head on a device.
 - Changing your password rotates the key that protects your data key, **not** the data key itself.
   Someone who had already extracted the data key would still hold a working key. Rotating it
   requires re-encrypting the whole vault and is not yet implemented (TD-86).

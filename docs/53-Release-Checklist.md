@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-53-RELEASE-CHECKLIST`                                                       |
 | Status           | Aspirational — several gates cannot currently be satisfied                           |
-| Reconciled       | 2026-08-31 · It requires green CI (no automatic trigger exists), performance, mutation and accessibility gates (all three projects are empty templates), and sign-off from a Trust team and a Maintainer Council that do not exist. |
+| Reconciled       | 2026-08-31 · It requires green CI — which since 2026-09-10 does fire by itself, on `pull_request` into `main` and on `push` to `main` (TD-07) — plus performance, mutation and accessibility gates (all three projects were empty templates and were deleted in iteration 27), and sign-off from a Trust team and a Maintainer Council that do not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

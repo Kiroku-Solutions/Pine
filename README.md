@@ -83,7 +83,9 @@ Your money. Your data. Your control.
 - **No backup restore path, no installer, no code-signing certificate, and no update mechanism.**
   An update check would be Pine's first network call ever, so it is a privacy decision and not a
   packaging chore.
-- **CI runs only when a human dispatches it.** Nothing verifies a commit automatically (TD-07).
+- **CI is armed but the release path is not.** Every pull request into `main` and every push to it
+  builds all four heads and runs the suite (TD-07, closed). What still has no automation is the
+  step after that: no installer, no signing certificate, no release workflow.
 
 ---
 
@@ -116,8 +118,9 @@ dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
 dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
 ```
 
-The macOS, Android and iOS heads build from the same shared UI but are not verified: CI does not
-compile them (TD-07) and none of them has been packaged. Android and iOS additionally need their
+The macOS, Android and iOS heads build from the same shared UI. CI compiles all of them on every
+pull request into `main`, which is the whole of what is verified about them: none has been run on a
+device and none has been packaged. Android and iOS additionally need their
 respective `dotnet` workloads installed.
 
 ---

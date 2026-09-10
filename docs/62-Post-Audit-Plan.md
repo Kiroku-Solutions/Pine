@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-09                                                                           |
+| Last Updated     | 2026-09-10 — Stage 0 item 0.1 executed and recorded in §3.1                          |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -36,20 +36,52 @@ Three rules decide the order below, in priority:
 
 ## 3. Stage 0 — Arm the net (TD-07, TD-54, TD-136)
 
-**One row, and it is first by a wide margin.** CI is `workflow_dispatch:` only. A broken head, a
-failing test, a coverage regression or a new network dependency all reach `main` unless a person
-remembers to dispatch the workflow.
+**One row, and it was first by a wide margin.** CI *was* `workflow_dispatch:` only — a broken head, a
+failing test, a coverage regression or a new network dependency all reached `main` unless a person
+remembered to dispatch the workflow. **Item 0.1 closed that on 2026-09-10** (§3.1). Items 0.2 and 0.3
+remain: an armed trigger fires the jobs that exist, over the projects those jobs happen to name.
 
 | # | Work | Closes | Notes |
 |---|---|---|---|
-| 0.1 | Re-arm `pull_request: branches: [main]`, and `push:` on `main` | TD-07 | The trigger was removed in `79c5364` to save compute minutes; that was a real constraint and may still be. If the budget is the blocker, arm `pull_request` ONLY and accept slower merges — a gate on the way in is worth more than a gate after the fact |
+| 0.1 | ✅ **Done** (2026-09-10) — Re-arm `pull_request: branches: [main]`, and `push:` on `main` | TD-07, TD-136 | Both were armed, not just `pull_request`: the compute case was answered by holding back one job rather than one trigger (see §3.1 below) |
 | 0.2 | Build `Pine.slnx` instead of enumerating projects | TD-54 | A project added later is currently outside CI silently. This is the same drift class as TD-07 |
-| 0.3 | Assert the gate actually ran | TD-136 | A workflow that runs and skips its own gate is worse than one that does not run, because it reports green |
+| 0.3 | Assert the gate actually ran | — (TD-136 closed by 0.1) | A workflow that runs and skips its own gate is worse than one that does not run, because it reports green. TD-136's Fix column asked only for the trigger, which 0.1 delivered, so this item now stands on its own reasoning rather than on a register row |
 
 **Definition of done:** open a pull request with a deliberately failing test and watch CI reject it.
 Nothing in this stage is finished on the evidence of a YAML diff.
 
 **Estimate:** hours, not days. It is first because of leverage, not size.
+
+### 3.1 Item 0.1, as built (2026-09-10, iteration 38)
+
+`on:` now carries `pull_request: branches: [main]`, `push: branches: [main]` and the original
+`workflow_dispatch:`. Both triggers were armed rather than only `pull_request`, and the compute
+question this row raised was answered somewhere else: **the one job held back is `package`**, by an
+`if: github.event_name != 'pull_request'`. It publishes a ~680 MB artefact that no reviewer opens,
+and every defect it could catch is already caught by `desktop` and `test`, which it depends on and
+which do run on every pull request. Narrowing a trigger would have removed a gate; narrowing one job
+removed a bill. That distinction is the whole of the decision.
+
+**The trigger is now asserted by a test.** `BuildHygieneTests.CiIsArmedOnPullRequestAndPushToMain`
+isolates the `on:` block, with comment lines stripped, and fails if either trigger or either
+`branches: [main]` scope is gone. This is not ceremony: the triggers were deleted once already, in
+`79c5364`, and nothing anywhere went red. The guard was verified by falsification — the block was
+reduced back to `workflow_dispatch:` alone, the test failed, the block was restored, the test passed.
+
+Eight documents asserted the old state and were corrected rather than left to rot: `README`,
+`STATUS`, `CHANGELOG` §Known limitations, `16-Quality-Attributes` §Reconciled, `28-CI-CD`
+§Reconciled, `53-Release-Checklist` §Reconciled, `56-IMPLEMENTATION-PLAN` §Reconciled, and
+`61-Manual-Test-Plan` §3 — whose step 3.1 expected `on: workflow_dispatch:` *"and nothing else"* and
+would otherwise have become a manual test that fails when the product is right. Its §3 now walks the
+definition of done above. **Three of those eight were found by an adversarial re-read, not by the
+first sweep**, which is §7's item 4.3 arriving early: a sentence that was true when written goes
+false through work done somewhere else, and nothing points at it.
+
+**What is NOT proved by this, and is the honest limit of the row.** Everything above is still a YAML
+diff plus a unit test. A trigger block can be correct while no run ever happens — a disabled
+workflow, a repository whose Actions are off, a branch-protection rule that was never configured to
+require the check. `61-Manual-Test-Plan` §3.2 is the step that closes that gap, and it needs a real
+pull request against the real remote.
 
 ## 4. Stage 1 — Finish what the user can already see
 

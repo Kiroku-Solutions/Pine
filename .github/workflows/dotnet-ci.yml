@@ -5,20 +5,34 @@ name: CI
 # broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
 # The Web/WASM head no longer exists: iteration 31 deleted it (Phase 3, item 1).
 
-# TRIGGERS: MANUAL ONLY, BY DECISION (TD-07).
+# TRIGGERS: ARMED (TD-07 closed, post-audit plan Stage 0 item 0.1).
 # `push:` and `pull_request:` were removed in 79c5364 to save compute minutes, and iteration 6 of the
-# production-readiness remediation confirmed that as the intended operating mode rather than restoring
-# them. This is written down because the audit previously recorded it as an unnoticed regression, and
-# three iterations read past it.
+# production-readiness remediation confirmed that as the intended operating mode. It was the wrong
+# mode: for thirty-one iterations nothing fired this workflow, so a commit that broke a platform head
+# or reddened the suite reached `main` undetected unless a human remembered to dispatch it. Every
+# other guard this repository owns -- the architecture rules, the coverage floor, the egress scan, the
+# document-status tests, the whole suite -- was inert behind that missing trigger.
 #
-# WHAT THAT COSTS, STATED PLAINLY: nothing arms this workflow. A commit that breaks a platform head, or
-# a change that reddens the 170-test suite, reaches `main` undetected unless a human dispatches this
-# run. The jobs below are real and do build the product; they are simply never fired automatically.
+# WHAT IS ARMED, AND WHY EACH ONE:
+#   pull_request -> main : the gate ON THE WAY IN. This is the one that matters; a red PR cannot be
+#                          merged, which is the only point at which a defect is still cheap.
+#   push         -> main : the gate AFTER THE FACT, for anything that reaches main without a PR
+#                          (a direct push, an admin merge, a squash that behaves differently from its
+#                          PR head). It catches what the first one cannot see.
+#   workflow_dispatch    : kept, so a release build can still be fired by hand.
 #
-# THE OBLIGATION THAT REPLACES THE TRIGGER: dispatch this workflow by hand before any release, and
-# after any change to a platform head. Re-arm `pull_request: branches: [main]` when the compute budget
-# allows — that alone restores the regression net where it matters most.
+# THE COMPUTE BUDGET, STATED PLAINLY: this file fans out to six runner-legs per event, one of them
+# macOS (billed at 10x). That cost is accepted for `pull_request` and `push`, because a platform head
+# that only breaks on a runner nobody starts is exactly the failure TD-07 records. The ONE job held
+# back is `package`: it publishes a ~680 MB artefact and produces nothing a reviewer reads, so it is
+# skipped on pull_request (see its own `if:`) and runs on push/dispatch. If the budget ever becomes
+# the blocker again, narrow this to `pull_request` ALONE -- never to nothing. A gate on the way in is
+# worth more than a gate after the fact, and both are worth more than an obligation to remember.
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -264,11 +278,12 @@ jobs:
       # turn the gate into a source of noise nobody could act on. The suite still
       # runs on both; only the measurement is single-platform.
       #
-      # THE HONEST LIMIT OF THIS STEP: nothing triggers this workflow (TD-07). A
-      # coverage gate in a workflow that only runs on manual dispatch is a gate
-      # nobody passes through. The script is the part that works today -- it runs
-      # locally in one command -- and this step is what makes it automatic on the
-      # day the triggers come back.
+      # This step used to carry a disclaimer: "nothing triggers this workflow
+      # (TD-07), so a coverage gate here is a gate nobody passes through". The
+      # triggers came back in Stage 0 item 0.1 and the disclaimer went with them.
+      # The gate now runs on every pull request into main. It remains a one-command
+      # local script as well, so a contributor can answer it before pushing rather
+      # than after.
       - name: Coverage floor
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -314,11 +329,18 @@ jobs:
   # it. The publish step is the first thing in this repository that ever needed the
   # real bytes.
   #
-  # Like every job here, this one runs only on manual dispatch (see the header).
+  # THIS IS THE ONE JOB HELD BACK FROM PULL REQUESTS (Stage 0 item 0.1). It runs on
+  # push to `main` and on manual dispatch, not on every pull request. The reason is
+  # cost against value: it publishes a ~680 MB artefact that no reviewer downloads,
+  # and every defect it could catch -- a broken build, a red suite -- is already
+  # caught by `desktop` and `test`, which it depends on and which DO run on every
+  # pull request. What it uniquely proves is that the artefact still packages, and
+  # that question is asked on the way into `main`, not on the way into a review.
   # ---------------------------------------------------------------------------
   package:
     name: Package win-x64 artefact
     needs: [desktop, test]
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - name: Checkout (with LFS payloads, not pointers)

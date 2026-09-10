@@ -334,6 +334,79 @@ public partial class BuildHygieneTests
             + "the gate is also a one-command local script");
     }
 
+    /// <summary>
+    /// CI is armed: the workflow fires on a pull request into <c>main</c> and on a push to
+    /// <c>main</c>, not on a human remembering to dispatch it (TD-07, TD-136).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS TEST EXISTS BECAUSE THE TRIGGER HAS ALREADY BEEN DELETED ONCE. Commit <c>79c5364</c>
+    /// removed <c>push</c> and <c>pull_request</c> to save compute minutes; nothing failed, nothing
+    /// went red, and for thirty-one iterations the entire regression net -- the architecture rules,
+    /// the coverage floor, the egress scan, the document-status tests and the whole suite -- was
+    /// inert behind a trigger block nobody was looking at. The audit then spent three iterations
+    /// reading past the comment that said so.
+    /// </para>
+    /// <para>
+    /// A guard that can be switched off in one line, silently, is the failure this repository has
+    /// actually suffered, so the one line is asserted. Deleting either trigger now reddens the suite
+    /// that the trigger runs. That is not circular, it is the only arrangement available: the
+    /// assertion lives in the tests, and the tests are what the trigger fires.
+    /// </para>
+    /// <para>
+    /// COMMENT LINES ARE STRIPPED FIRST, and the <c>on:</c> block is isolated before anything is
+    /// matched. Both matter here. This workflow's header discusses <c>pull_request</c> at length, so
+    /// a test reading the raw file would stay green on the prose alone after the trigger itself had
+    /// been deleted -- the exact falsification that
+    /// <see cref="TheCoverageGateExistsAndIsArmedInCi"/> records having survived once already.
+    /// </para>
+    /// <para>
+    /// WHAT IT DOES NOT ASSERT: which jobs run on a pull request. <c>package</c> deliberately does
+    /// not (it publishes a ~680 MB artefact no reviewer reads), and pinning a job list here would
+    /// make every future job a two-file edit for no gain. Nor can it assert that GitHub ever ran
+    /// anything: that is proved by opening a pull request and watching it go red, which is the
+    /// definition of done this row was closed against.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void CiIsArmedOnPullRequestAndPushToMain()
+    {
+        var lines = File
+            .ReadAllLines(Path.Combine(RepositoryRoot(), ".github", "workflows", "dotnet-ci.yml"))
+            .Where(line => !line.TrimStart().StartsWith('#'))
+            .ToArray();
+
+        var start = Array.FindIndex(lines, line => line.TrimEnd() == "on:");
+
+        start.Should().BeGreaterThanOrEqualTo(0, "the workflow must declare an `on:` block");
+
+        // The block ends at the next line that starts in column zero: YAML's own rule, and the only
+        // one that keeps `push:` inside `on:` distinguishable from a `push:` written anywhere else.
+        var triggers = lines
+            .Skip(start + 1)
+            .TakeWhile(line => line.Length == 0 || char.IsWhiteSpace(line[0]))
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToArray();
+
+        triggers.Should().Contain(
+            "pull_request:",
+            "the gate ON THE WAY IN is the one that matters: without it a red branch merges, and the "
+            + "defect is found later by someone who did not write it. This is TD-07");
+
+        triggers.Should().Contain(
+            "push:",
+            "pull_request cannot see a direct push, an admin merge, or a squash whose result differs "
+            + "from the head that was reviewed");
+
+        triggers
+            .Count(line => line == "branches: [main]")
+            .Should()
+            .Be(2, "both triggers must be scoped to `main`, and an unscoped trigger is not the same "
+                 + "guard: it fires on every branch, costs six runner-legs each time, and is the "
+                 + "shape of the compute bill that got the triggers deleted in `79c5364`");
+    }
+
     [Fact]
     public void EveryProjectFileIsInTheSolution()
     {

@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-28-CI-CD`                                                                 |
 | Status           | Aspirational — the pipeline described is not the pipeline that exists                |
-| Reconciled       | 2026-08-31 · One workflow exists and it builds and tests. There is no sign-and-attest stage (§9), no SBOM, no provenance, no reproducibility check, and no automatic trigger at all (`dotnet-ci.yml`:20-21, TD-07). |
+| Reconciled       | 2026-08-31 · One workflow exists and it builds and tests. There is no sign-and-attest stage (§9), no SBOM, no provenance and no reproducibility check. The trigger gap is closed: as of 2026-09-10 the workflow runs on `pull_request` into `main` and on `push` to `main` (`dotnet-ci.yml`:31-36, TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
