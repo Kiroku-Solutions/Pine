@@ -92,6 +92,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # A receipt means "this job did this", so the log starts empty. The runners
+      # here are ephemeral and would give an empty workspace anyway; relying on
+      # that would be relying on a fact about someone else's infrastructure
+      # rather than on something this file states.
+      - name: Discard any stale gate receipts
+        shell: bash
+        run: bash scripts/ci-receipts.sh reset
+
       - name: Setup .NET SDK (pinned by global.json)
         uses: actions/setup-dotnet@v4
         with:
@@ -139,8 +147,34 @@ jobs:
           do
             echo "::group::build $p"
             dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
+            bash scripts/ci-receipts.sh record "build:$p"
             echo "::endgroup::"
           done <<< "$projects"
+
+      # -----------------------------------------------------------------------
+      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+      #
+      # Every step above can complete without doing its work: a step with an
+      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+      # an empty list iterates zero times. Both report green. This step states,
+      # independently of those steps, what this job was supposed to produce, and
+      # fails if a receipt is missing. Two statements that a mutation has to edit
+      # in both places is the whole mechanism.
+      #
+      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+      # can be skipped, which is the thing being guarded against.
+      # -----------------------------------------------------------------------
+      - name: Every desktop project was built
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=""
+          projects="$(bash scripts/ci-projects.sh desktop)"
+          while IFS= read -r p
+          do
+            expected="$expected build:$p"
+          done <<< "$projects"
+          bash scripts/ci-receipts.sh verify $expected
 
   # ---------------------------------------------------------------------------
   # Platform heads that require a .NET workload. These are NOT skipped: they are
@@ -180,6 +214,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # A receipt means "this job did this", so the log starts empty. The runners
+      # here are ephemeral and would give an empty workspace anyway; relying on
+      # that would be relying on a fact about someone else's infrastructure
+      # rather than on something this file states.
+      - name: Discard any stale gate receipts
+        shell: bash
+        run: bash scripts/ci-receipts.sh reset
 
       - name: Setup .NET SDK (pinned by global.json)
         uses: actions/setup-dotnet@v4
@@ -230,8 +272,34 @@ jobs:
           do
             echo "::group::build $p"
             dotnet build "$p" --configuration Release --no-restore
+            bash scripts/ci-receipts.sh record "build:$p"
             echo "::endgroup::"
           done <<< "$projects"
+
+      # -----------------------------------------------------------------------
+      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+      #
+      # Every step above can complete without doing its work: a step with an
+      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+      # an empty list iterates zero times. Both report green. This step states,
+      # independently of those steps, what this job was supposed to produce, and
+      # fails if a receipt is missing. Two statements that a mutation has to edit
+      # in both places is the whole mechanism.
+      #
+      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+      # can be skipped, which is the thing being guarded against.
+      # -----------------------------------------------------------------------
+      - name: Every ${{ matrix.head }} project was built
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=""
+          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+          while IFS= read -r p
+          do
+            expected="$expected build:$p"
+          done <<< "$projects"
+          bash scripts/ci-receipts.sh verify $expected
 
   # ---------------------------------------------------------------------------
   # Tests. Pine.Tests.Unit and Pine.Tests.Integration are the whole suite
@@ -257,6 +325,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # A receipt means "this job did this", so the log starts empty. The runners
+      # here are ephemeral and would give an empty workspace anyway; relying on
+      # that would be relying on a fact about someone else's infrastructure
+      # rather than on something this file states.
+      - name: Discard any stale gate receipts
+        shell: bash
+        run: bash scripts/ci-receipts.sh reset
 
       - name: Setup .NET SDK (pinned by global.json)
         uses: actions/setup-dotnet@v4
@@ -296,6 +372,7 @@ jobs:
           do
             echo "::group::build $p"
             dotnet build "$p" --configuration Release --no-restore
+            bash scripts/ci-receipts.sh record "build:$p"
             echo "::endgroup::"
           done <<< "$projects"
 
@@ -318,6 +395,7 @@ jobs:
               --configuration Release --no-build \
               --logger "trx;LogFileName=$suite-${{ matrix.os }}.trx" \
               --results-directory TestResults
+            bash scripts/ci-receipts.sh record "test:$p"
             echo "::endgroup::"
           done <<< "$projects"
 
@@ -344,6 +422,44 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: bash scripts/coverage-gate.sh
+
+      # -----------------------------------------------------------------------
+      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+      #
+      # Every step above can complete without doing its work: a step with an
+      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+      # an empty list iterates zero times. Both report green. This step states,
+      # independently of those steps, what this job was supposed to produce, and
+      # fails if a receipt is missing. Two statements that a mutation has to edit
+      # in both places is the whole mechanism.
+      #
+      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+      # can be skipped, which is the thing being guarded against.
+      # -----------------------------------------------------------------------
+      #
+      # THE COVERAGE CONDITION IS RESTATED HERE ON PURPOSE. The step above runs on
+      # ubuntu only; this says, separately, that on ubuntu the gate must have
+      # produced its receipt. Deleting that step, changing its condition, or
+      # replacing its `run:` with something that does nothing all break the
+      # agreement between the two.
+      - name: Every suite ran, and the coverage floor was answered
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=""
+          projects="$(bash scripts/ci-projects.sh test)"
+          while IFS= read -r p
+          do
+            # BOTH, and the `build:` half was missing until the guard test found it.
+            # Building a test project is itself a gate here -- Directory.Build.props
+            # makes a warning an error -- so a suite that was run without its
+            # project having been built in this job is a hole of the same shape.
+            expected="$expected build:$p test:$p"
+          done <<< "$projects"
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            expected="$expected coverage"
+          fi
+          bash scripts/ci-receipts.sh verify $expected
 
       - name: Upload test results
         if: always()
@@ -404,6 +520,14 @@ jobs:
         with:
           lfs: true
 
+      # A receipt means "this job did this", so the log starts empty. The runners
+      # here are ephemeral and would give an empty workspace anyway; relying on
+      # that would be relying on a fact about someone else's infrastructure
+      # rather than on something this file states.
+      - name: Discard any stale gate receipts
+        shell: bash
+        run: bash scripts/ci-receipts.sh reset
+
       - name: Verify the model weights are real files and not LFS pointers
         shell: bash
         run: |
@@ -417,6 +541,10 @@ jobs:
               exit 1
             fi
           done
+          # After the loop, so it cannot be reached by a loop that found no files
+          # at all -- which is how this check would otherwise pass over a moved
+          # or renamed Assets/Ai directory.
+          bash scripts/ci-receipts.sh record weights
 
       - name: Setup .NET SDK (pinned by global.json)
         uses: actions/setup-dotnet@v4
@@ -437,7 +565,27 @@ jobs:
         # requiring one would simply fail every run. The script prints an UNSIGNED warning and the
         # manifest records `"signed": false`. Add --require-signature on the day a certificate does
         # exist, so an unsigned build can never be published by accident.
-        run: bash packaging/package.sh --out artifacts
+        run: |
+          set -euo pipefail
+          bash packaging/package.sh --out artifacts
+          bash scripts/ci-receipts.sh record artefact
+
+      # -----------------------------------------------------------------------
+      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+      #
+      # Every step above can complete without doing its work: a step with an
+      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+      # an empty list iterates zero times. Both report green. This step states,
+      # independently of those steps, what this job was supposed to produce, and
+      # fails if a receipt is missing. Two statements that a mutation has to edit
+      # in both places is the whole mechanism.
+      #
+      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+      # can be skipped, which is the thing being guarded against.
+      # -----------------------------------------------------------------------
+      - name: The weights were checked and the artefact was built
+        shell: bash
+        run: bash scripts/ci-receipts.sh verify weights artefact
 
       - name: Upload the artefact and its manifest
         uses: actions/upload-artifact@v4

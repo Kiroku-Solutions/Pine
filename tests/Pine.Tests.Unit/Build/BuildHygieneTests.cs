@@ -588,6 +588,187 @@ public partial class BuildHygieneTests
     }
 
     /// <summary>
+    /// Every job that runs a gate ends by asserting that the gate actually ran, and that assertion
+    /// can never itself be skipped (plan item 0.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE FAILURE BEING GUARDED IS NOT A BROKEN GATE, IT IS AN ABSENT ONE. A step carrying an
+    /// <c>if:</c> that evaluates false is skipped, and a skipped step does not fail its job; a loop
+    /// over an empty list iterates zero times; a <c>run:</c> replaced by <c>echo skipped</c> exits 0.
+    /// All three report green. The coverage floor is the live case — it runs on ubuntu only, so on
+    /// windows it is skipped by design, and until this item nothing anywhere said it had to run on
+    /// ubuntu.
+    /// </para>
+    /// <para>
+    /// So each job records a receipt at the moment a gate succeeds and verifies the expected set at
+    /// the end, and this test asserts the arrangement is intact: a job that records must verify, and
+    /// a verify step must carry no condition. **A verify step with an `if:` is a gate that can be
+    /// skipped**, which is the exact shape of the problem it was added to solve.
+    /// </para>
+    /// <para>
+    /// It also asserts the workflow never writes the `coverage` receipt itself. That receipt is
+    /// written inside <c>scripts/coverage-gate.sh</c>, after the floors have been compared, because
+    /// a receipt written from the workflow would prove only that the workflow reached a line —
+    /// exactly the falsification that survived once already, when a guard matched the comment above
+    /// the coverage step instead of the step.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryJobWithAGateAssertsThatTheGateRan()
+    {
+        var jobs = WorkflowJobs();
+
+        // A JOB HAS A GATE IF IT RUNS ONE -- not if it happens to record a receipt. Deriving the set
+        // from the `record` calls was the first spelling of this test, and an adversarial pass
+        // deleted the desktop job's only `record` call: the job dropped out of the set it was being
+        // judged by, no assertion applied to it, and the suite stayed green. A test whose scope is
+        // defined by the thing it is checking cannot notice that thing's absence.
+        var gateCommands = new[] { "dotnet build", "dotnet test", "coverage-gate.sh", "package.sh" };
+
+        var gated = jobs
+            .Where(job => job.Value.Any(line => gateCommands.Any(gate => IsUncommented(line, gate))))
+            .ToArray();
+
+        gated.Should().NotBeEmpty("the workflow must run something worth gating");
+
+        foreach (var (job, lines) in gated)
+        {
+            lines.Should().Contain(
+                line => IsUncommented(line, "ci-receipts.sh reset"),
+                "job '{0}' must start from an empty receipt log, or a receipt proves only that some "
+                + "run somewhere once did the work", job);
+
+            lines.Should().Contain(
+                line => IsUncommented(line, "ci-receipts.sh record"),
+                "job '{0}' runs a gate and records nothing, so nothing can prove the gate ran", job);
+
+            lines.Should().Contain(
+                line => IsUncommented(line, "ci-receipts.sh verify"),
+                "job '{0}' records that its gates ran and never checks the receipts, which is the "
+                + "same green tick over nothing that the receipts exist to prevent", job);
+
+            var steps = WorkflowSteps(lines);
+
+            // EVERY RECEIPT RECORDED IS A RECEIPT VERIFIED. Narrowing `verify weights artefact` to
+            // `verify weights` used to pass: the test asked whether a verify call existed, never
+            // what it checked, so a gate could keep recording into a void. The names compared are
+            // the literal text as written -- `build:$p` here matches `build:$p` there -- because
+            // both sides are built from the same expansion and a difference between them is exactly
+            // the defect.
+            var recorded = steps
+                .SelectMany(step => step.Lines)
+                .Where(line => IsUncommented(line, "ci-receipts.sh record"))
+                .Select(line => ReceiptArgument(line, "record"))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            var verifying = steps
+                .Where(step => step.Lines.Any(line => IsUncommented(line, "ci-receipts.sh verify")))
+                .ToArray();
+
+            verifying.Should().HaveCount(
+                1,
+                "job '{0}' must have exactly one verify step; the receipts are consumed by the first "
+                + "one that passes, so a second could only ever fail or check nothing", job);
+
+            var verified = string.Join('\n', verifying[0].Lines);
+
+            foreach (var receipt in recorded)
+            {
+                verified.Should().Contain(
+                    receipt,
+                    "job '{0}' records the receipt '{1}' and its verify step never names it, so that "
+                    + "gate could stop running without anything noticing", job, receipt);
+            }
+
+            // ORDER IS PART OF THE MECHANISM. A verify step placed above the gates it checks would
+            // read an empty log and could only pass by checking nothing -- or, worse, pass on a
+            // stale one. It must come last.
+            var verifyIndex = steps.FindIndex(step => step.Name == verifying[0].Name);
+            var lastRecord = steps.FindLastIndex(
+                step => step.Lines.Any(line => IsUncommented(line, "ci-receipts.sh record")));
+
+            verifyIndex.Should().BeGreaterThan(
+                lastRecord,
+                "the verify step in job '{0}' runs before the gates it verifies", job);
+        }
+
+        foreach (var (job, lines) in jobs)
+        {
+            foreach (var (name, steps) in WorkflowSteps(lines))
+            {
+                if (!steps.Any(line => IsUncommented(line, "ci-receipts.sh verify")))
+                {
+                    continue;
+                }
+
+                steps.Should().NotContain(
+                    line => Regex.IsMatch(line, @"^\s+if:", RegexOptions.None, TimeSpan.FromSeconds(5)),
+                    "the verify step '{0}' in job '{1}' carries a condition. A verification that can "
+                    + "be skipped verifies nothing, and skipping is what it is there to catch",
+                    name,
+                    job);
+            }
+        }
+
+        var workflowWritesTheCoverageReceipt = jobs
+            .SelectMany(job => job.Value)
+            .Any(line => IsUncommented(line, "ci-receipts.sh record coverage"));
+
+        workflowWritesTheCoverageReceipt.Should().BeFalse(
+            "the coverage receipt must be written by scripts/coverage-gate.sh, after it has compared "
+            + "the floors. Written from the workflow it would prove only that the workflow reached a "
+            + "line, which is true of a step whose command does nothing");
+    }
+
+    /// <summary>
+    /// The receipt name a <c>ci-receipts.sh record</c> or <c>verify</c> line passes, as written.
+    /// </summary>
+    private static string ReceiptArgument(string line, string verb)
+    {
+        var after = line[(line.IndexOf("ci-receipts.sh " + verb, StringComparison.Ordinal)
+            + ("ci-receipts.sh " + verb).Length)..].Trim();
+
+        return after.Trim('"').Trim();
+    }
+
+    /// <summary>
+    /// True when <paramref name="line"/> contains <paramref name="text"/> outside a YAML comment.
+    /// </summary>
+    private static bool IsUncommented(string line, string text)
+        => !line.TrimStart().StartsWith('#') && line.Contains(text, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Splits one job's lines into its steps, as step name to the lines belonging to it.
+    /// </summary>
+    private static List<(string Name, List<string> Lines)> WorkflowSteps(IEnumerable<string> jobLines)
+    {
+        var steps = new List<(string, List<string>)>();
+        var current = (List<string>?)null;
+
+        foreach (var line in jobLines)
+        {
+            var header = Regex.Match(
+                line,
+                @"^\s+- name:\s*(?<name>.+)$",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(5));
+
+            if (header.Success)
+            {
+                current = new List<string>();
+                steps.Add((header.Groups["name"].Value.Trim(), current));
+                continue;
+            }
+
+            current?.Add(line);
+        }
+
+        return steps;
+    }
+
+    /// <summary>
     /// True when this workflow line hands <paramref name="leg"/> to <c>scripts/ci-projects.sh</c>,
     /// resolving <c>${{ matrix.head }}</c> against the matrix's declared heads.
     /// </summary>

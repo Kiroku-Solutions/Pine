@@ -716,8 +716,11 @@ refuses to fall.
    **Closed 2026-09-10** (plan items 0.1 and 0.2). The workflow fires on `pull_request` into `main`
    and on `push` to `main`, and it now asks `scripts/ci-projects.sh` which projects to build rather
    than carrying a hand-written list, so a project added to `Pine.slnx` tomorrow is built by CI
-   without anyone remembering to add it. **What is left of this reason** is item 0.3: a job can run,
-   skip its own gate on a condition, and still report green.
+   without anyone remembering to add it. Item 0.3 closed the same day: every gate records a receipt
+   at the moment it succeeds, and each job verifies unconditionally that the receipts it was
+   supposed to produce exist, so a skipped coverage floor or a loop that built nothing fails the job
+   instead of reporting green. **What is left of this reason is not in the repository**: no run has
+   happened on the server yet, which needs a real pull request (`61-Manual-Test-Plan` §3.2).
 2. **Open debt rows**, of which four are 🟠 P1: no restore-from-backup path (TD-56), a navigation
    defect that replaces the whole shell (TD-121), an unsigned release artefact (TD-108), and an
    intermittent SQLite handle disposal in the integration suite (TD-140). TD-07 and TD-54, which
@@ -740,9 +743,10 @@ works end to end against the encrypted store.
   the workflow fires on `pull_request` into `main` and on `push` to `main`. This is struck through
   rather than deleted because the sentence is the one `62-Post-Audit-Plan` §9 named as the plan's
   definition of done, and a definition of done that quietly disappears proves nothing. **The
-  weakness that replaces it** is narrower, and narrowed again on the same day: the project list
-  drift (TD-54) is closed by plan item 0.2, and what remains is that a job which skips its own gate
-  still reports green (plan item 0.3).
+  weakness that replaces it** was narrower, and was narrowed twice more on the same day: the project
+  list drift (TD-54) by plan item 0.2, and the skipped-gate hole by item 0.3, which makes every gate
+  record a receipt and every job verify the receipts it owed. **The whole of Stage 0 is now closed,
+  and the honest residue is that none of it has run on the server yet.**
 - **Biggest production risk** — No restore path. `VaultBackupService` produces backups and, until
   iteration 37, the Settings button that should trigger one did nothing; restoring one still means
   copying files by hand (TD-56).
@@ -6156,7 +6160,7 @@ never been trained, under a green suite, for the entire life of the project.
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-135 | Branch coverage is measured on every run and gated on nothing | 🟢 | The cobertura report carries `branch-rate` — **50.94% overall**, against 61.93% line — and `scripts/coverage-gate.sh` reads only line coverage. Branch coverage is the stricter and more useful signal: a line executed once with its `if` never taken is counted as covered, which is precisely how a money-path guard can be "covered" and never exercised. The gap between the two numbers (eleven points overall, twenty-three in `Pine.Infrastructure`, where it is 51.72% against 74.44% line) is the size of what the line floor cannot see | Add branch floors alongside the line floors, set the same way — measure, round down, ratchet. The script already parses the attribute it would need | P3 | 🔴 **Open** |
-| TD-136 | The coverage gate's CI half could not fire, and neither could anything else in the workflow | 🟡 | This was TD-07 restated as a consequence rather than a cause, because iteration 30 was the first row whose deliverable was **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite, and it ran only on `workflow_dispatch`. Every regression net Phase 2 built into that file was inert | **Done** (2026-09-10, plan item 0.1), by the one line this column asked for: the coverage floor now runs on every pull request into `main`. It remains a one-command local script as well, so a contributor can answer it before pushing. **What this row did NOT cover, and plan item 0.3 does:** a workflow can run, skip its own gate on a condition, and still report green — nothing yet asserts the gate executed | P1 | ✅ **Closed** — iteration 38; the residual concern is tracked as plan item 0.3, not here |
+| TD-136 | The coverage gate's CI half could not fire, and neither could anything else in the workflow | 🟡 | This was TD-07 restated as a consequence rather than a cause, because iteration 30 was the first row whose deliverable was **entirely** deferred by it. `.github/workflows/dotnet-ci.yml` contains a real coverage gate, a real packaging job, real platform-head builds and the full test suite, and it ran only on `workflow_dispatch`. Every regression net Phase 2 built into that file was inert | **Done** (2026-09-10, plan item 0.1), by the one line this column asked for: the coverage floor now runs on every pull request into `main`. It remains a one-command local script as well, so a contributor can answer it before pushing. **What this row did NOT cover, and plan item 0.3 did, on the same day:** a workflow can run, skip its own gate on a condition, and still report green. The gate now writes a receipt from inside `scripts/coverage-gate.sh`, past its own failure branch, and the test job verifies unconditionally that on ubuntu that receipt exists | P1 | ✅ **Closed** — iteration 38; the residual concern is tracked as plan item 0.3, not here |
 
 ### 12.64 Iteration 31 - Phase 3, item 1: the platform story, and a finding that was wrong
 

@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-10 — Stage 0 items 0.1 and 0.2 executed and recorded in §3.1 and §3.2        |
+| Last Updated     | 2026-09-10 — Stage 0 closed: items 0.1, 0.2 and 0.3, recorded in §3.1–§3.3           |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -38,18 +38,20 @@ Three rules decide the order below, in priority:
 
 **One row, and it was first by a wide margin.** CI *was* `workflow_dispatch:` only — a broken head, a
 failing test, a coverage regression or a new network dependency all reached `main` unless a person
-remembered to dispatch the workflow. **Items 0.1 and 0.2 closed that on 2026-09-10** (§3.1, §3.2). Item 0.3
-remains: an armed trigger fires the jobs that exist, and a job can still skip its own gate and
-report green.
+remembered to dispatch the workflow. **Stage 0 is closed: 0.1, 0.2 and 0.3 were all executed on 2026-09-10**
+(§3.1, §3.2, §3.3). The trigger is armed, the projects are derived from the solution rather than
+listed by hand, and every gate now has to prove it ran.
 
 | # | Work | Closes | Notes |
 |---|---|---|---|
 | 0.1 | ✅ **Done** (2026-09-10) — Re-arm `pull_request: branches: [main]`, and `push:` on `main` | TD-07, TD-136 | Both were armed, not just `pull_request`: the compute case was answered by holding back one job rather than one trigger (see §3.1 below) |
 | 0.2 | ✅ **Done** (2026-09-10) — Build `Pine.slnx` instead of enumerating projects | TD-54 | Done by the row's second option, not its first: the solution cannot be built in one command at all. See §3.2 |
-| 0.3 | Assert the gate actually ran | — (TD-136 closed by 0.1) | A workflow that runs and skips its own gate is worse than one that does not run, because it reports green. TD-136's Fix column asked only for the trigger, which 0.1 delivered, so this item now stands on its own reasoning rather than on a register row |
+| 0.3 | ✅ **Done** (2026-09-10) — Assert the gate actually ran | — (TD-136 closed by 0.1) | A workflow that runs and skips its own gate is worse than one that does not run, because it reports green. TD-136's Fix column asked only for the trigger, which 0.1 delivered, so this item stood on its own reasoning rather than on a register row. See §3.3 |
 
 **Definition of done:** open a pull request with a deliberately failing test and watch CI reject it.
-Nothing in this stage is finished on the evidence of a YAML diff.
+Nothing in this stage is finished on the evidence of a YAML diff. **This step has not been performed
+yet** — everything below was verified locally, by running the scripts and by falsifying each guard.
+It is the one thing that needs the real remote, and it is recorded as `61-Manual-Test-Plan` §3.2.
 
 **Estimate:** hours, not days. It is first because of leverage, not size.
 
@@ -153,6 +155,79 @@ script refuses to classify an unknown TFM suffix, so the failure is loud and imm
 silent, but it is still a failure someone has to answer. That is the honest boundary — this item
 removes the drift for projects, not for platforms.
 
+### 3.3 Item 0.3, as built (2026-09-10, iteration 38)
+
+**What "the gate did not run" actually looks like.** A step whose `if:` is false is *skipped*, and a
+skipped step does not fail its job. A loop over an empty list iterates zero times. A `run:` replaced
+by `echo skipped` exits 0. All three report green, and the tick is what a reader takes as evidence.
+The live case here is the coverage floor: it runs `if: matrix.os == 'ubuntu-latest'`, which is
+deliberate, and until this item nothing anywhere said it had to run on ubuntu either.
+
+**Receipts.** `scripts/ci-receipts.sh record <name>` is called by a gate at the moment it has
+succeeded — after the command it guards, so `set -e` makes the ordering load-bearing — and each job
+ends with an unconditional step calling `verify` with the receipts that job was supposed to produce.
+The expected set is computed **independently** of the conditions on the steps themselves: the
+coverage step says "run on ubuntu", and the verify step says, separately, "on ubuntu the `coverage`
+receipt must exist". A mutation now has to edit two statements in two places that agree.
+
+**The coverage receipt is written inside `scripts/coverage-gate.sh`, not by the workflow**, after the
+floors have been compared and past the failure branch. A receipt written from the workflow would
+prove only that the workflow reached a line, which is true of a step whose command does nothing —
+and that is not hypothetical here: iteration 30 recorded a mutation that survived because a guard
+matched the *comment* above the coverage step rather than the step.
+
+**`steps.<id>.outcome` would have been shorter and is not enough.** GitHub can report that a step was
+skipped. It cannot see inside one: a loop that ran zero times, a script that returned before
+comparing anything, and a gate whose `run:` was replaced all have outcome `success`. The receipt is
+written by the gate itself, at the point of success, which is the only place that knows.
+
+**What is now covered.** Every project built on the `desktop` and platform legs, every suite run on
+the `test` leg, the coverage floor on ubuntu, the LFS-pointer check and the artefact build in
+`package`. `EveryJobWithAGateAssertsThatTheGateRan` asserts a job that records must also verify, that
+no verify step carries an `if:` — a verification that can be skipped verifies nothing — and that the
+workflow never writes the coverage receipt itself.
+
+**Verified by falsification, five mutations.** Giving the verify step an `if: false` turned the suite
+red. Deleting the test job's verify step turned it red. Moving the coverage receipt out of the gate
+and into the workflow turned it red. Then the two that matter, run for real rather than asserted:
+`scripts/coverage-gate.sh` was executed against the live suite and wrote its receipt after passing
+all five floors; with the gate neutered, the test job's verify block failed naming `coverage` as the
+gate that did not run, while the same block on windows — where the gate is skipped by design —
+passed. That is the distinction the whole item is about, and it holds in both directions.
+
+**The adversarial pass found four more, and one of them broke the identity comparison.** Receipts
+were first written one file per name, with `/` and `:` folded to `_` to make the name a safe file
+name — which made the mapping non-injective: `gate/a` and `gate:a` became the same file, so one
+gate's receipt satisfied another gate's verify. A guard whose identity comparison can be fooled is
+not a guard. Receipts are now appended as whole lines to one log and matched with `grep -Fxq`: fixed
+string, whole line, no pattern interpretation, so `build:src/A` can no longer be satisfied by
+`build:src/AB` either.
+
+The other three were in the guard test, and they share one root: **it asked whether a verify call
+existed, never what it checked.** Deleting the desktop job's only `record` call passed, because the
+job was in the set being judged only by virtue of recording — a test whose scope is defined by the
+thing it checks cannot notice that thing's absence, so the set is now derived from the gates
+themselves (`dotnet build`, `dotnet test`, the coverage gate, the packaging script). Narrowing
+`verify weights artefact` to `verify weights` passed, so every recorded receipt name must now appear
+in its job's verify step. Moving a verify step to the top of its job passed, so the verify step must
+now come after the last `record`; above them it would read an empty log and could only pass by
+checking nothing.
+
+**And the strengthened test immediately found a fifth defect in this item's own work**: the `test`
+job builds its projects before running them — a gate, since a warning is an error here — recorded
+`build:` receipts for them, and verified only the `test:` ones. It verifies both now.
+
+**The stale-receipt case is closed in both directions.** Every job resets the log immediately after
+checkout rather than trusting that a hosted runner starts empty, and `verify` consumes the log once
+it passes, so a developer who runs a gate locally and then verifies again after changing something
+cannot pass on the earlier run's receipt.
+
+**What is NOT closed by this.** These receipts prove a gate ran; they do not prove it was *worth*
+running. The audit's own record contains the sharper case — a build error left `dotnet test
+--no-build` running stale binaries, so the suite genuinely ran and genuinely proved nothing about the
+code as changed. A receipt would have been written. That is a different guard, and it is not claimed
+here.
+
 ## 4. Stage 1 — Finish what the user can already see
 
 Ordered by what a user loses if it is wrong.
@@ -221,3 +296,13 @@ that has to become false is: *"Biggest weakness — nothing runs the tests autom
 
 That is Stage 0. Everything after it is ordinary product work, which is the position the audit was
 trying to reach.
+
+**2026-09-10: Stage 0 is closed, and that sentence is struck through in §11.1 rather than deleted.**
+Three items, three commits, three guards, each falsified before being believed. What replaced the
+sentence is narrower and honest: CI is armed, derives what it builds from the solution, and every
+gate proves it ran — and **no run has yet happened**, because opening a pull request against the
+real remote is the one step none of this can do for itself (`61-Manual-Test-Plan` §3.2). Until that
+is done, Stage 0 is complete in the repository and unproven on the server, which is a smaller claim
+than "finished" and the only one the evidence supports.
+
+The next item is 1.1, restore from a backup in the application.

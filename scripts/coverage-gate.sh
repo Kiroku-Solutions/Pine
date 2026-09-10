@@ -167,4 +167,15 @@ if [[ "$FAILURES" -gt 0 ]]; then
   exit 1
 fi
 
+# THE RECEIPT IS WRITTEN HERE, BY THE GATE ITSELF, AND NOWHERE ELSE (plan item 0.3).
+# This step runs `if: matrix.os == 'ubuntu-latest'` in CI, and a skipped step does not fail its
+# job -- the run would report green with the floors never compared. The end of that job verifies
+# this receipt exists, from a statement of its own about which platform must produce it, so
+# deleting the gate or neutering its `run:` line breaks an agreement between two files. Writing it
+# from the workflow instead would prove only that the workflow reached a line.
+#
+# It is written AFTER the failure check above, so it can only be reached by a gate that compared
+# every floor and passed.
+bash "$(dirname "${BASH_SOURCE[0]}")/ci-receipts.sh" record coverage
+
 echo "Coverage gate passed."
