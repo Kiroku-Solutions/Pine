@@ -156,7 +156,11 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   replacement, which leaves two rows with no link between them (TD-68).
 - The **budgets screen computes nothing**: its progress bar is hard-coded to zero and a budget can
   be exceeded without the screen saying so (TD-99).
-- The encrypted vault export has **no UI entry point and no restore path** (TD-56).
+- ~~The encrypted vault export has **no UI entry point and no restore path** (TD-56).~~ **Fixed:**
+  the entry point shipped in iteration 37 and the restore path on 2026-09-10. Settings lists this
+  vault's backups and restores the one you choose — refusing any file it cannot open with your
+  password or that a newer Pine wrote, keeping a copy of the vault as it stood so the restore can be
+  undone, and locking the vault afterwards so what you see next is the ledger you restored.
 - ~~**CI runs only on manual dispatch**, so no commit is verified automatically and the Android and
   iOS heads are compiled by nobody (TD-07).~~ **Fixed 2026-09-10:** the workflow runs on every pull
   request into `main` and on every push to it, and the Android and iOS heads are among what it

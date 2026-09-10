@@ -14,6 +14,7 @@ using Pine.Application.Accounts.Queries;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Security.Commands;
+using Pine.Application.Security.Queries;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Core.Accounts;
@@ -109,6 +110,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
 
     /// <summary>Holds the vault-export sentence as a KEY, so it survives a language switch.</summary>
     private readonly LocalizedMessageSlot _exportMessage;
+    private readonly LocalizedMessageSlot _restoreMessage;
 
     private bool _isInitializing = true;
 
@@ -128,6 +130,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _logger = logger;
         _vaultSession = vaultSession;
         _exportMessage = new LocalizedMessageSlot(localizer, text => VaultExportMessage = text);
+        _restoreMessage = new LocalizedMessageSlot(localizer, text => VaultRestoreMessage = text);
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -843,6 +846,243 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         }
     }
 
+    // ----------------------------------------------------------------------------------------
+    // Restoring a backup (TD-56's remaining half, plan item 1.1).
+    //
+    // WHY THIS SCREEN AND NOT A FILE PICKER. The export half deliberately has no picker, because
+    // the destination is not the user's to choose. The same reasoning inverts here and lands in the
+    // same place: the SOURCE is not the user's to choose either. A restore accepts this vault's own
+    // backups and nothing else -- the service refuses a path outside the backups directory rather
+    // than copy an arbitrary file over a ledger -- so offering a picker would offer a choice that is
+    // then rejected. The honest control is a list of what can actually be restored.
+    //
+    // WHY A CONFIRMATION AND NOT A BUTTON. This is the only operation in Pine that destroys data on
+    // purpose. The confirmation is the scrim-and-panel shape the void dialog already uses, and it
+    // names the moment being restored to, because "restore backup" and "throw away everything since
+    // 26 August" are the same sentence and only the second one is honest.
+    //
+    // WHAT THE USER IS TOLD AFTERWARDS: that the vault was locked, and where the copy of what they
+    // replaced now sits. The second is the whole reason this is not a one-way door.
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>The backups of this vault, newest first, as the list the user chooses from.</summary>
+    public ObservableCollection<VaultBackupOption> Backups { get; } = [];
+
+    /// <summary>The backup the user has selected, or <see langword="null"/>.</summary>
+    [ObservableProperty]
+    public partial VaultBackupOption? SelectedBackup { get; set; }
+
+    /// <summary>Whether the confirmation panel is up.</summary>
+    [ObservableProperty]
+    public partial bool IsRestoreDialogVisible { get; set; }
+
+    /// <summary>
+    /// The backup the confirmation is about, captured when the panel opened.
+    /// </summary>
+    /// <remarks>
+    /// SEPARATE FROM <see cref="SelectedBackup"/> ON PURPOSE, and the same shape the void dialog
+    /// uses for the same reason. The list underneath the scrim keeps its keyboard focus, so an arrow
+    /// key can move the selection while the panel is up; a confirmation must act on what the user
+    /// was shown when they asked for it, not on what the list happens to be pointing at a keystroke
+    /// later. The panel binds to this, so the two can never disagree.
+    /// </remarks>
+    [ObservableProperty]
+    public partial VaultBackupOption? RestoreTarget { get; set; }
+
+    /// <summary>Whether a restore is running. Every control on the card is disabled while it is.</summary>
+    [ObservableProperty]
+    public partial bool IsRestoringVault { get; set; }
+
+    /// <summary>What the last restore did, or why one did not happen.</summary>
+    [ObservableProperty]
+    public partial string? VaultRestoreMessage { get; set; }
+
+    /// <summary>Whether <see cref="VaultRestoreMessage"/> reports a failure. Styling only.</summary>
+    [ObservableProperty]
+    public partial bool VaultRestoreFailed { get; set; }
+
+    /// <summary>Whether there is anything to restore. Drives the empty state rather than a blank list.</summary>
+    public bool HasBackups => Backups.Count > 0;
+
+    /// <summary>
+    /// Reloads the list of backups.
+    /// </summary>
+    /// <remarks>
+    /// A LOCKED VAULT IS NOT AN ERROR HERE. The settings page can be constructed by the designer and
+    /// by tests with no session at all, and the query refuses a locked vault by design. Either way
+    /// the honest result is an empty list and no message: the user has not asked for anything yet,
+    /// and a red sentence on arrival would be reporting a failure that did not happen.
+    /// </remarks>
+    [RelayCommand]
+    private async Task LoadBackupsAsync()
+    {
+        try
+        {
+            var backups = await _sender.Send(new ListVaultBackupsQuery());
+
+            Backups.Clear();
+
+            foreach (var backup in backups)
+            {
+                Backups.Add(new VaultBackupOption(backup, _localizer));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogBackupsUnavailable(_logger, ex);
+            Backups.Clear();
+        }
+
+        OnPropertyChanged(nameof(HasBackups));
+        SelectedBackup = null;
+    }
+
+    /// <summary>Puts the confirmation panel up for the selected backup.</summary>
+    [RelayCommand]
+    private void BeginRestore()
+    {
+        if (SelectedBackup is null || IsRestoringVault)
+        {
+            return;
+        }
+
+        _restoreMessage.Clear();
+        VaultRestoreFailed = false;
+        RestoreTarget = SelectedBackup;
+        IsRestoreDialogVisible = true;
+    }
+
+    /// <summary>Closes the confirmation without restoring anything.</summary>
+    [RelayCommand]
+    private void CancelRestore()
+    {
+        IsRestoreDialogVisible = false;
+        RestoreTarget = null;
+    }
+
+    /// <summary>
+    /// Replaces the vault with the selected backup and reports what happened.
+    /// </summary>
+    /// <remarks>
+    /// THE TWO PATHS ARE DELIBERATELY ASYMMETRIC. On success the vault is locked by the handler, so
+    /// this view model is about to be navigated away from and the sentence it writes is the last
+    /// thing shown before the unlock screen -- it names the safety copy, because that is the only
+    /// thing the user needs from this screen afterwards. On failure nothing changed and the vault is
+    /// still open, so the sentence stays on the card and the list is left alone.
+    /// </remarks>
+    [RelayCommand]
+    private async Task ConfirmRestoreAsync()
+    {
+        var selected = RestoreTarget;
+
+        if (selected is null || IsRestoringVault)
+        {
+            return;
+        }
+
+        IsRestoreDialogVisible = false;
+        IsRestoringVault = true;
+        VaultRestoreFailed = false;
+        _restoreMessage.Clear();
+
+        try
+        {
+            var result = await _sender.Send(new RestoreVaultBackupCommand(selected.Path));
+
+            VaultRestoreFailed = false;
+            _restoreMessage.Set("Settings.Security.RestoreVault.Success", result.SafetyBackupPath);
+        }
+        catch (Exception ex)
+        {
+            VaultRestoreFailed = true;
+            _restoreMessage.SetRendered(UserFacingError.Report(
+                _logger,
+                ex,
+                "restore-vault-backup",
+                _localizer["Settings.Security.RestoreVault.Failed"]));
+        }
+        finally
+        {
+            IsRestoringVault = false;
+            RestoreTarget = null;
+        }
+    }
+
+    /// <summary>
+    /// One backup, as the list shows it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IT DOES NOT SHOW <c>SchemaVersionBefore</c>, AND THAT IS NOT AN OVERSIGHT. Listing backups
+    /// cannot recover it -- doing so would mean opening each file with the vault key -- so it is
+    /// null for every row here. A column that is blank for every row is worse than no column: it
+    /// reads as "this backup has no schema version" rather than "this screen cannot tell you".
+    /// </para>
+    /// <para>
+    /// The date is rendered in the user's own culture and the size in whole units, because the two
+    /// questions a person actually asks of a backup list are "how far back does this go" and "is
+    /// this the real one or an empty one".
+    /// </para>
+    /// </remarks>
+    public sealed class VaultBackupOption
+    {
+        public VaultBackupOption(VaultBackupInfo backup, ILocalizer localizer)
+        {
+            ArgumentNullException.ThrowIfNull(backup);
+            ArgumentNullException.ThrowIfNull(localizer);
+
+            Path = backup.Path;
+            CreatedAtUtc = backup.CreatedAtUtc;
+            Taken = backup.CreatedAtUtc.ToLocalTime().ToString("f", CultureInfo.CurrentCulture);
+
+            var reasonKey = backup.Reason switch
+            {
+                VaultBackupReason.Manual => "Settings.Security.RestoreVault.Reason.Manual",
+                VaultBackupReason.PreMigration => "Settings.Security.RestoreVault.Reason.PreMigration",
+                VaultBackupReason.PreRestore => "Settings.Security.RestoreVault.Reason.PreRestore",
+                _ => "Settings.Security.RestoreVault.Reason.Manual",
+            };
+
+            Reason = localizer[reasonKey];
+            Size = string.Format(
+                CultureInfo.CurrentCulture,
+                "{0:N0} KB",
+                Math.Max(1, backup.SizeBytes / 1024));
+        }
+
+        /// <summary>Absolute path, which is what the command needs and what the list does not show.</summary>
+        public string Path { get; }
+
+        /// <summary>When the backup was taken.</summary>
+        public DateTimeOffset CreatedAtUtc { get; }
+
+        /// <summary>The moment, in the user's culture.</summary>
+        public string Taken { get; }
+
+        /// <summary>Why it was taken, in the user's language.</summary>
+        public string Reason { get; }
+
+        /// <summary>Its size, rounded to whole kilobytes and never to zero.</summary>
+        public string Size { get; }
+    }
+
+    // Source-generated, because CA1848 is an error in this repository. Debug rather than Error: the
+    // commonest reason the list is unavailable is a locked vault, which is a state and not a fault.
+    [LoggerMessage(
+        EventId = 2,
+        EventName = "vault.backups_unavailable",
+        Level = LogLevel.Debug,
+        Message = "Vault backups could not be listed; the restore list is shown empty.")]
+    private static partial void LogBackupsUnavailableCore(ILogger logger, Exception exception);
+
+    private static void LogBackupsUnavailable(ILogger? logger, Exception exception)
+    {
+        if (logger is not null)
+        {
+            LogBackupsUnavailableCore(logger, exception);
+        }
+    }
+
     /// <summary>
     /// Locks the vault, by exactly the path <c>ShellViewModel.LockVaultCommand</c> uses.
     /// </summary>
@@ -874,6 +1114,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     public void Dispose()
     {
         _exportMessage.Dispose();
+        _restoreMessage.Dispose();
         GC.SuppressFinalize(this);
     }
 }

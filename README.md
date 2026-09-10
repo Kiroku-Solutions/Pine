@@ -80,9 +80,10 @@ Your money. Your data. Your control.
 - **A transaction cannot be edited.** Correction is void-and-re-enter, which is the right default
   for a ledger and costs two rows with no link between them (TD-68).
 - **The budgets screen does not compute anything.** Its progress bar is hard-coded to zero (TD-99).
-- **No backup restore path, no installer, no code-signing certificate, and no update mechanism.**
-  An update check would be Pine's first network call ever, so it is a privacy decision and not a
-  packaging chore.
+- **No installer, no code-signing certificate, and no update mechanism.** An update check would be
+  Pine's first network call ever, so it is a privacy decision and not a packaging chore. Backups can
+  now be made *and restored* from Settings (TD-56, closed 2026-09-10): a restore refuses anything it
+  cannot verify first, keeps a copy of what it replaces, and locks the vault afterwards.
 - **CI is armed but the release path is not.** Every pull request into `main` and every push to it
   builds all four heads and runs the suite (TD-07, closed). What still has no automation is the
   step after that: no installer, no signing certificate, no release workflow.

@@ -10,6 +10,7 @@
              x:Class="Pine.Ui.Avalonia.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
+    <Grid>
     <ScrollViewer>
         <StackPanel Spacing="24" Margin="40">
             <!-- Header -->
@@ -167,6 +168,61 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- TD-56's other half (plan item 1.1). A LIST AND NOT A FILE PICKER, for the
+                         mirror image of the reason the export has no picker: a restore accepts this
+                         vault's own backups and nothing else, so a picker would offer a choice the
+                         service then refuses. The list is what can actually be restored. -->
+                    <StackPanel Spacing="8" Margin="0,4">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Security.RestoreVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Security.RestoreVault.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="{loc:Tr Settings.Security.RestoreVault.Refresh}" Command="{Binding LoadBackupsCommand}" Classes="pine-outline" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- The empty state says which of the two things is true, rather than
+                             showing an empty box that could mean either. -->
+                        <TextBlock Text="{loc:Tr Settings.Security.RestoreVault.Empty}" TextWrapping="Wrap" FontSize="13"
+                                   Foreground="{DynamicResource PineTextMuted}"
+                                   IsVisible="{Binding !HasBackups}" />
+
+                        <ListBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
+                                 MaxHeight="180" IsVisible="{Binding HasBackups}"
+                                 IsEnabled="{Binding !IsRestoringVault}"
+                                 AutomationProperties.Name="{loc:Tr Settings.Security.RestoreVault.ListAutomationName}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SettingsViewModel+VaultBackupOption">
+                                    <Grid ColumnDefinitions="*, Auto" Margin="0,2">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Taken}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                            <TextBlock Text="{Binding Reason}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding Size}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource PineTextMuted}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Button Content="{loc:Tr Settings.Security.RestoreVault.Button}" Classes="pine-danger"
+                                HorizontalAlignment="Right" Width="200" HorizontalContentAlignment="Center"
+                                Command="{Binding BeginRestoreCommand}"
+                                IsVisible="{Binding HasBackups}"
+                                IsEnabled="{Binding !IsRestoringVault}" />
+
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsRestoringVault}" />
+
+                        <Border IsVisible="{Binding VaultRestoreMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                CornerRadius="8" Padding="14,10"
+                                Background="{DynamicResource PineSurfaceElevated}"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource PineBorder}">
+                            <TextBlock Text="{Binding VaultRestoreMessage}" TextWrapping="Wrap" FontSize="13"
+                                       Classes.pine-strength-danger="{Binding VaultRestoreFailed}"
+                                       Classes.pine-strength-success="{Binding !VaultRestoreFailed}" />
+                        </Border>
+                    </StackPanel>
+
                     <Grid ColumnDefinitions="*, Auto" Margin="0,4">
                         <StackPanel>
                             <TextBlock Text="{loc:Tr Settings.Security.LockVault.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
@@ -307,4 +363,40 @@
 
         </StackPanel>
     </ScrollViewer>
+        <!-- Restore confirmation (plan item 1.1). Same scrim-and-panel shape as the void dialog,
+             because this is the same kind of moment and a second visual language for it would be a
+             second thing to learn. It names the moment being restored to: "restore backup" and
+             "throw away everything since then" are the same action, and only the second sentence is
+             honest about it. -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsRestoreDialogVisible}">
+            <Border Width="460" Padding="28" CornerRadius="14"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 32 0 #30000000">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{loc:Tr Settings.Security.RestoreVault.Dialog.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding RestoreTarget.Taken}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineText}" />
+                        <TextBlock Text="{Binding RestoreTarget.Reason}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr Settings.Security.RestoreVault.Dialog.Explanation}" />
+
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr Settings.Security.RestoreVault.Dialog.Undo}" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                        <Button Content="{loc:Tr Settings.Security.RestoreVault.Dialog.Cancel}" Classes="pine-outline" Padding="16,9"
+                                Command="{Binding CancelRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
+                        <Button Content="{loc:Tr Settings.Security.RestoreVault.Dialog.Confirm}" Classes="pine-danger" Padding="16,9"
+                                Command="{Binding ConfirmRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
 </UserControl>

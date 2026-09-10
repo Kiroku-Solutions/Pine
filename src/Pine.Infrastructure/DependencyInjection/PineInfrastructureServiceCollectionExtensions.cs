@@ -149,6 +149,11 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<IVaultBackupService, VaultBackupService>();
         services.AddScoped<IVaultMigrator, EfCoreVaultMigrator>();
 
+        // Restore (TD-56). Scoped for the same reason as the two above -- it drives PineDbContext --
+        // and it takes IVaultBackupService rather than duplicating VACUUM INTO, so the safety copy a
+        // restore leaves behind is an ordinary backup that can itself be listed and restored.
+        services.AddScoped<IVaultRestoreService, VaultRestoreService>();
+
         // Singleton: it holds only IServiceScopeFactory and opens a fresh scope per call, so it
         // captures nothing vault-specific and is safe to hand to the long-lived unlock/setup screens.
         services.AddSingleton<IVaultDatabaseOpener, ScopedVaultDatabaseOpener>();

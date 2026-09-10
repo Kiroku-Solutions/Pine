@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-10 — Stage 0 closed: items 0.1, 0.2 and 0.3, recorded in §3.1–§3.3           |
+| Last Updated     | 2026-09-10 — Stage 0 closed (§3.1–§3.3); Stage 1 item 1.1 closed (§4.1)             |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -234,11 +234,100 @@ Ordered by what a user loses if it is wrong.
 
 | # | Work | Closes | Why here |
 |---|---|---|---|
-| 1.1 | **Restore from a backup, in the application** | TD-56's remaining half | Backups can now be made from Settings and still cannot be restored except by copying files by hand. A backup nobody can restore is a backup in name. This is the highest-value user-facing item in the document |
+| 1.1 | ✅ **Done** (2026-09-10) — **Restore from a backup, in the application** | TD-56 (closed) | Restore refuses anything it cannot verify first, copies what it is about to replace, and locks the vault afterwards. See §4.1 |
 | 1.2 | **Fix the navigation defect that replaces the whole shell** | TD-121 | `MainViewModel` and `ShellViewModel` both implement `INavigationService`, only the first is registered, so an in-shell navigation drops the shell. It is shipped, visible, and cheap relative to its effect |
 | 1.3 | **Dashboard: make the ten inert widgets real, or take them down** | — | Net worth, expenses, income, savings, goals, investments, charts, calendar, AI suggestions and the budget tile render "No data yet" permanently. They are honest — no fabricated numbers — but ten of twelve tiles are furniture. Build the three or four that the existing queries already support (net worth, income, expenses are derivable today) and delete the rest until their subsystem exists. **This is TD-99's lesson applied before it becomes TD-99 again** |
 | 1.4 | **The dashboard's "Scan Receipt" button** | — | It has no `Command` binding at all: it renders, it is clickable, it does nothing. One line |
 | 1.5 | **Live scanner camera list** | — | Enumerates "Camera 0".."Camera 3" regardless of hardware. Either enumerate real devices or drop the picker |
+
+### 4.1 Item 1.1, as built (2026-09-10, iteration 39)
+
+**A backup nobody can restore is a backup in name, and that was the state.** `VaultBackupService`
+had been complete since iteration 10 and reachable from Settings since 37; recovery still meant
+closing Pine, finding `backups\pine-….db`, and copying it over `pine.db` by hand.
+
+**The order of operations IS the design, and each step exists because of a specific way this can
+hurt someone.** `IVaultRestoreService.RestoreAsync`:
+
+1. **Containment.** The backup must sit in this vault's own `backups` directory. Copying a file the
+   application was handed over someone's ledger on their say-so is not a feature.
+2. **It must open with this vault's key and look like a Pine vault.** SQLCipher reports nothing at
+   open time — a wrong key surfaces as "file is not a database" on the first *read* — so the probe
+   is a real query. A truncated, corrupt or foreign file dies here.
+3. **It must not be from a newer Pine.** EF Core applies only *pending* migrations and is silent
+   about migrations it has never heard of, so a vault written by a later build opens without
+   complaint and is then written to by a model that does not match it. The comparison is against
+   this assembly's own migration list.
+4. **The current vault is copied first**, tagged `PreRestore`, through the same service that writes
+   every other backup — so the undo is itself an ordinary backup that can be listed and restored.
+   If that copy cannot be taken, the restore does not happen.
+5. **Then, and only then, the file is replaced.**
+
+Every refusal in 1–3 leaves the vault untouched, which is what makes them refusals rather than
+failures, and every test for them asserts both halves: that it stopped, and that the vault still
+holds what it held. Step 4 is proved end to end — restore, decide it was a mistake, restore the
+`PreRestore` copy, and the ledger is back.
+
+**The handler locks the vault afterwards, and that is the feature rather than a limitation.** Every
+`PineDbContext` in flight was built against the file that has just been replaced and every cached
+screen describes rows that may no longer exist. Locking forces the one path that re-opens the vault
+from scratch. The alternative — reloading every view model — is a larger surface with a worse
+failure mode: a stale screen that looks correct. It locks only on success; a refused restore changed
+nothing, and a password prompt for it would be a second failure on top of the first.
+
+**Settings offers a list, not a file picker**, for the mirror image of the reason the export half has
+none: the *source* is not the user's to choose either, so a picker would offer a choice the service
+then refuses. The confirmation is the scrim-and-panel shape the void dialog already uses, and it
+names the moment being restored to, because "restore backup" and "throw away everything since 9
+September" are the same action and only the second sentence is honest. Sixteen strings, English and
+Spanish, no literals — `NoHardcodedUiStringsTests` would not have it otherwise.
+
+**Falsification found five defects, three of them in the tests rather than the code.** Two of the
+first tests written passed for the wrong reason: the containment test used a text file, which the
+key probe rejected anyway, so **deleting the containment check entirely left it green** — it now
+uses a perfectly good backup of this very vault, moved one directory up, which only containment can
+refuse. The stale-sidecar test asserted that the restore deletes `pine.db-wal`; deleting those two
+lines left it green twice, because SQLite removes the sidecars itself on a clean close. That test now
+asserts what is honestly observable, and the service says in its own comments that those two lines
+are insurance against the non-clean case which this suite **cannot** construct.
+
+**The fifth was mine and it was real.** The service first called `SqliteConnection.ClearAllPools()`,
+which releases handles to every database in the process. xUnit runs test classes in parallel, so in a
+full integration run two unrelated migration tests failed and passed in isolation — the shape of
+TD-140, made worse by this file. It clears the pool for *this* connection string now, which is both
+narrower and more correct. The full integration suite is 248/248.
+
+**The adversarial pass found a data-loss defect, and it was the real one.** The replacement was
+`File.Copy(source, pine.db, overwrite: true)`, which opens the user's live vault for writing and
+streams into it. A disk that fills, a process that is killed, a power cut or an antivirus lock
+partway through leaves `pine.db` as a truncated hybrid — not the old vault, already overwritten, and
+not the backup, whose copy never finished. **That is precisely the outcome this class's own comment
+said could not happen**, and the sentence the UI shows on failure — "nothing was changed and your
+vault is as it was" — was false in exactly that case. The copy now lands on a `.restore-tmp`
+neighbour on the same volume and only a complete file is moved into place; a failure in either step
+cleans up and refuses, and the sentence is now true.
+
+**No test distinguishes that from the naive spelling, and the code says so.** Every failure this
+suite can induce — a read-only destination, a locked file, a missing source — fails before either
+version has written a byte, so reverting the three lines leaves the suite green. What the two tests
+around it assert is what is honestly assertable: a failed replacement refuses, the vault is still
+readable and unchanged, and no staging file is left behind. This is the second place in this item
+where a design decision is defended by argument rather than by a test, and both are labelled as such
+where a reader of the tests will find them.
+
+The same pass also found that the confirmation read `SelectedBackup` live rather than capturing it:
+the list keeps keyboard focus under the scrim, so an arrow key could move the selection between
+seeing the panel and pressing Restore. It now captures a `RestoreTarget` when the panel opens, which
+is the shape the void dialog already uses, and the panel binds to that. Two things it checked and
+cleared: double-clicking Restore cannot re-enter, because `IsRestoringVault` is set before the first
+`await` on a single-threaded UI; and locking the vault genuinely tears the shell's page down, so no
+cached screen survives to write to the restored file.
+
+**What is NOT closed by this.** A backup still contains `pine.db` and nothing else — not the vault
+header, not preferences. Restoring into a vault whose password was changed after the backup works,
+because the data key is never rotated (TD-86), but that is a property of TD-86 rather than a promise
+made here. And nothing has been exercised on a screen: these are service, handler and view-model
+tests.
 
 **Definition of done for 1.3 and 1.5:** the screen shows only what it can measure. The rule from
 TD-99 and the language picker is now the house rule and should be applied without a debt row first.
