@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
@@ -16,6 +17,7 @@ using Pine.Core.Transactions;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
+using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels.Importing;
 
@@ -388,6 +390,17 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             var result = await _mediator.Send(command);
 
             ApplyImportResult(result, SelectedAccount.Name);
+
+            // THE IMPORT NOW SAYS IT CHANGED THE LEDGER (post-audit plan item 1.3). Every other write
+            // path -- add, void, create account, rules, receipt save -- broadcasts DataChangedMessage;
+            // this one never did. The dashboard's close callback reloaded a collection no view bound,
+            // so after importing a month's statement every tile on the dashboard kept its old figures
+            // until the user navigated away and back. Sent before the auto-close, and only when rows
+            // were actually written, so a fully-skipped import does not trigger five pointless reads.
+            if (ImportedCount > 0)
+            {
+                WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            }
 
             // Auto-close ONLY when the review step would have nothing to add: every parsed row was saved,
             // and every one of them was actually checked against the account first. Anything else -- a

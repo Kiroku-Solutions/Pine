@@ -24,6 +24,43 @@ namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class BudgetProgressViewModel : ObservableObject
 {
+    /// <summary>
+    /// The swatch a row falls back to when its category could not be resolved and so has no colour
+    /// of its own. Pine orange -- a colour, not a claim about the category.
+    /// </summary>
+    internal const string UnresolvedCategorySwatch = "#FF8C00";
+
+    /// <summary>
+    /// Builds a row from one measured budget, the one way both the budgets page and the dashboard's
+    /// budgets tile do it (post-audit plan item 1.3).
+    /// </summary>
+    /// <remarks>
+    /// Extracted rather than copied when the dashboard gained a budgets tile: the page and the tile
+    /// must agree about what an unknown spend and an unresolved category look like, and two mappings
+    /// written apart are two mappings that drift apart. TD-99's rule -- an unknown spend is "Not
+    /// known", never a zero -- lives here once.
+    /// </remarks>
+    /// <param name="row">The measured budget.</param>
+    /// <param name="localizer">The string table the "not known" and "unknown category" text come from.</param>
+    /// <returns>The row.</returns>
+    public static BudgetProgressViewModel From(BudgetProgress row, ILocalizer localizer)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(localizer);
+
+        return new BudgetProgressViewModel
+        {
+            BudgetId = row.BudgetId,
+            CategoryName = row.CategoryName ?? localizer["Budgets.Category.Unresolved"],
+            CategoryColorHex = row.CategoryColorHex ?? UnresolvedCategorySwatch,
+            LimitAmount = row.Limit.Amount,
+            CurrencyCode = row.Limit.Currency.Value,
+            IsSpendKnown = row.IsSpendKnown,
+            SpentAmount = row.Spent?.Amount ?? 0m,
+            UnknownSpendText = localizer["Budgets.Progress.SpendUnknown"],
+        };
+    }
+
     [ObservableProperty]
     public partial Guid BudgetId { get; set; }
 
@@ -151,11 +188,6 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     private readonly ILocalizer _localizer;
     private readonly ILogger<BudgetsViewModel>? _logger;
 
-    /// <summary>
-    /// The swatch a row falls back to when its category could not be resolved and so has no colour
-    /// of its own. Pine orange -- a colour, not a claim about the category.
-    /// </summary>
-    private const string UnresolvedCategorySwatch = "#FF8C00";
 
     public string Title { get; set; } = "Budgets";
     public int ColumnSpan { get; set; } = 2;
@@ -243,24 +275,11 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
 
         try
         {
-            var unknownSpend = _localizer["Budgets.Progress.SpendUnknown"];
-            var unresolvedCategory = _localizer["Budgets.Category.Unresolved"];
-
             var progress = await _mediator.Send(new GetBudgetProgressQuery());
 
             foreach (var row in progress)
             {
-                Budgets.Add(new BudgetProgressViewModel
-                {
-                    BudgetId = row.BudgetId,
-                    CategoryName = row.CategoryName ?? unresolvedCategory,
-                    CategoryColorHex = row.CategoryColorHex ?? UnresolvedCategorySwatch,
-                    LimitAmount = row.Limit.Amount,
-                    CurrencyCode = row.Limit.Currency.Value,
-                    IsSpendKnown = row.IsSpendKnown,
-                    SpentAmount = row.Spent?.Amount ?? 0m,
-                    UnknownSpendText = unknownSpend,
-                });
+                Budgets.Add(BudgetProgressViewModel.From(row, _localizer));
             }
         }
         finally

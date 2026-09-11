@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:pvm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.BudgetWidgetView"
+             x:DataType="vm:BudgetWidgetViewModel">
+
+    <!-- The same rows as the budgets page, built by the same BudgetProgressViewModel.From, so an
+         unknown spend reads "Not known" here too and never 0%. -->
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="10,0,10,10">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
+
+        <TextBlock Grid.Row="1" Text="{Binding ExceededText}" IsVisible="{Binding ExceededText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasBudgets}">
+            <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="pvm:BudgetProgressViewModel">
+                        <StackPanel Margin="0,0,0,10" Spacing="4">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="10" Height="10" Fill="{Binding CategoryColorHex}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding CategoryName}" FontWeight="SemiBold" FontSize="13"
+                                               Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="{Binding SpentAmountText}" FontSize="12" Foreground="{DynamicResource PineText}" />
+                                    <TextBlock Text="{loc:Tr Budgets.Progress.Of}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                    <TextBlock Text="{Binding LimitAmountText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                    <TextBlock Text="{Binding CurrencyCode}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                </StackPanel>
+                            </Grid>
+                            <ProgressBar Value="{Binding ProgressPercentage}" Maximum="100" Height="6" CornerRadius="3"
+                                         IsVisible="{Binding IsSpendKnown}"
+                                         Classes.overBudget="{Binding IsExceeded}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="2" Text="{loc:Tr Dashboard.Budgets.Empty}" IsVisible="{Binding IsEmpty}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center"
+                   FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+
+        <TextBlock Grid.Row="3" Text="{Binding MoreText}" IsVisible="{Binding MoreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+    </Grid>
+
+    <UserControl.Styles>
+        <Style Selector="ProgressBar.overBudget:not(:indeterminate)">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+    </UserControl.Styles>
+</UserControl>

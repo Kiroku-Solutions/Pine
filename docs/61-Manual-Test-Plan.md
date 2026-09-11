@@ -944,6 +944,43 @@ describe the same string.
   genuinely different purchases identical in all five will warn. That is the intended trade: a false
   warning is visible and dismissible, a false "not a duplicate" double-counts money.
 
+## 13A. The dashboard shows only what it can measure — post-audit plan item 1.3
+
+**Read this before running it.** The tiles are rendered by an automated headless test, at their real
+size, and it reads back what is visible — but a headless window is not a screen, has no real fonts,
+and no user's time zone. These rows are the part only a person can do. (Lettered rather than numbered
+so the sections after it keep the numbers other documents cite.)
+
+### 13A.1 Five tiles, none of them empty furniture
+
+1. Open a vault with at least two accounts, one budget, and a transaction this month.
+2. **Expected:** exactly five tiles — Total balance, This month, Accounts, Budgets, Recent transactions.
+   **No tile reads "No data yet".** There is no Calendar, Goals, Investments, Charts or AI Suggestions.
+3. **Expected:** every tile heading is in the language chosen in Settings. Switch the language there
+   and come back: the headings, the greeting, and the budget rows' "Not known" all follow.
+
+### 13A.2 Two currencies stay two figures
+
+1. Give one account a USD balance and another a EUR balance.
+2. **Expected:** Total balance shows two figures, one per currency, and never their sum. The sentence
+   under them says it is a sum of balances, and that a debt lowers it only if entered as negative.
+
+### 13A.3 "This month" is your month — the case the automated suite found late
+
+1. Set the machine's time zone to one west of UTC (for example Ecuador, UTC−5).
+2. Near the end of a month, after 19:00 local time, add an expense dated today.
+3. **Expected:** it counts in *this* month's "Out". Before the fix, the tile had already moved on to
+   UTC's next month and showed an almost empty one.
+4. **Known and registered, not a failure of this row:** the *budgets* screen still measures the UTC month
+   (TD-149), so for a few hours at a month boundary the two can disagree.
+
+### 13A.4 An import updates the tiles
+
+1. With the dashboard open, import a statement containing this month's transactions.
+2. **Expected:** when the wizard closes, "This month", "Recent transactions", "Accounts" and "Total
+   balance" already show the imported rows, without leaving the dashboard. Before the fix nothing
+   changed until you navigated away and back.
+
 ## 14. What a failure means
 
 | Where it fails | Severity |

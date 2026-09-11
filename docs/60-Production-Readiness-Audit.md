@@ -756,8 +756,9 @@ works end to end against the encrypted store.
 - **Most important next action** — ~~Re-arm `pull_request:` on the CI workflow.~~ Done, 2026-09-10.
   ~~Next: restore from a backup, in the application (TD-56, plan item 1.1).~~ Done the same day.
   ~~Next: the navigation defect that replaces the whole shell (TD-121, plan item 1.2).~~ Done
-  2026-09-11. Next: the dashboard's ten inert widgets (plan item 1.3) — build the ones the existing
-  queries can measure and take the rest down.
+  2026-09-11. ~~Next: the dashboard's ten inert widgets (plan item 1.3).~~ Done the same day: five
+  tiles, each reading the ledger, five deleted, and TD-149 registered for the budgets' UTC window. Next:
+  the dashboard's "Scan Receipt" button, which has no command (plan item 1.4).
 
 **On the method, because it is the most transferable output.** Thirty-six iterations were run as
 implement → mutate → verify: after each change, deliberate defects were introduced to check that
@@ -7454,6 +7455,7 @@ survivor; it is a mutation that was not run.
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-148 | `GetBudgetsQuery` is unreferenced now that the budgets screen reads progress instead | 🟢 | The budgets page was its only caller and now sends `GetBudgetProgressQuery`, which returns the budget's limit, period and category alongside the measured spend. Nothing else in `src/` or `tests/` sends the old query. It is dead code of the mildest kind — a query handler that compiles, is registered by the MediatR assembly scan, and answers nobody | Delete it, or keep it deliberately if a caller that wants budgets WITHOUT the ledger read is coming. Not deleted in the iteration that orphaned it, because deciding the fate of a public request type is a separate judgement from fixing a screen, and TD-37's lesson is that deleting a type is cheap only when nothing was going to use it | P3 | 🔴 **Open** — registered iteration 37, §12.76 |
+| TD-149 | A monthly, weekly or yearly budget measures the UTC calendar period, not the user's | 🟠 | `Budget.ResolveWindow` builds its window at `TimeSpan.Zero`. Every path into the ledger stores a date-only entry as LOCAL midnight (`CsvImporter` and `ExcelImporter` parse with no offset, which .NET reads as local; `ReceiptDateParser` uses `AssumeLocal`; manual entry starts from `DateTimeOffset.Now`), so near a month boundary the budget and the transaction disagree about which month it is. East of Greenwich, a purchase on 1 October counts against September's budget; west of it, an evening purchase on 30 September counts against October's. Found while building the dashboard's "this month" tile, which had copied this window "for consistency" and was showing an Ecuadorian user October at 21:00 on 30 September | Resolve the window in the user's zone, each edge at the offset in force at that edge -- the same fix `GetMonthlyCashFlowQueryHandler.CurrentLocalMonth` already applies -- and move `Budget.ResolveWindow`'s tests off an all-UTC clock, which is why none of them could see it | P2 | 🔴 **Open** -- registered 2026-09-11, post-audit plan item 1.3 (`62-Post-Audit-Plan` §4.3) |
 
 ### 12.75 Next (after iteration 36) - superseded
 

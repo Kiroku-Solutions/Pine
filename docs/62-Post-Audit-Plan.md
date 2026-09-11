@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1 and 1.2 closed (§4.1, §4.2) |
+| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1–1.3 closed (§4.1–§4.3) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -236,7 +236,7 @@ Ordered by what a user loses if it is wrong.
 |---|---|---|---|
 | 1.1 | ✅ **Done** (2026-09-10) — **Restore from a backup, in the application** | TD-56 (closed) | Restore refuses anything it cannot verify first, copies what it is about to replace, and locks the vault afterwards. See §4.1 |
 | 1.2 | ✅ **Done** (2026-09-11) — **Fix the navigation defect that replaces the whole shell** | TD-121 (closed) | The shell's navigator is now a type of its own that the container cannot supply, so a page can only get it from the shell it is shown in. The defect was also a lock leak the row did not name. See §4.2 |
-| 1.3 | **Dashboard: make the ten inert widgets real, or take them down** | — | Net worth, expenses, income, savings, goals, investments, charts, calendar, AI suggestions and the budget tile render "No data yet" permanently. They are honest — no fabricated numbers — but ten of twelve tiles are furniture. Build the three or four that the existing queries already support (net worth, income, expenses are derivable today) and delete the rest until their subsystem exists. **This is TD-99's lesson applied before it becomes TD-99 again** |
+| 1.3 | ✅ **Done** (2026-09-11) — **Dashboard: make the ten inert widgets real, or take them down** | — (TD-149 registered) | Five tiles, every one of them reading the ledger: total balance, this month, accounts, budgets, recent transactions. Five deleted. "Net worth" became "total balance", because nothing in the model says which account is a debt. Found on the way: the total the dashboard had been computing and not showing, an import that refreshed nothing, and a "this month" that was UTC's month. See §4.3 |
 | 1.4 | **The dashboard's "Scan Receipt" button** | — | It has no `Command` binding at all: it renders, it is clickable, it does nothing. One line |
 | 1.5 | **Live scanner camera list** | — | Enumerates "Camera 0".."Camera 3" regardless of hardware. Either enumerate real devices or drop the picker |
 
@@ -516,6 +516,91 @@ exception thrown after the write succeeded — a pre-existing sentence this item
 change; after TD-121 the only code between the write and the end of that `try` is a broadcast and a
 guarded navigation, so the window for it has narrowed rather than closed.
 
+### 4.3 Item 1.3, as built (2026-09-11, iteration 41)
+
+**Five tiles, and every one of them reads the ledger.** There were twelve; ten rendered "No data yet"
+for thirty-nine iterations. What the ledger can feed was built, and the rest was deleted:
+
+| Tile | Reads | Became |
+|---|---|---|
+| Total balance | `GetAccountsQuery` | was "Net Worth" |
+| This month | new `GetMonthlyCashFlowQuery` | replaces Income, Expenses and Savings |
+| Accounts | `GetAccountsQuery` | unchanged, already real |
+| Budgets | `GetBudgetProgressQuery` | was inert; now the budgets page's own rows |
+| Recent transactions | `GetTransactionsQuery` | unchanged, already real |
+
+Calendar, Goals, Investments, Charts and AI Suggestions were deleted, and so was the fallback template
+that gave any tile without a view a plausible "No data yet". None has a subsystem behind it, and TD-99's
+rule is that a screen shows only what it can measure.
+
+**The plan's premise was half wrong, and checking it first is what found out.** It said net worth was
+"derivable today". Two things were not true of that sentence:
+
+- **The number already existed, was tested, and was shown nowhere.** `DashboardViewModel.TotalBalance`
+  summed balances per currency through `Money` — the fix that stopped 1 000 USD and 900 EUR reading as
+  "1900 EUR" — and five tests pinned it. No view bound it. It moved into a tile, where it is on screen.
+- **It is not a net worth.** Net worth is assets minus liabilities, and nothing in the account model says
+  which is which: a card's opening debt may have been entered as 500 or −500, and `AccountType` does not
+  decide it. So the tile is called *Total balance*, with the caveat on screen — not in a tooltip, which a
+  keyboard or touch user never sees.
+
+**One "this month" tile where the plan named two.** Income, expenses and savings are one read of one
+month; as three tiles they would query three times and scatter one comparison across the grid. As one
+tile, the figure a user wants — did I spend more than I earned? — is the third column of the same row.
+
+**Every tile says what it knows, and only that.** `IsEmpty` is true only after a *successful* read found
+nothing, so "No budgets yet" can never appear before the ledger has answered or after it failed. A failed
+read puts its own sentence on the tile — "may be missing or out of date, not zero". Tile headings were
+English literals assigned in C#, outside the reach of the markup-only localisation test; they are live
+keys now, and so is the page's greeting.
+
+**An independent adversarial review found three defects, and the first was a user-visible lie:**
+
+- **"This month" was UTC's month.** The query copied `Budget.ResolveWindow`'s UTC window "for
+  consistency". The reviewer's probe: at 21:00 on 30 September in Ecuador it is already October in UTC,
+  so the tile showed October — the month's salary gone, that evening's dinner counted as next month's.
+  Every path into the ledger stores a date-only entry as *local* midnight (checked for CSV, Excel, receipt
+  and manual entry, not assumed), so the window is now the user's local month, each edge at the offset in
+  force at that edge. Consistency with a wrong screen was worth nothing: **the budgets' own window has the
+  same defect, and is registered as TD-149** rather than widened into this item.
+- **An import refreshed nothing.** Every other write path broadcasts `DataChangedMessage`; the import
+  wizard never did, and the dashboard's close callback re-read an `Accounts` collection that no view
+  bound — the same "computed and unseen" shape as the total balance. The wizard broadcasts now, and the
+  dashboard's own unseen read is gone: each tile reads, refreshes and reports for itself.
+- **A reload that failed after an empty success showed the failure *and* "No budgets yet"**, because
+  `IsEmpty` was only written by a success. A failure now withdraws the empty state.
+
+It also found **the render tests order-dependent** — markup binds the process-wide localizer, which
+another test class switches to the machine's language, so on a Spanish machine the English assertions
+failed in some orders and passed vacuously in others — five **test gaps** (four of them surviving
+mutations), and false text. All addressed; the budget rows now follow a language switch too.
+
+**Rendered, not only computed.** For the first time in this plan a test puts the tiles in a headless
+window at their real size and reads back only the text that is *effectively visible*: figures present,
+the empty state absent before a read and after a failure, the failure present. It is the nearest thing
+to "exercised on a screen" this repository has.
+
+**Verified by falsification: twenty-eight mutations, twenty-eight killed** — sixteen written with the
+change and twelve after the review, five of those the reviewer's own survivors (the UTC window, a
+commented-out template, and three empty states bound to a count instead of to `IsEmpty`). Two early ones
+did not die and were informative: counting transfers as spending survived because a transfer's two legs
+cancel out, so the test now uses a lone leg; and a template renamed to a non-existent type failed at
+compile time, which proves nothing about the test, so it was redone.
+
+**Numbers.** Unit **1130** (1102 before this item), coverage gate green in Release (UI 40.70% → 43%,
+the render tests' doing). Integration **250**, green in three of four runs; the fourth failed
+`ImportDeduplicationTests.Import_WithTwoIdenticalPurchasesOnTheSameDay_PersistsBoth` with
+`ObjectDisposedException` on a `SQLitePCL.sqlite3` handle — TD-140's exact signature, now seen on a fifth
+distinct test. This item's diff reaches no code that suite exercises (in `Pine.Application` and
+`Pine.Infrastructure` it is one comment and one new query no integration test calls), so it is recorded
+here as TD-140 rather than claimed as clean; it is also why Stage 2 item 2.1 exists.
+
+**What is NOT closed by this.** TD-149, the budgets' UTC window. Tile reads are not cancelled when the
+page is left, so a read can still land on a disposed tile — harmless, logged. `ColumnSpan`/`RowSpan` are
+set on no tile and read by nothing; width and height are what size a tile. A month containing only
+zero-amount transactions shows a row of zeros rather than the empty state, which is true but odd. And
+the budgets *page* rows still freeze on a language switch — the tile re-reads; the page does not.
+
 **Definition of done for 1.3 and 1.5:** the screen shows only what it can measure. The rule from
 TD-99 and the language picker is now the house rule and should be applied without a debt row first.
 
@@ -582,5 +667,5 @@ is done, Stage 0 is complete in the repository and unproven on the server, which
 than "finished" and the only one the evidence supports.
 
 ~~The next item is 1.1, restore from a backup in the application.~~ Done 2026-09-10 (§4.1), and
-1.2, the navigation defect, on 2026-09-11 (§4.2). The next item is 1.3: the dashboard's ten inert
-widgets.
+1.2, the navigation defect, on 2026-09-11 (§4.2), and 1.3, the dashboard, the same day (§4.3). The
+next item is 1.4: the dashboard's "Scan Receipt" button, which still has no command.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -9,14 +10,14 @@ using NSubstitute;
 using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
-using Pine.Ui.Avalonia.Services;
-using Pine.Ui.Avalonia.ViewModels;
+using Pine.Ui.Avalonia.Localization;
+using Pine.Ui.Avalonia.ViewModels.Widgets;
 using Xunit;
 
 namespace Pine.Tests.Unit.ViewModels;
 
 /// <summary>
-/// The dashboard's headline balance figure.
+/// The dashboard's total balance figure, one per currency.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,6 +27,11 @@ namespace Pine.Tests.Unit.ViewModels;
 /// carried. A vault holding 1 000 USD and 900 EUR displayed "1900 EUR" — not a wrong total, but a
 /// quantity of nothing. <c>Money.Add</c> forbids adding across currencies; the old code got past it
 /// by never using <c>Money</c> at all.
+/// </para>
+/// <para>
+/// MOVED TO THE TILE IN POST-AUDIT PLAN ITEM 1.3. These tests pinned <c>DashboardViewModel.TotalBalance</c>,
+/// a correct and well-tested figure that no view ever bound -- a number the suite proved and the user
+/// never saw. It is shown by <see cref="TotalBalanceWidgetViewModel"/> now, and the tests follow it.
 /// </para>
 /// <para>
 /// It also formatted with <c>{0:C2}</c>, which emits the CURRENT MACHINE's currency symbol. Every
@@ -47,9 +53,9 @@ public class DashboardBalanceSummaryTests
             Account("Current", 1000m, Usd),
             Account("Savings", 234.56m, Usd));
 
-        await viewModel.LoadDataCommand.ExecuteAsync(null);
+        await viewModel.InitializeAsync(CancellationToken.None);
 
-        viewModel.TotalBalance.Should().Be("1,234.56 USD");
+        Rendered(viewModel).Should().Equal("1,234.56 USD");
     }
 
     /// <summary>
@@ -63,12 +69,12 @@ public class DashboardBalanceSummaryTests
             Account("Dollars", 1000m, Usd),
             Account("Euros", 900m, Eur));
 
-        await viewModel.LoadDataCommand.ExecuteAsync(null);
+        await viewModel.InitializeAsync(CancellationToken.None);
 
-        viewModel.TotalBalance.Should().Be("900.00 EUR  ·  1,000.00 USD");
+        Rendered(viewModel).Should().Equal("900.00 EUR", "1,000.00 USD");
 
         // The old behaviour, stated so the test cannot quietly start passing for the wrong reason.
-        viewModel.TotalBalance.Should().NotContain("1900",
+        Rendered(viewModel).Should().NotContain(figure => figure.Contains("1900", StringComparison.Ordinal),
             "adding dollars to euros produces a figure that is not a quantity of anything");
     }
 
@@ -84,9 +90,9 @@ public class DashboardBalanceSummaryTests
             Account("Yen", 1500m, Jpy),
             Account("Dollars", 10m, Usd));
 
-        await viewModel.LoadDataCommand.ExecuteAsync(null);
+        await viewModel.InitializeAsync(CancellationToken.None);
 
-        viewModel.TotalBalance.Should().Be("1,500 JPY  ·  10.00 USD");
+        Rendered(viewModel).Should().Equal("1,500 JPY", "10.00 USD");
     }
 
     /// <summary>
@@ -99,36 +105,59 @@ public class DashboardBalanceSummaryTests
         using var _ = new SpanishCulture();
         var viewModel = BuildViewModel(Account("Dollars", 1234.56m, Usd));
 
-        await viewModel.LoadDataCommand.ExecuteAsync(null);
+        await viewModel.InitializeAsync(CancellationToken.None);
 
-        viewModel.TotalBalance.Should().NotContain("€");
-        viewModel.TotalBalance.Should().EndWith("USD");
+        Rendered(viewModel).Single().Should().NotContain("€");
+        Rendered(viewModel).Single().Should().EndWith("USD");
 
         // The separators still follow the user's culture, which is the half that should be local.
-        viewModel.TotalBalance.Should().Be("1.234,56 USD");
+        Rendered(viewModel).Should().Equal("1.234,56 USD");
     }
 
+    /// <summary>
+    /// An empty vault has no total, and says so, rather than a zero in a currency nobody chose.
+    /// </summary>
+    /// <remarks>
+    /// CHANGED DELIBERATELY IN ITEM 1.3. This test used to assert "0.00 USD" for a vault with no
+    /// accounts -- US dollars invented for a user who may never hold one. The tile shows its empty
+    /// state instead, and only once a read has succeeded.
+    /// </remarks>
     [Fact]
-    public async Task AnEmptyVault_ShowsZero_RatherThanAnEmptyString()
+    public async Task AnEmptyVault_ShowsTheEmptyState_NotAZeroInAnInventedCurrency()
     {
         using var _ = new InvariantCulture();
         var viewModel = BuildViewModel();
 
-        await viewModel.LoadDataCommand.ExecuteAsync(null);
+        viewModel.IsEmpty.Should().BeFalse("before the read lands, nothing is known -- not even emptiness");
 
-        viewModel.TotalBalance.Should().Be("0.00 USD");
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.IsEmpty.Should().BeTrue();
+        viewModel.Totals.Should().BeEmpty();
     }
 
     private static Account Account(string name, decimal balance, CurrencyCode currency) =>
         Pine.Core.Accounts.Account.Create(name, AccountType.Bank, new Money(balance, currency), TimeProvider.System);
 
-    private static DashboardViewModel BuildViewModel(params Account[] accounts)
+    /// <summary>
+    /// What the tile's view shows: one line per total, each written by <see cref="Money.ToString"/>
+    /// through <c>Text="{Binding}"</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asserted on the collection the view binds, not on a joined string. The first retargeting of these
+    /// tests pinned a <c>Summary</c> property that no view bound -- the very "tested and unseen" shape
+    /// this item removed, reproduced in its own tests, as the independent review pointed out.
+    /// </remarks>
+    private static string[] Rendered(TotalBalanceWidgetViewModel viewModel) =>
+        viewModel.Totals.Select(total => total.ToString()).ToArray();
+
+    private static TotalBalanceWidgetViewModel BuildViewModel(params Account[] accounts)
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<Account>)accounts);
 
-        return new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>());
+        return new TotalBalanceWidgetViewModel(mediator, new Localizer());
     }
 
     private sealed class InvariantCulture : IDisposable

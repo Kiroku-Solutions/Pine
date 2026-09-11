@@ -198,7 +198,9 @@ Rewrite the three capturing handlers, de-`async void` the fourth, wire or delete
 - **`ShellViewModel.OnDeactivated`** — the shell is both a page of `MainViewModel` and a navigator of
   its own, so being deactivated has to reach the page it is showing. It assigns
   `CurrentPage = null!`, which runs the same hook every other page change uses.
-- **`DashboardViewModel.OnActivated` / `OnDeactivated`** — the twelve widgets are built with `new`
+- **`DashboardViewModel.OnActivated` / `OnDeactivated`** *(since plan item 1.3, 2026-09-11, there are
+  five tiles, every one of which consumes `DataChangedMessage`; the page itself no longer does)* — the
+  twelve widgets are built with `new`
   inside `InitializeWidgets()` and are reachable from nowhere else, so only the dashboard can drive
   their `IsActive`.
 - **`DashboardWidgetViewModelBase`** now derives from `ObservableRecipient` rather than

@@ -122,7 +122,7 @@ public sealed record GetBudgetProgressQuery() : IRequest<IReadOnlyList<BudgetPro
 /// </para>
 /// <para>
 /// A SPLIT IN ANOTHER CURRENCY IS NOT ADDED. Pine has no exchange-rate source, so a EUR split
-/// cannot be counted against a USD limit — the same reason <c>DashboardViewModel</c> refuses to add
+/// cannot be counted against a USD limit — the same reason the dashboard's total-balance tile refuses to add
 /// balances across currencies rather than producing "1900 EUR" from 1 000 USD and 900 EUR. Such
 /// splits are counted in <see cref="BudgetProgress.UncountedSplitCount"/> and logged, so that
 /// exclusion is visible somewhere rather than silent.

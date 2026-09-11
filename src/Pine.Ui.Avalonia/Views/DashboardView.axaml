@@ -79,12 +79,20 @@
                                             <DataTemplate DataType="wvm:RecentTransactionsWidgetViewModel">
                                                 <wv:RecentTransactionsWidgetView />
                                             </DataTemplate>
-                                            <DataTemplate DataType="wvm:IDashboardWidgetViewModel">
-                                                <!-- Fallback for empty widgets -->
-                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
-                                                    <TextBlock Text="{loc:Tr Dashboard.Widget.NoData}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
-                                                </StackPanel>
+                                            <DataTemplate DataType="wvm:TotalBalanceWidgetViewModel">
+                                                <wv:TotalBalanceWidgetView />
                                             </DataTemplate>
+                                            <DataTemplate DataType="wvm:CashFlowWidgetViewModel">
+                                                <wv:CashFlowWidgetView />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="wvm:BudgetWidgetViewModel">
+                                                <wv:BudgetWidgetView />
+                                            </DataTemplate>
+                                            <!-- NO FALLBACK TEMPLATE, DELIBERATELY (post-audit plan item 1.3). There was one,
+                                                 rendering "No data yet" for any tile without a view, which is how ten tiles
+                                                 sat here saying nothing for thirty-nine iterations while looking finished.
+                                                 DashboardTilesTests pins that every tile type has a live (uncommented)
+                                                 template above. -->
                                         </ContentControl.DataTemplates>
                                     </ContentControl>
 

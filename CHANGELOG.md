@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-11 · Extended to cover the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-11 · Extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -78,6 +78,14 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **The dashboard shows your money instead of ten empty boxes.** Ten of its twelve tiles said
+  "No data yet" whatever was in your vault. It now has five, and every one reads your ledger: the total
+  of your account balances (one figure per currency — Pine never adds dollars to euros), what came in
+  and went out this month, your accounts, your budgets with the ones over their limit first, and your
+  latest transactions. Calendar, goals, investments, charts and AI suggestions are gone until Pine can
+  actually fill them. A tile that could not be loaded now says so, instead of looking empty.
+- **Importing a statement now updates the dashboard.** The figures used to stay as they were until you
+  left the dashboard and came back.
 - **Leaving the receipt screen no longer throws away the sidebar — and locking afterwards clears the
   screen.** Saving or cancelling a scanned receipt replaced the whole app with a bare transactions
   list: no sidebar, no lock button, no way back but to restart. Worse, if the vault then locked —

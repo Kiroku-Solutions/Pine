@@ -7,8 +7,11 @@
              x:Class="Pine.Ui.Avalonia.Views.Widgets.RecentTransactionsWidgetView"
              x:DataType="vm:RecentTransactionsWidgetViewModel">
     
-    <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid RowDefinitions="Auto, *">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="10,0,10,6" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Transactions}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="core:Transaction">
@@ -39,7 +42,9 @@
             </ItemsControl>
         </ScrollViewer>
             
-        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding !Transactions.Count}">
+        <!-- Bound to IsEmpty, not to the count (item 1.3): an empty list before the first read, or after
+             a failed one, is not "you have none". -->
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding IsEmpty}">
             <TextBlock Text="{loc:Tr RecentTransactionsWidget.EmptyState}" Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
         </StackPanel>
     </Grid>

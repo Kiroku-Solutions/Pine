@@ -253,19 +253,29 @@ public class ErrorMessageTaxonomyTests
         vm.RecalculationReport.Should().Be("That account no longer exists.");
     }
 
-    // ---- DashboardViewModel (a read path) ----------------------------------------------------
+    // ---- The dashboard's tiles (a read path) -------------------------------------------------
 
+    /// <remarks>
+    /// This used to drive <c>DashboardViewModel.LoadDataCommand</c> and read the greeting. That read
+    /// was deleted in post-audit plan item 1.3 -- it filled a collection no view bound -- and each
+    /// tile now reports its own failure, so the same rule is asserted where the sentence now lands.
+    /// </remarks>
     [Fact]
-    public async Task LoadingTheDashboard_DoesNotPutTheVaultPathInTheGreeting()
+    public async Task ADashboardTileThatFailsToLoad_DoesNotPutTheVaultPathOnScreen()
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>());
+        var vm = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>(), localizer: new Localizer());
+        var accounts = vm.Widgets.OfType<Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel>().Single();
 
-        await vm.LoadDataCommand.ExecuteAsync(null);
+        await vm.InitializeAsync(CancellationToken.None);
+        for (var attempt = 0; attempt < 100 && !accounts.HasFailed; attempt++)
+        {
+            await Task.Delay(20);
+        }
 
+        accounts.FailureMessage.Should().NotBeNullOrWhiteSpace();
+        accounts.FailureMessage.Should().NotContain(VaultPath);
         vm.Greeting.Should().NotContain(VaultPath);
-        vm.Greeting.Should().NotContain("Error loading data");
-        vm.Greeting.Should().Contain("could not be loaded");
     }
 }

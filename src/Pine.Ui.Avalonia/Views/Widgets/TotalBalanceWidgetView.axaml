@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:vo="using:Pine.Core.Common.ValueObjects"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.TotalBalanceWidgetView"
+             x:DataType="vm:TotalBalanceWidgetViewModel">
+
+    <!-- One figure per currency. Pine has no exchange rates, so a two-currency vault shows two
+         figures rather than one invented sum (see TotalBalanceWidgetViewModel). -->
+    <Grid RowDefinitions="Auto, *" Margin="10,0,10,10">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
+
+        <StackPanel Grid.Row="1" Spacing="6" IsVisible="{Binding HasAccounts}">
+            <ItemsControl ItemsSource="{Binding Totals}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vo:Money">
+                        <TextBlock Text="{Binding}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{Binding AccountCountText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+            <!-- Visible, not only a tooltip: a tooltip never reaches a keyboard or touch user, and this
+                 sentence is the whole difference between "total balance" and "net worth". -->
+            <TextBlock Text="{loc:Tr Dashboard.TotalBalance.Caveat}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="1" Text="{loc:Tr Dashboard.TotalBalance.Empty}"
+                   IsVisible="{Binding IsEmpty}" TextWrapping="Wrap"
+                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                   FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+    </Grid>
+</UserControl>

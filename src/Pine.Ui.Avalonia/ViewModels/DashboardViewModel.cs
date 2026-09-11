@@ -1,94 +1,65 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
-using Pine.Application.Accounts.Queries;
-using Pine.Core.Accounts;
-using Pine.Core.Common.ValueObjects;
-using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.ViewModels.Widgets;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable
+/// <summary>
+/// The dashboard: a greeting, three actions, and the tiles.
+/// </summary>
+/// <remarks>
+/// <para>
+/// THIS PAGE READS NOTHING OF ITS OWN ANY MORE (post-audit plan item 1.3). It used to load the
+/// accounts into an <c>Accounts</c> collection and compute a <c>TotalBalance</c> -- and no view bound
+/// either. The total was correct and five tests pinned it; the user never saw it. The account read ran
+/// on every visit, on every <c>DataChangedMessage</c>, and after every dialog closed, and its only
+/// visible effect was an error sentence if it failed. The total moved into a tile, where it is on
+/// screen; the read went with it. Each tile reads, refreshes and reports its own failure.
+/// </para>
+/// <para>
+/// WHICH IS ALSO WHY AN IMPORT NOW REFRESHES THE DASHBOARD. The import wizard's close callback re-ran
+/// that unseen account read and nothing else, and the wizard sent no <c>DataChangedMessage</c>, so
+/// after importing a statement every tile kept its old figures. The wizard broadcasts now, like every
+/// other write path, and the tiles answer the broadcast.
+/// </para>
+/// </remarks>
+public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializable, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly ILocalizer _localizer;
+    private readonly LocalizedMessageSlot _greeting;
 
     /// <summary>
     /// Builds the two dialogs this page opens (TD-28/TD-58).
     /// </summary>
     /// <remarks>
-    /// BOTH DIALOGS USED TO BE BUILT WITH <c>new</c> HERE, and that was not a stylistic detail. A
-    /// hand-built view model gets exactly the dependencies this page happens to hold: the mediator,
-    /// and nothing else. Their optional <c>ILogger&lt;T&gt;</c> therefore defaulted to
-    /// <see langword="null"/> on every real run, so every failure they reported to the user was
-    /// recorded nowhere. The import wizard was additionally handed a hard-coded
-    /// <c>TimeProvider.System</c>, silently overriding the <c>TimeProvider</c> the container
-    /// registers. Going through the factory fixes both by construction.
+    /// Both dialogs used to be built with <c>new</c> here, so their optional <c>ILogger&lt;T&gt;</c>
+    /// defaulted to <see langword="null"/> on every real run and the import wizard was handed a
+    /// hard-coded <c>TimeProvider.System</c>. Going through the factory fixes both by construction.
     /// </remarks>
     private readonly IViewModelFactory _viewModels;
 
     private readonly ILogger<DashboardViewModel>? _logger;
 
-    [ObservableProperty]
-    public partial string Greeting { get; set; } = "Welcome to Pine";
-
-    [ObservableProperty]
-    public partial string TotalBalance { get; set; } = "0.00 USD";
-
-    public ObservableCollection<Account> Accounts { get; } = new();
-
-    /// <summary>
-    /// Renders the headline balance: one total per currency, each summed through <see cref="Money"/>.
-    /// </summary>
+    /// <summary>The page heading.</summary>
     /// <remarks>
-    /// <para>
-    /// WHAT THIS REPLACED WAS A FABRICATED NUMBER. The previous version added every account's
-    /// <c>Balance.Amount</c> into one bare <see cref="decimal"/> and then labelled the result with
-    /// whichever currency the LAST account in the loop happened to carry. A user holding 1 000 USD
-    /// and 900 EUR was shown "1900 EUR" — a figure that is not a quantity of anything.
-    /// <see cref="Money.Add"/> forbids exactly this; the old code got past it by never using
-    /// <c>Money</c>, adding raw decimals instead.
-    /// </para>
-    /// <para>
-    /// SO THE FIX IS TO SUM THROUGH THE DOMAIN, which makes the defect unrepresentable rather than
-    /// merely absent: accounts are grouped by currency first, and each group is folded with
-    /// <see cref="Money.Add"/>, so a cross-currency addition would now throw here instead of
-    /// producing a plausible-looking wrong answer. Pine has no exchange-rate source, so there is no
-    /// honest single number to show for a multi-currency vault, and inventing one is what the old
-    /// code did.
-    /// </para>
-    /// <para>
-    /// The previous format string was <c>{0:C2}</c>, which renders the CURRENT MACHINE's currency
-    /// symbol. On a Spanish-locale machine a dollar balance came out as "1.234,56 € USD" — a euro
-    /// sign next to the code USD. Each figure is now written by <see cref="Money.ToString"/>, at its
-    /// own currency's scale, with its own code and no borrowed symbol.
-    /// </para>
+    /// It was the literal "Welcome to Pine" -- the largest text on the page, in English on a Spanish
+    /// dashboard. It is a live key now, re-rendered on a language switch.
     /// </remarks>
-    private static string SummariseBalances(IEnumerable<Account> accounts)
-    {
-        var totals = accounts
-            .GroupBy(a => a.Balance.Currency)
-            .Select(group => group.Aggregate(
-                Money.Zero(group.Key),
-                (running, account) => running + account.Balance))
-            .OrderBy(total => total.Currency.Value, StringComparer.Ordinal)
-            .ToList();
+    [ObservableProperty]
+    public partial string Greeting { get; set; } = string.Empty;
 
-        return totals.Count == 0
-            ? Money.Zero(new CurrencyCode("USD")).ToString()
-            : string.Join("  ·  ", totals);
-    }
-
-    public ObservableCollection<Pine.Ui.Avalonia.ViewModels.Widgets.IDashboardWidgetViewModel> Widgets { get; } = new();
+    /// <summary>The five tiles, in the order the grid shows them.</summary>
+    public ObservableCollection<IDashboardWidgetViewModel> Widgets { get; } = new();
 
     [ObservableProperty]
     public partial bool IsCreateAccountDialogVisible { get; set; }
@@ -102,81 +73,105 @@ public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataCh
     [ObservableProperty]
     public partial Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel? ImportWizardVm { get; set; }
 
+    /// <param name="mediator">The request pipeline, handed to the tiles.</param>
+    /// <param name="viewModels">Builds the two dialogs this page opens.</param>
+    /// <param name="logger">Where the tiles' failures are recorded.</param>
+    /// <param name="localizer">
+    /// The string table the greeting and the tiles' text come from. Optional and defaulting to
+    /// <see cref="Localizer.Instance"/> -- the instance the container registers and the one markup
+    /// binds to -- so a test building this page by hand still gets real text.
+    /// </param>
     public DashboardViewModel(
         IMediator mediator,
         IViewModelFactory viewModels,
-        ILogger<DashboardViewModel>? logger = null)
+        ILogger<DashboardViewModel>? logger = null,
+        ILocalizer? localizer = null)
     {
         _mediator = mediator;
         _viewModels = viewModels;
         _logger = logger;
+        _localizer = localizer ?? Localizer.Instance;
+        _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
+        _greeting.Set("Dashboard.Header.Greeting");
         InitializeWidgets();
 
-        // No Register call here any more (TD-34): registration follows IsActive, which the
-        // navigator flips as this page becomes and stops being the current one.
-        //
-        // And no load here any more either (TD-35). `_ = LoadDataAsync()` used to run from this
-        // line, which meant a dashboard was never in a defined state after `new`: Accounts and
-        // TotalBalance were filled at some later moment by a continuation nobody held. The load is
-        // InitializeAsync now, started by PageActivation when this page becomes the current one.
+        // No Register call (TD-34) and no load (TD-35) here: activation follows IsActive, and
+        // InitializeAsync is started by PageActivation when this page becomes the current one.
     }
 
     /// <summary>
-    /// Loads the accounts and starts every tile (TD-35).
+    /// Starts every tile (TD-35).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// THE TILES ARE STARTED, NOT AWAITED, AND THAT IS THE PRODUCT DECISION. Twelve widgets sit
-    /// under the headline figures and each reads independently. Awaiting them all here would make
-    /// this task complete only when the SLOWEST one had finished, and -- worse -- would let one
-    /// failing tile decide what the whole page says. Each is therefore observed on its own through
-    /// <c>ObservedTask</c>, under this page's logger, so a broken tile is a logged and blank tile
-    /// rather than a blank dashboard.
-    /// </para>
-    /// <para>
-    /// This method cannot throw: <see cref="LoadDataAsync"/> reports its own failure into
-    /// <see cref="Greeting"/>. <see cref="InitializationFailurePolicy"/> is still answered honestly
-    /// rather than left as a formality, because "it cannot throw today" is a property of the
-    /// current body and not of the signature.
-    /// </para>
+    /// THE TILES ARE STARTED, NOT AWAITED, AND THAT IS THE PRODUCT DECISION. Each reads independently;
+    /// awaiting them all would make this complete only when the slowest had finished, and would let
+    /// one failing tile decide what the whole page says. Each is observed on its own, and its failure
+    /// lands ON THE TILE -- an empty tile after a failed read would otherwise say "you have no
+    /// budgets" about a vault that has some.
     /// </remarks>
-    /// <param name="cancellationToken">Threaded to the tiles; the account read is not cancellable.</param>
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    /// <param name="cancellationToken">Threaded to the tiles.</param>
+    public Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await LoadDataAsync().ConfigureAwait(true);
-
         foreach (var widget in Widgets)
         {
-            if (widget is Pine.Ui.Avalonia.ViewModels.Widgets.DashboardWidgetViewModelBase tile)
+            if (widget is DashboardWidgetViewModelBase tile)
             {
                 ObservedTask.Run(
                     () => tile.InitializeAsync(cancellationToken),
                     _logger,
                     $"dashboard-widget-initialise:{tile.GetType().Name}",
-                    "One of the dashboard tiles could not be loaded.");
+                    _localizer["Dashboard.Tile.LoadFailed"],
+                    tile.ReportFailure);
             }
         }
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// <see cref="InitializeAsync"/> cannot throw -- each tile is observed separately -- but the policy
+    /// is answered anyway, because "it cannot throw today" is a property of the body, not of the
+    /// signature.
+    /// </remarks>
     public InitializationFailurePolicy InitializationFailurePolicy => new(
         _logger,
         "dashboard-initialise",
-        "Your dashboard could not be loaded, so the figures below may be incomplete. Try again.",
-        message => Greeting = message);
+        _localizer["Dashboard.Tile.LoadFailed"],
+        message => _greeting.SetRendered(message));
 
     /// <summary>
-    /// Registers this page AND the widgets it owns (TD-34).
+    /// Releases the greeting and the tiles, which each hold subscriptions to the process-lifetime
+    /// localizer.
     /// </summary>
     /// <remarks>
-    /// THE WIDGETS ARE UNREACHABLE FROM ANYWHERE ELSE. <see cref="InitializeWidgets"/> builds all
-    /// twelve with <c>new</c>, so the container never sees them and no navigator can drive their
-    /// <c>IsActive</c> the way it drives this page's. Two of them consume
-    /// <c>DataChangedMessage</c>; if their activation were not propagated from here they would
-    /// simply never register, and the dashboard's balance and recent-transactions tiles would stop
-    /// refreshing after an edit. The loop is unconditional over <c>Widgets</c> because every widget
-    /// derives from <c>DashboardWidgetViewModelBase</c>, which is an <see cref="ObservableRecipient"/>;
-    /// the ten that implement no <c>IRecipient&lt;T&gt;</c> register nothing and cost a virtual call.
+    /// Called by <c>PageActivation</c> when the user navigates away (TD-34). Without it every visit
+    /// would leave the tiles subscribed to the localizer -- and held alive by it -- for the life of the
+    /// process, the exact leak shape TD-34 removed from the messenger.
+    /// </remarks>
+    public void Dispose()
+    {
+        _greeting.Dispose();
+
+        foreach (var widget in Widgets)
+        {
+            if (widget is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Registers this page AND the tiles it owns (TD-34).
+    /// </summary>
+    /// <remarks>
+    /// THE TILES ARE UNREACHABLE FROM ANYWHERE ELSE. <see cref="InitializeWidgets"/> builds all five
+    /// with <c>new</c>, so no navigator can drive their <c>IsActive</c> the way it drives this page's.
+    /// Every one of them consumes <c>DataChangedMessage</c>; without this propagation none would
+    /// register, and no tile would refresh after an edit or an import.
     /// </remarks>
     protected override void OnActivated()
     {
@@ -205,57 +200,37 @@ public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataCh
     }
 
     /// <summary>
-    /// Re-reads the page when something elsewhere changed the data.
+    /// Builds the five tiles. No I/O: each tile reads in its own <c>InitializeAsync</c> (TD-35).
     /// </summary>
     /// <remarks>
-    /// <c>IRecipient&lt;T&gt;</c> is <c>void</c>, so the reload has to be started rather than
-    /// awaited. It goes through <c>ObservedTask</c> instead of a bare discard (TD-35) so that a
-    /// reload which fails cannot vanish -- and it can: <see cref="LoadDataAsync"/> catches, but the
-    /// property writes it performs afterwards are outside anybody's try.
-    /// </remarks>
-    /// <param name="message">The broadcast. It carries no payload.</param>
-    public void Receive(DataChangedMessage message)
-    {
-        ObservedTask.Run(
-            LoadDataAsync,
-            _logger,
-            "dashboard-reload",
-            "Your dashboard could not be refreshed, so the figures below may be out of date.",
-            reported => Greeting = reported);
-    }
-
-    /// <summary>
-    /// Builds the twelve tiles. No I/O: each tile reads in its own <c>InitializeAsync</c> (TD-35).
-    /// </summary>
-    /// <remarks>
-    /// The tiles are handed THIS page's logger. They are built with <c>new</c> rather than resolved,
-    /// so the container never sees them and cannot inject one -- which is why the two tiles that
-    /// actually read anything used to swallow every failure with a bare
-    /// <c>catch (Exception) { /* ignore */ }</c>: there was nowhere for it to go. There is now.
+    /// FIVE TILES, EVERY ONE OF THEM READING SOMETHING (post-audit plan item 1.3). There were twelve,
+    /// and ten rendered "No data yet" for ever. Net Worth became the total balance, which this page
+    /// was already computing and not showing; Income, Expenses and Savings became one "this month"
+    /// tile over a new query; the budget tile was wired to the query the budgets page already uses.
+    /// Calendar, Goals, Investments, Charts and AI Suggestions were deleted: none has a subsystem
+    /// behind it, and TD-99's rule is that a screen shows only what it can measure. The tiles are
+    /// handed this page's logger, because the container never sees them and cannot inject one.
     /// </remarks>
     private void InitializeWidgets()
     {
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel(_mediator) { OrderIndex = 0 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.NetWorthWidgetViewModel { OrderIndex = 1 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ExpensesWidgetViewModel { OrderIndex = 2 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.IncomeWidgetViewModel { OrderIndex = 3 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.BudgetWidgetViewModel { OrderIndex = 4 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.SavingsWidgetViewModel { OrderIndex = 5 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.CalendarWidgetViewModel { OrderIndex = 6 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.GoalsWidgetViewModel { OrderIndex = 7 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.InvestmentsWidgetViewModel { OrderIndex = 8 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.ChartsWidgetViewModel { OrderIndex = 9 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.RecentTransactionsWidgetViewModel(_mediator) { OrderIndex = 10 });
-        Widgets.Add(new Pine.Ui.Avalonia.ViewModels.Widgets.AiSuggestionsWidgetViewModel { OrderIndex = 11 });
+        Widgets.Add(new TotalBalanceWidgetViewModel(_mediator, _localizer) { OrderIndex = 0 });
+        Widgets.Add(new CashFlowWidgetViewModel(_mediator, _localizer) { OrderIndex = 1 });
+        Widgets.Add(new BalanceWidgetViewModel(_mediator, _localizer) { OrderIndex = 2 });
+        Widgets.Add(new BudgetWidgetViewModel(_mediator, _localizer) { OrderIndex = 3 });
+        Widgets.Add(new RecentTransactionsWidgetViewModel(_mediator, _localizer) { OrderIndex = 4 });
 
         foreach (var widget in Widgets)
         {
-            if (widget is Pine.Ui.Avalonia.ViewModels.Widgets.DashboardWidgetViewModelBase tile)
+            if (widget is DashboardWidgetViewModelBase tile)
             {
                 tile.DiagnosticsLogger = _logger;
             }
         }
     }
+
+    // The two dialogs only close themselves now. What they wrote reaches the tiles through
+    // DataChangedMessage -- CreateAccountViewModel has always sent it, and the import wizard does as
+    // of item 1.3 -- so a refresh started from here would be a second read of the same thing.
 
     [RelayCommand]
     private void ShowCreateAccountDialog()
@@ -264,15 +239,6 @@ public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataCh
         {
             IsCreateAccountDialogVisible = false;
             CreateAccountVm = null;
-            // Observed rather than discarded (TD-35): the refresh that follows a create is the
-            // one whose failure is most misleading, because the account IS there and the screen
-            // would simply not show it.
-            ObservedTask.Run(
-                LoadDataAsync,
-                _logger,
-                "dashboard-reload",
-                "The new account was created, but the dashboard could not be refreshed. Reopen it to see it.",
-                reported => Greeting = reported);
         });
         IsCreateAccountDialogVisible = true;
     }
@@ -284,43 +250,7 @@ public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataCh
         {
             IsImportWizardVisible = false;
             ImportWizardVm = null;
-            ObservedTask.Run(
-                LoadDataAsync,
-                _logger,
-                "dashboard-reload",
-                "The import finished, but the dashboard could not be refreshed. Reopen it to see the result.",
-                reported => Greeting = reported);
         });
         IsImportWizardVisible = true;
-    }
-
-    [RelayCommand]
-    private async Task LoadDataAsync()
-    {
-        try
-        {
-            var accounts = await _mediator.Send(new GetAccountsQuery());
-            Accounts.Clear();
-            
-            foreach (var account in accounts)
-            {
-                Accounts.Add(account);
-            }
-
-            TotalBalance = SummariseBalances(accounts);
-        }
-        catch (Exception ex)
-        {
-            // WAS: "Error loading data: " + ex.Message (TD-24). This is a READ path, so there is
-            // nothing to reassure the user about having been written; what they need is to know the
-            // figures on screen are not theirs. The sentence still lands in Greeting because that is
-            // the only bound text this screen has -- giving the dashboard a dedicated error surface
-            // is a view change and is not this ticket.
-            Greeting = UserFacingError.Report(
-                _logger,
-                ex,
-                "dashboard-load",
-                "Your dashboard could not be loaded, so the figures below may be incomplete. Try again.");
-        }
     }
 }
