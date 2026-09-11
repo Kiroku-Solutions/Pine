@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using CommunityToolkit.Mvvm.ComponentModel;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NSubstitute;
 using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
@@ -71,9 +73,10 @@ public class ViewModelFactoryTests
         factory.CreateCreateAccount(() => { }).Should().BeOfType<CreateAccountViewModel>();
         factory.CreateImportWizard(() => { }).Should().BeOfType<ImportWizardViewModel>();
 
-        var scan = () => factory.CreateScanReceipt();
-        var live = () => factory.CreateLiveScanner();
-        var crop = () => factory.CreateCropReceipt();
+        var shell = Substitute.For<IShellNavigator>();
+        var scan = () => factory.CreateScanReceipt(shell);
+        var live = () => factory.CreateLiveScanner(shell);
+        var crop = () => factory.CreateCropReceipt(shell);
 
         if (PineHeadCapabilities.For(profile).HasReceiptVision)
         {
@@ -84,7 +87,7 @@ public class ViewModelFactoryTests
         else
         {
             scan.Should().Throw<InvalidOperationException>(
-                "a head with no receipt pipeline registers no receipt pages, and the shell hides their buttons");
+                "the factory refuses the receipt pages on a head with no receipt pipeline, and the shell hides their buttons");
             live.Should().Throw<InvalidOperationException>();
             crop.Should().Throw<InvalidOperationException>();
         }
@@ -94,11 +97,15 @@ public class ViewModelFactoryTests
     /// The factory has one method per page the shell offers (TD-85 + TD-28).
     /// </summary>
     /// <remarks>
-    /// <c>NavigationTargets</c> is the sidebar's list; this walks it and finds the parameterless
-    /// factory method that returns each entry, then calls it. A page that gains a nav button without
-    /// gaining a factory method fails HERE rather than under a user's finger. The non-empty
-    /// assertion is not decoration: without it, a reflection bug that returned nothing would leave
-    /// this test passing while checking no page at all.
+    /// <c>NavigationTargets</c> is the sidebar's list; this walks it and finds the factory method that
+    /// returns each entry, then calls it. A page that gains a nav button without gaining a factory
+    /// method fails HERE rather than under a user's finger. The non-empty assertion is not
+    /// decoration: without it, a reflection bug that returned nothing would leave this test passing
+    /// while checking no page at all.
+    /// <para>
+    /// A method may take nothing, or exactly the shell it is shown in (TD-121) -- the two shapes the
+    /// sidebar's commands can call. Anything else would need an argument the sidebar does not have.
+    /// </para>
     /// </remarks>
     [Theory]
     [MemberData(nameof(PineCompositionRootTests.AllProfiles), MemberType = typeof(PineCompositionRootTests))]
@@ -106,6 +113,7 @@ public class ViewModelFactoryTests
     {
         using var provider = PineCompositionRoot.Build(profile);
         var factory = FactoryFor(provider);
+        var shell = Substitute.For<IShellNavigator>();
 
         var targets = PineCompositionRoot.NavigationTargets(PineHeadCapabilities.For(profile));
 
@@ -115,15 +123,68 @@ public class ViewModelFactoryTests
         {
             var method = typeof(IViewModelFactory)
                 .GetMethods()
-                .SingleOrDefault(m => m.ReturnType == target && m.GetParameters().Length == 0);
+                .SingleOrDefault(m => m.ReturnType == target && TakesNothingOrOnlyTheShell(m));
 
             method.Should().NotBeNull(
                 $"'{target.Name}' has a nav button on {profile}, so IViewModelFactory must name a method that builds it");
 
-            var page = method!.Invoke(factory, null);
+            var arguments = method!.GetParameters().Length == 0 ? null : new object[] { shell };
+            var page = method.Invoke(factory, arguments);
 
             page.Should().NotBeNull().And.BeOfType(target);
         }
+    }
+
+    /// <summary>
+    /// A receipt page is built with the shell it was asked for, and passes that same shell on
+    /// (TD-121).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THIS IS THE CONTRACT THE DEFECT BROKE. The receipt pages were resolved from the container,
+    /// which filled their navigator parameter with the only one it had -- the window's. Asserting
+    /// only that the factory returns the right TYPE, as the test above does, would have passed
+    /// throughout.
+    /// </para>
+    /// <para>
+    /// Driven through each page's Cancel, which is the one navigation a unit test can reach without
+    /// a camera or an OCR pipeline. The crop page's Cancel creates a live scanner, so its second
+    /// half checks that the scanner it made was given the SAME shell -- the hop that keeps the
+    /// scanner-to-crop-to-review flow inside the shell that began it. That is read from the field,
+    /// because the scanner's own navigation needs a camera frame.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheReceiptPages_ShouldNavigateTheShellTheyWereBuiltFor_AndHandItOn()
+    {
+        using var provider = PineCompositionRoot.Build(PineHeadProfile.Windows);
+        var factory = FactoryFor(provider);
+
+        var reviewShell = Substitute.For<IShellNavigator>();
+        factory.CreateScanReceipt(reviewShell).CancelCommand.Execute(null);
+        reviewShell.Received(1).NavigateTo(Arg.Is<ObservableObject>(page => page is TransactionsViewModel));
+
+        var cropShell = Substitute.For<IShellNavigator>();
+        LiveScannerViewModel? scanner = null;
+        cropShell.When(s => s.NavigateTo(Arg.Any<ObservableObject>()))
+            .Do(call => scanner = call.Arg<ObservableObject>() as LiveScannerViewModel);
+
+        factory.CreateCropReceipt(cropShell).CancelCommand.Execute(null);
+
+        scanner.Should().NotBeNull("cancelling a crop goes back to the live scanner, in the same shell");
+        PrivateField(scanner!, "_navigationService").Should().BeSameAs(
+            cropShell,
+            "a page hands on the navigator it was given, never one of its own choosing");
+
+        scanner!.Dispose();
+    }
+
+    private static bool TakesNothingOrOnlyTheShell(MethodInfo method)
+    {
+        var parameters = method.GetParameters();
+
+        return parameters.Length == 0
+            || (parameters.Length == 1 && parameters[0].ParameterType == typeof(IShellNavigator));
     }
 
     /// <summary>

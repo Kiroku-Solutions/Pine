@@ -88,9 +88,8 @@ public class AsyncInitialisationTests
     public void ConstructingAPage_StartsNoWork()
     {
         var mediator = Substitute.For<IMediator>();
-        var navigation = Substitute.For<INavigationService>();
 
-        _ = new BudgetsViewModel(mediator, navigation);
+        _ = new BudgetsViewModel(mediator);
 
         mediator.ReceivedCalls().Should().BeEmpty(
             "construction must leave the object inert -- 'constructed' and 'ready' are different "
@@ -104,8 +103,7 @@ public class AsyncInitialisationTests
     public async Task InitialisingAPage_IsWhatLoadsIt()
     {
         var mediator = Substitute.For<IMediator>();
-        var navigation = Substitute.For<INavigationService>();
-        var viewModel = new BudgetsViewModel(mediator, navigation);
+        var viewModel = new BudgetsViewModel(mediator);
 
         await viewModel.InitializeAsync(CancellationToken.None);
 
@@ -120,11 +118,10 @@ public class AsyncInitialisationTests
     public async Task WhenInitialisationFails_ThePageSaysSo()
     {
         var mediator = Substitute.For<IMediator>();
-        var navigation = Substitute.For<INavigationService>();
         mediator.Send(Arg.Any<IRequest<object>>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("unreadable"));
 
-        var viewModel = new BudgetsViewModel(mediator, navigation);
+        var viewModel = new BudgetsViewModel(mediator);
         var policy = viewModel.InitializationFailurePolicy;
 
         policy.Report.Should().NotBeNull(

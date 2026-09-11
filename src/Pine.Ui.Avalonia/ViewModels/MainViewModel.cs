@@ -73,28 +73,39 @@ public partial class MainViewModel : ObservableObject, INavigationService
             return;
         }
 
-        // A lock that fires while the shell isn't even showing (the defensive re-lock in the
-        // catch blocks of UnlockViewModel/SetupViewModel, for instance) is already on the right
-        // screen; forcing a fresh navigation there would just interrupt whatever the user is
-        // doing to recover.
-        if (CurrentPage is not ShellViewModel shell)
+        // A lock that fires while a PRE-VAULT screen is showing (the defensive re-lock in the catch
+        // blocks of UnlockViewModel/SetupViewModel, for instance) is already on the right screen;
+        // forcing a fresh navigation there would just interrupt whatever the user is doing to
+        // recover. Nothing showing at all (before the first navigation) has nothing to clear.
+        //
+        // THIS IS AN ALLOW-LIST OF SCREENS TO LEAVE ALONE, NOT A TEST FOR THE SHELL (TD-121). It
+        // used to read `if (CurrentPage is not ShellViewModel shell) return;` -- clear the screen
+        // only if it is the shell. That was right exactly as long as nothing holding vault data ever
+        // reached the window by another route, and something did: every page inside the shell was
+        // handed the window's navigator, so leaving the receipt page put the ledger in the window,
+        // and a lock then left it on screen with the key gone. TD-121 closed that route. This
+        // inversion closes the class: a page this handler does not recognise is cleared, so the
+        // next route to the window fails safe rather than open.
+        if (CurrentPage is null or VaultSelectionViewModel or SetupViewModel or UnlockViewModel)
         {
             return;
         }
 
         // The key is gone; nothing that was showing decrypted vault data may survive it. Dropping
         // the shell's own inner page (its Dashboard/Transactions/etc. child, which is what
-        // actually holds the loaded data) matters most on the composition roots where
-        // ShellViewModel is registered as a Singleton rather than Transient (see the DI notes in
-        // Pine.Ui.Macos/Web/Android/Ios Program.cs) -- there, nothing else would ever drop that
-        // reference for us.
+        // actually holds the loaded data) matters because it is the shell's page, not the shell,
+        // that holds the loaded data.
         //
         // TD-34: this assignment now does more than drop a reference. It runs the shell's own
         // OnCurrentPageChanging hook, which unregisters that page from the messenger and disposes
         // it if it holds anything -- so a lock that happens while the live scanner is running also
         // puts the camera down. That is why it stays an assignment to the property and is not
-        // "optimised" into a field write.
-        shell.CurrentPage = null!;
+        // "optimised" into a field write. Any other page is retired by the NavigateTo below, whose
+        // own changing hook deactivates and disposes it the same way.
+        if (CurrentPage is ShellViewModel shell)
+        {
+            shell.CurrentPage = null!;
+        }
 
         var message = reason switch
         {

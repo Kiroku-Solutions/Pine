@@ -107,16 +107,25 @@ public class PineCompositionRootTests
     }
 
     /// <summary>
-    /// Every page the shell offers on a head actually resolves on that head (TD-85).
+    /// Every page the shell offers on a head resolves on that head -- unless it navigates, in which
+    /// case the container must NOT be able to build it at all (TD-85, TD-121).
     /// </summary>
     /// <remarks>
-    /// The shell's nav commands build their pages through <c>IViewModelFactory</c>, which resolves
-    /// them from the head's container, so an unregistered nav target is an exception on click, not a
-    /// blank page. Four heads of five were
-    /// missing between three and four of these. Resolution happens inside a SCOPE because several
-    /// pages reach scoped services, and the root provider refuses that under
-    /// <c>ValidateScopes</c> -- which is the behaviour under test elsewhere and must not be
-    /// side-stepped here.
+    /// <para>
+    /// The shell's nav commands build their pages through <c>IViewModelFactory</c>, and for a page
+    /// that navigates nowhere that is a container resolve, so an unregistered nav target is an
+    /// exception on click, not a blank page. Four heads of five were missing between three and four
+    /// of these. Resolution happens inside a SCOPE because several pages reach scoped services, and
+    /// the root provider refuses that under <c>ValidateScopes</c> -- which is the behaviour under
+    /// test elsewhere and must not be side-stepped here.
+    /// </para>
+    /// <para>
+    /// THE SECOND HALF IS TD-121. A page whose constructor takes the shell's navigator was, until
+    /// that row, registered here -- and the container satisfied the parameter with the WINDOW's
+    /// navigator, the only one it had. The shell is transient, so no registration could name the
+    /// right one. Such a page must therefore be unresolvable: a container that can build it can only
+    /// build it wrong.
+    /// </para>
     /// </remarks>
     [Theory]
     [MemberData(nameof(AllProfiles))]
@@ -129,6 +138,13 @@ public class PineCompositionRootTests
 
         foreach (var target in PineCompositionRoot.NavigationTargets(capabilities))
         {
+            if (TakesTheShellsNavigator(target))
+            {
+                scope.ServiceProvider.GetService(target).Should().BeNull(
+                    $"'{target.Name}' navigates its shell, and a container can only fill that with the window's navigator");
+                continue;
+            }
+
             var resolve = () => scope.ServiceProvider.GetRequiredService(target);
 
             resolve.Should().NotThrow(
@@ -137,34 +153,89 @@ public class PineCompositionRootTests
     }
 
     /// <summary>
-    /// A page with no backing pipeline has no view model AND no button, on the same head.
+    /// A page with no backing pipeline has no way to be built AND no button, on the same head.
     /// </summary>
     /// <remarks>
-    /// The two halves of TD-85 pinned together. A head that registers the receipt view models but
-    /// hides the buttons has a dead registration; a head that shows the buttons without the view
-    /// models throws on click. Both are failures here.
+    /// The two halves of TD-85 pinned together. A head that can build the receipt view models but
+    /// hides the buttons has dead code; a head that shows the buttons without being able to build
+    /// them throws on click. Both are failures here. Since TD-121 the receipt pages are built by the
+    /// factory with the shell they belong to rather than registered, so it is the factory, not the
+    /// container, that has to agree with the sidebar -- and the container must hold none of them on
+    /// any head.
     /// </remarks>
     [Theory]
     [MemberData(nameof(AllProfiles))]
-    public void TheReceiptPages_ShouldBeRegistered_ExactlyWhenTheirButtonsAreShown(PineHeadProfile profile)
+    public void TheReceiptPages_ShouldBeBuildable_ExactlyWhenTheirButtonsAreShown(PineHeadProfile profile)
     {
         using var provider = PineCompositionRoot.Build(profile);
         using var scope = provider.CreateScope();
 
         var expected = PineHeadCapabilities.For(profile).HasReceiptVision;
+        var factory = provider.GetRequiredService<IViewModelFactory>();
 
-        var shell = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
+        var shell = factory.CreateShell();
         shell.HasReceiptVision.Should().Be(
             expected,
             "the sidebar's two receipt buttons bind to this property");
 
-        scope.ServiceProvider.GetService<ScanReceiptViewModel>().Should().Match(
-            vm => expected == (vm != null));
-        scope.ServiceProvider.GetService<LiveScannerViewModel>().Should().Match(
-            vm => expected == (vm != null));
-        scope.ServiceProvider.GetService<CropReceiptViewModel>().Should().Match(
-            vm => expected == (vm != null));
+        var builders = new Func<object>[]
+        {
+            () => factory.CreateScanReceipt(shell),
+            () => factory.CreateLiveScanner(shell),
+            () => factory.CreateCropReceipt(shell),
+        };
+
+        foreach (var build in builders)
+        {
+            if (expected)
+            {
+                build.Should().NotThrow();
+            }
+            else
+            {
+                build.Should().Throw<InvalidOperationException>()
+                    .WithMessage($"*{profile}*no receipt pipeline*");
+            }
+        }
+
+        scope.ServiceProvider.GetService<ScanReceiptViewModel>().Should().BeNull();
+        scope.ServiceProvider.GetService<LiveScannerViewModel>().Should().BeNull();
+        scope.ServiceProvider.GetService<CropReceiptViewModel>().Should().BeNull();
     }
+
+    /// <summary>
+    /// The shell's navigator is never a container registration, on any head (TD-121).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FOUND MISSING BY THE ADVERSARIAL PASS. The architecture rule and the design both rest on
+    /// <c>IShellNavigator</c> being unregistered, and nothing asserted it: registering it as
+    /// <c>sp =&gt; sp.GetRequiredService&lt;ShellViewModel&gt;()</c> left all 1070 unit tests green.
+    /// </para>
+    /// <para>
+    /// WHY IT MATTERS. The shell is transient, so a registered <c>IShellNavigator</c> is a brand-new
+    /// shell that no window is showing. A page handed one navigates it, and nothing on screen moves:
+    /// TD-121's own failure with the symptom removed. Checked both ways -- no descriptor, and nothing
+    /// resolves -- because a forwarding registration under a different service type could satisfy
+    /// the second without the first.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AllProfiles))]
+    public void TheShellsNavigator_ShouldNeverBeRegistered_OnAnyHead(PineHeadProfile profile)
+    {
+        Descriptor(profile, typeof(IShellNavigator)).Should().BeNull(
+            "the shell is transient; a registered IShellNavigator can only be a shell nobody is looking at");
+
+        using var provider = PineCompositionRoot.Build(profile);
+        using var scope = provider.CreateScope();
+
+        scope.ServiceProvider.GetService<IShellNavigator>().Should().BeNull();
+        scope.ServiceProvider.GetServices<IShellNavigator>().Should().BeEmpty();
+    }
+
+    private static bool TakesTheShellsNavigator(Type page) =>
+        page.GetConstructors().Any(ctor => ctor.GetParameters().Any(p => typeof(IShellNavigator).IsAssignableFrom(p.ParameterType)));
 
     /// <summary>
     /// The three handlers that constructor-inject <see cref="IAIProvider"/> can be built on every
@@ -232,7 +303,7 @@ public class PineCompositionRootTests
             expectVision ? typeof(DefaultLocalAiProvider) : typeof(PortableAiProvider));
 
         // IImageProcessor is NOT stubbed on a head without vision: its only consumer is
-        // CropReceiptViewModel, which is not registered there either.
+        // CropReceiptViewModel, which the factory refuses to build there.
         Descriptor(profile, typeof(IImageProcessor)).Should().Match(d => expectVision == (d != null));
     }
 

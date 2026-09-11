@@ -38,7 +38,7 @@ namespace Pine.Tests.Unit.ViewModels;
 public class ScanReceiptReconciliationTests
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
+    private readonly IShellNavigator _navigationService = Substitute.For<IShellNavigator>();
 
     private static Account UsdAccount() =>
         Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System);

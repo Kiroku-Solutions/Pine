@@ -25,11 +25,11 @@ namespace Pine.Ui.Avalonia.Services;
 /// to <c>Composition/</c>.
 /// </para>
 /// <para>
-/// A HEAD THAT CANNOT SERVE A PAGE STILL THROWS, AND THAT IS CORRECT. <see cref="CreateScanReceipt"/>
-/// and <see cref="CreateLiveScanner"/> have no registration on a head without receipt vision (see
-/// <c>PineHeadCapabilities</c>), so calling them there throws. The difference is that the shell no
-/// longer offers those buttons on such a head, and the test suite proves the two halves agree --
-/// the throw is now unreachable rather than merely unlikely.
+/// A HEAD THAT CANNOT SERVE A PAGE STILL THROWS, AND THAT IS CORRECT. <see cref="CreateScanReceipt"/>,
+/// <see cref="CreateLiveScanner"/> and <see cref="CreateCropReceipt"/> refuse on a head without
+/// receipt vision (see <c>PineHeadCapabilities</c>). The difference is that the shell no longer
+/// offers those buttons on such a head, and the test suite proves the two halves agree -- the throw
+/// is now unreachable rather than merely unlikely.
 /// </para>
 /// </remarks>
 public interface IViewModelFactory
@@ -65,13 +65,31 @@ public interface IViewModelFactory
     DiagnosticsViewModel CreateDiagnostics();
 
     /// <summary>Creates the receipt review page. Receipt-vision heads only.</summary>
-    ScanReceiptViewModel CreateScanReceipt();
+    /// <param name="shell">The shell the page is shown in, and therefore the one it navigates.</param>
+    /// <remarks>
+    /// <para>
+    /// THE THREE RECEIPT PAGES TAKE THEIR SHELL (TD-121). They are the only in-vault pages that
+    /// navigate, and each used to take <see cref="INavigationService"/> from the container -- which
+    /// is the WINDOW's navigator, because that is the only one the container has. Leaving the
+    /// receipt page therefore replaced the shell, sidebar and all, and a vault lock afterwards found
+    /// no shell to clear and left the ledger on screen. The shell is transient, one per open vault,
+    /// so no container registration could name the right one; the caller that has it passes it.
+    /// </para>
+    /// <para>
+    /// A page that creates another receipt page passes on the navigator it was given, not one of
+    /// its own choosing, so the whole scanner-to-crop-to-review flow stays in the shell that began
+    /// it.
+    /// </para>
+    /// </remarks>
+    ScanReceiptViewModel CreateScanReceipt(IShellNavigator shell);
 
     /// <summary>Creates the live camera scanner. Receipt-vision heads only.</summary>
-    LiveScannerViewModel CreateLiveScanner();
+    /// <param name="shell">The shell the page is shown in. See <see cref="CreateScanReceipt"/>.</param>
+    LiveScannerViewModel CreateLiveScanner(IShellNavigator shell);
 
     /// <summary>Creates the crop step between the scanner and the review page. Receipt-vision heads only.</summary>
-    CropReceiptViewModel CreateCropReceipt();
+    /// <param name="shell">The shell the page is shown in. See <see cref="CreateScanReceipt"/>.</param>
+    CropReceiptViewModel CreateCropReceipt(IShellNavigator shell);
 
     /// <summary>
     /// Creates the add-transaction dialog, which calls <paramref name="onComplete"/> once the

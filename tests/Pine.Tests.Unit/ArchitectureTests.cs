@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
@@ -584,6 +584,198 @@ public class ArchitectureTests
             "TD-28: a screen that holds the container has hidden dependencies and can resolve a page " +
             "this head never registered, which is a throw on the user's click rather than a failure a " +
             "compiler or a test can see. Pages come from IViewModelFactory.");
+    }
+
+    /// <summary>
+    /// The types allowed to reach the WINDOW's navigator: the three pre-vault screens, whose job is to
+    /// get the user into a vault; <c>PineUiServices</c>, the window's own handle (see the remarks on
+    /// the test); and <c>PineCompositionRoot</c>, whose cached registration lambda
+    /// (<c>sp =&gt; sp.GetRequiredService&lt;MainViewModel&gt;()</c>) is a static field of a type that
+    /// yields the navigator -- it is where the navigator is made, not a page that uses it. Held in a
+    /// field for the same CA1861 reason as the lists above.
+    /// </summary>
+    private static readonly string[] TypesAllowedTheWindowNavigator =
+        ["PineCompositionRoot", "PineUiServices", "SetupViewModel", "UnlockViewModel", "VaultSelectionViewModel"];
+
+    /// <summary>The application-level statics a view model must not reach (TD-121).</summary>
+    private static readonly string[] ApplicationStatics =
+        ["Pine.Ui.Avalonia.App", "Pine.Ui.Avalonia.PineUiServices", "Avalonia.Application", "Avalonia.Controls.ApplicationLifetimes"];
+
+    /// <summary>The pages that navigate inside the shell (TD-121). Anti-vacuity for the rule below.</summary>
+    private static readonly string[] TypesTakingTheShellNavigator =
+        ["CropReceiptViewModel", "LiveScannerViewModel", "ScanReceiptViewModel"];
+
+    /// <summary>The one implementation of each navigator interface (TD-121).</summary>
+    private static readonly string[] TheWindowNavigator = ["MainViewModel"];
+
+    /// <summary>See <see cref="TheWindowNavigator"/>.</summary>
+    private static readonly string[] TheShellNavigator = ["ShellViewModel"];
+
+    /// <summary>
+    /// TD-121. A view model gets the navigator of the place it is shown in, and the two are
+    /// separate types that each have exactly one implementation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT THIS PINS. <c>MainViewModel</c> and <c>ShellViewModel</c> both implemented
+    /// <c>INavigationService</c>; the container registered the first; so every page inside the shell
+    /// was given the window's navigator, and leaving the receipt page replaced the entire shell. Worse,
+    /// the lock handler then cleared decrypted data only from a page inside the shell, so a lock after that
+    /// left the ledger on screen. Nothing failed, because every unit test of those pages substituted
+    /// the navigator and so could not see which one the container really supplied.
+    /// </para>
+    /// <para>
+    /// WHY AN ALLOW-LIST FOR THE WINDOW'S NAVIGATOR AND AN EXACT LIST FOR THE SHELL'S. Taking the
+    /// WINDOW's by mistake is the defect itself -- it resolves, it runs, it compiles, and it is wrong
+    /// -- so every type that reaches it must be named here. The shell's list is exact too, but its
+    /// real protection is that <c>IShellNavigator</c> is never registered, which
+    /// <c>PineCompositionRootTests.TheShellsNavigator_ShouldNeverBeRegistered_OnAnyHead</c> pins: a
+    /// registered one could only ever be a fresh, invisible shell. A new in-shell page that reaches for
+    /// the window fails here, which is the one place that can tell it why.
+    /// </para>
+    /// <para>
+    /// <c>PineUiServices</c> is on the window's list because it is the window's own handle: the typed
+    /// record <c>App.Services</c> exposes so <c>MainWindow</c> can reach the one navigator it hosts.
+    /// It is a static, so it is a way round this test by construction -- which is why
+    /// <see cref="OnlyNamedTypes_ShouldReachTheApplicationStatics"/> allows only four named types to touch it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EachScreen_ShouldTakeTheNavigatorOfThePlaceItIsShownIn()
+    {
+        // Arrange
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+        var windowNavigator = typeof(Pine.Ui.Avalonia.Services.INavigationService);
+        var shellNavigator = typeof(Pine.Ui.Avalonia.Services.IShellNavigator);
+
+        var concreteTypes = uiAssembly.GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false })
+            .ToArray();
+
+        // "TAKES THE NAVIGATOR" MEANS REACHES IT, NOT NAMES IT. The first version of this test
+        // compared the parameter type to the interface with ==, and the adversarial pass walked
+        // straight past it: a page taking `MainViewModel` -- the concrete window navigator, a
+        // registered singleton -- or `IEnumerable<INavigationService>` resolved, navigated the
+        // window, and left all 1070 tests green. So a parameter counts if its type IS one, or wraps
+        // one in a generic argument or an array, at any depth.
+        static bool Reaches(Type candidate, Type navigator) =>
+            navigator.IsAssignableFrom(candidate)
+            || (candidate.IsArray && Reaches(candidate.GetElementType()!, navigator))
+            || (candidate.IsGenericType && candidate.GetGenericArguments().Any(argument => Reaches(argument, navigator)));
+
+        // AND "TAKES" MEANS TAKES AND KEEPS, BY ANY ROUTE. The second verifier found the constructor
+        // was not the only door: a static `MainViewModel.Current`, a settable property, or an
+        // `Attach(INavigationService)` method all hand a page the window with no constructor
+        // parameter at all. Whatever the route, a navigator a type USES later has to be held in a
+        // field -- a property's backing field included -- so every field, instance and static, of
+        // any visibility, is inspected as well. A navigator used inside one call and dropped is the
+        // one shape this cannot see, and it is not one a page can navigate with after an await.
+        const BindingFlags Everything =
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+        static string[] TakingInConstructor(IEnumerable<Type> types, Type navigator) => types
+            .Where(type => type
+                .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Any(constructor => constructor.GetParameters().Any(p => Reaches(p.ParameterType, navigator)))
+                || type.GetFields(Everything).Any(field => field.FieldType != OuterType(type) && Reaches(field.FieldType, navigator)))
+            .Select(type => OuterName(type))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        // Act
+        var takingTheWindows = TakingInConstructor(concreteTypes, windowNavigator);
+        var takingTheShells = TakingInConstructor(concreteTypes, shellNavigator);
+
+        var implementingTheWindows = concreteTypes.Where(windowNavigator.IsAssignableFrom).Select(t => t.Name).ToArray();
+        var implementingTheShells = concreteTypes.Where(shellNavigator.IsAssignableFrom).Select(t => t.Name).ToArray();
+
+        // Assert
+        takingTheWindows.Should().Equal(
+            TypesAllowedTheWindowNavigator,
+            "INavigationService replaces the whole window. A page shown inside the shell that takes it " +
+            "drops the sidebar when it navigates, and a vault lock then finds no shell to clear -- that " +
+            "was TD-121. In-shell pages take IShellNavigator, handed to them by IViewModelFactory.");
+
+        takingTheShells.Should().Equal(
+            TypesTakingTheShellNavigator,
+            "anti-vacuity: these three navigate inside the shell, and if the list comes back empty the " +
+            "rule above is being checked against nothing on the in-vault side.");
+
+        implementingTheWindows.Should().Equal(
+            TheWindowNavigator,
+            "one implementation per navigator interface is what makes 'which one does this page get?' " +
+            "a question with one answer. Two implementations of one interface was the whole defect.");
+        implementingTheShells.Should().Equal(TheShellNavigator);
+    }
+
+    /// <summary>A nested (compiler-generated or declared) type is reported as the type it lives in.</summary>
+    private static string OuterName(Type type) => OuterType(type).Name;
+
+    /// <summary>
+    /// The outermost declaring type. Also what a field is compared against to skip SELF-capture: an
+    /// async state machine or lambda closure inside <c>MainViewModel</c> holds a <c>&lt;&gt;4__this</c>
+    /// of type <c>MainViewModel</c>, which is the navigator holding itself, not a page holding it.
+    /// </summary>
+    private static Type OuterType(Type type)
+    {
+        while (type.DeclaringType is not null)
+        {
+            type = type.DeclaringType;
+        }
+
+        return type;
+    }
+
+    /// <summary>
+    /// The only types in the UI assembly allowed to touch the application-level statics. Each is
+    /// justified in the remarks on the test below.
+    /// </summary>
+    private static readonly string[] TypesAllowedTheApplicationStatics =
+        ["App", "MainWindow", "PineCompositionRoot", "PineUiServices", "ThemeManager"];
+
+    /// <summary>
+    /// TD-121. Only a named handful of types may touch the application statics, which is where the
+    /// window's navigator can be reached without any constructor at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// TWO STATICS HOLD THE WINDOW'S NAVIGATOR. <c>App.Services.Main</c> is Pine's own -- the first
+    /// adversarial pass named it. Avalonia's is the second, and the second verifier made it work with
+    /// no other change: <c>Application.Current.ApplicationLifetime</c> is the desktop lifetime, whose
+    /// <c>MainWindow.DataContext</c> is <c>MainViewModel</c>. Neither is visible to a constructor or
+    /// field rule, because each is a static READ.
+    /// </para>
+    /// <para>
+    /// SO THIS IS AN ALLOW-LIST OVER THE WHOLE ASSEMBLY, NOT A BAN ON ONE NAMESPACE. The first version
+    /// forbade the statics only under <c>ViewModels</c>, and a helper in <c>Services/</c> or
+    /// <c>Utils/</c> that read them and was injected into a page walked round it. The five allowed:
+    /// <c>App</c> is the application; <c>MainWindow</c> reads the session it reports activity to;
+    /// <c>PineCompositionRoot</c> hands <c>App</c> its services; <c>PineUiServices</c> is the record itself; <c>ThemeManager</c> swaps the
+    /// application's resource dictionaries, which is what a theme is. None of them navigates.
+    /// </para>
+    /// <para>
+    /// The positive control is the allow-list itself: the assertion is equality, so a rule that
+    /// detected nothing would report an empty set and fail, not pass.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void OnlyNamedTypes_ShouldReachTheApplicationStatics()
+    {
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+
+        var readers = OurTypesIn(uiAssembly)
+            .And().HaveDependencyOnAny(ApplicationStatics)
+            .GetTypes()
+            .Select(OuterName)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        readers.Should().Equal(
+            TypesAllowedTheApplicationStatics,
+            "App.Services.Main and Avalonia's desktop lifetime both lead to the window's navigator; a type " +
+            "that reads either can replace the whole shell without taking anything -- TD-121 by another door.");
     }
 
     /// <summary>

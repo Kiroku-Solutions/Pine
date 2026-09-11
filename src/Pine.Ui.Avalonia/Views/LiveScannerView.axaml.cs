@@ -25,7 +25,7 @@ public partial class LiveScannerView : UserControl
         // LiveScannerViewModel.Dispose is idempotent (_isDisposed), so calling it twice costs
         // nothing. This stays because unloading is not always a navigation: the window closing, the
         // shell's ContentControl being re-templated, or a view swapped out by anything that does
-        // not go through INavigationService would otherwise leave the camera open. The cheap call
+        // not go through the shell's navigator (IShellNavigator) would otherwise leave the camera open. The cheap call
         // is worth more than the deleted line.
         if (DataContext is LiveScannerViewModel vm)
         {

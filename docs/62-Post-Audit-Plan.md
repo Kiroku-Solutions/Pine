@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-10 — Stage 0 closed (§3.1–§3.3); Stage 1 item 1.1 closed (§4.1)             |
+| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1 and 1.2 closed (§4.1, §4.2) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -235,7 +235,7 @@ Ordered by what a user loses if it is wrong.
 | # | Work | Closes | Why here |
 |---|---|---|---|
 | 1.1 | ✅ **Done** (2026-09-10) — **Restore from a backup, in the application** | TD-56 (closed) | Restore refuses anything it cannot verify first, copies what it is about to replace, and locks the vault afterwards. See §4.1 |
-| 1.2 | **Fix the navigation defect that replaces the whole shell** | TD-121 | `MainViewModel` and `ShellViewModel` both implement `INavigationService`, only the first is registered, so an in-shell navigation drops the shell. It is shipped, visible, and cheap relative to its effect |
+| 1.2 | ✅ **Done** (2026-09-11) — **Fix the navigation defect that replaces the whole shell** | TD-121 (closed) | The shell's navigator is now a type of its own that the container cannot supply, so a page can only get it from the shell it is shown in. The defect was also a lock leak the row did not name. See §4.2 |
 | 1.3 | **Dashboard: make the ten inert widgets real, or take them down** | — | Net worth, expenses, income, savings, goals, investments, charts, calendar, AI suggestions and the budget tile render "No data yet" permanently. They are honest — no fabricated numbers — but ten of twelve tiles are furniture. Build the three or four that the existing queries already support (net worth, income, expenses are derivable today) and delete the rest until their subsystem exists. **This is TD-99's lesson applied before it becomes TD-99 again** |
 | 1.4 | **The dashboard's "Scan Receipt" button** | — | It has no `Command` binding at all: it renders, it is clickable, it does nothing. One line |
 | 1.5 | **Live scanner camera list** | — | Enumerates "Camera 0".."Camera 3" regardless of hardware. Either enumerate real devices or drop the picker |
@@ -323,11 +323,198 @@ cleared: double-clicking Restore cannot re-enter, because `IsRestoringVault` is 
 `await` on a single-threaded UI; and locking the vault genuinely tears the shell's page down, so no
 cached screen survives to write to the restored file.
 
+**Correction, 2026-09-11 (found while closing 1.2).** This item left **two unit-suite coverage floors
+breached**: `Pine.Infrastructure` at 77.63% against 78%, and **overall at 67.51% against 68%** — the
+second missed by the first write-up of this correction and found by the independent verifier.
+`VaultRestoreService` is tested only by the integration suite, and the gate measures only the unit
+suite. The commit reported
+"unit 1065, integration 250, both green" and never ran `scripts/coverage-gate.sh` — so CI, now armed,
+would have rejected it. Measured, not inferred: the gate was run on a clean checkout of that commit, and
+the two coverage reports compared line for line (8,902 vs 8,903 covered lines in that assembly — item
+1.2 moved it by one). It was answered with tests rather than a lower floor; see §4.2.
+
 **What is NOT closed by this.** A backup still contains `pine.db` and nothing else — not the vault
 header, not preferences. Restoring into a vault whose password was changed after the backup works,
 because the data key is never rotated (TD-86), but that is a property of TD-86 rather than a promise
 made here. And nothing has been exercised on a screen: these are service, handler and view-model
 tests.
+
+### 4.2 Item 1.2, as built (2026-09-11, iteration 40)
+
+**The row understated its own defect, and the first test written found out how.** TD-121 said an
+in-shell navigation drops the shell. It does, and the reproduction proved it against the real
+Windows container: open the receipt page, press Cancel, and the window shows a bare transactions list
+— no sidebar, no lock button. But `MainViewModel`'s lock handler only clears decrypted data when the
+window is showing the shell (`if (CurrentPage is not ShellViewModel shell) return;`). With the ledger
+promoted to the window, **a lock — idle, suspend, or the user's own — found no shell, returned early,
+and left the transactions list on screen with the key already gone.** The second reproduction test
+asserts exactly that, and before the fix it failed with `found TransactionsViewModel` where the vault
+picker should have been. A navigation defect was also a lock leak, and the register row had never
+said so.
+
+**Why it survived eight iterations.** Every unit test of the receipt pages substituted
+`INavigationService`, so none of them could see *which* navigator the container would actually hand
+over. The one question that mattered — "is this the shell's navigator or the window's?" — was being
+answered by a registration nobody read, and every test that might have asked it had replaced the
+answer with a mock. The new tests use the real container.
+
+**The fix is a second type, not a second registration.** `IShellNavigator` is a separate interface,
+implemented by `ShellViewModel` and nothing else, and it is **never registered**: the shell is
+transient — one per open vault (TD-72) — so there is no single instance a container could correctly
+supply. The shell hands *itself* to the pages that navigate (`IViewModelFactory.CreateScanReceipt`,
+`CreateLiveScanner`, `CreateCropReceipt` now take it), and a page that creates the next one hands on
+the navigator it was given. `ShellViewModel` no longer implements `INavigationService`, which now
+means the window and nothing else. Two things follow that a registration fix would not have given:
+
+- **Handing a receipt page the wrong navigator is a compile error**, not a runtime choice: its
+  parameter is an `IShellNavigator`, and the window's navigator is not one. That is a property of
+  pages already typed that way — a *new* page could still ask for the window by another name, which
+  is what the architecture rule below exists for, and which the adversarial pass proved it first
+  failed to catch.
+- **A page from a torn-down shell navigates that dead shell, never the live one.** A singleton
+  "current shell" forwarder was the obvious alternative and was rejected for exactly this: a
+  receipt save completing after a lock and a re-unlock would have navigated the *new* vault's shell.
+
+The three receipt pages left the container, because a container that can build one can only build it
+wrong. That moved TD-85's capability gate: it used to be implicit (the pages were registered only on
+a receipt-vision head, so resolving them elsewhere threw), and `ActivatorUtilities` would now happily
+build the review page on Android, where every dependency exists. The factory refuses them explicitly
+now, naming the head. `BudgetsViewModel` took the window's navigator and never called it — harmless
+only until its first caller — so the dependency was deleted rather than retyped. And the crop page,
+which had never been shown inside the shell and so had never had to answer the question, now lights
+the live scanner's sidebar button, since it is the middle step of that one flow.
+
+**The guard is the partition, stated as a rule.** `ArchitectureTests.EachScreen_ShouldTakeTheNavigatorOfThePlaceItIsShownIn`
+asserts that exactly the three pre-vault screens (and `PineUiServices`, the window's own handle)
+*reach* the window's navigator, that exactly the three receipt pages take `IShellNavigator`, and that
+each interface has exactly one implementation. "Reach" is the word that matters, and it is the
+adversarial pass's correction — see below. Two companions close the other doors:
+`NoViewModel_ShouldReachTheApplicationStatics` (a view model must not read `App.Services`, which holds
+the window's navigator in a static), and
+`PineCompositionRootTests.TheShellsNavigator_ShouldNeverBeRegistered_OnAnyHead`.
+
+**The lock handler was inverted too, so the leak no longer depends on the navigation fix.** It used
+to clear the screen only if the window was showing the shell — right exactly as long as nothing
+holding vault data ever reached the window another way, which is how TD-121 became a lock leak. It now
+leaves alone only the screens it recognises as pre-vault (`VaultSelection`, `Setup`, `Unlock`, or
+nothing at all) and clears everything else, so the next route to the window fails safe rather than
+open. `A_lock_clears_an_in_vault_page_even_when_the_window_shows_it_directly` puts the ledger straight
+into the window — the shape the defect produced — and asserts the lock still takes it down.
+
+**The adversarial pass found two holes in the guards and a lifecycle defect the fix had created.**
+An independent reviewer was given the diff and told to break it; everything below it demonstrated
+with a probe or a mutation, not argued.
+
+- **The architecture rule matched the interface by name.** A page taking `MainViewModel` — the
+  concrete window navigator, a registered singleton — or `IEnumerable<INavigationService>` resolved,
+  navigated the window, and left **all 1070 unit tests green**: TD-121 again, through the same test
+  written to prevent it. The rule now asks whether a parameter *reaches* the navigator — is one,
+  derives from one, or wraps one in a generic or an array. A third door, `App.Services.Main`, is a
+  static and invisible to any constructor rule; it is closed by the IL rule above.
+- **Nothing asserted that `IShellNavigator` stays unregistered**, although both the design and the
+  architecture test's own remarks leaned on it. Registering it left the suite green too — and a
+  registered one can only be a fresh shell no window shows, so a page handed one navigates nothing
+  on screen. Now asserted on every head, by descriptor and by resolution.
+- **A retired shell still activated what it was handed.** Pages hold the shell that created them, and
+  three of them navigate after an `await` or from a dispatcher post. The window was already safe —
+  the probe confirmed a late navigation never reached it — but the dead shell made the page current
+  and *active*: enlisted for broadcasts, its first load started against a locked vault, alive until
+  collected. A shell now retires when it is deactivated and refuses to navigate after that, releasing
+  the page instead; it un-retires if shown again.
+- **The crop and review pages could pull the user back.** They sit beside the sidebar now, so a user
+  can leave mid-operation — which they could not before, when the page filled the window — and both
+  navigated unconditionally when their `await` landed. Both navigate only if still current now; the
+  save's broadcast still goes out either way, because the transaction was written. The live scanner's
+  two posted captures got the same guard, **and those two are defended by argument, not by a test**:
+  reaching them needs a camera frame.
+- **Seven comments had gone false** — the shell, its view, the infrastructure registration note, the
+  composition root, `PageActivation` (twice), `LiveScannerView` and a test's own reason string all
+  still said the receipt pages were registered, or cited the old interface. And `ValidateOnBuild` no
+  longer walks the receipt pages' constructors, so a missing dependency of theirs would throw on the
+  click rather than at startup. That is now written on `PineCompositionRoot.Build`; it is covered by
+  the unit tests that build all three through the real factory on every head, which is a weaker
+  guarantee than startup validation, and is labelled as such.
+
+**A second, independent verifier then checked the fixes rather than the diff, and broke the guard a
+second time.** Two more doors to the window's navigator passed both architecture rules, one of them
+working today with no other change: Avalonia's own `Application.Current.ApplicationLifetime`, whose
+`MainWindow.DataContext` *is* `MainViewModel`; and a static on `MainViewModel` itself. The rules
+changed shape in answer, not just in scope:
+
+- **"Takes the navigator" now means holds it, by any route.** Every field of every type — instance and
+  static, any visibility, property backing fields included — is inspected, not only constructor
+  parameters. That catches the static, a settable property and an `Attach(...)` method alike, because
+  a page that navigates later has to keep the navigator somewhere. The one shape it cannot see is a
+  navigator used inside one call and dropped, which is not one a page can navigate with after an
+  `await`. A self-capture exclusion keeps `MainViewModel`'s own async state machines (`<>4__this`) out.
+- **The statics rule became an allow-list over the whole assembly** — five named types, each justified
+  in the test — instead of a ban on one namespace, and it now names Avalonia's application and lifetime
+  types as well as Pine's. The first version let a helper in `Services/` read `App.Services` and be
+  injected into a page.
+
+The verifier also caught three comments still stating the old lock rule in the present tense, a crop
+guard that returned without releasing its streams, and the omissions in the coverage paragraph below;
+all corrected. The lock-handler allow-list is now tied to the architecture rule: the pre-vault lock test
+is a theory over exactly the three screens that rule permits the window's navigator.
+
+**Verified by falsification: nineteen mutations, nineteen killed**, each by the test written for it and
+several by more than one. Eleven were written after one of the two independent passes, and six of
+those are the passes' own surviving routes:
+
+| Mutation | Killed by |
+|---|---|
+| The factory hands receipt pages the window, wrapped as a shell | Both reproduction tests, the hand-on test, the architecture test |
+| The factory hands receipt pages *another* shell | The reproduction test, the hand-on test — behavioural tests, not the architecture rule |
+| The crop page does not hand on its shell | The hand-on test (and the architecture rule, since the stand-in implements the interface) |
+| The capability check is deleted | Six tests, one per non-vision head per factory/buildability test |
+| A receipt page is registered in the container again | 48 tests: `ValidateOnBuild` fails every head |
+| The crop page lights nothing | The crop sidebar test |
+| The shell implements `INavigationService` as well | The architecture test |
+| A new type takes `INavigationService` | The architecture test |
+| A retired shell navigates anyway | The retirement test, and the real-container late-cancel probe |
+| A late save navigates even though the user left | The late-save test (its user-stays twin is the positive control) |
+| A late crop navigates even though the user left | The late-crop test (likewise) |
+| The lock handler goes back to "clear only the shell" | The in-vault-page-in-the-window lock test |
+| `IShellNavigator` is registered — **the reviewer's survivor** | The never-registered test, on all four heads |
+| A page takes `MainViewModel` — **the reviewer's survivor** | The architecture test, now matching by reach |
+| A page reads `App.Services` | The application-statics IL rule |
+| A type reads Avalonia's desktop lifetime — **the verifier's survivor** | The application-statics allow-list |
+| `MainViewModel` exposes itself in a static — **the verifier's survivor** | The architecture test, now inspecting fields |
+| A page holds the window's navigator in a settable property | The architecture test, now inspecting fields |
+| A helper outside `ViewModels/` reads `App.Services` | The application-statics allow-list, now assembly-wide |
+
+**The coverage gate was red before this item started, and this item is what found it.** Running
+`scripts/coverage-gate.sh` — which the previous item never did — failed on `Pine.Infrastructure`
+(77% < 78%). A clean checkout of the previous commit measured the same 77.63% — and overall at 67.51%
+against 68%, which the first write-up of this paragraph missed. Both breaches were 1.1's (see the
+correction in §4.1); but "not this item's" is only half the truth, and the verifier supplied the other
+half: without the new tests this item's tree measures overall at 68.10%, a margin of a tenth of a
+point, so this item did not cause the overall breach and did not meaningfully cure it either. The gate's own instruction is "raise the tests,
+not the floor", and the nearest uncovered lines would have been the cheap answer. The tests written
+instead cover the eleven refusals in `FileVaultHeaderStore.Read` that **neither suite had ever
+executed** — a missing KDF section, KDF id, any of the five KDF parameters, creation time, vault id or
+salt, a zero header version, a literal `null` — each of which is the difference between refusing a
+header and deriving the wrong key from a default. Falsified by mutation: changing which field a
+refusal names kills its test. The obvious mutation — quietly defaulting a missing field — **does not
+compile**: nullable flow analysis, with warnings as errors, already refuses to use a field that was not
+checked, so the compiler is the first guard there and the tests are the second. `Pine.Infrastructure`
+went 77.63% → 82.50% — **and most of that is generated code, which has to be said**: of the 558
+newly covered lines, 445 are the source-generated `VaultHeaderJsonContext` serializer and 113 are
+`FileVaultHeaderStore.cs` itself. The gate has no exclusions, by design, so the figure is honest by
+its own rules; it is not a claim that 82% of the hand-written infrastructure is tested. The floors
+ratchet up to match (overall 68 → 70, Core 88 → 89,
+Infrastructure 78 → 82, UI 38 → 40; two left one point under the rounded figure, with the reason in
+the script).
+
+**Numbers.** Unit **1102** (1065 before this item), integration **250**, both green; coverage gate
+green, run in Release with coverage exactly as CI runs it.
+
+**What is NOT closed by this.** Nothing here has been exercised on a screen: the tests drive the real
+container and a real headless dispatcher, not a window. The live scanner's two late-navigation guards
+are argued rather than tested. And the review page's Save still reports "could not be saved" for any
+exception thrown after the write succeeded — a pre-existing sentence this item noticed and did not
+change; after TD-121 the only code between the write and the end of that `try` is a broadcast and a
+guarded navigation, so the window for it has narrowed rather than closed.
 
 **Definition of done for 1.3 and 1.5:** the screen shows only what it can measure. The rule from
 TD-99 and the language picker is now the house rule and should be applied without a debt row first.
@@ -394,4 +581,6 @@ real remote is the one step none of this can do for itself (`61-Manual-Test-Plan
 is done, Stage 0 is complete in the repository and unproven on the server, which is a smaller claim
 than "finished" and the only one the evidence supports.
 
-The next item is 1.1, restore from a backup in the application.
+~~The next item is 1.1, restore from a backup in the application.~~ Done 2026-09-10 (§4.1), and
+1.2, the navigation defect, on 2026-09-11 (§4.2). The next item is 1.3: the dashboard's ten inert
+widgets.

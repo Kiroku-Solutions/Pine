@@ -27,8 +27,10 @@ namespace Pine.Ui.Avalonia.Services;
 /// it ("Navigate first so CropReceiptViewModel is created and registers the message handler"). A
 /// recipient that is only activated once its view loads is not registered yet when that send
 /// happens, and the receipt is dropped with no error anywhere. Activating inside the
-/// <c>CurrentPage</c> setter keeps the guarantee the sender already relies on: when
-/// <see cref="INavigationService.NavigateTo"/> returns, the new page is registered.
+/// <c>CurrentPage</c> setter keeps the guarantee the sender already relies on: when a navigator's
+/// <c>NavigateTo</c> returns -- the window's <see cref="INavigationService"/> or the shell's
+/// <see cref="IShellNavigator"/>, which is the one the scanner-to-crop hand-off goes through -- the
+/// new page is registered.
 /// </para>
 /// <para>
 /// DISPOSAL RIDES ALONG. A page that owns unmanaged or device resources (today only
@@ -74,7 +76,7 @@ internal static class PageActivation
     /// <c>DataChangedMessage</c> -- and a page that is not yet a recipient when its own load
     /// broadcasts would miss the message it caused. Registration is also synchronous and
     /// initialisation is not, so this ordering is the one that keeps TD-34's guarantee intact:
-    /// when <see cref="INavigationService.NavigateTo"/> returns, the new page is registered, even
+    /// when either navigator's <c>NavigateTo</c> returns, the new page is registered, even
     /// though its data has not arrived yet.
     /// </para>
     /// <para>

@@ -41,7 +41,7 @@ namespace Pine.Tests.Unit.ViewModels;
 public class ScanReceiptAttachmentTests
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
+    private readonly IShellNavigator _navigationService = Substitute.For<IShellNavigator>();
 
     /// <summary>The smallest thing Skia will decode: a 1x1 PNG.</summary>
     /// <remarks>

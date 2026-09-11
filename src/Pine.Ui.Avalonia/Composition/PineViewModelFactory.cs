@@ -18,26 +18,35 @@ namespace Pine.Ui.Avalonia.Composition;
 /// page, in <c>Composition/</c>, which is the assembly's one declared home for the container.
 /// </para>
 /// <para>
-/// SINGLETON, AND HOLDING THE ROOT PROVIDER. Every page it creates is registered transient and
-/// depends only on singletons (<c>IMediator</c> is the singleton scoping decorator; see
-/// <c>ScopedMediator</c>), so nothing scoped escapes through this seam and
-/// <c>ValidateScopes</c> stays honest. This is the same provider <c>MainViewModel</c> and
-/// <c>ShellViewModel</c> used to hold themselves -- it has moved, not grown.
+/// SINGLETON, AND HOLDING THE ROOT PROVIDER. Every page it creates is either registered transient
+/// or, for the six that take an argument no container can supply (a callback, or the shell they are
+/// shown in), built with <c>ActivatorUtilities</c> -- and either way depends only on singletons
+/// (<c>IMediator</c> is the singleton scoping decorator; see <c>ScopedMediator</c>), so nothing
+/// scoped escapes through this seam and <c>ValidateScopes</c> stays honest. This is the same
+/// provider <c>MainViewModel</c> and <c>ShellViewModel</c> used to hold themselves -- it has moved,
+/// not grown.
 /// </para>
 /// </remarks>
 public sealed class PineViewModelFactory : IViewModelFactory
 {
     private readonly IServiceProvider _provider;
+    private readonly PineHeadCapabilities _capabilities;
 
     /// <summary>
     /// Creates the factory over a head's container.
     /// </summary>
     /// <param name="provider">The provider built by <see cref="PineCompositionRoot.Build"/>.</param>
-    public PineViewModelFactory(IServiceProvider provider)
+    /// <param name="capabilities">
+    /// What this head can serve. Consulted by the three receipt methods, which are no longer gated
+    /// by a container registration (TD-121).
+    /// </param>
+    public PineViewModelFactory(IServiceProvider provider, PineHeadCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(capabilities);
 
         _provider = provider;
+        _capabilities = capabilities;
     }
 
     /// <inheritdoc />
@@ -70,14 +79,38 @@ public sealed class PineViewModelFactory : IViewModelFactory
     /// <inheritdoc />
     public DiagnosticsViewModel CreateDiagnostics() => _provider.GetRequiredService<DiagnosticsViewModel>();
 
-    /// <inheritdoc />
-    public ScanReceiptViewModel CreateScanReceipt() => _provider.GetRequiredService<ScanReceiptViewModel>();
+    // THE THREE THAT TAKE THEIR SHELL (TD-121). Built exactly like the callback-taking three below:
+    // the caller supplies the one argument no container can know -- here, WHICH shell -- and every
+    // other constructor parameter comes from the container. They are not registered, so the
+    // container can no longer build one with the window's navigator in it, which is what it did.
+    //
+    // THE CAPABILITY CHECK IS EXPLICIT NOW, AND HAS TO BE. It used to be implicit: these pages were
+    // registered only on a receipt-vision head, so GetRequiredService threw everywhere else. With no
+    // registration, ActivatorUtilities would happily build the review page on Android -- every one
+    // of its dependencies exists there -- and hand it a pipeline that refuses vision on first use.
 
     /// <inheritdoc />
-    public LiveScannerViewModel CreateLiveScanner() => _provider.GetRequiredService<LiveScannerViewModel>();
+    public ScanReceiptViewModel CreateScanReceipt(IShellNavigator shell) => CreateReceiptPage<ScanReceiptViewModel>(shell);
 
     /// <inheritdoc />
-    public CropReceiptViewModel CreateCropReceipt() => _provider.GetRequiredService<CropReceiptViewModel>();
+    public LiveScannerViewModel CreateLiveScanner(IShellNavigator shell) => CreateReceiptPage<LiveScannerViewModel>(shell);
+
+    /// <inheritdoc />
+    public CropReceiptViewModel CreateCropReceipt(IShellNavigator shell) => CreateReceiptPage<CropReceiptViewModel>(shell);
+
+    private TPage CreateReceiptPage<TPage>(IShellNavigator shell)
+    {
+        ArgumentNullException.ThrowIfNull(shell);
+
+        if (!_capabilities.HasReceiptVision)
+        {
+            throw new InvalidOperationException(
+                $"The {_capabilities.Profile} head has no receipt pipeline, so it cannot show {typeof(TPage).Name}. " +
+                "The shell hides the buttons that lead here on such a head.");
+        }
+
+        return ActivatorUtilities.CreateInstance<TPage>(_provider, shell);
+    }
 
     // THE THREE THAT TAKE A CALLBACK (TD-58). ActivatorUtilities.CreateInstance supplies the
     // caller's Action for the one parameter the container cannot serve and resolves EVERY other

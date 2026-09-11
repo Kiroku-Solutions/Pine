@@ -189,8 +189,10 @@ Rewrite the three capturing handlers, de-`async void` the fourth, wire or delete
 - **`Services/PageActivation.cs`** (new) — `Deactivate(page)` and `Activate(page)`, the two halves of
   a page change. Deactivate unregisters *then* disposes, in that order, so a broadcast arriving
   mid-teardown cannot reach a half-disposed recipient.
-- **`MainViewModel` and `ShellViewModel`** — both implement `INavigationService`, and both got the
-  same pair of hooks on their `CurrentPage` property. They are on the *property*, not inside
+- **`MainViewModel` and `ShellViewModel`** — both implemented `INavigationService` when this was
+  written, and both got the same pair of hooks on their `CurrentPage` property. *(Since TD-121,
+  2026-09-11, the shell implements a separate `IShellNavigator` instead: sharing one interface is what
+  let the container hand every in-shell page the window's navigator. The hooks are unchanged.)* They are on the *property*, not inside
   `NavigateTo`, because the vault-lock path assigns `shell.CurrentPage = null!` directly and never
   calls `NavigateTo`; a retirement step living in the navigator would simply be skipped there.
 - **`ShellViewModel.OnDeactivated`** — the shell is both a page of `MainViewModel` and a navigator of

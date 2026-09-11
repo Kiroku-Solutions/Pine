@@ -7,7 +7,17 @@ using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class ShellViewModel : ObservableRecipient, INavigationService
+/// <summary>
+/// The in-vault shell: the sidebar, and the page beside it.
+/// </summary>
+/// <remarks>
+/// IT IS THE <see cref="IShellNavigator"/>, AND NOT AN <see cref="INavigationService"/> (TD-121). It
+/// used to implement the window's interface too, which the container could never hand to anyone
+/// because <c>MainViewModel</c> already held that registration -- so the pages it hosts were given
+/// the window's navigator and replaced the whole shell when they navigated. The shell now passes
+/// ITSELF to every page it creates that can navigate.
+/// </remarks>
+public partial class ShellViewModel : ObservableRecipient, IShellNavigator
 {
     private readonly IViewModelFactory _viewModels;
     private readonly IVaultSession _vaultSession;
@@ -17,13 +27,14 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
     /// exist (TD-85).
     /// </summary>
     /// <remarks>
-    /// THE BUTTON AND THE REGISTRATION ARE NOW ONE DECISION. Before this, the sidebar listed all
+    /// THE BUTTON AND THE ABILITY TO BUILD THE PAGE ARE ONE DECISION. Before this, the sidebar listed all
     /// seven pages on all five heads while four of them registered between three and four of the
     /// view models, and every nav command resolves its page out of the container -- so
     /// "Scan Receipt" on Android was not a blank page, it was an exception on click. This property
-    /// reads the same <see cref="PineHeadCapabilities"/> object that decided whether
-    /// <c>PineCompositionRoot</c> registered the view models at all, so the two halves cannot
-    /// disagree.
+    /// reads the same <see cref="PineHeadCapabilities"/> object that decides whether
+    /// <c>PineViewModelFactory</c> will build the receipt pages at all, so the two halves cannot
+    /// disagree. (That decision was a container registration until TD-121 took the receipt pages
+    /// out of the container; it is the factory's explicit check now.)
     /// </remarks>
     public bool HasReceiptVision { get; }
 
@@ -57,10 +68,39 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
         _vaultSession.Lock(VaultLockReason.UserRequested);
     }
 
+    /// <summary>
+    /// Whether this shell has been taken off the screen -- by a lock, or by the window moving on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A RETIRED SHELL REFUSES TO NAVIGATE (TD-121). Pages hold the shell that created them, and some
+    /// of them navigate after an <c>await</c>: a receipt save that completes after a lock, a crop
+    /// that finishes processing, a camera frame posted to the dispatcher. Before TD-121 those late
+    /// navigations went to the window and put the page back on screen. Now they reach the shell they
+    /// came from -- and without this flag, that dead shell would have ACTIVATED the page it was
+    /// handed: registered it for messages, started its load against a locked vault, and kept it
+    /// alive to answer the next session's broadcasts. Found by the adversarial pass, with a probe.
+    /// </para>
+    /// <para>
+    /// Not <see cref="ObservableRecipient.IsActive"/> itself: the constructor navigates to the
+    /// dashboard before the shell has ever been activated, so "not active" cannot mean "retired".
+    /// It is reset by <see cref="OnActivated"/> so a shell that is shown again navigates again.
+    /// </para>
+    /// </remarks>
+    private bool _isRetired;
+
     /// <inheritdoc />
     public void NavigateTo(ObservableObject page)
     {
         ArgumentNullException.ThrowIfNull(page);
+
+        if (_isRetired)
+        {
+            // The page was built for a shell nobody is looking at. It was never activated, so it
+            // registered nothing and loaded nothing; letting it go is the whole of the clean-up.
+            PageActivation.Deactivate(page);
+            return;
+        }
 
         // Everything that retires the outgoing page and enlists the incoming one happens INSIDE
         // this assignment, in OnCurrentPageChanging/OnCurrentPageChanged below. It is written that
@@ -117,9 +157,18 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
     /// </remarks>
     protected override void OnDeactivated()
     {
+        _isRetired = true;
         CurrentPage = null!;
 
         base.OnDeactivated();
+    }
+
+    /// <summary>A shell shown (again) navigates (again); see <see cref="_isRetired"/>.</summary>
+    protected override void OnActivated()
+    {
+        _isRetired = false;
+
+        base.OnActivated();
     }
 
     /// <summary>
@@ -131,6 +180,13 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
     /// asked of the object rather than of a generic parameter -- and it is exactly as exact: these
     /// are sealed-in-practice page types with no derived variants, so nothing that was false here
     /// becomes true.
+    /// <para>
+    /// THE CROP PAGE LIGHTS THE LIVE SCANNER'S BUTTON (TD-121). It has no button of its own and is
+    /// only ever reached from the live scanner, as the middle step of that one flow. Before TD-121
+    /// it never reached this method at all -- it replaced the shell, sidebar included -- so the
+    /// question of what it should light did not arise; now that it is shown inside the shell,
+    /// lighting nothing would make the sidebar say the user is nowhere.
+    /// </para>
     /// </remarks>
     private void UpdateActiveStates(ObservableObject page)
     {
@@ -140,7 +196,7 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
         IsRulesActive = page is RulesViewModel;
         IsDiagnosticsActive = page is DiagnosticsViewModel;
         IsScanReceiptActive = page is ScanReceiptViewModel;
-        IsLiveScannerActive = page is LiveScannerViewModel;
+        IsLiveScannerActive = page is LiveScannerViewModel or CropReceiptViewModel;
         IsSettingsActive = page is SettingsViewModel;
     }
 
@@ -229,15 +285,18 @@ public partial class ShellViewModel : ObservableRecipient, INavigationService
         NavigateTo(diagnostics);
     }
 
+    // The two receipt pages navigate on their own, so they are handed THIS shell to do it with
+    // (TD-121). Every other page above navigates nowhere and takes no navigator at all.
+
     [RelayCommand]
     private void NavigateToScanReceipt()
     {
-        NavigateTo(_viewModels.CreateScanReceipt());
+        NavigateTo(_viewModels.CreateScanReceipt(this));
     }
 
     [RelayCommand]
     private void NavigateToLiveScanner()
     {
-        NavigateTo(_viewModels.CreateLiveScanner());
+        NavigateTo(_viewModels.CreateLiveScanner(this));
     }
 }

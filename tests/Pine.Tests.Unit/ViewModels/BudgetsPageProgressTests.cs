@@ -31,7 +31,6 @@ public class BudgetsPageProgressTests
     private static readonly CurrencyCode Eur = new("EUR");
 
     private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly INavigationService _navigation = Substitute.For<INavigationService>();
     private readonly Localizer _localizer = new();
 
     private BudgetsViewModel PageShowing(params BudgetProgress[] rows)
@@ -39,7 +38,7 @@ public class BudgetsPageProgressTests
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(rows));
 
-        return new BudgetsViewModel(_mediator, _navigation, _localizer);
+        return new BudgetsViewModel(_mediator, _localizer);
     }
 
     private static BudgetProgress Measured(string category, decimal limit, decimal spent) =>

@@ -14,7 +14,12 @@ namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>
 {
-    private readonly INavigationService _navigationService;
+    /// <summary>
+    /// The shell this page is shown in (TD-121). It was the window's navigator, so confirming or
+    /// cancelling a crop replaced the shell; it is now the shell that created this page, and it is
+    /// handed on to the page that comes next.
+    /// </summary>
+    private readonly IShellNavigator _navigationService;
 
     /// <summary>
     /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
@@ -45,14 +50,14 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     public partial string? ErrorMessage { get; set; }
 
     /// <summary>Creates the crop screen's view model.</summary>
-    /// <param name="navigationService">Where the confirmed crop navigates to.</param>
+    /// <param name="navigationService">The shell this page is shown in; see <c>IViewModelFactory.CreateCropReceipt</c>.</param>
     /// <param name="imageProcessor">The perspective-crop and OCR-enhance pipeline.</param>
     /// <param name="logger">
     /// Where a failed crop is recorded (TD-14). Optional so the designer and the existing tests can
     /// construct this view model directly; the container injects a real one.
     /// </param>
     public CropReceiptViewModel(
-        INavigationService navigationService,
+        IShellNavigator navigationService,
         IViewModelFactory viewModels,
         IImageProcessor imageProcessor,
         ILogger<CropReceiptViewModel>? logger = null)
@@ -116,8 +121,21 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // 2. Enhance for OCR
             var enhancedStream = await _imageProcessor.EnhanceForOcrAsync(croppedStream);
 
+            // THE USER MAY HAVE LEFT WHILE THAT RAN (TD-121). The crop is shown beside the sidebar
+            // now, so a click on Budgets during the two awaits above is a real possibility -- and
+            // navigating here unconditionally would drag the user back onto the review page they had
+            // walked away from. A page that is no longer current has no business moving the shell.
+            if (!IsActive)
+            {
+                // Nobody will read these now; the live scanner's matching guard releases its streams
+                // the same way.
+                croppedStream.Dispose();
+                enhancedStream.Dispose();
+                return;
+            }
+
             // Navigate to ScanReceiptViewModel and send the modified stream
-            _navigationService.NavigateTo(_viewModels.CreateScanReceipt());
+            _navigationService.NavigateTo(_viewModels.CreateScanReceipt(_navigationService));
             
             // We send the enhanced stream for OCR, and maybe the cropped stream for UI display
             
@@ -171,7 +189,7 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     [RelayCommand]
     private void Cancel()
     {
-        _navigationService.NavigateTo(_viewModels.CreateLiveScanner());
+        _navigationService.NavigateTo(_viewModels.CreateLiveScanner(_navigationService));
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
     }
 }

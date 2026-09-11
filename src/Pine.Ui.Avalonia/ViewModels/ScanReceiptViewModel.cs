@@ -34,7 +34,13 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private readonly IMediator _mediator;
     private readonly LocalizedMessageSlot _status;
     private readonly LocalizedMessageSlot _error;
-    private readonly INavigationService _navigationService;
+    /// <summary>
+    /// The shell this page is shown in (TD-121). It was the window's navigator, so Save and Cancel
+    /// replaced the whole shell with a bare transactions page -- which a vault lock then failed to
+    /// clear, because the lock handler, at the time, cleared only a page inside the shell. (It now
+    /// clears anything that is not a pre-vault screen.)
+    /// </summary>
+    private readonly IShellNavigator _navigationService;
 
     /// <summary>
     /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
@@ -214,7 +220,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
     public ScanReceiptViewModel(
         IMediator mediator,
-        INavigationService navigationService,
+        IShellNavigator navigationService,
         IViewModelFactory viewModels,
         ILocalizer localizer,
         ILogger<ScanReceiptViewModel>? logger = null)
@@ -598,7 +604,15 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
-            _navigationService.NavigateTo(_viewModels.CreateTransactions());
+
+            // Only if the user is still here (TD-121). The save is awaited, and the sidebar is beside
+            // this page, so the user can have gone elsewhere by the time it lands; pulling them onto
+            // Transactions then would be a navigation they never asked for. The broadcast above still
+            // goes out either way -- the transaction WAS written.
+            if (IsActive)
+            {
+                _navigationService.NavigateTo(_viewModels.CreateTransactions());
+            }
         }
         catch (Exception ex)
         {
@@ -628,7 +642,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     [RelayCommand]
     private void Retake()
     {
-        _navigationService.NavigateTo(_viewModels.CreateLiveScanner());
+        _navigationService.NavigateTo(_viewModels.CreateLiveScanner(_navigationService));
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
     }
 

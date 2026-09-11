@@ -179,9 +179,9 @@ public static class PineInfrastructureServiceCollectionExtensions
         // what it can and refuses the rest by name.
         //
         // NOTE THAT IImageProcessor IS DELIBERATELY LEFT UNREGISTERED. Its only consumer is
-        // CropReceiptViewModel, which the shared UI root registers only on a head that has vision;
-        // a stub here would let the crop screen resolve and then fail mid-gesture instead of never
-        // being reachable.
+        // CropReceiptViewModel, which the UI's view-model factory refuses to build on a head without
+        // vision (it is not a container registration at all since TD-121); a stub here would let the
+        // crop screen be built and then fail mid-gesture instead of never being reachable.
         services.TryAddSingleton<IAIProvider, PortableAiProvider>();
     }
 }

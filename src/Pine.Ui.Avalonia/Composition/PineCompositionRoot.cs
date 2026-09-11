@@ -129,7 +129,7 @@ public static class PineCompositionRoot
         // way, which is the correct relationship for a value the user owns.
         services.AddPineVaultAutoLock(autoLock => autoLock.IdleTimeout = options.Security.AutoLockIdleTimeout);
 
-        AddViewModels(services, capabilities);
+        AddViewModels(services);
 
         if (capabilities.HasBackgroundTraining)
         {
@@ -168,6 +168,15 @@ public static class PineCompositionRoot
     /// <see cref="IViewModelFactory"/>'s three <c>Action</c>-taking methods close that: the callback
     /// is supplied by the caller and every other constructor argument comes from this container,
     /// WITHOUT a registration and therefore without costing the flag again.
+    /// </para>
+    /// <para>
+    /// THE SAME IS NOW TRUE OF THE THREE RECEIPT PAGES, AND IT HAS A PRICE (TD-121). They take the
+    /// shell they are shown in, which no container can supply, so they are built by the factory and
+    /// this flag no longer walks their constructors: a missing dependency of theirs would throw on
+    /// the click, not here. That is covered one layer up rather than given up —
+    /// <c>ViewModelFactoryTests</c> and <c>PineCompositionRootTests</c> build all three through the
+    /// real factory on every head that offers them — but it is a unit-test guarantee, not a startup
+    /// one, and it is written down here so nobody reads the paragraph above as covering them.
     /// </para>
     /// </remarks>
     public static ServiceProvider Build(PineHeadProfile profile, Action<PineOptions>? configureOptions = null)
@@ -254,9 +263,10 @@ public static class PineCompositionRoot
     /// <param name="capabilities">The head's capabilities.</param>
     /// <returns>The nav-target types, in the order the sidebar lists them.</returns>
     /// <remarks>
-    /// PUBLIC BECAUSE IT IS THE ASSERTABLE HALF OF TD-85. <c>PineCompositionRootTests</c> resolves
-    /// every type this returns from every profile's real container, so a page that gains a nav
-    /// button without a registration fails the build rather than the click.
+    /// PUBLIC BECAUSE IT IS THE ASSERTABLE HALF OF TD-85. <c>PineCompositionRootTests</c> builds
+    /// every type this returns through every profile's real factory, so a page that gains a nav
+    /// button without a way to build it fails the build rather than the click. Through the factory
+    /// rather than the container since TD-121: the two receipt pages are no longer registered.
     /// </remarks>
     public static IReadOnlyList<Type> NavigationTargets(PineHeadCapabilities capabilities)
     {
@@ -312,7 +322,7 @@ public static class PineCompositionRoot
         services.AddSingleton<IOptions<PineUiOptions>>(Options.Create(options.Ui));
     }
 
-    private static void AddViewModels(IServiceCollection services, PineHeadCapabilities capabilities)
+    private static void AddViewModels(IServiceCollection services)
     {
         // THE ONE PLACE A VIEW MODEL MAY REACH THE CONTAINER (TD-28). Every screen used to hold an
         // IServiceProvider of its own and resolve its successor out of it; they now hold this
@@ -321,8 +331,11 @@ public static class PineCompositionRoot
         // provider is the right one here.
         services.AddSingleton<IViewModelFactory, PineViewModelFactory>();
 
-        // MainViewModel is the pre-vault navigator and the app's INavigationService. Singleton
-        // because it owns the window's CurrentPage for the process's life.
+        // MainViewModel is the WINDOW's navigator, and INavigationService means that and nothing
+        // else. Singleton because it owns the window's CurrentPage for the process's life. The
+        // in-vault navigator is IShellNavigator, which is deliberately NOT registered: the shell is
+        // transient, so there is no one instance to register, and it hands itself to the pages that
+        // need it (TD-121).
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<INavigationService>(sp => sp.GetRequiredService<MainViewModel>());
 
@@ -346,17 +359,6 @@ public static class PineCompositionRoot
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
 
-        // The receipt pages, and ONLY where the pipeline behind them exists (TD-85). Registering
-        // them everywhere would resolve fine and then throw the moment the camera was asked for;
-        // not registering them anywhere was the previous state on four heads, where the button was
-        // still in the sidebar and threw on click. The button is now gated by the same capability.
-        if (capabilities.HasReceiptVision)
-        {
-            services.AddTransient<ScanReceiptViewModel>();
-            services.AddTransient<LiveScannerViewModel>();
-            services.AddTransient<CropReceiptViewModel>();
-        }
-
         // NOT REGISTERED, DELIBERATELY: AddTransactionViewModel, CreateAccountViewModel and
         // ImportWizardViewModel. All three take an Action the caller supplies, which no container can
         // serve. Windows registered the first of them, which is what kept ValidateOnBuild off in all
@@ -364,5 +366,13 @@ public static class PineCompositionRoot
         // Action-taking methods instead (TD-58), so they are no longer constructed by hand by their
         // parent page: the callback comes from the caller and every other constructor argument, the
         // logger included, comes from here.
+        //
+        // NOT REGISTERED EITHER, AND FOR THE SAME REASON: the three receipt pages. Each takes the
+        // IShellNavigator of the shell it is shown in, which no container can know (TD-121). They
+        // were registered here, behind a HasReceiptVision check, and the container filled their
+        // navigator parameter with the only one it had -- the window's -- so leaving the receipt page
+        // dropped the shell. IViewModelFactory builds them now, and it is the factory that refuses
+        // them on a head without receipt vision (TD-85's rule, enforced one step later). That is also
+        // why this method no longer takes the head's capabilities: it has nothing left to gate.
     }
 }

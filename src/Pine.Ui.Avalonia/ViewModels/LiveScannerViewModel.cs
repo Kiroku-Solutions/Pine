@@ -28,7 +28,11 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
 {
     private readonly IAIProvider _aiProvider;
     private readonly LocalizedMessageSlot _status;
-    private readonly INavigationService _navigationService;
+    /// <summary>
+    /// The shell this page is shown in (TD-121). The crop page is created with it too, so the
+    /// capture flow stays beside the sidebar instead of replacing it.
+    /// </summary>
+    private readonly IShellNavigator _navigationService;
 
     /// <summary>
     /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
@@ -59,7 +63,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
 
     public LiveScannerViewModel(
         IAIProvider aiProvider,
-        INavigationService navigationService,
+        IShellNavigator navigationService,
         IViewModelFactory viewModels,
         ILocalizer localizer,
         ILogger<LiveScannerViewModel>? logger = null)
@@ -379,7 +383,16 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         PostToUI(() =>
         {
             StopScanning();
-            _navigationService.NavigateTo(_viewModels.CreateCropReceipt());
+
+            // Posted, so it runs later -- possibly after the user left this page (TD-121). See the
+            // same guard in CaptureAndNavigateCroppedAsync.
+            if (_isDisposed || !IsActive)
+            {
+                imageStream.Dispose();
+                return;
+            }
+
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(imageStream));
         });
 
@@ -412,8 +425,19 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         {
             StopScanning();
 
+            // THE FRAME WAS POSTED, SO THIS RUNS LATER (TD-121). By then the user may have clicked
+            // another page, or the vault may have locked. Navigating anyway would pull the user back
+            // onto the crop screen from wherever they went -- it sits beside the sidebar now, so
+            // leaving mid-capture is a real gesture -- and a disposed scanner must not act at all.
+            if (_isDisposed || !IsActive)
+            {
+                memStream.Dispose();
+                ocrMemStream?.Dispose();
+                return;
+            }
+
             // Navigate first so CropReceiptViewModel is created and registers the message handler
-            _navigationService.NavigateTo(_viewModels.CreateCropReceipt());
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
 
             // Deliver the already cropped image (user can adjust further if needed)
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(memStream, ocrMemStream));

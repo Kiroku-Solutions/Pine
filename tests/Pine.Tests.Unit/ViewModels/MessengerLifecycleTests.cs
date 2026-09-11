@@ -60,7 +60,6 @@ public class MessengerLifecycleTests
     private readonly IMediator _mediator = Substitute.For<IMediator>();
     private readonly IViewModelFactory _viewModels = Substitute.For<IViewModelFactory>();
     private readonly IVaultSession _vaultSession = Substitute.For<IVaultSession>();
-    private readonly INavigationService _navigation = Substitute.For<INavigationService>();
 
     /// <summary>
     /// The smallest thing Skia will decode: a 1x1 PNG.
@@ -103,7 +102,7 @@ public class MessengerLifecycleTests
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(Array.Empty<BudgetProgress>()));
 
         var shell = CreateShell();
-        var budgets = new BudgetsViewModel(_mediator, _navigation);
+        var budgets = new BudgetsViewModel(_mediator);
 
         _mediator.ClearReceivedCalls();
         shell.NavigateTo(budgets);
@@ -138,7 +137,7 @@ public class MessengerLifecycleTests
         WeakReferenceMessenger.Default.IsRegistered<DataChangedMessage>(transactions)
             .Should().BeTrue("navigating to a page is what enlists it");
 
-        shell.NavigateTo(new BudgetsViewModel(_mediator, _navigation));
+        shell.NavigateTo(new BudgetsViewModel(_mediator));
 
         WeakReferenceMessenger.Default.IsRegistered<DataChangedMessage>(transactions)
             .Should().BeFalse("the page the user left must stop reloading itself on every broadcast");
@@ -167,7 +166,7 @@ public class MessengerLifecycleTests
 
         for (var visit = 0; visit < 3; visit++)
         {
-            shell.NavigateTo(new ScanReceiptViewModel(_mediator, _navigation, _viewModels, new Localizer()));
+            shell.NavigateTo(new ScanReceiptViewModel(_mediator, shell, _viewModels, new Localizer()));
         }
 
         using var png = OnePixelPng();
@@ -201,7 +200,7 @@ public class MessengerLifecycleTests
     public void A_message_sent_on_the_statement_after_NavigateTo_reaches_the_new_page()
     {
         var shell = CreateShell();
-        var crop = new CropReceiptViewModel(_navigation, _viewModels, Substitute.For<IImageProcessor>());
+        var crop = new CropReceiptViewModel(shell, _viewModels, Substitute.For<IImageProcessor>());
 
         shell.NavigateTo(crop);
         using var png = OnePixelPng();
@@ -227,12 +226,12 @@ public class MessengerLifecycleTests
     public void Navigating_away_from_the_live_scanner_disposes_it()
     {
         var shell = CreateShell();
-        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), _navigation, _viewModels, new Localizer());
+        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), shell, _viewModels, new Localizer());
 
         shell.NavigateTo(scanner);
         WeakReferenceMessenger.Default.IsRegistered<RetakeRequestedMessage>(scanner).Should().BeTrue();
 
-        shell.NavigateTo(new BudgetsViewModel(_mediator, _navigation));
+        shell.NavigateTo(new BudgetsViewModel(_mediator));
 
         WeakReferenceMessenger.Default.IsRegistered<RetakeRequestedMessage>(scanner).Should().BeFalse();
 
@@ -271,7 +270,7 @@ public class MessengerLifecycleTests
         recent.IsActive.Should().BeTrue();
         WeakReferenceMessenger.Default.IsRegistered<DataChangedMessage>(balance).Should().BeTrue();
 
-        shell.NavigateTo(new BudgetsViewModel(_mediator, _navigation));
+        shell.NavigateTo(new BudgetsViewModel(_mediator));
 
         balance.IsActive.Should().BeFalse();
         recent.IsActive.Should().BeFalse();
@@ -323,7 +322,7 @@ public class MessengerLifecycleTests
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(Array.Empty<BudgetProgress>()));
 
         var shell = CreateShell();
-        var budgets = new BudgetsViewModel(_mediator, _navigation);
+        var budgets = new BudgetsViewModel(_mediator);
 
         shell.NavigateTo(budgets);
         _mediator.ClearReceivedCalls();

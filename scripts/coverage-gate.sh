@@ -38,14 +38,36 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# THE FLOORS. Re-measured 2026-09-09 against 990 unit tests, then rounded DOWN.
+# THE FLOORS. Re-measured 2026-09-11 against 1100 unit tests, then rounded DOWN.
 #
 #   assembly              measured   floor   previous
-#   overall                 66.37%     66       65
-#   Pine.Core               88.09%     88       87   <- the domain. Money and its invariants live here.
-#   Pine.Infrastructure     77.16%     77       75
-#   Pine.Application        57.25%     57       55
-#   Pine.Ui.Avalonia        37.91%     37       37
+#   overall                 71.01%     70       68   <- one under, see below
+#   Pine.Core               89.95%     89       88   <- the domain. Money and its invariants live here.
+#   Pine.Infrastructure     82.50%     82       78
+#   Pine.Application        60.04%     59       59   <- one under, see below
+#   Pine.Ui.Avalonia        40.94%     40       38
+#
+# (This table had drifted: it still showed the 2026-09-09 floors of 66/88/77/57/37 while the
+# variables below read 68/88/78/59/38. It is re-stated whole rather than patched.)
+#
+# TWO FLOORS SIT ONE POINT UNDER THE ROUNDED-DOWN FIGURE, DELIBERATELY. overall and Pine.Application
+# measured within 0.05 of the integer, so rounding down to 71 and 60 would leave a margin of one or
+# two lines out of thousands -- a floor that a single timing-dependent branch could flip, which would
+# teach people to rerun the gate rather than read it. Everywhere else the margin is at least 0.5.
+#
+# THE GATE WAS FOUND BREACHED, AND NOT BY THE WORK THAT FOUND IT (2026-09-11). At commit 359e814
+# (post-audit plan item 1.1) TWO floors were breached: Pine.Infrastructure at 77.63% against 78, and
+# overall at 67.51% against 68 (the second found by an independent verifier after the first write-up
+# of this note named only one). That commit added
+# VaultRestoreService and tested it only in the integration suite -- which this gate does not
+# measure. That commit's message reported both suites green and never ran this script. It was
+# answered the way this file says: with tests, not a lower number. FileVaultHeaderStoreFieldPresenceTests
+# covers eleven "a header is never invented" refusals that neither suite had ever executed.
+#
+# AND THE INFRASTRUCTURE FIGURE IS MOSTLY GENERATED CODE, WHICH IS WHY THIS PARAGRAPH EXISTS. Of the
+# 558 lines those tests newly cover, 445 are the source-generated VaultHeaderJsonContext serializer
+# and 113 are FileVaultHeaderStore.cs. This gate has no exclusions by design, so 82.50% is honest by
+# its own rules -- but it is not a statement that 82% of the hand-written infrastructure is tested.
 #
 # THE GATE HAS NOW BLOCKED TWO CONSECUTIVE ITERATIONS, AND WAS OBEYED BOTH TIMES. The attachment
 # work dropped Pine.Ui.Avalonia to 36% and was answered with twelve tests; the rule engine dropped
@@ -64,11 +86,11 @@ set -euo pipefail
 # lowest because a headless test of a view is worth little; that is a statement about where testing
 # effort is worth spending, not permission for it to rot -- the floor still ratchets.
 # ---------------------------------------------------------------------------
-FLOOR_OVERALL=68
-FLOOR_PINE_CORE=88
-FLOOR_PINE_INFRASTRUCTURE=78
+FLOOR_OVERALL=70
+FLOOR_PINE_CORE=89
+FLOOR_PINE_INFRASTRUCTURE=82
 FLOOR_PINE_APPLICATION=59
-FLOOR_PINE_UI_AVALONIA=38
+FLOOR_PINE_UI_AVALONIA=40
 
 RUN_TESTS=1
 REPORT=""

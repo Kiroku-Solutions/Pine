@@ -148,7 +148,6 @@ public partial class BudgetProgressViewModel : ObservableObject
 public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable
 {
     private readonly IMediator _mediator;
-    private readonly INavigationService _navigationService;
     private readonly ILocalizer _localizer;
     private readonly ILogger<BudgetsViewModel>? _logger;
 
@@ -172,21 +171,24 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     public partial bool IsLoading { get; set; }
 
     /// <param name="mediator">The request pipeline.</param>
-    /// <param name="navigationService">Shell navigation.</param>
     /// <param name="localizer">
     /// The string table. Optional, and defaulting to <see cref="Localizer.Instance"/> -- the same
     /// instance the container registers -- so that a test constructing this page by hand still gets
     /// real English rather than a key, and so the container keeps resolving it as before.
     /// </param>
     /// <param name="logger">Diagnostics.</param>
+    /// <remarks>
+    /// NO NAVIGATOR (TD-121). This page took <see cref="INavigationService"/> and never called it.
+    /// That was harmless only because it was unused: the container supplied the WINDOW's navigator,
+    /// so the first navigation anyone added here would have replaced the shell. A dependency held
+    /// for no reason is a defect waiting for its first caller, so it is gone rather than retyped.
+    /// </remarks>
     public BudgetsViewModel(
         IMediator mediator,
-        INavigationService navigationService,
         ILocalizer? localizer = null,
         ILogger<BudgetsViewModel>? logger = null)
     {
         _mediator = mediator;
-        _navigationService = navigationService;
         _localizer = localizer ?? Localizer.Instance;
         _logger = logger;
     }
