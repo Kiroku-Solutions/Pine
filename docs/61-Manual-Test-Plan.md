@@ -9,7 +9,7 @@
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 | Status | Non-normative — manual test procedures |
-| Reconciled | 2026-08-31 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. |
+| Reconciled | 2026-09-12 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1; none of them has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.
@@ -1002,6 +1002,25 @@ there is. The picker that used to sit here offered "Camera 0" to "Camera 3" what
    "Failed to open camera."
 5. **Known limitation, deliberate:** with two cameras attached you cannot choose the second one any
    more. That waits on the camera seam (TD-120).
+
+## 13C. Pine lets go of a backup after you restore from it — post-audit plan item 2.1
+
+**Read this before running it.** This one is automated (`ARestoreLeavesTheBackupFileDeletable`),
+and it is here because the automated version proves the file handle is released, not that the
+*application* behaves well when it is. Restoring opens the backup to verify it first, and Pine used
+to keep that file open for the rest of the session — so it could not delete it when tidying up old
+backups. A restore Pine REFUSED was enough to cause it, which is the case to run.
+
+1. Create at least two backups from **Settings**, so there is something to tidy up.
+2. Attempt a restore from a file Pine will refuse — the quickest is a backup from a *different*
+   vault, or any file renamed to `.db`. **Expected:** a sentence saying nothing was restored and
+   your vault is unchanged.
+3. Now restore from a real backup of this vault. **Expected:** it succeeds and the vault locks.
+4. Unlock, and delete a backup from the backups folder in Explorer while Pine is still running.
+   **Expected:** the file deletes. Before this fix Windows refused, saying the file was in use by
+   another process, and that process was Pine.
+5. **What a failure here means:** the connection pool is holding a file the application has
+   finished with. Report it against TD-140, which is the row that class of defect belongs to.
 
 ## 14. What a failure means
 

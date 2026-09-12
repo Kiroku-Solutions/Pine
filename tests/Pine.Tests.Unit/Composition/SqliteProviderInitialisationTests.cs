@@ -58,15 +58,17 @@ public class SqliteProviderInitialisationTests
         PineSqliteProvider.IsInitialised.Should().BeTrue();
 
         var path = Path.Combine(Path.GetTempPath(), $"pine-sqlcipher-{Guid.NewGuid():N}.db");
+
+        // Declared out here because the finally clears the pool for THIS connection string.
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Password = Convert.ToHexString(new byte[32]),
+        }.ToString();
+
         try
         {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = path,
-                Mode = SqliteOpenMode.ReadWriteCreate,
-                Password = Convert.ToHexString(new byte[32]),
-            }.ToString();
-
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
 
@@ -81,7 +83,13 @@ public class SqliteProviderInitialisationTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            // This file's pool only: ClearAllPools would reach into every test class running in
+            // parallel, which is TD-140's mechanism.
+            using (var forThisFile = new SqliteConnection(connectionString))
+            {
+                SqliteConnection.ClearPool(forThisFile);
+            }
+
             if (File.Exists(path))
             {
                 File.Delete(path);

@@ -403,4 +403,55 @@ public class VaultRestoreServiceTests : IDisposable
             "a refused restore must leave the vault exactly as it was -- that is what makes it a "
             + "refusal rather than a failure");
     }
+
+    /// <summary>
+    /// A restore does not leave the backup file locked, so pruning it afterwards still works
+    /// (TD-140, found while diagnosing it).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// VERIFYING A BACKUP OPENS IT, AND AN OPENED SQLITE FILE GOES BACK INTO THE CONNECTION POOL
+    /// RATHER THAN BEING CLOSED. On Windows a pooled handle is an open file handle, so the backup
+    /// could not be deleted for the rest of the process -- and <c>PruneAsync</c> deletes backups.
+    /// A user who restored, or merely ATTEMPTED a restore that was refused, could then find that
+    /// Pine would not tidy up its own backups.
+    /// </para>
+    /// <para>
+    /// This was invisible for as long as the integration harness called the process-wide
+    /// <c>SqliteConnection.ClearAllPools()</c> in teardown: it cleaned up after the restore service
+    /// on every run. Scoping that call per database (TD-140) is what exposed it, and nine vault
+    /// directories survived a full suite run before it was fixed.
+    /// </para>
+    /// <para>
+    /// Deleting the file directly is the assertion rather than calling <c>PruneAsync</c>, because
+    /// pruning keeps the most recent backups and would have to be set up to want this one gone;
+    /// <c>File.Delete</c> asks the operating system the same question with nothing in between.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ARestoreLeavesTheBackupFileDeletable()
+    {
+        var context = _vault.CreateContext();
+        await context.Database.MigrateAsync(CancellationToken.None);
+        context.Settings.Add(Setting.Create(ProbeKey, "before-the-backup"));
+        await context.SaveChangesAsync(CancellationToken.None);
+
+        var backupService = new VaultBackupService(context);
+        var backup = await backupService.CreateBackupAsync(
+            _vault.VaultDirectory, VaultBackupReason.Manual, CancellationToken.None);
+
+        _vault.CloseContexts();
+        var restoreContext = _vault.CreateContext();
+        var service = new VaultRestoreService(restoreContext, new VaultBackupService(restoreContext));
+
+        await service.RestoreAsync(_vault.VaultDirectory, backup.Path, CancellationToken.None);
+        _vault.CloseContexts();
+
+        var delete = () => File.Delete(backup.Path);
+
+        delete.Should().NotThrow<IOException>(
+            "verifying a backup opens it, and a pooled handle is an open file handle: a restore must "
+            + "not leave Pine holding a file it is expected to be able to prune");
+        File.Exists(backup.Path).Should().BeFalse();
+    }
 }

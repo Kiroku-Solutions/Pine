@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5) |
+| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 item 2.1 (§5.1) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -728,6 +728,125 @@ TD-99 and the language picker is now the house rule and should be applied withou
 | 2.3 | Decide `TD-132`, and stop deferring it | TD-132 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
 | 2.4 | Exception sentences below the UI layer | TD-139 | |
 | 2.5 | `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | several | Small, mechanical |
+
+### 5.1 Item 2.1, as built (2026-09-11, iteration 44)
+
+**The row asked for a diagnosis, and the first move was the one it named: capture it instead of
+re-running until green.** TD-140 had been open for twelve iterations, seen on four different
+integration tests across three of them, and every test count in the audit had been costing a re-run.
+The stack was captured in full on a run where the failure fired:
+
+```
+System.ObjectDisposedException: Cannot access a disposed object. Object name: 'SQLitePCL.sqlite3'
+   at SqliteConnection.Deactivate()
+   at SqliteConnectionInternal.Close()
+   at SqliteConnection.Open()
+```
+
+**The registered hypothesis was wrong, and the stack is what says so.** The row's Impact column
+offered "a pooled connection disposed while another test still holds a command against it" as the
+obvious explanation. The failure is not *during* use — it is inside `Open()`, which is the pool
+**handing out a connection whose handle is already gone**.
+
+**What disposes pooled handles in this process is `SqliteConnection.ClearAllPools()`, and it is
+process-wide.** The test harnesses called it in teardown, because on Windows a pooled handle is what
+stops a temp directory being deleted and that method is what the documentation offers. xUnit runs
+test classes in parallel, so each teardown reached into the pool of every other class running at
+that moment. Every test ever seen failing this way lives in a different *class* of the same
+harness (`TempVault`), and those classes run concurrently — which is all the mechanism needs.
+
+**Fixed, and then measured by taking the fix out again.** With it: six full integration runs, 251
+tests, zero failures. Without it — `ClearAllPools` restored exactly as it was, same machine, same
+session — the failure returned on the first of four runs, with the identical stack, the identical
+object name, and one test that had never been seen failing before. Pooling every run before the fix
+against every run after gives 3 failures in 11 versus 0 in 6: **Fisher's exact p = 0.24, one-sided —
+not significant.** The counts are consistent with the fix and **do not establish it**. What supports
+the diagnosis is the other leg: the stack shows the pool returning a dead handle, and the
+process-wide call is the only thing in the process that kills pooled handles. The run counts are
+corroboration and are reported as corroboration.
+
+**The independent review found four defects, two of them introduced by this fix, and one of them was
+something this section had argued away in writing.** Everything below came from someone who had not
+written the code:
+
+- **The fix stopped releasing the pools it most needed to release, and leaked encrypted vaults into
+  `%TEMP%` on every run.** `TempVault.OpenRaw` builds `Mode=ReadWrite` over an arbitrary path and
+  key — a backup file, a foreign vault — which is a *different connection string* and therefore a
+  different pool from the one the teardown cleared. Measured by the review: nine leaked vault
+  directories out of nineteen tests, where the process-wide call had left zero; reproduced here
+  independently. **The first draft of this section presented exactly this as hypothetical** —
+  "would still pass every test here… so it is recorded rather than guarded" — and took credit for
+  foreseeing it while asserting it had not happened. It had.
+- **Separating the in-memory pools ADDED a pooled resource to the one harness that had none, and
+  never released it.** `Microsoft.Data.Sqlite` does not pool a private `":memory:"` database —
+  closing the connection destroys it — but it *does* pool a URI-named one. So renaming the fixture's
+  database to give it its own pool meant every fixture left a live, schema'd, encrypted database
+  resident for the whole test process: this row's own defect shape, introduced while fixing it.
+  Confirmed here before fixing: eleven tables still present after `Dispose`.
+- **The guard was defeated by a one-line block comment, and its own comment denied it was possible.**
+  The scanner strips comments before searching, because the fixed files *name* the method in their
+  doc comments to explain the defect and a plain substring search would fail on exactly the files
+  that are correct. On seeing `/*` it entered block-comment mode without checking for a `*/` later
+  on the same line, so `/* TD-140 */ SqliteConnection.ClearAllPools();` switched scanning off for
+  the rest of the file — the real defect, reintroduced, compiling, and green. The guard also scans
+  `src/` now: production code runs *inside* the integration test process, so the original reasoning
+  ("production has no parallel test classes") was wrong.
+- **Two claims in the write-up were false and one measurement was of the wrong thing.** "Every
+  `DatabaseFixture` shared one pool" was false twice over: `":memory:"` is not pooled, and exactly
+  one test class takes that fixture — there was no cross-class sharing to suffer from. It was a
+  latent hazard, worth removing, and it is described as latent now. A parenthetical "(measured: …)"
+  in the fixture's own comment measured a *file* database and was used to support a claim about an
+  in-memory one; it is gone. The claim that the failures "span both harnesses" is also gone: every
+  test ever seen failing this way uses `TempVault`, and different *classes* running in parallel is
+  all the mechanism needs.
+
+**Chasing the leak the review found led to a defect in the product, which the harness had been
+hiding for as long as it made the process-wide call.** `VaultRestoreService` opens a backup file to
+verify it before restoring, and `await using` returns that connection to the pool rather than
+closing it. On Windows a pooled handle is an open file handle, and `VaultBackupService.PruneAsync`
+*deletes* backups — so a restore, **including a refused one**, could leave Pine unable to tidy up
+its own backups for the rest of the process. It was invisible because the harness's
+`ClearAllPools()` cleaned up after it on every run; scoping that call is what exposed it.
+`ARestoreLeavesTheBackupFileDeletable` is the assertion, and it fails without the fix.
+
+**And the last leaked directory was a test reaching around the harness.**
+`AttachmentStorageTests.AReceipt_SurvivesABackup` opened the backup with `new PineDbContext(path,
+key)` — a connection string the vault knows nothing about, so its pooled handle outlived the vault.
+Rather than patch that one call site, `TempVault` now **tracks every connection string it hands
+out** and empties each pool on disposal, offers `CreateContext(path)` for exactly this case, and —
+the part that matters — **fails loudly instead of shrugging**: the delete loop used to give up
+silently after five attempts, which is why nine encrypted vaults per run could accumulate without a
+single red test. It now throws, naming the directory and the likely cause. That is the assertion
+that would have caught the review's first finding on the run that introduced it. A full suite run
+leaves **zero** temp vaults behind, measured, where the first version of this fix left nine.
+
+**Verified by falsification: thirteen mutations, thirteen killed.** Four restore `ClearAllPools` to
+each harness it was removed from; one hides it behind the block comment that beat the first guard;
+one puts it in production code; three attack the fixture's database name; one removes the fixture's
+pool release; one stops the vault tracking a raw connection's pool; one removes the production fix
+so a restore locks the backup again; one has a test open a backup around the harness. **One kill has to be confirmed by hand, and how it dies
+changed while this was being worked.** The mutation that makes the fixture open a real file first
+failed cleanly on the assertion written for it and then *aborted the run*, so no `.trx` was written
+and the harness read "zero results" as "nothing failed" — it now reports a resultless run as
+inconclusive, because reading one as green is how a falsification pass lies to the person running it.
+With the fixture releasing its pool, the same mutation no longer reaches the assertion at all: it
+takes the test host down with a native access violation, `0xC0000005`. Either way the run is red, so
+the mutation is killed, but it is killed by a crash rather than by a test — said plainly because
+"thirteen killed" would otherwise imply thirteen assertions. **The crash is also a lead worth
+recording**: `0xC0000005` under SQLCipher is TD-117's signature, and here it is reproducible on
+demand from a keyed connection to a file-backed database opened through a URI. It is not claimed as
+TD-117's cause.
+
+**What is NOT closed by this.** The row is fixed **in the test harness**, and there is no evidence it
+ever affected the product — the same mistake in production code was found and fixed in
+`VaultRestoreService` while closing item 1.1. TD-117 is not claimed, though the same call was found
+twice in the unit suite and is recorded as a lead. The probe that retired the row's stated hypothesis
+(a connection held open across concurrent `ClearAllPools()` calls, which never failed) was a
+throwaway and was deleted, so that step rests on a run nobody can repeat — which is why the
+diagnosis is argued from the captured stack and the A/B arm instead. And the guard is a text scan:
+string concatenation, reflection, or a helper outside `src/` and `tests/` all evade it. It raises the
+cost of reintroducing the defect by accident, which is how it was introduced; it is not a proof that
+the defect cannot return.
 
 ## 6. Stage 3 — Breadth: the features the documents promise
 

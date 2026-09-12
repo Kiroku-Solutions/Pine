@@ -159,7 +159,10 @@ public class AttachmentStorageTests
 
         backup.Should().NotBeNull();
 
-        await using var restored = new PineDbContext(backup!.Path, vault.Key);
+        // Through the vault, not directly: a context built with new PineDbContext holds a
+        // connection string the vault cannot release, and its pooled handle then keeps the
+        // backup file -- and so the whole vault directory -- alive past this test (TD-140).
+        await using var restored = vault.CreateContext(backup!.Path);
         var loaded = await restored.Attachments.FirstOrDefaultAsync(a => a.Id == attachmentId);
 
         loaded.Should().NotBeNull("a backup that loses the evidence is not a backup of the ledger");

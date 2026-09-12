@@ -14,6 +14,19 @@ internal sealed class TempVault : IDisposable
     private readonly List<PineDbContext> _contexts = [];
     private readonly List<SqliteConnection> _connections = [];
 
+    /// <summary>
+    /// Every connection string this vault has handed out, so <see cref="Dispose"/> can empty the
+    /// pool behind each one.
+    /// </summary>
+    /// <remarks>
+    /// A SET OF STRINGS RATHER THAN ONE STRING, BECAUSE THERE IS NEVER ONLY ONE (TD-140). The vault
+    /// database, a raw connection to a backup file, a context opened on a backup file -- each is a
+    /// different connection string and Microsoft.Data.Sqlite pools each one separately. The first
+    /// version of this fix cleared the vault database's pool and nothing else, and left encrypted
+    /// backup files held open for the rest of the process.
+    /// </remarks>
+    private readonly HashSet<string> _pooledConnectionStrings = new(StringComparer.Ordinal);
+
     static TempVault()
     {
         // SQLCipher provider registration; must happen before any SQLite usage.
@@ -37,9 +50,24 @@ internal sealed class TempVault : IDisposable
     public string BackupsDirectory => Path.Combine(VaultDirectory, "backups");
 
     /// <summary>Creates a keyed context for this vault; disposed automatically with the vault.</summary>
-    public PineDbContext CreateContext()
+    public PineDbContext CreateContext() => CreateContext(DatabasePath);
+
+    /// <summary>
+    /// Creates a keyed context over an arbitrary database file in this vault -- a backup, say --
+    /// disposed automatically with the vault, and with its connection pool released with it.
+    /// </summary>
+    /// <remarks>
+    /// USE THIS RATHER THAN <c>new PineDbContext(path, key)</c> IN A TEST (TD-140). A context built
+    /// directly holds a connection string this vault knows nothing about, so its pooled handle
+    /// outlives the vault and Windows then refuses to delete the directory. That is not
+    /// hypothetical: <c>AttachmentStorageTests.AReceipt_SurvivesABackup</c> did exactly that, and it
+    /// leaked one encrypted vault per suite run until this overload existed.
+    /// </remarks>
+    public PineDbContext CreateContext(string databasePath)
     {
-        var context = new PineDbContext(DatabasePath, Key);
+        Track(ConnectionStringFor(databasePath, Key, SqliteOpenMode.ReadWriteCreate));
+
+        var context = new PineDbContext(databasePath, Key);
         _contexts.Add(context);
         return context;
     }
@@ -47,12 +75,8 @@ internal sealed class TempVault : IDisposable
     /// <summary>Opens an arbitrary encrypted database file with an arbitrary key.</summary>
     public SqliteConnection OpenRaw(string databasePath, byte[] key)
     {
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWrite,
-            Password = Convert.ToHexString(key)
-        }.ToString();
+        var connectionString = ConnectionStringFor(databasePath, key, SqliteOpenMode.ReadWrite);
+        Track(connectionString);
 
         var connection = new SqliteConnection(connectionString);
         _connections.Add(connection);
@@ -116,7 +140,7 @@ internal sealed class TempVault : IDisposable
         }
 
         _contexts.Clear();
-        SqliteConnection.ClearAllPools();
+        ClearThisVaultsPool();
     }
 
     public void Dispose()
@@ -131,28 +155,79 @@ internal sealed class TempVault : IDisposable
             connection.Dispose();
         }
 
-        // Windows will not let the directory go while pooled handles are still open.
-        SqliteConnection.ClearAllPools();
+        ClearThisVaultsPool();
         DeleteDirectoryWithRetries(VaultDirectory);
     }
 
+    /// <summary>
+    /// Releases the pooled handles for every database THIS vault opened, and no others (TD-140).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IT WAS <c>SqliteConnection.ClearAllPools()</c>, WHICH IS PROCESS-WIDE. xUnit runs test classes
+    /// in parallel, so this teardown reached into every other class's pooled connections. The
+    /// intermittent failure the suite acquired is a pooled connection handed out after its handle was
+    /// gone -- <c>SqliteConnection.Open()</c> then <c>SqliteConnectionInternal.Close()</c> then
+    /// <c>Deactivate()</c> then <c>ObjectDisposedException</c> on a <c>SQLitePCL.sqlite3</c> -- which
+    /// is the stack captured in full for the first time while working this row.
+    /// </para>
+    /// <para>
+    /// EVERY string, not just the vault database's: the independent review measured nine leaked vault
+    /// directories per suite run when only the vault database's pool was cleared, because a backup
+    /// file opened read-write, or a context opened on a backup, is a different connection string and
+    /// therefore a different pool.
+    /// </para>
+    /// <para>
+    /// The same mistake, in production code, was found and fixed in <c>VaultRestoreService</c> while
+    /// closing plan item 1.1 -- and again in the same file while closing this row, where verifying a
+    /// backup left that file pooled and undeletable.
+    /// </para>
+    /// </remarks>
+    private void ClearThisVaultsPool()
+    {
+        Track(ConnectionStringFor(DatabasePath, Key, SqliteOpenMode.ReadWriteCreate));
+
+        foreach (var connectionString in _pooledConnectionStrings)
+        {
+            using var forThisDatabase = new SqliteConnection(connectionString);
+            SqliteConnection.ClearPool(forThisDatabase);
+        }
+    }
+
+    private void Track(string connectionString) => _pooledConnectionStrings.Add(connectionString);
+
+    private static string ConnectionStringFor(string databasePath, byte[] key, SqliteOpenMode mode) =>
+        new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = mode,
+            Password = Convert.ToHexString(key),
+        }.ToString();
+
     private SqliteConnection OpenExclusive()
     {
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = DatabasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Password = Convert.ToHexString(Key)
-        }.ToString();
+        var connectionString = ConnectionStringFor(DatabasePath, Key, SqliteOpenMode.ReadWriteCreate);
+        Track(connectionString);
 
         var connection = new SqliteConnection(connectionString);
         connection.Open();
         return connection;
     }
 
+    /// <remarks>
+    /// TWENTY ATTEMPTS, NOT FIVE, AND THE NUMBER WAS MEASURED. With the process-wide
+    /// <c>ClearAllPools()</c> in teardown every handle in the process was gone by the time this ran,
+    /// so five attempts always sufficed. Clearing only this vault's pools (TD-140) leaves this racing
+    /// the operating system's own lazy handle release instead, and under a full parallel run exactly
+    /// one directory per run was losing that race -- while no single test class leaked when run
+    /// alone, which is what says it is a race and not an uncleaned pool. Two seconds of patience
+    /// costs nothing in a teardown and is only ever spent when the race is lost.
+    /// </remarks>
     private static void DeleteDirectoryWithRetries(string directory)
     {
-        for (var attempt = 0; attempt < 5; attempt++)
+        Exception? last = null;
+
+        for (var attempt = 0; attempt < 20; attempt++)
         {
             try
             {
@@ -165,8 +240,23 @@ internal sealed class TempVault : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                last = ex;
                 Thread.Sleep(100);
             }
         }
+
+        // AND THEN FAIL, RATHER THAN SHRUG (TD-140). This loop used to give up silently after five
+        // attempts, which is why nine encrypted vaults per suite run could accumulate in %TEMP%
+        // without a single red test -- found by an independent review counting directories, not by
+        // this suite. On Windows a directory that will not delete means a file handle is still open,
+        // and the only handles here are pooled connections, so this is the assertion that the vault
+        // released everything it opened.
+        throw new InvalidOperationException(
+            $"The temp vault at '{directory}' could not be deleted after 20 attempts over two "
+            + "seconds, so something still holds a handle inside it. A pooled SQLite connection is "
+            + "the usual cause: a test that opened a database in this vault with a connection string "
+            + "TempVault does not know about. Open it through TempVault.CreateContext(path) or "
+            + "TempVault.OpenRaw(path, key) so the pool is released with the vault.",
+            last);
     }
 }

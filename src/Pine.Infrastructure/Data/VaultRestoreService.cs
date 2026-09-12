@@ -294,6 +294,23 @@ public sealed class VaultRestoreService : IVaultRestoreService
                 + "Nothing was restored and your vault is unchanged.",
                 ex);
         }
+        finally
+        {
+            // AND RELEASE THE POOLED HANDLE ON THE BACKUP FILE (TD-140).
+            //
+            // Reading a backup to verify it leaves a pooled connection to that FILE, under its own
+            // connection string, which `await using` returns to the pool rather than closing. The
+            // consequence is not theoretical: on Windows the file then cannot be deleted, and
+            // VaultBackupService.PruneAsync deletes backups -- so a restore, INCLUDING A REFUSED
+            // ONE, could make pruning that backup fail for the rest of the process.
+            //
+            // This was invisible until TD-140 was diagnosed, because the integration harness called
+            // the process-wide SqliteConnection.ClearAllPools() in teardown and cleaned up after
+            // this method on every run. Scoping that call to each harness's own database is what
+            // exposed it: nine vault directories survived a full suite run, each held open by a
+            // backup file this method had opened.
+            SqliteConnection.ClearPool(connection);
+        }
     }
 
     /// <summary>
