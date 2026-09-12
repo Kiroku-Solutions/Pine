@@ -77,8 +77,14 @@ public class DashboardScanReceiptButtonTests
         // from queued dispatcher jobs, and this page builds a tile list before the header's button is
         // bound. One RunJobs() was enough when the class ran alone and not when the whole suite ran:
         // the three head-profile cases failed on a button whose IsVisible binding had not been applied
-        // yet, which reads exactly like the product defect they exist to catch. A missing binding never
-        // settles, so pumping cannot hide one -- the S1 and S4 mutations still fail here.
+        // yet, which reads exactly like the product defect they exist to catch.
+        //
+        // WHAT THIS DOES AND DOES NOT PROVE (narrowed after an independent review said the first
+        // wording overclaimed). A binding that is MISSING never settles, so pumping cannot hide one --
+        // re-verified: deleting the Command or IsVisible binding still fails these tests. A binding
+        // that is applied WRONG and corrected asynchronously would be invisible here; the reviewer
+        // tried to construct that case and could not make it run in the headless session, so it is
+        // unproven rather than ruled out. The count is a bound, not a measurement.
         for (var attempt = 0; attempt < 20; attempt++)
         {
             Dispatcher.UIThread.RunJobs();

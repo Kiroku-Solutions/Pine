@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1–1.4 closed (§4.1–§4.4) |
+| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -230,7 +230,10 @@ here.
 
 ## 4. Stage 1 — Finish what the user can already see
 
-Ordered by what a user loses if it is wrong.
+Ordered by what a user loses if it is wrong. **Stage 1 is closed: 1.1 to 1.5 were all executed on
+2026-09-10 and 2026-09-11** (§4.1–§4.5). A backup can be restored, an in-shell page no longer drops the
+shell, the dashboard shows only what it can measure, its Scan Receipt button works, and the camera
+picker that listed four devices whatever was attached is gone.
 
 | # | Work | Closes | Why here |
 |---|---|---|---|
@@ -238,7 +241,7 @@ Ordered by what a user loses if it is wrong.
 | 1.2 | ✅ **Done** (2026-09-11) — **Fix the navigation defect that replaces the whole shell** | TD-121 (closed) | The shell's navigator is now a type of its own that the container cannot supply, so a page can only get it from the shell it is shown in. The defect was also a lock leak the row did not name. See §4.2 |
 | 1.3 | ✅ **Done** (2026-09-11) — **Dashboard: make the ten inert widgets real, or take them down** | — (TD-149 registered) | Five tiles, every one of them reading the ledger: total balance, this month, accounts, budgets, recent transactions. Five deleted. "Net worth" became "total balance", because nothing in the model says which account is a debt. Found on the way: the total the dashboard had been computing and not showing, an import that refreshed nothing, and a "this month" that was UTC's month. See §4.3 |
 | 1.4 | ✅ **Done** (2026-09-11) — **The dashboard's "Scan Receipt" button** | — | It opens the receipt page in the shell, and does not exist on a head that cannot scan. Not the one line the row promised: a button that navigates needs the shell it is shown in (TD-121) and the head's capabilities (TD-85). See §4.4 |
-| 1.5 | **Live scanner camera list** | — | Enumerates "Camera 0".."Camera 3" regardless of hardware. Either enumerate real devices or drop the picker |
+| 1.5 | ✅ **Done** (2026-09-11) — **Live scanner camera list** | — (TD-120 widened) | Dropped, by the row's second option, because the first is not available: OpenCV cannot enumerate devices, and probing indices would turn the camera on before the user pressed Start. See §4.5 |
 
 ### 4.1 Item 1.1, as built (2026-09-10, iteration 39)
 
@@ -632,11 +635,26 @@ pointed at the wrong page; the `CanExecute` guard removed; the `IsVisible` bindi
 `HasReceiptVision` hard-coded true; the button bound to the import wizard's command instead; the button
 left visible but disabled; and the dashboard registered in the container again (53 tests, `ValidateOnBuild`).
 
-**THIS ITEM HAS NO INDEPENDENT REVIEW, AND THAT IS THE DIFFERENCE FROM 1.2 AND 1.3.** One was
-commissioned and died on an API session limit before it read anything. The last three mutations above are
-the ones it had been asked to try, run by the author instead — which is not the same thing, and the
-reason it is written down here: every finding in §4.2 and §4.3 that mattered came from someone who had
-not written the code. **Owed: an adversarial pass over this item.**
+**IT SHIPPED WITHOUT AN INDEPENDENT REVIEW — one was commissioned and died on an API session limit
+before reading anything — AND THE DEBT WAS PAID THE SAME DAY**, by the review that covered item 1.5. It
+found what the author's own eight mutations could not:
+
+- **The button is gated on `HasReceiptVision`, and reading `HasBackgroundTraining` instead left all
+  1,139 tests green.** The two flags are identical on all four heads today, and `PineHeadCapabilities`
+  says in its own remarks that they are kept apart precisely because one will move before the other.
+  The day they diverge, the sidebar hides the receipt pages while this button offers one that throws on
+  click — TD-85, again. The flags cannot be made to differ from a test, so the rule is stated where it
+  can be: `ArchitectureTests.OnlyCompositionReadsTheTrainingCapability` — training gates a hosted
+  service, and no screen may branch on it.
+- **The 20× dispatcher pump's comment overclaimed.** "Pumping cannot hide a missing binding" is true and
+  was re-verified; the comment read as if it licensed the pump generally, and it does not — a binding
+  that is wrong on first application and corrected asynchronously would be invisible to it. The reviewer
+  tried to build that case and could not make it run in the headless session, so it is unproven rather
+  than dismissed, and the comment now says only what was checked.
+- Verified, not merely assumed: pressing twice, or pressing while the receipt page already shows, keeps
+  the shell and re-activates a fresh page — no TD-121 regression; nothing resolves `DashboardViewModel`
+  from the container any more; and `IsVisible=false` removes the button from hit-testing and tab order,
+  so an access key or automation peer would still meet the refused `CanExecute`.
 
 **Numbers.** Unit **1135** (1130 before this item), integration **250**, both green; coverage gate green,
 and the floors ratchet up with the render tests' reach: overall 70 → 72, `Pine.Application` 59 → 61,
@@ -644,6 +662,59 @@ and the floors ratchet up with the render tests' reach: overall 70 → 72, `Pine
 
 **What is NOT closed by this.** Nothing has been pressed on a real screen — the tests drive a headless
 window — and the manual step is `61-Manual-Test-Plan` §13A.
+
+### 4.5 Item 1.5, as built (2026-09-11, iteration 43)
+
+**The list was four entries long whatever was plugged in.** The constructor built "Camera 0" through
+"Camera 3" and selected the first. On a one-webcam laptop three of them named devices that do not
+exist; choosing one opened nothing and reported "Failed to open camera". The names were not device
+names either — they were OpenCV indices with a word in front.
+
+**The row offered two options and the first is not available.** OpenCV exposes no device enumeration:
+the only way to learn whether index 2 exists is to *open* index 2. A list built that way turns the
+camera on — lens and indicator light — for each index in turn, on a screen the user has merely
+navigated to and before they have pressed Start. That is a privacy surprise bought with names OpenCV
+cannot supply anyway. So the picker is gone, the scanner opens the system default camera, and the
+failure sentence now says which camera it tried and what to check.
+
+**What the user loses, said plainly.** On a machine with two cameras, index 1 genuinely opened the
+second one, so someone with an external webcam could select it. They now get the default. That is a
+real capability removed, not a defect tidied, and it is recorded on **TD-120** — the camera seam row —
+because choosing a camera honestly needs a platform API that enumerates devices, which is what that
+seam is for.
+
+**The independent review broke this item's tests three ways, and found a defect in the lines it had
+just edited.** Everything below came from someone who had not written the code:
+
+- **The capture loop's index was pinned by nothing.** The test asserted the *file contained* the string
+  `DefaultCameraIndex` — which its own declaration satisfies for ever. Pointing the loop at index 2 left
+  all 1,139 tests green: on a one-webcam machine the scanner would then report a failure with a working
+  camera attached, which is this item's own defect class. Every `new VideoCapture(...)` call site is now
+  checked, and the mutation dies.
+- **The picker came back as a text box and nothing noticed.** A settable `int CameraIndex` bound to a
+  `TextBox` is the same lie in a different shape: the user types an OpenCV index with no way to know
+  whether it exists. Two rules now: the view model exposes no settable camera member of any type, and
+  the view contains no input control at all.
+- **A `VideoCapture` was leaked on the exact path this item rewrote.** When DirectShow failed, the local
+  was reassigned without disposing the first handle; when both failed, neither was disposed, because the
+  `finally` releases `_capture` — still null at that point. A user who freed the webcam and pressed
+  Start again could be blocked by Pine's own undisposed handles, waiting on a finaliser. Both paths
+  dispose now, and the `finally` releases a capture that was opened but never published. **No test
+  covers it**: this suite cannot open a camera, and the argument is written where the code is.
+- **The screen's opening sentence was still hard-coded English** — "Press Start to activate camera",
+  above a button reading "Iniciar cámara". It is a key now, and the fix exposed a second thing: the
+  status slot posts to the UI thread, so setting it through the slot alone left the property empty on
+  the first frame. It is rendered synchronously and registered with the slot after.
+- **A fresh Windows clone failed a test that has nothing to do with this work**: `.gitattributes` had no
+  rule for shell scripts, so `core.autocrlf` gave `scripts/coverage-gate.sh` CRLF line endings and
+  `BuildHygieneTests` then read no coverage floors at all. One line added.
+
+**Verified by falsification: nine mutations, nine killed.** The five written with the item — the
+fabricated list restored under another name and type; the picker restored with a binding (killed at
+compile, because compiled bindings no longer find `Cameras`); the picker restored *without* a binding,
+which compiles; the vague "Failed to open camera." sentence; `DefaultCameraIndex` moved off the default —
+and the four written after the review: the loop opening a literal index, the wrong capability flag, the
+picker as a typed index, and the opening sentence hard-coded again.
 
 **Definition of done for 1.3 and 1.5:** the screen shows only what it can measure. The rule from
 TD-99 and the language picker is now the house rule and should be applied without a debt row first.
@@ -712,5 +783,7 @@ than "finished" and the only one the evidence supports.
 
 ~~The next item is 1.1, restore from a backup in the application.~~ Done 2026-09-10 (§4.1), and
 1.2, the navigation defect, on 2026-09-11 (§4.2), and 1.3, the dashboard, the same day (§4.3). The
-1.4, the dead "Scan Receipt" button, the same day (§4.4). The next item is 1.5: the live scanner's
-camera list, which offers "Camera 0".."Camera 3" whatever hardware is attached.
+1.4, the dead "Scan Receipt" button, and 1.5, the invented camera list, the same day (§4.4, §4.5).
+**Stage 1 is closed.** The next item is Stage 2's 2.1: the intermittent SQLite handle disposal
+(TD-140), which this run met twice more — once in item 1.3's integration run and once in an import
+test — and which costs a re-run every time a number in this document is measured.

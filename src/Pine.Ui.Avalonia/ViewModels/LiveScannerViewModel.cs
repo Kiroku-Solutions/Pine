@@ -22,10 +22,31 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// Drives a real-time webcam feed, detects receipts via YOLO,
 /// then hands the captured frame to ScanReceiptViewModel for OCR.
 /// </summary>
-public record CameraOption(int Index, string Name);
-
 public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<RetakeRequestedMessage>, IDisposable
 {
+    /// <summary>
+    /// The camera this screen opens: the one the operating system calls the default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THERE WAS A PICKER HERE, AND EVERY ENTRY IN IT WAS INVENTED (post-audit plan item 1.5). The
+    /// constructor built "Camera 0" through "Camera 3" whatever hardware was attached, and selected the
+    /// first. On a laptop with one webcam, three of the four named devices that do not exist; choosing
+    /// one opened nothing and reported "Failed to open camera". The names were not device names either
+    /// -- they were OpenCV indices with a word in front.
+    /// </para>
+    /// <para>
+    /// AND IT COULD NOT BE MADE REAL WHERE IT STOOD, WHICH IS THE DECISION THE ROW ASKED FOR. OpenCV
+    /// exposes no device enumeration: the only way to learn whether index 2 exists is to OPEN index 2.
+    /// Building the list honestly would therefore turn the camera on -- lens and indicator light -- for
+    /// each index in turn, on a screen the user has merely navigated to and before they have pressed
+    /// Start. That is a privacy surprise traded for names OpenCV cannot supply anyway. So the picker is
+    /// gone and this screen uses the default camera; choosing between several belongs to the camera
+    /// seam TD-120 already asks for, where a platform API that CAN enumerate devices would live.
+    /// </para>
+    /// </remarks>
+    public const int DefaultCameraIndex = 0;
+
     private readonly IAIProvider _aiProvider;
     private readonly LocalizedMessageSlot _status;
     /// <summary>
@@ -47,19 +68,21 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
     private CancellationTokenSource? _cts;
     private volatile bool _isDisposed;
 
-    public System.Collections.ObjectModel.ObservableCollection<CameraOption> Cameras { get; } = new();
-
-    [ObservableProperty]
-    public partial CameraOption? SelectedCamera { get; set; }
-
     [ObservableProperty]
     public partial WriteableBitmap? LiveFeed { get; set; }
 
     [ObservableProperty]
     public partial bool IsScanning { get; set; }
 
+    /// <summary>What this screen says before anything has been pressed.</summary>
+    /// <remarks>
+    /// IT WAS AN ENGLISH LITERAL, AND THE INDEPENDENT REVIEW OF ITEM 1.5 CAUGHT IT. Every other
+    /// sentence on this screen goes through the localizer, so a Spanish user read "Press Start to
+    /// activate camera" above a button labelled "Iniciar cámara". It is a key now, set in the
+    /// constructor through the same slot as the rest, so it follows a language switch too.
+    /// </remarks>
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Press Start to activate camera";
+    public partial string StatusMessage { get; set; } = string.Empty;
 
     public LiveScannerViewModel(
         IAIProvider aiProvider,
@@ -75,12 +98,14 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         _status = new LocalizedMessageSlot(localizer, text => PostToUI(() => StatusMessage = text ?? string.Empty));
         _logger = logger;
 
-        // Populate mock cameras (OpenCV index based)
-        for (int i = 0; i < 4; i++)
-        {
-            Cameras.Add(new CameraOption(i, $"Camera {i}"));
-        }
-        SelectedCamera = Cameras[0];
+        // RENDERED SYNCHRONOUSLY FIRST, AND THAT IS NOT A DETAIL. The slot's assignment goes through
+        // PostToUI, because every other caller is on the capture thread -- so setting the opening
+        // sentence through it alone leaves this property EMPTY until the dispatcher runs, which is
+        // what the screen would paint on its first frame, and what a test reads. The key is rendered
+        // here and registered with the slot immediately after, so the sentence is there from
+        // construction AND still follows a language switch.
+        StatusMessage = localizer["LiveScanner.Status.Idle"];
+        _status.Set("LiveScanner.Status.Idle");
     }
 
     /// <summary>
@@ -161,16 +186,6 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         }
     }
 
-    partial void OnSelectedCameraChanged(CameraOption? value)
-    {
-        if (IsScanning)
-        {
-            // Restart the camera feed with the new camera
-            StopScanning();
-            StartScanning();
-        }
-    }
-
     // ────────────────────────────────────────────────────────────
     //  Background capture loop
     // ────────────────────────────────────────────────────────────
@@ -180,18 +195,27 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         VideoCapture? localCapture = null;
         try
         {
-            int cameraIndex = SelectedCamera?.Index ?? 0;
-            
             // Use DirectShow for much faster camera initialization on Windows
-            localCapture = new VideoCapture(cameraIndex, VideoCaptureAPIs.DSHOW);
+            localCapture = new VideoCapture(DefaultCameraIndex, VideoCaptureAPIs.DSHOW);
             if (!localCapture.IsOpened())
             {
-                // Fallback to default if DSHOW fails
-                localCapture = new VideoCapture(cameraIndex);
+                // THE FIRST HANDLE IS RELEASED BEFORE THE SECOND IS TAKEN, AND IT WAS NOT (found by
+                // the independent review of item 1.5). `localCapture` was simply reassigned, so the
+                // DirectShow instance leaked; and on the path below -- the one the "could not open
+                // your camera" sentence describes -- BOTH leaked, because `_capture` is still null
+                // there and the finally block disposes `_capture`, not this local. A user who closed
+                // the app holding the webcam and pressed Start again could be blocked by Pine's own
+                // undisposed handles, waiting on a finalizer.
+                localCapture.Dispose();
+
+                // Fallback to the default backend if DSHOW fails
+                localCapture = new VideoCapture(DefaultCameraIndex);
             }
-            
+
             if (!localCapture.IsOpened())
             {
+                localCapture.Dispose();
+                localCapture = null;
                 _status.Set("LiveScanner.Status.CameraFailed");
                 return;
             }
@@ -280,8 +304,10 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
         finally
         {
             // Guarantee camera is released even on unexpected exit
+            bool released;
             lock (_captureLock)
             {
+                released = _capture is not null;
                 if (_capture != null)
                 {
                     _capture.Release();
@@ -289,6 +315,15 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                     _capture = null;
                 }
             }
+
+            // AND RELEASE ONE THAT WAS OPENED BUT NEVER STORED. Everything above between opening the
+            // camera and publishing it to `_capture` -- an exception, a cancellation, the refusal
+            // paths -- left this local holding a native handle that nothing else could reach.
+            if (!released)
+            {
+                localCapture?.Dispose();
+            }
+
             PostToUI(() => IsScanning = false);
         }
     }

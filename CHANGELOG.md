@@ -78,6 +78,11 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **The camera list on the scanner no longer offers cameras you do not have.** It always listed four,
+  named "Camera 0" to "Camera 3", whatever was plugged in; picking one you did not have simply failed.
+  The scanner now uses your default camera, and says so if it cannot open it. If you have two cameras
+  you can no longer choose the second one — that needs a way to list your devices, which Pine does not
+  have yet.
 - **The dashboard's "Scan Receipt" button works.** It looked like a button and did nothing at all
   when pressed. It now opens the receipt screen, and it is not shown on builds that cannot scan a
   receipt.

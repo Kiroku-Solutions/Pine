@@ -989,6 +989,20 @@ so the sections after it keep the numbers other documents cite.)
 3. On a macOS, Android or iOS build: **expected:** there is no Scan Receipt button in the header, exactly
    as there is none in the sidebar.
 
+## 13B. The live scanner uses your default camera — post-audit plan item 1.5
+
+**Read this before running it.** No automated test opens a camera; everything below is the only check
+there is. The picker that used to sit here offered "Camera 0" to "Camera 3" whatever was attached.
+
+1. Open the live scanner on the Windows head.
+2. **Expected:** there is no camera picker anywhere on the screen.
+3. Press **Start Camera**. **Expected:** your default camera opens and the feed appears.
+4. With the camera already in use by another application, press Start again. **Expected:** the sentence
+   names your *default camera* and says to check that nothing else is using it — not the old bare
+   "Failed to open camera."
+5. **Known limitation, deliberate:** with two cameras attached you cannot choose the second one any
+   more. That waits on the camera seam (TD-120).
+
 ## 14. What a failure means
 
 | Where it fails | Severity |

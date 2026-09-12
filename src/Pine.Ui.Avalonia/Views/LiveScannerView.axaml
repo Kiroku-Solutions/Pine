@@ -17,12 +17,11 @@
            Stretch="Uniform"
            IsVisible="{Binding LiveFeed, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
-    <!-- Camera Selector Overlay -->
-    <ComboBox ItemsSource="{Binding Cameras}"
-              SelectedItem="{Binding SelectedCamera}"
-              HorizontalAlignment="Right" VerticalAlignment="Top"
-              Margin="16" Width="150"
-              DisplayMemberBinding="{Binding Name}" />
+    <!-- The camera picker that stood here listed "Camera 0" to "Camera 3" whatever was attached, and
+         three of those four did not exist on a one-webcam machine (post-audit plan item 1.5). OpenCV
+         cannot enumerate devices; the only way to know one exists is to open it, which would turn the
+         camera on before the user pressed Start. The scanner uses the system default camera, and
+         choosing between several waits for the camera seam TD-120 asks for. -->
 
     <!-- Scanner Reticle (decorative bracket corners + animated scan line) -->
     <Canvas HorizontalAlignment="Center" VerticalAlignment="Center"

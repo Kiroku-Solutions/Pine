@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
@@ -776,6 +777,58 @@ public class ArchitectureTests
             TypesAllowedTheApplicationStatics,
             "App.Services.Main and Avalonia's desktop lifetime both lead to the window's navigator; a type " +
             "that reads either can replace the whole shell without taking anything -- TD-121 by another door.");
+    }
+
+    /// <summary>Where <c>HasBackgroundTraining</c> may be read: where it is declared, and where it registers.</summary>
+    private static readonly string[] FilesAllowedTheTrainingCapability = ["PineCompositionRoot.cs", "PineHeadCapabilities.cs"];
+
+    /// <summary>
+    /// The training capability is read where it is decided, and nowhere else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FOUND BY AN INDEPENDENT REVIEW OF POST-AUDIT PLAN ITEM 1.4. The dashboard gates its Scan Receipt
+    /// button on <c>PineHeadCapabilities.HasReceiptVision</c>. Swapping that read for
+    /// <c>HasBackgroundTraining</c> left all 1,139 tests green, because the two flags are identical on
+    /// all four heads today -- and the capability type's own remarks say they are kept separate
+    /// precisely because "the next time one of the two moves" they will not be. The day vision and
+    /// training diverge, the sidebar would hide the receipt pages while the dashboard offered a button
+    /// that throws on click: TD-85 again, with nothing to see it.
+    /// </para>
+    /// <para>
+    /// The two flags cannot be made to differ from a test -- the capability table is private and
+    /// resolved per head -- so the rule is stated where it CAN be checked. Training gates a hosted
+    /// service; it is a composition decision, and no screen may branch on it. A view or view model that
+    /// reads it is reading the wrong flag by definition.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void OnlyCompositionReadsTheTrainingCapability()
+    {
+        var uiRoot = Path.Combine(RepositoryRootDirectory(), "src", "Pine.Ui.Avalonia");
+
+        var readers = Directory.EnumerateFiles(uiRoot, "*.cs", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(uiRoot, "*.axaml", SearchOption.AllDirectories))
+            .Where(file => File.ReadAllText(file).Contains("HasBackgroundTraining", StringComparison.Ordinal))
+            .Select(Path.GetFileName)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        readers.Should().Equal(
+            FilesAllowedTheTrainingCapability,
+            "training gates a hosted service, not a screen; a view that branches on it is gating a feature " +
+            "on a capability that only coincides with the right one today");
+    }
+
+    private static string RepositoryRootDirectory()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Pine.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new DirectoryNotFoundException("Pine.slnx not found.");
     }
 
     /// <summary>
