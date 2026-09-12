@@ -981,6 +981,14 @@ so the sections after it keep the numbers other documents cite.)
    balance" already show the imported rows, without leaving the dashboard. Before the fix nothing
    changed until you navigated away and back.
 
+### 13A.5 The Scan Receipt button — post-audit plan item 1.4
+
+1. On the Windows head, press **Scan Receipt** in the dashboard's header.
+2. **Expected:** the receipt page opens *beside the sidebar*, and the sidebar's "Scan Receipt" entry
+   lights. The shell does not disappear. Until this item the button did nothing at all.
+3. On a macOS, Android or iOS build: **expected:** there is no Scan Receipt button in the header, exactly
+   as there is none in the sidebar.
+
 ## 14. What a failure means
 
 | Where it fails | Severity |

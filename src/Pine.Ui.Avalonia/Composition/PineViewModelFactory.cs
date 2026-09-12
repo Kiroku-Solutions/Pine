@@ -62,7 +62,14 @@ public sealed class PineViewModelFactory : IViewModelFactory
     public ShellViewModel CreateShell() => _provider.GetRequiredService<ShellViewModel>();
 
     /// <inheritdoc />
-    public DashboardViewModel CreateDashboard() => _provider.GetRequiredService<DashboardViewModel>();
+    public DashboardViewModel CreateDashboard(IShellNavigator shell)
+    {
+        ArgumentNullException.ThrowIfNull(shell);
+
+        // On every head, unlike the receipt pages: the dashboard exists everywhere, and it hides its
+        // own Scan Receipt button where the head has no receipt pipeline (item 1.4).
+        return ActivatorUtilities.CreateInstance<DashboardViewModel>(_provider, shell);
+    }
 
     /// <inheritdoc />
     public TransactionsViewModel CreateTransactions() => _provider.GetRequiredService<TransactionsViewModel>();

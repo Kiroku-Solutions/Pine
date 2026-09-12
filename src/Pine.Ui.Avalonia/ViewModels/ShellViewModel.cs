@@ -228,7 +228,7 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     [RelayCommand]
     private void NavigateToDashboard()
     {
-        NavigateTo(_viewModels.CreateDashboard());
+        NavigateTo(_viewModels.CreateDashboard(this));
     }
 
     [RelayCommand]
@@ -286,7 +286,8 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     }
 
     // The two receipt pages navigate on their own, so they are handed THIS shell to do it with
-    // (TD-121). Every other page above navigates nowhere and takes no navigator at all.
+    // (TD-121), and so is the dashboard, whose Scan Receipt button navigates since item 1.4. Every
+    // other page above navigates nowhere and takes no navigator at all.
 
     [RelayCommand]
     private void NavigateToScanReceipt()

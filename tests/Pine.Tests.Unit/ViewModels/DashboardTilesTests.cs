@@ -15,6 +15,7 @@ using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
+using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
@@ -39,6 +40,7 @@ namespace Pine.Tests.Unit.ViewModels;
 public partial class DashboardTilesTests
 {
     private static readonly CurrencyCode Usd = new("USD");
+    private static readonly PineHeadCapabilities Windows = PineHeadCapabilities.For(PineHeadProfile.Windows);
 
     private readonly IMediator _mediator = Substitute.For<IMediator>();
 
@@ -55,7 +57,7 @@ public partial class DashboardTilesTests
                 Array.Empty<Pine.Core.Transactions.Transaction>(), 0, 1, 10)));
     }
 
-    private DashboardViewModel Dashboard() => new(_mediator, Substitute.For<IViewModelFactory>(), localizer: new Localizer());
+    private DashboardViewModel Dashboard() => new(_mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: new Localizer());
 
     /// <summary>
     /// Every tile the dashboard builds asks the ledger for something. An inert tile fails here.
@@ -182,7 +184,7 @@ public partial class DashboardTilesTests
     {
         var localizer = new Localizer();
         localizer.SetLanguage("en");
-        var dashboard = new DashboardViewModel(_mediator, Substitute.For<IViewModelFactory>(), localizer: localizer);
+        var dashboard = new DashboardViewModel(_mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: localizer);
 
         dashboard.Greeting.Should().Be(localizer["Dashboard.Header.Greeting"]);
 
@@ -218,7 +220,7 @@ public partial class DashboardTilesTests
     {
         var localizer = new Localizer();
         localizer.SetLanguage("en");
-        var dashboard = new DashboardViewModel(_mediator, Substitute.For<IViewModelFactory>(), localizer: localizer);
+        var dashboard = new DashboardViewModel(_mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: localizer);
         var titles = dashboard.Widgets.Select(widget => widget.Title).ToList();
 
         dashboard.Dispose();

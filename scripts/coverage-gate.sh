@@ -38,14 +38,18 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# THE FLOORS. Re-measured 2026-09-11 against 1100 unit tests, then rounded DOWN.
+# THE FLOORS. Re-measured 2026-09-11 against 1135 unit tests, then rounded DOWN.
 #
 #   assembly              measured   floor   previous
-#   overall                 71.01%     70       68   <- one under, see below
-#   Pine.Core               89.95%     89       88   <- the domain. Money and its invariants live here.
-#   Pine.Infrastructure     82.50%     82       78
-#   Pine.Application        60.04%     59       59   <- one under, see below
-#   Pine.Ui.Avalonia        40.94%     40       38
+#   overall                 72.06%     72       70
+#   Pine.Core               89.95%     89       89   <- the domain. Money and its invariants live here.
+#   Pine.Infrastructure     82.61%     82       82
+#   Pine.Application        61.38%     61       59
+#   Pine.Ui.Avalonia        45.15%     45       40   <- the dashboard tiles and their render tests
+#
+# (Measured twice on the same day: 70/89/82/59/40 came from plan item 1.3's suite of 1 100 tests, and
+# these from item 1.4's 1 135. The two rows that sat one point under their rounded figure then --
+# overall and Pine.Application -- have margin now and are set at it.)
 #
 # (This table had drifted: it still showed the 2026-09-09 floors of 66/88/77/57/37 while the
 # variables below read 68/88/78/59/38. It is re-stated whole rather than patched.)
@@ -86,11 +90,11 @@ set -euo pipefail
 # lowest because a headless test of a view is worth little; that is a statement about where testing
 # effort is worth spending, not permission for it to rot -- the floor still ratchets.
 # ---------------------------------------------------------------------------
-FLOOR_OVERALL=70
+FLOOR_OVERALL=72
 FLOOR_PINE_CORE=89
 FLOOR_PINE_INFRASTRUCTURE=82
-FLOOR_PINE_APPLICATION=59
-FLOOR_PINE_UI_AVALONIA=40
+FLOOR_PINE_APPLICATION=61
+FLOOR_PINE_UI_AVALONIA=45
 
 RUN_TESTS=1
 REPORT=""

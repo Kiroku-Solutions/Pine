@@ -47,6 +47,7 @@ public class ShellLateNavigationTests
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();
     private readonly IViewModelFactory _viewModels = Substitute.For<IViewModelFactory>();
+    private static readonly PineHeadCapabilities Windows = PineHeadCapabilities.For(PineHeadProfile.Windows);
 
     private static MemoryStream OnePixelPng() => new(Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="));
@@ -58,7 +59,8 @@ public class ShellLateNavigationTests
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { UsdAccount() }));
 
-        _viewModels.CreateDashboard().Returns(_ => new DashboardViewModel(_mediator, _viewModels));
+        _viewModels.CreateDashboard(Arg.Any<IShellNavigator>())
+            .Returns(call => new DashboardViewModel(_mediator, _viewModels, call.Arg<IShellNavigator>(), Windows));
         _viewModels.CreateTransactions().Returns(_ => new TransactionsViewModel(_mediator, _viewModels));
 
         var shell = new ShellViewModel(

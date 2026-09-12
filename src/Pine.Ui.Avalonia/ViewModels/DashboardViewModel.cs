@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
@@ -37,6 +38,9 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     private readonly IMediator _mediator;
     private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _greeting;
+
+    /// <summary>The shell this page is shown in; where the Scan Receipt button navigates (item 1.4).</summary>
+    private readonly IShellNavigator _shell;
 
     /// <summary>
     /// Builds the two dialogs this page opens (TD-28/TD-58).
@@ -74,7 +78,15 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     public partial Pine.Ui.Avalonia.ViewModels.Importing.ImportWizardViewModel? ImportWizardVm { get; set; }
 
     /// <param name="mediator">The request pipeline, handed to the tiles.</param>
-    /// <param name="viewModels">Builds the two dialogs this page opens.</param>
+    /// <param name="viewModels">Builds the two dialogs this page opens, and the receipt page.</param>
+    /// <param name="shell">
+    /// The shell this page is shown in (item 1.4). Supplied by <c>IViewModelFactory.CreateDashboard</c>,
+    /// never by the container, which could only supply the window's navigator (TD-121).
+    /// </param>
+    /// <param name="capabilities">
+    /// Whether this head can scan a receipt at all. Read by the same button rule the sidebar follows
+    /// (TD-85): on a head with no receipt pipeline the button does not exist.
+    /// </param>
     /// <param name="logger">Where the tiles' failures are recorded.</param>
     /// <param name="localizer">
     /// The string table the greeting and the tiles' text come from. Optional and defaulting to
@@ -84,11 +96,18 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     public DashboardViewModel(
         IMediator mediator,
         IViewModelFactory viewModels,
+        IShellNavigator shell,
+        PineHeadCapabilities capabilities,
         ILogger<DashboardViewModel>? logger = null,
         ILocalizer? localizer = null)
     {
+        ArgumentNullException.ThrowIfNull(shell);
+        ArgumentNullException.ThrowIfNull(capabilities);
+
         _mediator = mediator;
         _viewModels = viewModels;
+        _shell = shell;
+        HasReceiptVision = capabilities.HasReceiptVision;
         _logger = logger;
         _localizer = localizer ?? Localizer.Instance;
         _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
@@ -227,6 +246,40 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
             }
         }
     }
+
+    /// <summary>
+    /// Whether this head can scan a receipt, and therefore whether the Scan Receipt button exists.
+    /// </summary>
+    /// <remarks>
+    /// The same decision the sidebar's two receipt buttons bind to (TD-85), from the same
+    /// <see cref="PineHeadCapabilities"/> object that decides whether the factory will build the receipt
+    /// page at all -- so a visible button always has a page behind it, and a head without the
+    /// pipeline shows neither the button nor a button that would throw.
+    /// </remarks>
+    public bool HasReceiptVision { get; }
+
+    /// <summary>
+    /// Opens the receipt page in the shell -- what the dashboard's Scan Receipt button has always
+    /// looked like it did (post-audit plan item 1.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE BUTTON HAD NO COMMAND BINDING AT ALL. It rendered, it was clickable, it did nothing: the
+    /// last control on this page that looked like an action and was not one. It goes to the same page
+    /// as the sidebar's "Scan Receipt", built the same way, in the same shell -- so the sidebar lights
+    /// the right button and the review page's own navigation stays inside the shell (TD-121).
+    /// </para>
+    /// <para>
+    /// <see cref="CanOpenScanReceipt"/> is false on a head without receipt vision, where the view hides
+    /// the button too. Both, not one: the view's visibility is what a user sees, and the command's
+    /// guard is what keeps a keyboard shortcut or a future second binding from reaching a factory
+    /// method that refuses on that head.
+    /// </para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanOpenScanReceipt))]
+    private void OpenScanReceipt() => _shell.NavigateTo(_viewModels.CreateScanReceipt(_shell));
+
+    private bool CanOpenScanReceipt() => HasReceiptVision;
 
     // The two dialogs only close themselves now. What they wrote reaches the tiles through
     // DataChangedMessage -- CreateAccountViewModel has always sent it, and the import wizard does as

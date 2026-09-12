@@ -47,7 +47,15 @@ public interface IViewModelFactory
     ShellViewModel CreateShell();
 
     /// <summary>Creates the dashboard page.</summary>
-    DashboardViewModel CreateDashboard();
+    /// <param name="shell">The shell the dashboard is shown in, and therefore the one it navigates.</param>
+    /// <remarks>
+    /// THE DASHBOARD TAKES ITS SHELL SINCE POST-AUDIT PLAN ITEM 1.4. Its "Scan Receipt" button had no
+    /// command at all -- it rendered, it was clickable, it did nothing. Giving it one means the page
+    /// navigates, and a page that navigates inside the shell takes the shell it is shown in, for the
+    /// reason <see cref="CreateScanReceipt"/> gives (TD-121): the container can only supply the
+    /// window's navigator.
+    /// </remarks>
+    DashboardViewModel CreateDashboard(IShellNavigator shell);
 
     /// <summary>Creates the transactions page.</summary>
     TransactionsViewModel CreateTransactions();

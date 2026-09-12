@@ -16,6 +16,7 @@ using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Tests.Unit.Localization;
+using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
@@ -54,6 +55,7 @@ namespace Pine.Tests.Unit.ViewModels;
 public class DashboardTileRenderingTests
 {
     private static readonly CurrencyCode Usd = new("USD");
+    private static readonly PineHeadCapabilities Windows = PineHeadCapabilities.For(PineHeadProfile.Windows);
     private static readonly CurrencyCode Eur = new("EUR");
     private static readonly string[] CashFlowHeadings = ["In", "Out", "Net"];
 
@@ -166,7 +168,7 @@ public class DashboardTileRenderingTests
         mediator.Send(Arg.Any<GetTransactionsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("disk"));
 
         // Through the dashboard -- the real path, which starts each tile and routes its failure onto it.
-        var dashboard = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>(), localizer: localizer);
+        var dashboard = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: localizer);
         _ = dashboard.InitializeAsync(CancellationToken.None);
 
         var views = new Dictionary<Type, (Func<Control> View, string EmptyKey)>

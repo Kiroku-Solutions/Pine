@@ -603,7 +603,7 @@ public class ArchitectureTests
 
     /// <summary>The pages that navigate inside the shell (TD-121). Anti-vacuity for the rule below.</summary>
     private static readonly string[] TypesTakingTheShellNavigator =
-        ["CropReceiptViewModel", "LiveScannerViewModel", "ScanReceiptViewModel"];
+        ["CropReceiptViewModel", "DashboardViewModel", "LiveScannerViewModel", "ScanReceiptViewModel"];
 
     /// <summary>The one implementation of each navigator interface (TD-121).</summary>
     private static readonly string[] TheWindowNavigator = ["MainViewModel"];

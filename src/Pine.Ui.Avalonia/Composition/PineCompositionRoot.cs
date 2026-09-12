@@ -352,7 +352,6 @@ public static class PineCompositionRoot
         services.AddTransient<UnlockViewModel>();
 
         // In-vault pages available on every head.
-        services.AddTransient<DashboardViewModel>();
         services.AddTransient<TransactionsViewModel>();
         services.AddTransient<BudgetsViewModel>();
         services.AddTransient<RulesViewModel>();
@@ -374,5 +373,8 @@ public static class PineCompositionRoot
         // dropped the shell. IViewModelFactory builds them now, and it is the factory that refuses
         // them on a head without receipt vision (TD-85's rule, enforced one step later). That is also
         // why this method no longer takes the head's capabilities: it has nothing left to gate.
+        //
+        // NOR THE DASHBOARD, SINCE ITEM 1.4. Its Scan Receipt button navigates now, so it takes its
+        // shell too, and is built by IViewModelFactory.CreateDashboard(shell) on every head.
     }
 }

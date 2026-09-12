@@ -78,6 +78,9 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **The dashboard's "Scan Receipt" button works.** It looked like a button and did nothing at all
+  when pressed. It now opens the receipt screen, and it is not shown on builds that cannot scan a
+  receipt.
 - **The dashboard shows your money instead of ten empty boxes.** Ten of its twelve tiles said
   "No data yet" whatever was in your vault. It now has five, and every one reads your ledger: the total
   of your account balances (one figure per currency — Pine never adds dollars to euros), what came in

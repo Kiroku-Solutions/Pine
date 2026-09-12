@@ -114,7 +114,8 @@ public class MessengerLifecycleTests
 
     private ShellViewModel CreateShell()
     {
-        _viewModels.CreateDashboard().Returns(_ => new DashboardViewModel(_mediator, _viewModels));
+        _viewModels.CreateDashboard(Arg.Any<IShellNavigator>())
+            .Returns(call => new DashboardViewModel(_mediator, _viewModels, call.Arg<IShellNavigator>(), PineHeadCapabilities.For(PineHeadProfile.Windows)));
 
         return new ShellViewModel(
             _viewModels,
@@ -259,7 +260,7 @@ public class MessengerLifecycleTests
             .Returns(Task.FromResult<IReadOnlyList<Account>>(Array.Empty<Account>()));
 
         var shell = CreateShell();
-        var dashboard = new DashboardViewModel(_mediator, _viewModels);
+        var dashboard = new DashboardViewModel(_mediator, _viewModels, shell, PineHeadCapabilities.For(PineHeadProfile.Windows));
 
         shell.NavigateTo(dashboard);
 

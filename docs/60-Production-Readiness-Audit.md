@@ -758,7 +758,10 @@ works end to end against the encrypted store.
   ~~Next: the navigation defect that replaces the whole shell (TD-121, plan item 1.2).~~ Done
   2026-09-11. ~~Next: the dashboard's ten inert widgets (plan item 1.3).~~ Done the same day: five
   tiles, each reading the ledger, five deleted, and TD-149 registered for the budgets' UTC window. Next:
-  the dashboard's "Scan Receipt" button, which has no command (plan item 1.4).
+  ~~the dashboard's "Scan Receipt" button, which has no command (plan item 1.4).~~ Done the same day,
+  and it is the first item in this plan carrying no independent review: the one commissioned for it died
+  on an API session limit, which is recorded in `62-Post-Audit-Plan` §4.4 rather than left implied. Next:
+  the live scanner's camera list (plan item 1.5), which offers four cameras whatever is attached.
 
 **On the method, because it is the most transferable output.** Thirty-six iterations were run as
 implement → mutate → verify: after each change, deliberate defects were introduced to check that

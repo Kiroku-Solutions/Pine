@@ -16,6 +16,7 @@ using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Xunit;
@@ -265,7 +266,12 @@ public class ErrorMessageTaxonomyTests
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>(), localizer: new Localizer());
+        var vm = new DashboardViewModel(
+            mediator,
+            Substitute.For<IViewModelFactory>(),
+            Substitute.For<IShellNavigator>(),
+            PineHeadCapabilities.For(PineHeadProfile.Windows),
+            localizer: new Localizer());
         var accounts = vm.Widgets.OfType<Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel>().Single();
 
         await vm.InitializeAsync(CancellationToken.None);

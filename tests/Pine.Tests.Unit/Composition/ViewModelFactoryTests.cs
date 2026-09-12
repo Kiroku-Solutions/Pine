@@ -63,7 +63,7 @@ public class ViewModelFactoryTests
         factory.CreateSetup().Should().BeOfType<SetupViewModel>();
         factory.CreateUnlock().Should().BeOfType<UnlockViewModel>();
         factory.CreateShell().Should().BeOfType<ShellViewModel>();
-        factory.CreateDashboard().Should().BeOfType<DashboardViewModel>();
+        factory.CreateDashboard(Substitute.For<IShellNavigator>()).Should().BeOfType<DashboardViewModel>();
         factory.CreateTransactions().Should().BeOfType<TransactionsViewModel>();
         factory.CreateBudgets().Should().BeOfType<BudgetsViewModel>();
         factory.CreateSettings().Should().BeOfType<SettingsViewModel>();

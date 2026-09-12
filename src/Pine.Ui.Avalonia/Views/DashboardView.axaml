@@ -28,7 +28,11 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <!-- It had no Command at all: rendered, clickable, did nothing (post-audit plan item 1.4).
+                         Hidden on a head without receipt vision, like the sidebar's receipt buttons (TD-85). -->
+                    <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Command="{Binding OpenScanReceiptCommand}"
+                            IsVisible="{Binding HasReceiptVision}"
+                            Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
                     <Button Content="{loc:Tr Dashboard.Actions.ImportData}" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
                     <Button Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14">
                         <StackPanel Orientation="Horizontal" Spacing="4">

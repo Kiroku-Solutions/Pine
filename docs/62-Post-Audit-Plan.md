@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1–1.3 closed (§4.1–§4.3) |
+| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); Stage 1 items 1.1–1.4 closed (§4.1–§4.4) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -237,7 +237,7 @@ Ordered by what a user loses if it is wrong.
 | 1.1 | ✅ **Done** (2026-09-10) — **Restore from a backup, in the application** | TD-56 (closed) | Restore refuses anything it cannot verify first, copies what it is about to replace, and locks the vault afterwards. See §4.1 |
 | 1.2 | ✅ **Done** (2026-09-11) — **Fix the navigation defect that replaces the whole shell** | TD-121 (closed) | The shell's navigator is now a type of its own that the container cannot supply, so a page can only get it from the shell it is shown in. The defect was also a lock leak the row did not name. See §4.2 |
 | 1.3 | ✅ **Done** (2026-09-11) — **Dashboard: make the ten inert widgets real, or take them down** | — (TD-149 registered) | Five tiles, every one of them reading the ledger: total balance, this month, accounts, budgets, recent transactions. Five deleted. "Net worth" became "total balance", because nothing in the model says which account is a debt. Found on the way: the total the dashboard had been computing and not showing, an import that refreshed nothing, and a "this month" that was UTC's month. See §4.3 |
-| 1.4 | **The dashboard's "Scan Receipt" button** | — | It has no `Command` binding at all: it renders, it is clickable, it does nothing. One line |
+| 1.4 | ✅ **Done** (2026-09-11) — **The dashboard's "Scan Receipt" button** | — | It opens the receipt page in the shell, and does not exist on a head that cannot scan. Not the one line the row promised: a button that navigates needs the shell it is shown in (TD-121) and the head's capabilities (TD-85). See §4.4 |
 | 1.5 | **Live scanner camera list** | — | Enumerates "Camera 0".."Camera 3" regardless of hardware. Either enumerate real devices or drop the picker |
 
 ### 4.1 Item 1.1, as built (2026-09-10, iteration 39)
@@ -601,6 +601,50 @@ set on no tile and read by nothing; width and height are what size a tile. A mon
 zero-amount transactions shows a row of zeros rather than the empty state, which is true but odd. And
 the budgets *page* rows still freeze on a language switch — the tile re-reads; the page does not.
 
+### 4.4 Item 1.4, as built (2026-09-11, iteration 42)
+
+**The row said "one line". It is not one line, and the reason is the two rows before it.** A button that
+navigates needs a navigator, and since TD-121 an in-shell page may only navigate the shell it is shown
+in — so the dashboard now takes its `IShellNavigator` from `IViewModelFactory.CreateDashboard(shell)`,
+like the receipt pages, and left the container for the same reason they did: a registration could only
+have supplied the window's navigator. It also needs `PineHeadCapabilities`, because the button must not
+exist where the receipt pipeline does not (TD-85's rule, the sidebar's rule).
+
+**The defect was invisible to everything except a rendered control**, which is why the first test reads
+one. A missing `Command` binding is not a compile error, not a view-model state, and not something any
+existing test could see: the button rendered, was enabled, was clickable, and did nothing. So the tests
+render the dashboard **each head really builds**, from its real container, and read the button:
+
+- it has a command, and is enabled, on Windows;
+- pressing it lands on `ScanReceiptViewModel` **inside the shell**, with the sidebar lit — a command that
+  replaced the whole shell would satisfy "has a command" and be TD-121 again;
+- on macOS, Android and iOS it is **not visible and refuses to execute**. Both halves, because visibility
+  is what a user sees and `CanExecute` is what a keyboard or a future second binding would reach.
+
+**A flake in the test, found by running the suite rather than the class.** The three head-profile cases
+passed alone and failed in the full run, on a button whose `IsVisible` binding had not been applied yet —
+bindings are applied from queued dispatcher jobs, and one pump was enough only on an idle machine. The
+harness pumps until it settles now. That cannot hide the defect it exists to catch: a binding that is
+missing never settles, and the mutations that delete it still fail (re-run after the fix).
+
+**Verified by falsification: eight mutations, eight killed.** The `Command` binding deleted; the command
+pointed at the wrong page; the `CanExecute` guard removed; the `IsVisible` binding deleted;
+`HasReceiptVision` hard-coded true; the button bound to the import wizard's command instead; the button
+left visible but disabled; and the dashboard registered in the container again (53 tests, `ValidateOnBuild`).
+
+**THIS ITEM HAS NO INDEPENDENT REVIEW, AND THAT IS THE DIFFERENCE FROM 1.2 AND 1.3.** One was
+commissioned and died on an API session limit before it read anything. The last three mutations above are
+the ones it had been asked to try, run by the author instead — which is not the same thing, and the
+reason it is written down here: every finding in §4.2 and §4.3 that mattered came from someone who had
+not written the code. **Owed: an adversarial pass over this item.**
+
+**Numbers.** Unit **1135** (1130 before this item), integration **250**, both green; coverage gate green,
+and the floors ratchet up with the render tests' reach: overall 70 → 72, `Pine.Application` 59 → 61,
+`Pine.Ui.Avalonia` 40 → **45**.
+
+**What is NOT closed by this.** Nothing has been pressed on a real screen — the tests drive a headless
+window — and the manual step is `61-Manual-Test-Plan` §13A.
+
 **Definition of done for 1.3 and 1.5:** the screen shows only what it can measure. The rule from
 TD-99 and the language picker is now the house rule and should be applied without a debt row first.
 
@@ -668,4 +712,5 @@ than "finished" and the only one the evidence supports.
 
 ~~The next item is 1.1, restore from a backup in the application.~~ Done 2026-09-10 (§4.1), and
 1.2, the navigation defect, on 2026-09-11 (§4.2), and 1.3, the dashboard, the same day (§4.3). The
-next item is 1.4: the dashboard's "Scan Receipt" button, which still has no command.
+1.4, the dead "Scan Receipt" button, the same day (§4.4). The next item is 1.5: the live scanner's
+camera list, which offers "Camera 0".."Camera 3" whatever hardware is attached.
