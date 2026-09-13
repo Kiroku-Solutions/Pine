@@ -1022,6 +1022,34 @@ backups. A restore Pine REFUSED was enough to cause it, which is the case to run
 5. **What a failure here means:** the connection pool is holding a file the application has
    finished with. Report it against TD-140, which is the row that class of defect belongs to.
 
+## 13D. The release artefact says whether it is signed — post-audit plan item 2.2
+
+**Read this before running it.** Signing is automated end to end
+(`packaging/selftest-signing.sh`, thirteen cases, run by CI in the `test` job on the windows leg,
+on every pull request) and this is here for the part no script can check: whether a person looking
+at what the pipeline produced can tell signed from unsigned without reading any of it. It needs a
+Windows machine with a Windows SDK.
+
+1. Run `bash packaging/selftest-signing.sh`. **Expected:** thirteen passes, nothing failed, in
+   under a minute. It creates its own throwaway certificate and deletes it afterwards; it needs no
+   network.
+2. Run `bash packaging/package.sh --out artifacts` with no signing variables set. **Expected:** a
+   block of `!! UNSIGNED BUILD` warnings naming the consequence, and a successful build.
+3. Open `artifacts/*.release.json`. **Expected:** `"signed": false`, `"signature": null`, and a
+   `signing_note` that says no certificate was configured.
+4. Run it again with `--require-signature`. **Expected:** it refuses and exits non-zero
+   IMMEDIATELY — within a second, before anything is built. If it publishes first and refuses ten
+   minutes later, the fail-fast check at the top of `packaging/package.sh` has been removed.
+5. **On CI, after a push to `main`:** open the Actions run and look at the `package` job's uploaded
+   artefact. **Expected:** it is named `pine-win-x64-UNSIGNED`, and the job log carries a warning
+   naming TD-108. If it is ever named `pine-win-x64` while the manifest says `"signed": false`, the
+   two statements that are supposed to agree have stopped agreeing — report it against TD-108.
+6. **What a failure here means:** an artefact that does not say what it is. That is the whole of
+   TD-108's impact — a user cannot tell this build from one a third party modified — and a
+   mislabelled one is worse than an honestly unsigned one.
+
+---
+
 ## 14. What a failure means
 
 | Where it fails | Severity |

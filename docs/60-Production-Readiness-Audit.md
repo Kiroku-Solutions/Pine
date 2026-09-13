@@ -721,7 +721,9 @@ refuses to fall.
    supposed to produce exist, so a skipped coverage floor or a loop that built nothing fails the job
    instead of reporting green. **What is left of this reason is not in the repository**: no run has
    happened on the server yet, which needs a real pull request (`61-Manual-Test-Plan` §3.2).
-2. **Open debt rows**, of which two are 🟠 P1: an unsigned release artefact (TD-108), and the
+2. **Open debt rows**, of which two are 🟠 P1: an unsigned release artefact (TD-108) — whose
+   signing path was built, executed for the first time and found broken on 2026-09-12, leaving only
+   the certificate itself outstanding (`62-Post-Audit-Plan` §5.2) — and the
    intermittent SQLite handle disposal (TD-140) — **diagnosed and fixed in the test harness on
    2026-09-11, and deliberately not yet counted as closed.** The cause is a process-wide
    `ClearAllPools()` in the harnesses' own teardown, argued from a captured stack and from removing
@@ -757,7 +759,10 @@ works end to end against the encrypted store.
   copying files by hand (TD-56).~~ **Closed 2026-09-10** (plan item 1.1): a backup can be restored
   from Settings, the restore refuses anything it cannot verify first, and it leaves a copy of what
   it replaced so it can be undone. **What replaces it as the largest risk** is TD-108, the unsigned
-  release artefact: there is no way for a user to tell this build from anyone else's.
+  release artefact: there is no way for a user to tell this build from anyone else's. Narrowed on
+  2026-09-12 and not removed — the pipeline now signs, verifies what it signed, and labels the
+  unsigned case everywhere a person can see it, but there is still no certificate, so every artefact
+  it produces is still one a user cannot distinguish from anyone else's.
 - **Most important next action** — ~~Re-arm `pull_request:` on the CI workflow.~~ Done, 2026-09-10.
   ~~Next: restore from a backup, in the application (TD-56, plan item 1.1).~~ Done the same day.
   ~~Next: the navigation defect that replaces the whole shell (TD-121, plan item 1.2).~~ Done
@@ -775,8 +780,14 @@ works end to end against the encrypted store.
   the product — **and the independent review found that the fix had leaked encrypted vault
   directories into `%TEMP%` on every run and left every in-memory fixture's database resident for
   the whole test process, both of them the same defect shape as the row being closed**
-  (`62-Post-Audit-Plan` §5.1). **Next: TD-108, the unsigned release artefact (plan item 2.2)** — the
-  one thing that blocks giving this build to anyone.
+  (`62-Post-Audit-Plan` §5.1). ~~Next: TD-108, the unsigned release artefact (plan item 2.2) — the
+  one thing that blocks giving this build to anyone.~~ Done as far as a commit can take it,
+  2026-09-12: the signing path was executed for the first time since it was written and **did not
+  work** — Git Bash rewrote `/fd` into a path, so signtool rejected the flag it had been given —
+  and it now signs, verifies every loadable file afterwards, refuses six distinct ways, and is
+  falsified in CI on every push by a self-test that needs no certificate. **What is left of the row
+  is the purchase** (`62-Post-Audit-Plan` §5.2). **Next: TD-132 (plan item 2.3)**, the deferral that
+  is now load-bearing in three subsystems and that every further subsystem decides by default.
 
 **On the method, because it is the most transferable output.** Thirty-six iterations were run as
 implement → mutate → verify: after each change, deliberate defects were introduced to check that
@@ -4238,6 +4249,16 @@ forty native libraries loaded beside it — and the manifest says `"signed": tru
 build is unsigned, says so loudly, records `"signed": false`, and `--require-signature` turns that
 into a non-zero exit so a release pipeline can refuse without anyone remembering to check.
 
+> **CORRECTION, 2026-09-12 (plan item 2.2).** The paragraph above is written as a measured outcome
+> and it was not one. That branch had never been executed — no certificate exists, so nothing ever
+> entered it — and when it was finally run it **could not sign at all**: under Git Bash, which is
+> the shell this script and the CI `package` job both use, MSYS rewrote `/fd` into a path and
+> signtool rejected the flag it had been given. "Every `.exe` and `.dll` is signed" was also a
+> claim about intent rather than about a check; nothing verified afterwards that anything had been
+> signed. Both are now true, and `packaging/sign.sh` proves the second one file by file. This
+> correction is left in place rather than the paragraph rewritten, because the paragraph is the
+> better record: it is what a careful write-up looks like when the code under it has never run.
+
 #### Falsification mutations
 
 **Seven on the version rule, 7 killed** — and one of them tells a story.
@@ -4317,7 +4338,7 @@ this paragraph exists so that is not read as "the suite is green".**
 | ID | Row | Sev | Impact | Fix | Pri | Status |
 |---|---|---|---|---|---|---|
 | TD-107 | `packaging/package.sh` is reached by no test. Its three guards were proven load-bearing by hand this iteration, and nothing re-proves them | 🟡 | The one artefact users would ever install is produced by a script that cannot break a build. A future edit that drops the version-agreement check or the signature gate is invisible | Port the guards into a test that invokes the script against a stub publish directory, or reimplement packaging as a `dotnet` tool the unit suite can call | P2 | 🔴 **Open** |
-| TD-108 | The pipeline's normal outcome is an **unsigned** build: no certificate exists, so CI deliberately does not pass `--require-signature` | 🟠 | SmartScreen warns on first launch, and a user cannot distinguish the project's artefact from one a third party built and modified. The seam exists; the property does not hold | Obtain a code-signing certificate, then add `--require-signature` to the CI job so an unsigned build can never be published by accident | P1 | 🔴 **Open** |
+| TD-108 | The pipeline's normal outcome is an **unsigned** build: no certificate exists, so CI deliberately does not pass `--require-signature` | 🟠 | SmartScreen warns on first launch, and a user cannot distinguish the project's artefact from one a third party built and modified. The seam exists; the property does not hold | Obtain a code-signing certificate, then add `--require-signature` to the CI job so an unsigned build can never be published by accident | P1 | 🟡 **Partial** — 2026-09-12, plan item 2.2. Everything but the certificate: the certificate and `--require-signature` are now one decision in the workflow, so a broken certificate fails the job instead of degrading quietly to an unsigned build under the release name; an unsigned build is uploaded as `pine-win-x64-UNSIGNED` and says so in its manifest. **And the seam did not work**: it had never been executed in twenty-four iterations, and under Git Bash — which is the shell the `package` job uses — MSYS rewrote `/fd` into a path, so signtool rejected the flag it had been given. It signs, and verifies what it signed, and `packaging/selftest-signing.sh` falsifies each refusal in CI on every push. **The row stays open**: a certificate is a purchase against a verified legal identity, and no artefact this pipeline produces today is signed |
 | TD-109 | Only the Windows head can be packaged at all. macOS/Linux have no bundle definition, and Android/iOS still carry template identity — `com.CompanyName.TempApp`, `android:label="TempApp"`, `CFBundleIdentifier=companyName.TempApp` | 🟠 | The README claims Pine "runs natively on Windows, macOS, Linux, iOS, Android, and WebAssembly". Four of those six cannot be built into anything installable, and two of them do not yet have a name | Give each head a real application identity, then a bundle per platform — or narrow the README, which is the Phase 3 decision | P1 | 🟡 **Partial** — iteration 31, §12.64, in the order this row prescribes. **Identity is done**: `org.pine.app` and display name `Pine` on both mobile heads, `ApplicationDisplayVersion` tracking `$(VersionPrefix)` rather than a `1.0` this project never had, and every `TempApp` string gone from the manifest, the activity attribute, `Info.plist` and the iOS launch screen. It was the half that could become unfixable — an Android application id cannot be changed after a first publish without shipping a different application. **The bundle half is untouched**: no `.apk`, `.ipa`, `.app` or `.deb` definition exists and `packaging/package.sh` still builds win-x64 only. The README half is done and went further than narrowing — the sixth platform was deleted rather than de-claimed |
 | TD-110 | The artefact is **1.08 GiB unpacked / 680 MB compressed**, of which 383 MB is three overlapping PaddleOCR model packages and 204 MB is the ONNX set | 🟡 | This is TD-41 with a measurement attached. A ~700 MB download for a personal-finance application is a distribution problem, not just a tidiness one | TD-41: keep one PaddleOCR package. Then reconsider bundling the ONNX weights at all versus fetching them on first use — which would need the network egress decision above | P2 | 🟡 **Partial** — iteration 28 (§12.58) took the measurement down to **690,067,133 bytes unpacked (658 MiB) / 306,385,892 bytes compressed (292 MiB)**, by running `package.sh` again rather than estimating. The download roughly halved. **The second half of the fix is untouched**: the remaining ~292 MiB still bundles PP-OCRv5 weights that could be fetched on first use, and that decision still runs into ADR-0012 |
 

@@ -111,6 +111,16 @@ The update manifest is signed by the project key:
 
 A client MUST verify the signature before fetching the binary.
 
+**As built (2026-09-12).** `packaging/package.sh` writes a manifest in this shape with two
+deliberate departures, both recorded in the file it writes: there is no `url`, because nothing hosts
+these artefacts, and `"signature"` is `null` unless the artefact was actually signed — a placeholder
+would defeat the check this section requires by being present. When it is not null it is an
+**object**, not an opaque blob: the signing certificate's thumbprint and subject, how many files
+this build signed, how many carry a timestamp, and whether the chain is trusted. "Is it signed" is
+the weaker question; a thumbprint is what lets a downloader tell this project's artefact from a
+third party's. The manifest itself is **not** signed, and neither is the archive — Authenticode
+covers the `.exe` and `.dll` files inside it. That gap is real and is part of TD-108.
+
 ## 6. Staged Rollout
 
 ```mermaid

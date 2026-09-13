@@ -76,6 +76,11 @@ graph LR
 - All CI gates per `28-CI-CD` §4.1 are green.
 - The build matrix is green.
 - The signing and attestation are green.
+  - **As built (2026-09-12):** the concrete check is that the release manifest says
+    `"signed": true` and names a certificate thumbprint, and that CI uploaded the artefact as
+    `pine-win-x64` rather than `pine-win-x64-UNSIGNED`. Today it cannot: **no code-signing
+    certificate exists** (TD-108), so this line cannot be ticked for any build this pipeline
+    currently produces. Attestation — SBOM and provenance — does not exist at all.
 
 ### 4.3 Performance Green
 

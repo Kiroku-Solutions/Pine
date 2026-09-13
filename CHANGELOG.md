@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-12 · Extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-12 · Extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -49,8 +49,13 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   from a running process. Every log record and the diagnostics panel previously showed the constant
   `1.0.0`, because nothing set a version and the resolver discarded the only varying part.
 - **A packaging script** (`packaging/package.sh`) that produces a runtime-identifier-pinned Windows
-  artefact with a checksum for every file, a release manifest, and a signing step that refuses
-  rather than pretending. There is still **no installer and no signing certificate**.
+  artefact with a checksum for every file, a release manifest, and a signing step. ~~a signing step
+  that refuses rather than pretending.~~ **That claim was wrong and is corrected here**: the signing
+  step had never been executed, and when it was finally run on 2026-09-12 it could not sign at all
+  (Git Bash rewrote `/fd` into a path, so signtool rejected the flag it had been given). It signs
+  now, and verifies every file it signed. There is still **no installer and no signing
+  certificate**, so every artefact this pipeline produces is unsigned — and now says so in its own
+  name (`pine-win-x64-UNSIGNED`) and in its manifest, instead of looking like a release.
 - **A duplicate-receipt warning.** A scanned receipt that matches one already in the vault is
   flagged before it is written, on a stable key that reuses the import path's index. The warning is
   non-blocking and is re-checked immediately before the write.

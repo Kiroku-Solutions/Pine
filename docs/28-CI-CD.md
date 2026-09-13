@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-28-CI-CD`                                                                 |
 | Status           | Aspirational — the pipeline described is not the pipeline that exists                |
-| Reconciled       | 2026-08-31 · One workflow exists and it builds and tests. There is no sign-and-attest stage (§9), no SBOM, no provenance and no reproducibility check. The trigger gap is closed: as of 2026-09-10 the workflow runs on `pull_request` into `main` and on `push` to `main` (`dotnet-ci.yml`:31-36, TD-07). |
+| Reconciled       | 2026-09-12 · One workflow exists; it builds, tests, and **signs the Windows artefact when a certificate is configured** — see §9.2 for what is built and what §9 still promises that is not. There is no SBOM, no provenance and no reproducibility check. The trigger gap is closed: as of 2026-09-10 the workflow runs on `pull_request` into `main` and on `push` to `main` (`dotnet-ci.yml`:31-36, TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -183,6 +183,34 @@ The build matrix is *platform × configuration × component*:
 - SBOM is generated per release.
 - SLSA Level 3 provenance is generated per release.
 - The provenance is published next to the binary.
+
+### 9.2 As built (2026-09-12, TD-108 / `62-Post-Audit-Plan` item 2.2)
+
+Everything in §9 above is aspirational except the Windows line, and that line is half-built. What
+exists:
+
+- `packaging/sign.sh` signs the Windows artefact with a PFX supplied through
+  `PINE_SIGNING_CERT`, and then **verifies every `.exe` and `.dll` it ships** — a signature that is
+  present, matches the bytes under it, and chains to a trusted root. It refuses an unsigned file, a
+  hash mismatch, an untrusted root, a missing timestamp authority, and a run that signed nothing.
+- Files that already carry a valid third-party signature are left alone rather than re-signed, so
+  the artefact keeps the provenance Microsoft and others put on their own binaries.
+- The CI `package` job treats "a certificate is configured" and `--require-signature` as **one**
+  decision, so a certificate that is expired or wrongly encoded fails the job instead of degrading
+  quietly to an unsigned build under the release name.
+- With no certificate — which is today, and is TD-108 — the job builds unsigned, warns, records it
+  in the release manifest, and uploads the artefact as `pine-win-x64-UNSIGNED`.
+- `packaging/selftest-signing.sh` runs in the `test` job, on the windows leg, on **every pull
+  request**: it mints a throwaway self-signed certificate and falsifies each refusal above, with a
+  positive control. It needs no certificate and no network. It is in that job rather than in
+  `package`, which is skipped on pull requests — a change that breaks signing has to go red in
+  review, not after it is merged. Three of `packaging/sign.sh`'s refusals are not reachable from a
+  fixture and are marked in the script as untested.
+
+What §9 promises and does NOT exist: Apple notarisation, Linux GPG and per-distribution signing,
+SBOM, SLSA provenance, hardware key custody, and a key-rotation procedure. **And no code-signing
+certificate exists for this project**, so the paragraph above describes a path that has been
+executed against a self-signed test certificate only.
 
 ### 9.1 Key Custody
 

@@ -400,6 +400,47 @@ jobs:
           done <<< "$projects"
 
       # -----------------------------------------------------------------------
+      # DOES THE SIGNING PATH ACTUALLY SIGN? (TD-108, plan item 2.2)
+      #
+      # It needs no certificate and no publish: packaging/selftest-signing.sh
+      # mints a throwaway self-signed certificate, signs copied binaries in a
+      # fixture that looks like a real artefact (nested directories, .json and
+      # .txt files beside the code), and falsifies every refusal
+      # packaging/sign.sh makes -- an unsigned file in the artefact, bytes edited
+      # after signing, an untrusted root, a stage with no loadable code, a run
+      # that would sign nothing, a missing timestamp authority -- plus a positive
+      # control, so a gate that has started saying no to everything is caught too.
+      #
+      # IT IS IN THIS JOB, NOT IN `package`, AND THAT PLACEMENT IS THE POINT.
+      # `package` carries `if: github.event_name != 'pull_request'`, so anything
+      # living there is invisible on the way IN and only fires after a merge.
+      # This file's own header says a gate on the way in is worth more than a
+      # gate after the fact; a pull request that breaks signing must go red in
+      # review, not on main. `package` depends on this job, so a broken signing
+      # path stops the artefact being built at all.
+      #
+      # WHY IT EXISTS AT ALL: the signing seam sat in this repository for
+      # twenty-four iterations without ever executing, and when it was finally
+      # run it did not work -- Git Bash rewrote `/fd` into a path, so signtool
+      # rejected the very flag it had been given. Nothing would have reported
+      # that until the first release with a real certificate. Case I keeps that
+      # exact command form on file and expects it to keep failing.
+      #
+      # windows ONLY, and the condition is restated in the verify step below --
+      # the same arrangement as the coverage floor. signtool.exe and
+      # New-SelfSignedCertificate are Windows-only; on a runner image that ever
+      # ships without a Windows SDK this FAILS rather than skips, which is how
+      # anyone would find out before a release day.
+      # -----------------------------------------------------------------------
+      - name: The signing path signs, and refuses what it should (no certificate needed)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash packaging/selftest-signing.sh
+          bash scripts/ci-receipts.sh record signing-selftest
+
+      # -----------------------------------------------------------------------
       # Coverage floor (Phase 2 item 9). The gate is a script rather than a flag
       # because `coverlet.collector` -- the only coverage package this repository
       # references -- cannot enforce a threshold. Its own VSTestIntegration.md
@@ -442,7 +483,7 @@ jobs:
       # produced its receipt. Deleting that step, changing its condition, or
       # replacing its `run:` with something that does nothing all break the
       # agreement between the two.
-      - name: Every suite ran, and the coverage floor was answered
+      - name: Every suite ran, the coverage floor was answered, and the signing path was exercised
         shell: bash
         run: |
           set -euo pipefail
@@ -458,6 +499,13 @@ jobs:
           done <<< "$projects"
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             expected="$expected coverage"
+          fi
+          # THE SIGNING SELF-TEST'S CONDITION IS RESTATED HERE, for the same reason the coverage
+          # floor's is: the step above runs on windows only, and this says separately that on
+          # windows its receipt must exist. Deleting that step, changing its condition, or replacing
+          # its `run:` with something that does nothing all break the agreement between the two.
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            expected="$expected signing-selftest"
           fi
           bash scripts/ci-receipts.sh verify $expected
 
@@ -559,15 +607,64 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
+      # -----------------------------------------------------------------------
+      # SIGNING (TD-108, plan item 2.2).
+      #
+      # THE ROW ASKED FOR TWO THINGS AND ONLY ONE OF THEM IS IN ANYONE'S GIFT
+      # HERE: "obtain a code-signing certificate, then add --require-signature".
+      # A certificate is bought from a CA against a verified legal identity; no
+      # commit can produce one. What a commit CAN do is make the day it arrives a
+      # configuration change and not an engineering one, and make the current
+      # unsigned state impossible to mistake for the signed one.
+      #
+      # So the branch below is not "sign if we feel like it". It is one decision,
+      # taken once, driving BOTH halves:
+      #   - a certificate is configured -> sign, AND pass --require-signature, so
+      #     a certificate that is present but broken fails the job instead of
+      #     quietly degrading to an unsigned build. That silent degradation is the
+      #     only outcome that would be worse than today's.
+      #   - no certificate              -> build unsigned, say so in the log, in
+      #     the receipt, in the manifest, and in the NAME OF THE UPLOADED
+      #     ARTEFACT. An unsigned build that is labelled is a known state; an
+      #     unsigned build that looks like a release is TD-108's actual harm.
+      #
+      # TO TURN SIGNING ON: set the repository secret PINE_SIGNING_CERT_BASE64
+      # (base64 of the .pfx), PINE_SIGNING_PASSWORD if it has one, and the
+      # repository variable PINE_TIMESTAMP_URL. Nothing else changes. The
+      # timestamp URL is not optional and not defaulted: packaging/sign.sh
+      # refuses to sign without one, because an untimestamped signature stops
+      # validating the day the certificate expires.
+      # -----------------------------------------------------------------------
       - name: Build the artefact
         shell: bash
-        # No --require-signature: no code-signing certificate exists for this project yet, so
-        # requiring one would simply fail every run. The script prints an UNSIGNED warning and the
-        # manifest records `"signed": false`. Add --require-signature on the day a certificate does
-        # exist, so an unsigned build can never be published by accident.
+        env:
+          PINE_SIGNING_CERT_BASE64: ${{ secrets.PINE_SIGNING_CERT_BASE64 }}
+          PINE_SIGNING_PASSWORD: ${{ secrets.PINE_SIGNING_PASSWORD }}
+          PINE_TIMESTAMP_URL: ${{ vars.PINE_TIMESTAMP_URL }}
         run: |
           set -euo pipefail
-          bash packaging/package.sh --out artifacts
+
+          if [ -n "${PINE_SIGNING_CERT_BASE64:-}" ]; then
+            # RUNNER_TEMP, not the workspace: the workspace is what gets published, and a .pfx
+            # swept into an artefact would put the project's signing key on a download page.
+            cert="$RUNNER_TEMP/pine-signing.pfx"
+            printf '%s' "$PINE_SIGNING_CERT_BASE64" | base64 -d > "$cert"
+            export PINE_SIGNING_CERT="$cert"
+            PINE_SIGNTOOL="$(bash packaging/find-signtool.sh)"
+            export PINE_SIGNTOOL
+
+            # The `trap` deletes the key even if packaging fails, which is the run where it would
+            # otherwise be left behind.
+            trap 'rm -f "$cert"' EXIT
+
+            bash packaging/package.sh --out artifacts --require-signature
+            bash scripts/ci-receipts.sh record signing:signed
+          else
+            echo "::warning::No PINE_SIGNING_CERT_BASE64 secret is configured, so this artefact is UNSIGNED. Windows SmartScreen will warn on first launch and a user cannot tell this build from one a third party modified. This is audit row TD-108, and it is open."
+            bash packaging/package.sh --out artifacts
+            bash scripts/ci-receipts.sh record signing:unsigned
+          fi
+
           bash scripts/ci-receipts.sh record artefact
 
       # -----------------------------------------------------------------------
@@ -583,14 +680,54 @@ jobs:
       # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
       # can be skipped, which is the thing being guarded against.
       # -----------------------------------------------------------------------
-      - name: The weights were checked and the artefact was built
+      #
+      # THE SIGNING HALF IS WEAKER THAN THE COVERAGE ONE, AND THE DIFFERENCE IS
+      # WORTH STATING. The receipt says which branch of the step above ran; the
+      # manifest says what packaging/sign.sh managed to do, written from that
+      # script's facts rather than from package.sh's hopes. Demanding that they
+      # agree catches a manifest that claims `"signed": true` after the unsigned
+      # branch ran. But both are downstream of ONE condition -- whether a
+      # certificate is configured -- which the step above uses to choose its
+      # branch and package.sh re-reads from the same environment. So this is not
+      # two independent statements in the way the coverage receipt is: there is
+      # no single edit that makes them disagree without failing the job for
+      # another reason. What it does buy is the artefact's NAME, which is
+      # computed here from the manifest rather than written as a literal.
+      - name: The weights were checked, the artefact was built, and it says truthfully whether it is signed
+        id: artefact
         shell: bash
-        run: bash scripts/ci-receipts.sh verify weights artefact
+        run: |
+          set -euo pipefail
 
+          manifest="$(ls artifacts/*.release.json)"
+          echo "manifest: $manifest"
+
+          # Deliberately not jq: it is not installed on every runner image, and a missing jq would
+          # turn this gate into a step that fails for a reason unrelated to what it guards.
+          claim="$(grep -o '"signed": [a-z]*' "$manifest" | head -1 | awk '{ print $2 }')"
+
+          case "$claim" in
+            true)  expected="signing:signed"; name="pine-win-x64" ;;
+            false) expected="signing:unsigned"; name="pine-win-x64-UNSIGNED" ;;
+            *)
+              echo "::error::the release manifest does not say whether the artefact is signed."
+              exit 1
+              ;;
+          esac
+
+          echo "manifest claims signed=$claim"
+          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+
+          bash scripts/ci-receipts.sh verify weights artefact "$expected"
+
+      # The NAME carries the signing state (see the step above). A reviewer who
+      # downloads `pine-win-x64-UNSIGNED.zip` has been told what they have before
+      # they open it; one who downloads `pine-win-x64.zip` and finds a
+      # SmartScreen warning has been misled by this workflow.
       - name: Upload the artefact and its manifest
         uses: actions/upload-artifact@v4
         with:
-          name: pine-win-x64
+          name: ${{ steps.artefact.outputs.artifact_name }}
           path: |
             artifacts/*.tar.gz
             artifacts/*.release.json

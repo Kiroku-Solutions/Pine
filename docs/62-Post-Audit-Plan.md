@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-11 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 item 2.1 (§5.1) |
+| Last Updated     | 2026-09-12 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1) and 2.2 (§5.2, everything but the certificate) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -724,7 +724,7 @@ TD-99 and the language picker is now the house rule and should be applied withou
 | # | Work | Closes | Notes |
 |---|---|---|---|
 | 2.1 | Diagnose the intermittent SQLite handle disposal | TD-140 | Seen on four different integration tests across three iterations. Every test count in the audit currently costs a re-run. It is a flake in the harness, not in the product, which is why it is here and not in Stage 0 |
-| 2.2 | Sign the release artefact | TD-108 | SmartScreen warns on first launch and a user cannot distinguish this build from anyone else's. Blocks any real distribution |
+| 2.2 | 🟡 **Everything but the certificate** (2026-09-12) — Sign the release artefact | TD-108 | SmartScreen warns on first launch and a user cannot distinguish this build from anyone else's. Blocks any real distribution. **The row's Fix column asks for two things and only one of them is in a commit's gift.** A certificate is bought from a CA against a verified legal identity; no engineering work produces one. What was in reach was the other half, and the state the signing seam was actually in: it had never been executed, and it could not have worked. See §5.2 |
 | 2.3 | Decide `TD-132`, and stop deferring it | TD-132 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
 | 2.4 | Exception sentences below the UI layer | TD-139 | |
 | 2.5 | `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | several | Small, mechanical |
@@ -847,6 +847,222 @@ diagnosis is argued from the captured stack and the A/B arm instead. And the gua
 string concatenation, reflection, or a helper outside `src/` and `tests/` all evade it. It raises the
 cost of reintroducing the defect by accident, which is how it was introduced; it is not a proof that
 the defect cannot return.
+
+
+### 5.2 Item 2.2, as built (2026-09-12, iteration 45)
+
+**The row asks for a certificate, and a commit cannot produce one.** TD-108's Fix column reads
+"obtain a code-signing certificate, then add `--require-signature` to the CI job". The first clause
+is a purchase against a verified legal identity, made by whoever owns this project; nothing in this
+repository can stand in for it, and pretending otherwise would be the exact class of claim the audit
+exists to remove. So the row stays **open**, and what follows is the other half — plus the state the
+signing seam turned out to be in when someone finally ran it.
+
+**The seam had never been executed, and it could not have worked.** The signing step had sat in
+`packaging/package.sh` since iteration 20 — twenty-four iterations — behind a condition that was
+never true, because no certificate has ever been configured. Running it for the first time on
+2026-09-12, against a throwaway self-signed certificate, produced this:
+
+```
+$ signtool sign /fd SHA256 /f <cert> /p <password> Pine.Core.dll
+SignTool Error: No file digest algorithm specified. Please specify the digest algorithm with the
+/fd flag.
+```
+
+`/fd SHA256` is on that command line. **Git Bash rewrites an argument that looks like an absolute
+POSIX path before the child process sees it, and `/fd` looks like one** — so does `/f`, `/p`, `/tr`
+and `/td`. The identical command with `MSYS2_ARG_CONV_EXCL='*'` exported succeeds. The workflow's
+`package` job runs on `windows-latest` with `shell: bash`, which is the same shell, so this was not
+a local curiosity: **on the day a certificate arrived, the release build would have failed, and the
+error would have accused the operator of omitting a flag they had supplied.** That is the finding.
+Everything else in this item follows from it.
+
+**What was built, and why each piece is separate.**
+
+- **`packaging/sign.sh`** now holds the whole signing policy, and it does not only sign — it proves
+  it signed. The property it asserts is not "the entry point carries a signature" but **"nothing in
+  this artefact that Windows will load as code is unsigned"**, file by file, after the fact. It
+  refuses: no certificate configured (exit 2, rather than quietly producing an unsigned build); no
+  timestamp authority (exit 2 — an untimestamped Authenticode signature stops validating the day the
+  certificate expires, which turns a shipped release into a SmartScreen warning on a date nobody
+  wrote down); any file left unsigned; any file whose signature does not match its bytes; any
+  certificate that does not chain to a trusted root; and **a run that signed nothing at all**, which
+  is this repository's recurring failure shape rather than a hypothetical one.
+- **It does not re-sign what is already validly signed.** Roughly nine tenths of the artefact is
+  .NET runtime and third-party native code that Microsoft and others have already signed. Replacing
+  those signatures with Pine's would destroy provenance a reader could otherwise check, cost one
+  timestamp-authority round trip per file, and assert authorship of code this project did not write.
+  Pine's own binaries arrive unsigned and are therefore signed. The property asserted afterwards is
+  the same either way.
+- **`packaging/authenticode-status.ps1`** exists because `signtool verify` cannot answer the
+  question. Measured: an unsigned file and a file signed by an untrusted root both exit 1, differing
+  only in the English sentence printed. A gate that greps an error message for the difference
+  between "not signed at all" and "signed, chain not installed here" is a gate built on a string
+  Microsoft is free to reword. `Get-AuthenticodeSignature` returns `NotSigned`, `HashMismatch`,
+  `UnknownError` and `Valid` as typed values, so that script reports and `sign.sh` decides.
+- **`packaging/find-signtool.sh`** derives the SDK path instead of hard-coding it, because a literal
+  path works until the runner image rolls and then fails on a release day.
+- **The manifest now says WHO.** `"signature"` was `null` in every case; it is now an object with
+  the certificate's thumbprint and subject, how many files this build signed, how many carry a
+  timestamp, and whether the chain is trusted. "Is it signed" is the less useful question; a
+  thumbprint is what lets a downloader tell this project's artefact from a third party's. The
+  subject is JSON-escaped, because a certificate subject contains double quotes as a matter of
+  course (`CN="…"`) and interpolating one straight into the heredoc would have produced a manifest
+  that is not JSON — on exactly the field a release client needs most.
+- **The CI `package` job now treats the certificate and the flag as ONE decision.** A configured
+  certificate means `--require-signature` is passed in the same branch. The accident TD-108's Fix
+  column is guarding is not a forgotten certificate — that is loud — it is a certificate that is
+  expired, wrongly encoded or password-mismatched, and a pipeline that shrugs and publishes an
+  unsigned build under the release name. Without a certificate the job builds unsigned and says so
+  in the log, in a receipt, in the manifest, **and in the name of the uploaded artefact**:
+  `pine-win-x64-UNSIGNED`. That last one is the half of TD-108's *Impact* that can be closed without
+  a purchase. A person who downloads a file called UNSIGNED has been told what they have; one who
+  downloads `pine-win-x64` and meets SmartScreen has been misled by this pipeline.
+- **The receipt and the manifest have to agree.** The verify step reads `"signed"` out of the
+  manifest — which `package.sh` writes from `sign.sh`'s facts, not from its own hopes — and demands
+  the matching receipt. Two statements, edited in two places, which is the same mechanism as every
+  other gate here.
+
+**`packaging/selftest-signing.sh` is the part that keeps this from rotting the way the last one
+did.** It mints a throwaway self-signed certificate, copies binaries into a fixture shaped like a
+real artefact, and runs the real script: no certificate purchase, no network, no 680 MB publish,
+about seventeen seconds. **It runs in CI, in the `test` job, on every pull request.** A self-test
+that lives in the repository and is never run would repeat TD-108's actual mistake one level up.
+§5.1 has already recorded what the alternative costs: the probe that retired TD-140's stated
+hypothesis was a throwaway and was deleted, so that step rests on a run nobody can repeat. This one
+is committed.
+
+**Thirteen cases, all passing.**
+
+| Case | What it drives | Result |
+|---|---|---|
+| A | Signs what is unsigned, recurses into subdirectories, leaves a valid third-party signature alone | signs 2 of 3 |
+| A' | The facts file names the certificate that actually signed | thumbprint matches |
+| A2 | The facts file admits the certificate is not trusted here | `trusted_root=no` |
+| A3 | The non-PE files in the stage were left alone | untouched |
+| B | No certificate configured | refuses, exit 2 |
+| C | A certificate but no timestamp authority | refuses, exit 2 |
+| D | Verification meets an unsigned file | refuses, exit 1 |
+| E | Verification meets bytes edited after signing | refuses, exit 1 |
+| F | Verification meets an untrusted root | refuses, exit 1 |
+| G | **Positive control** — an artefact signed properly throughout | passes |
+| H | A stage whose only files are not loadable code | refuses, exit 1 |
+| J | A run that would sign nothing at all | refuses, exit 1 |
+| I | **The pre-fix command form**, kept on file | still fails, as measured |
+
+Case G is there because a gate that says no to everything is indistinguishable from a broken one,
+and case I because the defect this item found is worth keeping as a live measurement rather than as
+a sentence in a comment: if it ever starts passing, the exported variable has stopped being
+load-bearing and the explanation above has become fiction.
+
+**Three refusals in `sign.sh` are NOT covered by any case, and the script says so where they are
+written.** A file appearing in the stage between the two surveys, two certificates among the files
+one run signed, and a timestamp authority that answers successfully while returning no
+countersignature are all states the tool should never produce, and none is reachable from a fixture.
+They are kept because the cost is three comparisons and the failure each describes is silent. They
+are not claimed as tested, and deleting any of them leaves every case green.
+
+**Six guard tests in `BuildHygieneTests`.** They cover what lives in YAML and cannot be run from
+xUnit: that the MSYS export is still there, still ahead of the call, **and still set to the
+wildcard**; that nothing in `packaging/` or `scripts/` but `sign.sh` invokes `signtool`, however the
+call is spelled; that the invocation carrying `--require-signature` is the one *between* the
+certificate assignment and the `else`; that the two artefact names are mapped to the right case
+arms; that nothing in the release path sets either escape hatch; and that the self-test runs in the
+job that fires on pull requests, with its failure fatal and its receipt demanded.
+
+**The independent review found nine defects, three of them critical, and the first draft of this
+section reported numbers that were measurements of the wrong thing.** Everything below came from
+someone who had not written the code, and every item was reproduced here before being fixed:
+
+- **The survey matched every file in the artefact, not `.exe` and `.dll`.**
+  `Get-ChildItem -LiteralPath … -Include *.exe, *.dll` ignores `-Include` outright: it is a path
+  filter, and with `-LiteralPath` it does nothing at all, silently. Measured against a directory
+  holding only `a.txt`, `b.json`, `c.pdb` and `sub\d.dat`: all four came back. **So the first real
+  signed release would have failed** — `signtool` would have been handed
+  `Pine.Cli.runtimeconfig.json`, which a self-contained publish always emits, and answered "this
+  file format cannot be signed". That is the same defect shape as the one this item exists to close:
+  a signing path that cannot sign, discovered on release day. `--verify-only` also reported a `.txt`
+  as "a loadable file, signed and matching its bytes". The filter is a `Where-Object` on the
+  extension now.
+- **The self-test could not see it, because every fixture was a flat directory of `.exe` copies.**
+  A fixture that looks nothing like the artefact tests nothing about the artefact. Every stage now
+  carries a `README.txt`, a `.runtimeconfig.json` and a nested subdirectory, and case A's "2 of 3"
+  is load-bearing: a survey that matches every file says "5 of 6", and one that stops recursing says
+  "1 of 2".
+- **"Five mutations, all killed" measured the five mutations the author chose.** The reviewer wrote
+  seven of their own and **all seven survived**. Four are now killed by new or strengthened cases —
+  the run-that-signs-nothing refusal (case J, and §5.2 had singled that refusal out as the important
+  one while no case drove it), the trusted-root fact (A2), the extension filter and the recursion
+  (A, A3, H). The remaining three are the ones recorded above as not covered, in the script itself.
+- **All six guard tests survived a mutation of the exact thing each guards**, applied together, 21/21
+  green: `export MSYS2_ARG_CONV_EXCL=''` (set, before the call, exporting nothing);
+  `$PINE_SIGNTOOL sign …` in a new script, unquoted, which the scan's two literal spellings missed;
+  `--require-signature` moved to the *unsigned* branch of the same step, where it refuses every
+  unsigned build and guards no signed one; **the two artefact names swapped between the case arms**,
+  so every unsigned build uploads as `pine-win-x64` — the precise harm the test is named after;
+  the escape hatch set in `package.sh` instead of the workflow; and `|| true` on the self-test. Each
+  test now asserts the relationship rather than the presence of a word, and each mutation is killed
+  by the test written for it.
+- **The self-test did not run on pull requests.** It was in the `package` job, which carries
+  `if: github.event_name != 'pull_request'` — while the step's own comment claimed it ran on every
+  push "with no `if:`" and a guard test asserted the step carried no condition. Both were true of
+  the step and false of the job. It is in the `test` job now, on the windows leg, with the condition
+  restated in the verify step exactly as the coverage floor's is. `package` depends on `test`, so a
+  broken signing path stops the artefact being built at all.
+- **`61-Manual-Test-Plan` §13D step 4 was false.** It told a tester that `--require-signature`
+  "refuses and exits non-zero, before producing anything", and the refusal sat after two
+  self-contained publishes. `package.sh` now answers it in the first hundred milliseconds, before
+  anything is built — measured at 0.077s — which makes the step true rather than making the sentence
+  vaguer.
+- **A false claim left standing elsewhere.** `60-Production-Readiness-Audit` §12.42 still described
+  the old seam as a measured outcome: "with `PINE_SIGNTOOL`/`PINE_SIGNING_CERT` set, every `.exe`
+  and `.dll` is signed". The adversarial re-read caught the CHANGELOG and the register row and
+  missed this one. It now carries a correction, and the paragraph is left in place rather than
+  rewritten, because it is the better record: it is what a careful write-up looks like when the code
+  under it has never run.
+- **The "two-statement agreement" between receipt and manifest was overstated.** Both are downstream
+  of one condition — whether a certificate is configured — so there is no single edit that makes
+  them disagree without failing the job for another reason. Unlike the coverage receipt, these are
+  not independent. The comment says so now.
+- **Three smaller ones, all fixed:** every survey line carried a trailing `\r` from PowerShell's
+  CRLF into the paths handed to `signtool` (it worked because Windows tolerated it, which is not a
+  thing to rely on); `--facts` with no value died on `set -u` instead of printing the usage sentence
+  every other argument error prints; and `timestamped_files` was counted over every file carrying the
+  thumbprint while being subtracted from the count of files this run signed, which could under-report
+  and in principle go negative.
+
+**What the review checked and found true:** the MSYS `/fd` measurement, the `signtool verify`
+measurement, that third-party valid signatures are left alone, paths containing spaces, the
+`json_escape` ordering, the CI `trap` firing, the base64 decode, that the `.pfx` cannot reach the
+uploaded artefact, and that no temp file leaks from `sign.sh`. It found nothing in those categories.
+
+**What is NOT closed by this, stated as plainly as the row deserves.**
+
+- **TD-108 stays open, and its own status does not move.** There is no certificate. Every artefact
+  this pipeline produces today is unsigned, SmartScreen will warn on first launch, and a user still
+  cannot tell this build from one a third party modified. What changed is that the unsigned state is
+  now labelled everywhere it is visible, and that the signed path has been executed and measured
+  rather than assumed.
+- **Nothing here proves anything about a real certificate.** The self-test's certificate is
+  self-signed, so its signed cases run with `PINE_SIGNING_ACCEPT_UNTRUSTED_ROOT=1`. What a user's
+  SmartScreen makes of a genuine Authenticode chain — and whether a new certificate accrues
+  reputation fast enough to stop the warning at all — is outside anything this repository can
+  measure.
+- **The self-test has never run on a GitHub runner.** Like everything else in the CI arrangement, it
+  is a YAML diff until a real run happens: `61-Manual-Test-Plan` §3.2. It carries a specific new
+  risk of its own, recorded rather than discovered later — it needs a Windows SDK and
+  `New-SelfSignedCertificate` on the runner image, and it fails rather than skips if there is
+  neither.
+- **Three of `sign.sh`'s refusals are unfalsifiable from a fixture** and are marked as such in the
+  script. They are reasoning, not evidence.
+- **The archive and the manifest are still unsigned.** Authenticode covers the `.exe` and `.dll`
+  files inside the artefact. `SHA256SUMS` and the `.release.json` beside them are plain files that
+  anyone can regenerate, so the per-file checksums detect corruption, not substitution. A detached
+  signature over the archive is a separate piece of work and is not claimed.
+- **The guard tests are text scans**, and say so in their own remarks. String concatenation, a
+  variable holding the flag, or moving the work into a file nothing reads all evade them. They raise
+  the cost of undoing this by accident, which is how it was broken in the first place — no test had
+  to be defeated for the old seam to be wrong for twenty-four iterations, because nothing ran it.
 
 ## 6. Stage 3 — Breadth: the features the documents promise
 
