@@ -8,7 +8,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Pine.Core.Accounts;
-using Pine.Core.Categories;
+using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Data;
@@ -60,7 +60,7 @@ public class RowAuditColumnTests
             .Distinct()
             .ToList();
 
-        rootTables.Should().HaveCount(8, "the model maps eight aggregate roots");
+        rootTables.Should().HaveCount(7, "the model maps seven aggregate roots -- Category was the eighth until plan item 2.3 deleted it (TD-132)");
 
         foreach (var table in rootTables)
         {
@@ -151,10 +151,18 @@ public class RowAuditColumnTests
     /// A root nothing ever stamped by hand is stamped anyway.
     /// </summary>
     /// <remarks>
-    /// <c>Category</c> has no <c>CreatedAt</c>, no <c>UpdatedAt</c> and no <c>TimeProvider</c>
-    /// anywhere in its constructor — it is one of the three roots that had no audit trail of any
-    /// kind. That is precisely why the mechanism is a shadow property in the context rather than a
+    /// <para>
+    /// <c>Budget</c> has no <c>CreatedAt</c>, no <c>UpdatedAt</c> and no <c>TimeProvider</c>
+    /// anywhere in its constructor — it is one of the roots that had no audit trail of any kind.
+    /// That is precisely why the mechanism is a shadow property in the context rather than a
     /// convention entities are asked to follow.
+    /// </para>
+    /// <para>
+    /// This test used to use <c>Category</c>, which plan item 2.3 deleted (TD-132). <c>Budget</c>
+    /// was the other root in the same position and is the honest replacement: it is not written by
+    /// any production path either, which is the point — the stamping must not depend on the entity
+    /// cooperating.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task ARootWithNoDomainTimestamps_IsStampedAnyway()
@@ -165,11 +173,14 @@ public class RowAuditColumnTests
 
         await using (var context = new PineDbContext(vault.DatabasePath, vault.Key, clock))
         {
-            context.Categories.Add(Category.Create("Groceries", "#00FF00"));
+            context.Budgets.Add(Budget.Create(
+                "Groceries",
+                new Money(100m, new CurrencyCode("EUR")),
+                BudgetPeriod.Monthly));
             await context.SaveChangesAsync(CancellationToken.None);
         }
 
-        var (created, updated) = ReadStamps(vault, "Categories");
+        var (created, updated) = ReadStamps(vault, "Budgets");
 
         created.Should().Be(new DateTime(2026, 5, 4, 9, 30, 0, DateTimeKind.Unspecified));
         updated.Should().Be(created);

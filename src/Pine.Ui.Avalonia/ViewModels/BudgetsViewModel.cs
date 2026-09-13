@@ -25,12 +25,6 @@ namespace Pine.Ui.Avalonia.ViewModels;
 public partial class BudgetProgressViewModel : ObservableObject
 {
     /// <summary>
-    /// The swatch a row falls back to when its category could not be resolved and so has no colour
-    /// of its own. Pine orange -- a colour, not a claim about the category.
-    /// </summary>
-    internal const string UnresolvedCategorySwatch = "#FF8C00";
-
-    /// <summary>
     /// Builds a row from one measured budget, the one way both the budgets page and the dashboard's
     /// budgets tile do it (post-audit plan item 1.3).
     /// </summary>
@@ -51,8 +45,20 @@ public partial class BudgetProgressViewModel : ObservableObject
         return new BudgetProgressViewModel
         {
             BudgetId = row.BudgetId,
-            CategoryName = row.CategoryName ?? localizer["Budgets.Category.Unresolved"],
-            CategoryColorHex = row.CategoryColorHex ?? UnresolvedCategorySwatch,
+
+            // NO FALLBACK, BECAUSE THERE IS NOTHING LEFT TO FALL BACK FROM (TD-132, plan item 2.3).
+            // This used to read `row.CategoryName ?? localizer["Budgets.Category.Unresolved"]`, and
+            // "Unknown category" was what EVERY budget rendered as: the name came from a
+            // `Categories` row and nothing in the shipping application ever wrote one. The budget
+            // now carries the label itself, and the aggregate refuses a budget without one.
+            //
+            // THE COLOUR SWATCH IS GONE WITH IT. The hex came from `Category.ColorHex`, an attribute
+            // of the deleted aggregate. Deriving one from the label — hashing it into a palette —
+            // would put a colour on the screen that the user never chose and that would change if
+            // they renamed the category, which is the shape of invention this audit exists to
+            // remove. When category management is built, the swatch comes back with a real value
+            // behind it.
+            CategoryName = row.Category,
             LimitAmount = row.Limit.Amount,
             CurrencyCode = row.Limit.Currency.Value,
             IsSpendKnown = row.IsSpendKnown,
@@ -66,9 +72,6 @@ public partial class BudgetProgressViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string CategoryName { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string CategoryColorHex { get; set; } = "#FFFFFF";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LimitAmountText))]

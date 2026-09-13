@@ -129,7 +129,8 @@ namespace Pine.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("CategoryId")
+                    b.Property<string>("Category")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("EndDate")
@@ -168,43 +169,7 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CategoryId");
-
                     b.ToTable("Budgets");
-                });
-
-            modelBuilder.Entity("Pine.Core.Categories.Category", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ColorHex")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid?>("ParentCategoryId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("RowCreatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("RowUpdatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ParentCategoryId");
-
-                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("Pine.Core.Importing.ImportProfile", b =>
@@ -421,23 +386,6 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasForeignKey("TransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Pine.Core.Budgets.Budget", b =>
-                {
-                    b.HasOne("Pine.Core.Categories.Category", null)
-                        .WithMany()
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Pine.Core.Categories.Category", b =>
-                {
-                    b.HasOne("Pine.Core.Categories.Category", null)
-                        .WithMany()
-                        .HasForeignKey("ParentCategoryId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Pine.Core.Rules.Rule", b =>

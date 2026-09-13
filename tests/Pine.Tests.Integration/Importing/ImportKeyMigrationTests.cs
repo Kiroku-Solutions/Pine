@@ -130,8 +130,14 @@ public class ImportKeyMigrationTests
     /// <summary>The Phase 3 rule engine.</summary>
     private const string RulesSchemaVersion = "20260909165749_AddCategorisationRules";
 
-    /// <summary>The head of the migration list: the row audit columns that gate sync.</summary>
+    /// <summary>The row audit columns that gate sync.</summary>
     private const string RowAuditSchemaVersion = "20260909210212_AddRowAuditColumns";
+
+    /// <summary>TD-132: the budget's category becomes a label (post-audit plan item 2.3).</summary>
+    private const string DropCategoryAggregateSchemaVersion = "20260913025137_DropCategoryAggregate";
+
+    /// <summary>The head of the migration list: the now-unreferenced <c>Categories</c> table goes.</summary>
+    private const string DropCategoriesTableSchemaVersion = "20260913030000_DropCategoriesTable";
 
     private const decimal LegacyBalance = 1650.00m;
 
@@ -293,7 +299,9 @@ public class ImportKeyMigrationTests
             CategoryParentForeignKeySchemaVersion,
             AttachmentsSchemaVersion,
             RulesSchemaVersion,
-            RowAuditSchemaVersion
+            RowAuditSchemaVersion,
+            DropCategoryAggregateSchemaVersion,
+            DropCategoriesTableSchemaVersion
         });
     }
 

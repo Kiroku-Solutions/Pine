@@ -39,13 +39,13 @@ public sealed record RuleRowViewModel(
 /// </summary>
 /// <remarks>
 /// <para>
-/// THIS SCREEN IS WHY THE RULE ENGINE IS NOT A REPEAT OF TD-132. That row exists because
-/// <c>Category</c> is an aggregate with no production writer — <c>CreateCategoryCommand</c> is
-/// called by tests only, no query lists categories, and every category input in the UI is a free
-/// text box — and it concludes: "Either build category management ... or delete the `Category`
+/// THIS SCREEN IS WHY THE RULE ENGINE WAS NOT A REPEAT OF TD-132. That row existed because
+/// <c>Category</c> was an aggregate with no production writer — <c>CreateCategoryCommand</c> was
+/// called by tests only, no query listed categories, and every category input in the UI is a free
+/// text box — and it concluded: "Either build category management ... or delete the `Category`
 /// aggregate ... but not both, and not neither." A <c>Rule</c> aggregate with no way to create a
 /// rule would have been the same defect, shipped in the iteration immediately after the row that
-/// names it.
+/// names it. (Plan item 2.3 took the second branch: the <c>Category</c> aggregate is gone.)
 /// </para>
 /// <para>
 /// It also makes the sidebar's "Rules" entry true. That button existed already, disabled, with a

@@ -63,22 +63,36 @@ public class MappedEntitySurfaceTests
         nameof(Pine.Core.Accounts.Account),
         nameof(Pine.Core.Attachments.Attachment),
         nameof(Pine.Core.Budgets.Budget),
-        nameof(Pine.Core.Categories.Category),
         nameof(Pine.Core.Importing.ImportProfile),
         nameof(Pine.Core.Rules.Rule),
         nameof(Pine.Core.Settings.Setting),
         nameof(Pine.Core.Transactions.Transaction),
     ];
 
-    /// <summary>The one name that stayed removed, kept explicit so the regression reads clearly.</summary>
+    /// <summary>The names that stayed removed, kept explicit so the regression reads clearly.</summary>
     /// <remarks>
+    /// <para>
     /// <c>Rule</c> left this list in the Phase 3 rule-engine work, and — like <c>Attachment</c>
     /// before it — the type that came back is not the one that was dropped. The shell had a
     /// <c>TargetCategoryId</c> the database knew nothing about, no conditions and no evaluator; the
     /// replacement has conditions, a pure evaluator, a rules screen and a place in the import
     /// pipeline. <c>Tag</c> is still nothing but a name in a document.
+    /// </para>
+    /// <para>
+    /// <c>Category</c> JOINED THEM IN PLAN ITEM 2.3, AND ITS PRESENCE HERE IS THE DECISION TD-132
+    /// ASKED FOR. It was an aggregate with no production writer since <c>67af1f3</c> removed the
+    /// Diagnostics "Test Features" button, so <c>Budget.CategoryId</c> was a foreign key into nothing
+    /// for any budget a user could create. <c>10-Domain-Model</c> §7 lists
+    /// <c>Category</c> as a VALUE OBJECT — "a hierarchical label" — and §6 lists no <c>Category</c>
+    /// aggregate at all, so the class was the thing disagreeing with the canonical document. The
+    /// label is the model now, everywhere. **A <c>Category</c> entity reappearing in this model is
+    /// that decision being reversed by accident, and this test is what makes it a deliberate act.**
+    /// </para>
     /// </remarks>
-    private static readonly string[] DroppedEntityNames = ["Tag"];
+    private static readonly string[] DroppedEntityNames = ["Tag", "Category"];
+
+    /// <summary>The tables those entities lived in, by their real names.</summary>
+    private static readonly string[] DroppedTableNames = ["Tags", "Categories"];
 
     [Fact]
     public void TheModelMapsOnlyTheEntitiesOnTheAllowList()
@@ -126,11 +140,17 @@ public class MappedEntitySurfaceTests
         tables.Should().NotBeEmpty("the migration should have created the surviving tables");
         tables.Should().Contain("Accounts", "the surviving schema is still there, so the drop was surgical");
 
-        foreach (var dropped in DroppedEntityNames)
+        // THE TABLE NAMES ARE WRITTEN OUT, NOT DERIVED BY APPENDING AN "s". The derivation worked for
+        // Tag and produced "Categorys" for Category — a table that could never exist — so this half of
+        // the guard was checking nothing for the one entity plan item 2.3 added to the list. The
+        // independent review stopped DropCategoriesTable from dropping the table and this test stayed
+        // green.
+        foreach (var droppedTable in DroppedTableNames)
         {
             tables.Should().NotContain(
-                dropped + "s",
-                $"DropAttachmentRuleAndTagTables removes the {dropped} table (TD-37)");
+                droppedTable,
+                "a migration to head must not leave the {0} table behind (Tags: TD-37; Categories: TD-132)",
+                droppedTable);
         }
     }
 

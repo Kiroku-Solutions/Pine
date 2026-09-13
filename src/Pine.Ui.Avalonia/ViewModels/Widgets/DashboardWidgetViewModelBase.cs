@@ -62,8 +62,9 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
     /// Called after a language switch, once every slot has re-rendered.
     /// </summary>
     /// <remarks>
-    /// For text a tile builds from the localizer OUTSIDE a slot -- the budget rows' "Not known" and
-    /// "Unknown category" are rendered into row objects shared with the budgets page. Without this a
+    /// For text a tile builds from the localizer OUTSIDE a slot -- the budget rows' "Not known" is
+    /// rendered into row objects shared with the budgets page. ("Unknown category" was too, until
+    /// plan item 2.3 made the category the budget's own label, which is not translated.) Without this a
     /// Spanish switch left the heading in Spanish and the rows under it in English.
     /// </remarks>
     protected virtual void OnLanguageChanged()

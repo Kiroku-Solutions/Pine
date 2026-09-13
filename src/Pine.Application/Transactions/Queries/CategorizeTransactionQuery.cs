@@ -24,8 +24,10 @@ public sealed class CategorizeTransactionQueryHandler : IRequestHandler<Categori
     /// <remarks>
     /// <c>ICategoryRepository</c> WAS REMOVED FROM THIS HANDLER (TD-32). It existed to turn a
     /// predicted <c>Guid</c> into a name, against a <c>Categories</c> table that nothing in this
-    /// application has ever inserted a row into — so the lookup returned <c>null</c> and this
-    /// handler returned <c>null</c> for every prediction the model produced, however confident.
+    /// application wrote to (apart from one demo "Groceries" row the Diagnostics "Test Features"
+    /// button created until <c>67af1f3</c>) — so the lookup returned <c>null</c> and this handler
+    /// returned <c>null</c> for effectively every prediction the model produced, however confident.
+    /// The <c>Categories</c> table itself was deleted by post-audit plan item 2.3 (TD-132).
     /// The categoriser now predicts the name directly, which is what the ledger stores.
     /// </remarks>
     public CategorizeTransactionQueryHandler(

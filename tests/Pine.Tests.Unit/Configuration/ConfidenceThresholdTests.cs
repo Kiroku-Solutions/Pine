@@ -10,7 +10,6 @@ using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
-using Pine.Core.Categories;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Configuration;
 using Pine.Core.Importing;

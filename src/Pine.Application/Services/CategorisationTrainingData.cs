@@ -35,6 +35,13 @@ namespace Pine.Application.Services;
 /// replaced a broken feature with an unusable one. So the string won — because it is the model
 /// that has instances — and the identifier was removed from the learning path entirely.
 /// </para>
+/// <para>
+/// AND THEN THE STRING WON EVERYWHERE. Post-audit plan item 2.3 decided TD-132 the same way this
+/// file had: the <c>Category</c> aggregate, <c>CreateCategoryCommand</c> and the <c>Categories</c>
+/// table are deleted, and a budget names its category with the same label a split carries. The
+/// paragraph above is kept in the past tense it was written in, because it is the reasoning that
+/// decision rests on.
+/// </para>
 /// </remarks>
 public static class CategorisationTrainingData
 {

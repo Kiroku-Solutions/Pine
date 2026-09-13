@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-12 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1) and 2.2 (§5.2, everything but the certificate) |
+| Last Updated     | 2026-09-13 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate) and 2.3 (§5.3) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -725,7 +725,7 @@ TD-99 and the language picker is now the house rule and should be applied withou
 |---|---|---|---|
 | 2.1 | Diagnose the intermittent SQLite handle disposal | TD-140 | Seen on four different integration tests across three iterations. Every test count in the audit currently costs a re-run. It is a flake in the harness, not in the product, which is why it is here and not in Stage 0 |
 | 2.2 | 🟡 **Everything but the certificate** (2026-09-12) — Sign the release artefact | TD-108 | SmartScreen warns on first launch and a user cannot distinguish this build from anyone else's. Blocks any real distribution. **The row's Fix column asks for two things and only one of them is in a commit's gift.** A certificate is bought from a CA against a verified legal identity; no engineering work produces one. What was in reach was the other half, and the state the signing seam was actually in: it had never been executed, and it could not have worked. See §5.2 |
-| 2.3 | Decide `TD-132`, and stop deferring it | TD-132 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
+| 2.3 | ✅ **Decided and done** (2026-09-13) — the label is the model; the `Category` aggregate is deleted. Decide `TD-132`, and stop deferring it | TD-132, TD-134 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
 | 2.4 | Exception sentences below the UI layer | TD-139 | |
 | 2.5 | `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | several | Small, mechanical |
 
@@ -1063,6 +1063,184 @@ uploaded artefact, and that no temp file leaks from `sign.sh`. It found nothing 
   variable holding the flag, or moving the work into a file nothing reads all evade them. They raise
   the cost of undoing this by accident, which is how it was broken in the first place — no test had
   to be defeated for the old seam to be wrong for twenty-four iterations, because nothing ran it.
+
+
+### 5.3 Item 2.3, as built (2026-09-13, iteration 46)
+
+**The decision: delete the `Category` aggregate, and let the label be the model.** TD-132's Fix
+column offered two branches and forbade both "both" and "neither". The row had been deferred for
+seventeen iterations, and every subsystem built in that time — splits, rules, budgets — had quietly
+taken the second branch anyway, because it was the only one with instances. This item took it on
+purpose.
+
+**It was not a judgement call, in the end, because the canonical document had already made it.**
+`10-Domain-Model` §6 lists the aggregates Pine is specified to have, and `Category` is not among
+them. `Category` appears once, in §7, as a **value object**: "a hierarchical label (e.g.
+`Food / Restaurants`)". `Transaction`'s key attributes list "category" as an attribute, and
+`Budget`'s list "category (or set)". So the class in `src/Pine.Core/Categories/` — an
+`AggregateRoot` with its own repository, command and table — was the thing disagreeing with the
+specification. Building category management on top of it would have built the undocumented design;
+deleting it brought the code to the documented one. That is the argument, and it does not depend on
+anyone's taste.
+
+**What the aggregate was actually doing, measured rather than assumed.** At HEAD nothing in
+production writes it: `CreateCategoryCommand` has exactly one kind of caller, tests. No query lists
+categories. No screen creates one. Every category input in the UI is a free `TextBox`. The foreign key
+from `Budgets` is real — `PRAGMA foreign_keys` is on in both EF and raw connections — so a budget
+cannot be written without a category row, and `CreateBudgetCommand` has no production caller either.
+**Since `67af1f3`, no path in the application could create a budget at all.**
+
+**The first draft of this section said "never", and that was false.** It said `Categories` was "empty
+in every real vault" and that the budgets screen was "a list that could never have had anything in
+it". The independent review found the counter-example in history: until `67af1f3` (TD-15), the
+Diagnostics screen's **"Seed Demo Data / Test Features"** button created a real `Groceries`
+category, coloured `#00FF00`, and a USD 500 monthly budget against it. Any vault where that button was
+pressed holds exactly those rows — which is why the migration's name recovery matters, and why the
+colour dot on that budget was, in those vaults, showing real data. The migration carries the name
+across; the colour has nowhere to go and is lost. Said here rather than presented as though it never
+existed.
+
+**What changed.**
+
+- **Deleted:** `Category`, `ICategoryRepository`, `SqliteCategoryRepository`, `CreateCategoryCommand`
+  and its tests, the `Categories` DbSet and its mapping, and `CategoryParentIntegrityTests` — six
+  tests about a parent-category foreign key on rows nothing ever created. `IBudgetRepository.GetByCategoryAsync`
+  went too: it had no caller anywhere, and porting an unused method to a new signature is writing
+  unused code with a fresh date on it.
+- **`Budget.CategoryId` (Guid) became `Budget.Category` (string)**, the same label
+  `TransactionSplit.Category`, `Rule.Category` and the categoriser use. The aggregate refuses a blank
+  one — the old `Guid` accepted `Guid.Empty` and produced a budget that could never be measured — and
+  stores it trimmed. **That is a rule about creation, not about what is on disk:** EF materialises a
+  budget without its constructor, so the query also trims the label it reads and treats a blank one
+  as unmeasurable rather than as "the category of every uncategorised split".
+- **`GetBudgetProgressQuery` no longer joins through a table.** The "unknown category" branch is
+  gone because there is nothing left to be unknown; the one remaining reason for an unknown spend is
+  a window with no calendar anchor (a bi-weekly budget with no stored dates). One honest unknown
+  instead of a universal one.
+- **The budgets page and the dashboard tile lost their colour swatch.** The hex came from
+  `Category.ColorHex`. Deriving one from the label — hashing it into a palette — would put a colour on
+  screen that the user never chose and that changes when they rename the category, which is the
+  shape of invention this audit exists to remove. The `Budgets.Category.Unresolved` string is gone
+  from both languages for the same reason: it described a state that can no longer occur.
+- **Two migrations, not one, and the split was measured into existence.**
+  `DropCategoryAggregate` adds `Budgets.Category`, fills it from `Categories.Name` — **trimmed**, and
+  falling back to the budget's own identifier when the row is missing or the name trims to nothing —
+  and drops the foreign key and the old column; `DropCategoriesTable` drops the table. The shape was
+  found by failing, not by reasoning:
+  - **The tool emitted a bare `RenameColumn`**, which would have carried each budget's GUID across
+    into the column a person now reads as a category name. The name was in the database.
+  - **The first fix — an `UPDATE` writing the name into `CategoryId` — failed** with
+    `SQLite Error 19: FOREIGN KEY constraint failed`: that column is still a foreign key at that
+    moment. A separate column, filled first, never holds an invalid value.
+  - **Dropping the table in the same migration also failed, with the same error.** EF folds every
+    rebuild-triggering operation in a migration into one table rebuild emitted at the *end*, so a
+    `DropTable` written last is still generated *before* the rebuild that removes the foreign key
+    pointing at it, and SQLite's `DROP TABLE` performs an implicit delete the child rows refuse. A
+    second migration is a second batch, and the order between batches is not EF's to rearrange.
+  - **The rebuild also stripped column defaults.** `Budgets` is regenerated from the model, which does
+    not carry the `defaultValue` that `AddConcurrencyTokens` and `AddRowAuditColumns` put on
+    `Version`, `RowCreatedAtUtc` and `RowUpdatedAtUtc`. Production writes through EF, which supplies
+    all three; a raw-SQL test helper did not, and failed with `NOT NULL constraint failed`. Recorded
+    in that helper rather than papered over.
+
+**Tests.** Five integration tests drive the real migrator from a legacy vault: three budgets over two
+categories each come out named after **their own** category; a name with surrounding whitespace
+arrives trimmed; a name that trims to nothing does not become an empty label; a budget pointing at a
+category that does not exist **cannot be written in the first place**; and the table is actually
+gone. `MappedEntitySurfaceTests` lists `Category` among the dropped entities and `Categories` among
+the dropped tables, by name. Unit tests pin the refusal of a blank category, the trimming, a blank or
+untrimmed label read back from a vault, and — replacing a test that pinned the opposite — that a
+budget created the way a user would create one measures the ledger. The dashboard's budget tile is
+now **rendered** in a test and must show the label; the budgets *page* view is still covered at
+view-model level only.
+
+**Coverage went under its floor, and the answer was tests, not a lower floor.** Deleting the
+fully-covered `CreateCategoryCommand` shrank `Pine.Application`'s covered lines and took it from above
+61% to 60.78%. The gate's own instruction is "raise the tests, not the floor", so the search was for
+tests worth writing. It found `CreateRuleCommandValidator` with **zero covered lines** — the validator
+that carries the rule engine's most consequential refusal: a rule with no conditions matches every
+transaction, so an empty form saved as-is would re-file an entire import under one category. Eleven
+tests now pin every refusal, by field, including an inclusive maximum and that all problems are
+reported at once. `Pine.Application` is at 62%.
+
+**The independent review found three major and five minor defects, and two of the majors were in the
+evidence rather than the code.** Every one was reproduced here before being fixed:
+
+- **MAJOR — migrated labels were not trimmed, so a budget could report a confident spend of 0.** The
+  old `Category.Create` refused blank names but never trimmed, so `"  Groceries  "` was a writable
+  legacy state. Copied verbatim, the review measured that budget loading untrimmed and reporting a
+  KNOWN zero against a month holding a 40 EUR Groceries expense — a fabricated figure, the defect
+  class this audit exists to remove, introduced by the item meant to make budgets measurable. The
+  migration trims now, and the query trims its own side as well.
+- **MAJOR — the name-recovery test could not detect a broken join.** It used one category and one
+  budget, so a subquery returning *any* name returned the right one; the review replaced the join
+  with `LIMIT 1` and the test stayed green. The claim that the recovery was "complete rather than
+  best-effort" rested on a test that could not tell. Three budgets over two categories now.
+- **MAJOR — "nothing ever wrote a category or a budget" was false**, as described above. It had been
+  written into this section, STATUS, the audit, the migration, the DbContext and two older comments
+  (`TrainingExample`, `CategorizeTransactionQuery`); all corrected.
+- **MINOR — the table half of the dropped-entity guard checked `"Categorys"`.** It derived table names
+  by appending an `s`, which is right for `Tag` and wrong for `Category`; the review stopped the table
+  being dropped and that guard stayed green. Table names are written out now.
+- **MINOR — nothing rendered the budget label.** Rebinding the row text to the limit in both budget
+  views left every test green. The tile is rendered now; the page is not.
+- **MINOR — the new validator tests missed a check that only looked at the first condition.** Added.
+- **MINOR — `Down` of `DropCategoryAggregate` fails on any vault with a budget**, where the first draft
+  said it "restores the schema". Every restored `CategoryId` is `Guid.Empty`, which the re-added
+  foreign key refuses; it rolls back cleanly. The remark says so now. There is no way down for a vault
+  with budgets.
+- **MINOR — a blank label read from a vault was measured as a category**, counting uncategorised
+  splits. The query refuses it now, and `10-Domain-Model` §7 no longer claims splits enforce a
+  non-empty trimmed label: they enforce neither.
+- **Stale text**: two widget comments still said "Unknown category" was rendered into rows, and
+  `61-Manual-Test-Plan` still listed a zero-hardcoded spend and `Category 3f2a` names as known gaps.
+
+**What the review checked and found true:** foreign keys are on in production and raw connections;
+the hand-copied `DropCategoriesTable` designer is correct (`has-pending-model-changes` reports none,
+and a scratch migration comes out empty); `10-Domain-Model` §6 has no `Category` aggregate and §7
+lists it as a value object; seventeen iterations; the test counts; the coverage figures; several
+budgets on one category, and on different ones, migrate correctly; `PRAGMA foreign_key_check` is
+clean afterwards; the table rebuild keeps every `NOT NULL` and the primary key. It also noted that the
+`DropCategoryAggregate` designer's target model omits a `Categories` table that still exists between
+the two migrations — inaccurate, harmless at runtime, and left as scaffolded.
+
+**Falsified: six mutations, six killed — and then eight more.** A budget accepting a blank category; a label stored
+untrimmed; every budget reporting an unknown spend again; the validator no longer refusing an empty
+condition list; the migration carrying the GUID across instead of recovering the name; and a
+`Category` entity reappearing in the model. Each was killed by the test written for it. The last one
+is killed loudly rather than precisely — a model change without a migration fails most of the
+migration suite too — and the intended assertion is among the failures.
+
+The eight after the review were the ones it had shown surviving, re-applied against the new tests:
+a join ignoring `CategoryId`; no `TRIM`; no `NULLIF`; the table left undropped; the validator checking
+only the first condition; the query no longer trimming its side; the query no longer refusing a blank
+label; the tile binding the limit instead of the label. Each was killed by the test written for it.
+
+**Measured totals:** unit 1150 → **1165**; integration 254 → **253** (−6
+`CategoryParentIntegrityTests`, +5 migration tests); coverage gate green.
+
+**What this closes, and what it does not.**
+
+- **TD-132 is closed.** Not deferred, not narrowed: the aggregate is gone and the label is the model
+  in every subsystem.
+- **TD-134 is closed with it**, as moot. It recorded that deleting a category through EF silently
+  promoted its children to root categories. There is no category entity, no hierarchy, and no delete
+  path left for that behaviour to live in.
+- **Category management is NOT built, and the hierarchy §7 describes does not exist.** The label is
+  flat: "Food / Restaurants" is one string, not a parent and a child. Renaming a category everywhere,
+  merging two spellings, and a colour per category are all unbuilt. If they are wanted, they are
+  product work on top of the label — a rename that rewrites splits, rules and budgets together — and
+  that is a better starting point than an aggregate nothing wrote to.
+- **The budgets screen still cannot create a budget.** `CreateBudgetCommand` has no production
+  caller. This item made a budget *measurable*; it did not make one *creatable*. That is TD-99's
+  half, and it is now the only thing standing between the budgets screen and being useful.
+- **A budget whose category row is missing, or whose name was blank, carries its GUID as its label.**
+  The `COALESCE` keeps such a row rather than deleting a limit the user chose, writing an invented name
+  into the data, or leaving an empty label that would match every uncategorised split. The blank case
+  is tested; the missing-row case cannot be, because the schema refuses to let such a row be written.
+- **A vault that pressed the old "Test Features" button loses that budget's `#00FF00` colour.** Its
+  name survives.
+- **There is no way down from `DropCategoryAggregate` for a vault that has budgets.**
 
 ## 6. Stage 3 — Breadth: the features the documents promise
 

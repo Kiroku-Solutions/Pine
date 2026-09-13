@@ -445,6 +445,170 @@ public class ScaledMoneyMigrationTests
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Every budget filed under a category that EXISTS keeps that category's name when the
+    /// <c>Category</c> aggregate is dropped (TD-132, post-audit plan item 2.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IT LIVES IN THIS FILE BECAUSE THE LEGACY-SCHEMA FIXTURES DO. Asserting anything about
+    /// <c>DropCategoryAggregate</c> needs a vault that predates it, holding a <c>Categories</c> row
+    /// and a <c>Budgets</c> row that points at it — which is exactly what
+    /// <c>MigrateToPreviousSchemaAsync</c> plus <c>InsertLegacyCategory</c> and
+    /// <c>InsertLegacyBudget</c> build. Rebuilding that apparatus next door to use it once would be
+    /// a second implementation of the same fixture.
+    /// </para>
+    /// <para>
+    /// REAL VAULTS HOLD THIS STATE: before <c>67af1f3</c> the Diagnostics "Test Features" button
+    /// created a <c>Groceries</c> category and a budget against it.
+    /// </para>
+    /// <para>
+    /// WHAT WOULD HAPPEN WITHOUT THE HAND-WRITTEN <c>UPDATE</c> in that migration: the tool emitted
+    /// a bare <c>RenameColumn</c>, so this budget would come out of the migration filed under the
+    /// TEXT of a GUID — in the column a person now reads as a category name. The name was sitting
+    /// in the database the whole time.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// THREE BUDGETS OVER TWO CATEGORIES, AND THE FIRST VERSION HAD ONE OF EACH. With a single
+    /// category, any subquery that returns A name returns the right one: the independent review of
+    /// item 2.3 replaced the join with <c>SELECT "Name" FROM "Categories" LIMIT 1</c> — which ignores
+    /// which category a budget points at — and that version of this test stayed green. Here two
+    /// budgets share a category and a third points elsewhere, so only the real join passes.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task EachBudget_KeepsTheNameOfTheCategoryItPointedAt()
+    {
+        using var vault = new TempVault();
+        await MigrateToPreviousSchemaAsync(vault);
+
+        var food = Guid.NewGuid();
+        var rent = Guid.NewGuid();
+        InsertLegacyCategory(vault, food, "Food");
+        InsertLegacyCategory(vault, rent, "Rent");
+
+        var firstFood = Guid.NewGuid();
+        var secondFood = Guid.NewGuid();
+        var theRent = Guid.NewGuid();
+        InsertLegacyBudget(vault, firstFood, food, 250m, "USD");
+        InsertLegacyBudget(vault, theRent, rent, 900m, "USD");
+        InsertLegacyBudget(vault, secondFood, food, 50m, "USD");
+
+        await MigrateAsync(vault);
+
+        CategoryOfBudget(vault, firstFood).Should().Be("Food");
+        CategoryOfBudget(vault, secondFood).Should().Be("Food");
+        CategoryOfBudget(vault, theRent).Should().Be("Rent",
+            "each budget takes the name of ITS category, not whichever category row came first");
+    }
+
+    /// <summary>
+    /// A legacy category name with surrounding whitespace arrives trimmed.
+    /// </summary>
+    /// <remarks>
+    /// The old <c>Category.Create</c> refused a blank name but never trimmed one, so
+    /// <c>"  Groceries  "</c> was writable. Carried across verbatim, the independent review measured
+    /// that budget reporting a KNOWN spend of 0 in a month holding a Groceries expense: the aggregate
+    /// promises a trimmed label and every comparison depends on the promise.
+    /// </remarks>
+    [Fact]
+    public async Task ACategoryNameWithSurroundingWhitespace_ArrivesTrimmed()
+    {
+        using var vault = new TempVault();
+        await MigrateToPreviousSchemaAsync(vault);
+
+        var categoryId = Guid.NewGuid();
+        var budgetId = Guid.NewGuid();
+        InsertLegacyCategory(vault, categoryId, "  Groceries\t ");
+        InsertLegacyBudget(vault, budgetId, categoryId, 250m, "USD");
+
+        await MigrateAsync(vault);
+
+        CategoryOfBudget(vault, budgetId).Should().Be("Groceries");
+    }
+
+    /// <summary>
+    /// A legacy category name that trims to nothing does not become an empty label.
+    /// </summary>
+    /// <remarks>
+    /// An empty label would match every UNCATEGORISED split — the review measured one being counted.
+    /// The budget keeps its identifier instead: visible, obviously wrong, and correctable. Reachable
+    /// only by raw SQL, because <c>Category.Create</c> refused blank names.
+    /// </remarks>
+    [Fact]
+    public async Task ACategoryNameThatTrimsToNothing_DoesNotBecomeAnEmptyLabel()
+    {
+        using var vault = new TempVault();
+        await MigrateToPreviousSchemaAsync(vault);
+
+        var categoryId = Guid.NewGuid();
+        var budgetId = Guid.NewGuid();
+        InsertLegacyCategory(vault, categoryId, "   ");
+        InsertLegacyBudget(vault, budgetId, categoryId, 250m, "USD");
+
+        await MigrateAsync(vault);
+
+        CategoryOfBudget(vault, budgetId).Should().Be(Text(categoryId));
+    }
+
+    private static object CategoryOfBudget(TempVault vault, Guid budgetId)
+    {
+        using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
+        using var command = connection.CreateCommand();
+        command.CommandText = @"SELECT ""Category"" FROM ""Budgets"" WHERE ""Id"" = $id;";
+        command.Parameters.AddWithValue("$id", Text(budgetId));
+        return command.ExecuteScalar()!;
+    }
+
+    /// <summary>
+    /// A budget pointing at a category that does not exist CANNOT BE WRITTEN in the first place —
+    /// the legacy schema refuses it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This test was written to assert what the migration does with an orphaned budget, and
+    /// discovered that there is no such thing. The foreign key <c>Budgets.CategoryId →
+    /// Categories.Id</c> has been real since the table was created, so every budget row in any
+    /// vault that enforced it necessarily has a category row to be named after. That is why the
+    /// <c>COALESCE</c> in <c>DropCategoryAggregate</c> is defence rather than a path anyone meets,
+    /// and it is worth pinning: the migration's recovery step is COMPLETE, not best-effort.
+    /// </para>
+    /// <para>
+    /// It also sharpens TD-132. Since <c>67af1f3</c> nothing in production writes a
+    /// <c>Categories</c> row, and this constraint means nothing since then could write a
+    /// <c>Budgets</c> row either. BEFORE that commit the Diagnostics screen's "Seed Demo Data / Test
+    /// Features" button wrote one of each — the first draft of this remark said "nothing ever wrote a
+    /// Categories row", and the independent review of item 2.3 found the button in history.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ABudgetCannotPointAtACategoryThatDoesNotExist()
+    {
+        using var vault = new TempVault();
+        await MigrateToPreviousSchemaAsync(vault);
+
+        var insertOrphan = () => InsertLegacyBudget(vault, Guid.NewGuid(), Guid.NewGuid(), 250m, "USD");
+
+        insertOrphan.Should().Throw<SqliteException>()
+            .WithMessage("*FOREIGN KEY constraint failed*");
+    }
+
+    /// <summary>The table the aggregate lived in is gone, not merely unused.</summary>
+    [Fact]
+    public async Task TheCategoriesTableIsDropped()
+    {
+        using var vault = new TempVault();
+        await MigrateToPreviousSchemaAsync(vault);
+        InsertLegacyCategory(vault, Guid.NewGuid(), "Food");
+
+        await MigrateAsync(vault);
+
+        ReadScalar(vault, @"SELECT COUNT(*) FROM ""sqlite_master"" WHERE ""type"" = 'table' AND ""name"" = 'Categories';")
+            .Should().Be(0L, "an empty table left behind is a schema that still promises the feature");
+    }
+
     // ------------------------------------------------------------------ reading
 
     private static object ReadScalar(TempVault vault, string sql)

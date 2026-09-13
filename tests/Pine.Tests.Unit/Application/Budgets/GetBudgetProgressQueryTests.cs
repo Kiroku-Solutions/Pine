@@ -8,7 +8,6 @@ using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Pine.Application.Budgets.Queries;
 using Pine.Core.Budgets;
-using Pine.Core.Categories;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 using Xunit;
@@ -39,17 +38,13 @@ public class GetBudgetProgressQueryTests
     private static readonly CurrencyCode Eur = new("EUR");
 
     private readonly IBudgetRepository _budgets = Substitute.For<IBudgetRepository>();
-    private readonly ICategoryRepository _categories = Substitute.For<ICategoryRepository>();
     private readonly ITransactionRepository _transactions = Substitute.For<ITransactionRepository>();
 
     private GetBudgetProgressQueryHandler Handler() =>
-        new(_budgets, _categories, _transactions, Clock);
+        new(_budgets, _transactions, Clock);
 
     private void GivenBudgets(params Budget[] budgets) =>
         _budgets.GetAllAsync(Arg.Any<CancellationToken>()).Returns(budgets.AsEnumerable());
-
-    private void GivenCategories(params Category[] categories) =>
-        _categories.GetAllAsync(Arg.Any<CancellationToken>()).Returns(categories.AsEnumerable());
 
     private void GivenLedger(params Transaction[] transactions) =>
         _transactions.GetAllAsync(Arg.Any<CancellationToken>()).Returns(transactions.AsEnumerable());
@@ -72,17 +67,13 @@ public class GetBudgetProgressQueryTests
         return transaction;
     }
 
-    private static Budget MonthlyBudgetOf(Guid categoryId, decimal limit) =>
-        Budget.Create(categoryId, new Money(limit, Eur), BudgetPeriod.Monthly);
-
-    private static Category CategoryNamed(string name) => Category.Create(name, "#123456");
+    private static Budget MonthlyBudgetOf(string category, decimal limit) =>
+        Budget.Create(category, new Money(limit, Eur), BudgetPeriod.Monthly);
 
     [Fact]
     public async Task SpendIsSummedFromTheTransactionsInThePeriod()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(40m, "Groceries", Now.AddDays(-1)),
             Expense(2.50m, "Groceries", Now.AddDays(-3)));
@@ -99,9 +90,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task ATransactionOutsideThePeriodIsNotCounted()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(40m, "Groceries", Now.AddDays(-1)),
             Expense(999m, "Groceries", new DateTimeOffset(2026, 4, 30, 23, 0, 0, TimeSpan.Zero)));
@@ -120,9 +109,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task TheWindowIncludesItsFirstInstantAndExcludesItsLast()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(10m, "Groceries", new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero)),
             Expense(20m, "Groceries", new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero)));
@@ -135,12 +122,10 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task AVoidedTransactionIsNotCounted()
     {
-        var category = CategoryNamed("Groceries");
         var voided = Expense(100m, "Groceries", Now.AddDays(-2));
         voided.Void("entered twice", Clock);
 
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(Expense(15m, "Groceries", Now.AddDays(-1)), voided);
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
@@ -152,9 +137,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task SpendingPastTheLimitMarksTheBudgetExceeded()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 50m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 50m));
         GivenLedger(Expense(60m, "Groceries", Now.AddDays(-1)));
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
@@ -168,9 +151,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task SpendingUnderTheLimitDoesNotMarkTheBudgetExceeded()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 50m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 50m));
         GivenLedger(Expense(49.99m, "Groceries", Now.AddDays(-1)));
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
@@ -181,9 +162,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task ADifferentCategorysSpendingIsNotCounted()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category, CategoryNamed("Transport"));
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(30m, "Groceries", Now.AddDays(-1)),
             Expense(70m, "Transport", Now.AddDays(-1)));
@@ -200,13 +179,11 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task IncomeAgainstTheSameCategoryDoesNotReduceTheSpend()
     {
-        var category = CategoryNamed("Groceries");
         var refund = Transaction.Create(
             Guid.NewGuid(), Now.AddDays(-1), "SHOP", new Money(25m, Eur), TransactionType.Income, Clock);
         refund.ReplaceSplits(new[] { new SplitDefinition(new Money(25m, Eur), "Groceries") });
 
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(Expense(40m, "Groceries", Now.AddDays(-1)), refund);
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
@@ -224,9 +201,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task CategoryNamesAreMatchedTrimmedAndCaseSensitively()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(10m, "  Groceries  ", Now.AddDays(-1)),
             Expense(90m, "groceries", Now.AddDays(-1)));
@@ -238,44 +213,125 @@ public class GetBudgetProgressQueryTests
     }
 
     /// <summary>
-    /// The row carries the real category, not four hex digits of its identifier.
+    /// The row carries the category the budget was created against.
     /// </summary>
     [Fact]
-    public async Task TheCategorysRealNameAndColourAreReturned()
+    public async Task TheCategoryOnTheRowIsTheOneTheBudgetWasCreatedAgainst()
     {
-        var category = Category.Create("Groceries", "#00AA00");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger();
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
 
-        progress[0].CategoryName.Should().Be("Groceries");
-        progress[0].CategoryColorHex.Should().Be("#00AA00");
+        progress[0].Category.Should().Be("Groceries");
     }
 
     /// <summary>
-    /// A budget pointing at a category that does not exist reports an UNKNOWN spend, not a zero.
+    /// The spend a budget reports is measured, whoever created the budget (TD-132, plan item 2.3).
     /// </summary>
     /// <remarks>
-    /// This is the honest end of the join TD-132 leaves open: <c>Budget</c> holds a
-    /// <c>CategoryId</c>, a split holds a name, and nothing in the shipping application writes a
-    /// <c>Categories</c> row. Where there is no name to compare against there is no spend to
-    /// report, and saying so is the difference between this fix and the defect it replaces.
+    /// <para>
+    /// THIS TEST REPLACES ITS OWN OPPOSITE. What stood here was
+    /// <c>ABudgetWhoseCategoryDoesNotExistReportsAnUnknownSpendRatherThanZero</c>, and it was right
+    /// about the smaller thing — an unknown spend must not be rendered as a zero — while pinning a
+    /// state that was universal: <c>Budget</c> held a <c>CategoryId</c> into a table nothing ever
+    /// wrote to, so EVERY budget a user could create reported "Unknown category" and no spend at
+    /// all. The screen was honest and empty.
+    /// </para>
+    /// <para>
+    /// With the label as the model there is no unresolvable category left to test. What is worth
+    /// pinning instead is the consequence: a budget created the way a user would create one now
+    /// measures the ledger. The unknown-spend path still exists and still matters — see
+    /// <see cref="ABiWeeklyBudgetWithNoStoredDatesReportsAnUnknownSpend"/>, which is now the only
+    /// way to reach it.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task ABudgetWhoseCategoryDoesNotExistReportsAnUnknownSpendRatherThanZero()
+    public async Task ABudgetCreatedTheWayAUserWouldCreateOneMeasuresTheLedger()
     {
-        GivenBudgets(MonthlyBudgetOf(Guid.NewGuid(), 500m));
-        GivenCategories();
+        GivenBudgets(Budget.Create("Groceries", new Money(500m, Eur), BudgetPeriod.Monthly));
         GivenLedger(Expense(40m, "Groceries", Now.AddDays(-1)));
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
 
-        progress[0].Spent.Should().BeNull();
-        progress[0].IsSpendKnown.Should().BeFalse();
-        progress[0].CategoryName.Should().BeNull("there is no name to show, and inventing one is the bug");
-        progress[0].IsExceeded.Should().BeFalse();
+        progress[0].IsSpendKnown.Should().BeTrue(
+            "before TD-132 was decided this was false for every budget in existence");
+        progress[0].Spent!.Amount.Should().Be(40m);
+        progress[0].Category.Should().Be("Groceries");
+    }
+
+    /// <summary>
+    /// A budget cannot be created without naming a category.
+    /// </summary>
+    /// <remarks>
+    /// The old <c>CategoryId</c> had no such refusal: <c>Guid.Empty</c> was accepted and produced a
+    /// budget that could never be measured. A budget that names nothing measures nothing, and it is
+    /// cheaper to refuse it than to render it forever as a limit against an unknown.
+    /// </remarks>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ABudgetMustNameACategory(string category)
+    {
+        var create = () => Budget.Create(category, new Money(500m, Eur), BudgetPeriod.Monthly);
+
+        create.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// A budget read back from a vault with a blank label reports an unknown spend, not a spend
+    /// against "no category".
+    /// </summary>
+    /// <remarks>
+    /// EF materialises a budget without running its constructor, so the aggregate's refusal of a
+    /// blank label does not protect a row read from disk. The independent review of plan item 2.3
+    /// measured such a budget counting an uncategorised split as its spend. The row is built here
+    /// the way EF builds it — by setting the property, not by calling <c>Create</c>.
+    /// </remarks>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ABudgetWithABlankLabelReadFromAVaultReportsAnUnknownSpend(string label)
+    {
+        var budget = Budget.Create("placeholder", new Money(500m, Eur), BudgetPeriod.Monthly);
+        typeof(Budget).GetProperty(nameof(Budget.Category))!.SetValue(budget, label);
+
+        GivenBudgets(budget);
+        GivenLedger(Expense(40m, label, Now.AddDays(-1)));
+
+        var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
+
+        progress[0].IsSpendKnown.Should().BeFalse(
+            "a blank label is no category, and counting the uncategorised splits against it would put "
+            + "a confident wrong figure on the screen");
+    }
+
+    /// <summary>
+    /// A label read back from a vault with surrounding whitespace is compared trimmed anyway.
+    /// </summary>
+    [Fact]
+    public async Task ALabelReadFromAVaultWithWhitespaceIsStillMatched()
+    {
+        var budget = Budget.Create("placeholder", new Money(500m, Eur), BudgetPeriod.Monthly);
+        typeof(Budget).GetProperty(nameof(Budget.Category))!.SetValue(budget, "  Groceries  ");
+
+        GivenBudgets(budget);
+        GivenLedger(Expense(40m, "Groceries", Now.AddDays(-1)));
+
+        var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
+
+        progress[0].Spent!.Amount.Should().Be(40m,
+            "the review measured this exact row reporting a known spend of 0");
+    }
+
+    /// <summary>
+    /// The label is stored trimmed, so that every comparison against it agrees.
+    /// </summary>
+    [Fact]
+    public void TheCategoryLabelIsStoredTrimmed()
+    {
+        Budget.Create("  Groceries  ", new Money(500m, Eur), BudgetPeriod.Monthly)
+            .Category.Should().Be("Groceries");
     }
 
     /// <summary>
@@ -285,12 +341,10 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task ABiWeeklyBudgetWithNoStoredDatesReportsAnUnknownSpend()
     {
-        var category = CategoryNamed("Groceries");
         _budgets.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[]
         {
-            Budget.Create(category.Id, new Money(100m, Eur), BudgetPeriod.BiWeekly),
+            Budget.Create("Groceries", new Money(100m, Eur), BudgetPeriod.BiWeekly),
         }.AsEnumerable());
-        GivenCategories(category);
         GivenLedger(Expense(40m, "Groceries", Now.AddDays(-1)));
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);
@@ -307,14 +361,12 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task AnExplicitWindowIsUsedInsteadOfTheCalendarPeriod()
     {
-        var category = CategoryNamed("Groceries");
         var start = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
         var end = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
         _budgets.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[]
         {
-            Budget.Create(category.Id, new Money(500m, Eur), BudgetPeriod.Custom, start, end),
+            Budget.Create("Groceries", new Money(500m, Eur), BudgetPeriod.Custom, start, end),
         }.AsEnumerable());
-        GivenCategories(category);
         GivenLedger(
             Expense(11m, "Groceries", new DateTimeOffset(2026, 3, 15, 9, 0, 0, TimeSpan.Zero)),
             Expense(22m, "Groceries", Now.AddDays(-1)));
@@ -334,9 +386,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task ASplitInAnotherCurrencyIsExcludedAndCounted()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(
             Expense(30m, "Groceries", Now.AddDays(-1)),
             Expense(70m, "Groceries", Now.AddDays(-1), new CurrencyCode("USD")));
@@ -352,9 +402,7 @@ public class GetBudgetProgressQueryTests
     [Fact]
     public async Task ABudgetWithNoMatchingSpendingReportsZeroAndKnowsIt()
     {
-        var category = CategoryNamed("Groceries");
-        GivenBudgets(MonthlyBudgetOf(category.Id, 500m));
-        GivenCategories(category);
+        GivenBudgets(MonthlyBudgetOf("Groceries", 500m));
         GivenLedger(Expense(70m, "Transport", Now.AddDays(-1)));
 
         var progress = await Handler().Handle(new GetBudgetProgressQuery(), CancellationToken.None);

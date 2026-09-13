@@ -50,7 +50,6 @@
                             <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
                                 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                                    <Ellipse Width="16" Height="16" Fill="{Binding CategoryColorHex}"/>
                                     <TextBlock Text="{Binding CategoryName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 </StackPanel>
 

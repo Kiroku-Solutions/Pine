@@ -13,7 +13,6 @@ using Pine.Application.Security;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Budgets;
-using Pine.Core.Categories;
 using Pine.Core.Common;
 using Pine.Core.Configuration;
 using Pine.Core.Importing;
@@ -139,7 +138,6 @@ internal sealed class AtomicityHost : IAsyncDisposable
             services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
             services.AddScoped<Pine.Core.Attachments.IAttachmentRepository, SqliteAttachmentRepository>();
             services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
-            services.AddScoped<ICategoryRepository, SqliteCategoryRepository>();
             services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
             services.AddScoped<ISettingRepository, SqliteSettingRepository>();
             services.AddScoped<IImportProfileRepository, Pine.Infrastructure.Importing.SqliteImportProfileRepository>();

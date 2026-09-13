@@ -214,6 +214,34 @@ public class DashboardTileRenderingTests
         text.Should().NotContain(localizer["Dashboard.CashFlow.Empty"]);
     });
 
+    /// <summary>
+    /// The budget tile, rendered, shows the budget's own category label.
+    /// </summary>
+    /// <remarks>
+    /// The user-visible point of plan item 2.3 (TD-132) is that a budget now shows the category it
+    /// was created against instead of "Unknown category". Until the independent review of that item,
+    /// only the view model was tested: rebinding the row's text to <c>LimitAmountText</c> in both
+    /// budget views left every test green. This renders the actual view.
+    /// </remarks>
+    [Fact]
+    public Task TheBudgetTile_WithABudget_ShowsItsCategoryLabel() => InEnglish(localizer =>
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
+            {
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(500m, Usd), new Money(120m, Usd), null, null, 0),
+            }));
+
+        var tile = new BudgetWidgetViewModel(mediator, localizer);
+        tile.InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+        var text = VisibleText(new BudgetWidgetView(), tile);
+
+        text.Should().Contain("Groceries", "the row must show the label the budget was created against");
+        text.Should().NotContain("Unknown category", "that was what every row said before TD-132 was decided");
+    });
+
     [Fact]
     public Task TheBudgetTile_WithNoBudgets_SaysSo() => InEnglish(localizer =>
     {

@@ -9,7 +9,6 @@ using NSubstitute;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
-using Pine.Core.Categories;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;

@@ -20,8 +20,9 @@ namespace Pine.Tests.Unit.ViewModels;
 /// The rules screen — the writer whose absence would have made this a repeat of TD-132.
 /// </summary>
 /// <remarks>
-/// TD-132 exists because <c>Category</c> is an aggregate nothing in production writes: its command
-/// is called by tests only, no query lists categories, and every category input is a free text box.
+/// TD-132 existed because <c>Category</c> was an aggregate nothing in production wrote: its command
+/// was called by tests only, no query listed categories, and every category input is a free text
+/// box. Plan item 2.3 closed it by deleting that aggregate.
 /// A <c>Rule</c> aggregate in the same position would have been that defect again, shipped in the
 /// iteration right after the row naming it. These tests are what make the writer real rather than
 /// present.

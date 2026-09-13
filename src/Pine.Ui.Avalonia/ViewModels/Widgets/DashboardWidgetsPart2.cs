@@ -176,8 +176,9 @@ public partial class BudgetWidgetViewModel : DashboardWidgetViewModelBase, IReci
     }
 
     /// <summary>
-    /// Re-builds the rows after a language switch: "Not known" and "Unknown category" are rendered into
-    /// the rows, which are shared with the budgets page, rather than bound live.
+    /// Re-builds the rows after a language switch: "Not known" is rendered into the rows, which are
+    /// shared with the budgets page, rather than bound live. The category is the user's own label and
+    /// is not translated (TD-132, plan item 2.3).
     /// </summary>
     protected override void OnLanguageChanged()
     {

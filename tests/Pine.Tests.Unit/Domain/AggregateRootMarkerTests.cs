@@ -42,7 +42,6 @@ public class AggregateRootMarkerTests
     {
         typeof(Pine.Core.Accounts.Account),
         typeof(Pine.Core.Attachments.Attachment),
-        typeof(Pine.Core.Categories.Category),
         typeof(Pine.Core.Rules.Rule),
         typeof(Pine.Core.Settings.Setting),
         typeof(Pine.Core.Transactions.Transaction),

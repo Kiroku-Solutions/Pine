@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Pine.Core.Budgets;
-using Pine.Core.Categories;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 
@@ -26,12 +25,13 @@ namespace Pine.Application.Budgets.Queries;
 /// </para>
 /// </remarks>
 /// <param name="BudgetId">The budget this row describes.</param>
-/// <param name="CategoryId">The category the budget was created against.</param>
-/// <param name="CategoryName">
-/// The category's name, or <see langword="null"/> when <paramref name="CategoryId"/> matches no
-/// stored category. The screen must say so rather than invent a name.
+/// <param name="Category">
+/// The category label the budget is measured against. The aggregate refuses to CREATE a budget
+/// without one (TD-132, plan item 2.3), but a row read back from a vault bypasses that check, so this
+/// can in principle be blank — in which case <see cref="Spent"/> is <see langword="null"/>. It used to be a <c>CategoryId</c> plus a
+/// nullable name and a nullable swatch, because the id pointed at a table nothing wrote to — so
+/// every budget a user could create rendered as "Unknown category".
 /// </param>
-/// <param name="CategoryColorHex">The category's swatch, or <see langword="null"/> when unresolved.</param>
 /// <param name="Limit">The budget's limit, in the currency the budget was created in.</param>
 /// <param name="Spent">
 /// What has been spent inside the window, in the same currency as <paramref name="Limit"/>, or
@@ -45,9 +45,7 @@ namespace Pine.Application.Budgets.Queries;
 /// </param>
 public sealed record BudgetProgress(
     Guid BudgetId,
-    Guid CategoryId,
-    string? CategoryName,
-    string? CategoryColorHex,
+    string Category,
     Money Limit,
     Money? Spent,
     DateTimeOffset? PeriodStart,
@@ -82,24 +80,20 @@ public sealed record GetBudgetProgressQuery() : IRequest<IReadOnlyList<BudgetPro
 /// without a UI, and this is the part worth testing.
 /// </para>
 /// <para>
-/// THE JOIN IS BY CATEGORY NAME, AND THIS IS THE JUDGEMENT CALL IN THIS FILE. <c>Budget</c> holds a
-/// <c>CategoryId</c>, a real <see cref="Guid"/> pointing at the <c>Categories</c> table.
-/// <c>TransactionSplit.Category</c> holds a NAME — a string a person typed or a CSV column
-/// supplied. TD-32 recorded that mismatch and resolved it in favour of the NAME (see
-/// <c>CategorisationTrainingData</c>): the string is the model that has instances, because nothing
-/// in the shipping application writes a <c>Categories</c> row (TD-132). So the only join available
-/// is <c>Budget.CategoryId → Category.Name → split.Category</c>, and it is exact where a category
-/// row exists.
+/// THE JOIN IS BY CATEGORY LABEL, AND SINCE PLAN ITEM 2.3 THAT IS NOT A COMPROMISE, IT IS THE MODEL.
+/// <c>Budget.Category</c>, <c>TransactionSplit.Category</c>, <c>Rule.Category</c> and the
+/// categoriser's training set are all the same kind of thing: a label a person typed or a CSV
+/// column supplied. Until TD-132 was decided, <c>Budget</c> held a <see cref="Guid"/> into a
+/// <c>Categories</c> table that nothing in the shipping application ever wrote to, so the join had
+/// to go <c>CategoryId → Category.Name → split.Category</c> and broke at the first hop for every
+/// budget a real user could create.
 /// </para>
 /// <para>
-/// WHERE IT CANNOT BE MADE EXACT, IT REPORTS NOTHING RATHER THAN A NUMBER. If
-/// <c>Budget.CategoryId</c> resolves to no category row — which, given TD-132, is what a
-/// user-created budget looks like today — there is no name to compare splits against, and this
-/// handler returns <c>Spent = null</c> instead of a zero or a guess. The same applies when the
-/// budget's window cannot be determined (<see cref="Budget.ResolveWindow"/>). This is the closest
-/// correct thing that can be done without inventing the relationship that TD-132 leaves open, and
-/// it is deliberately visible: an unresolvable budget shows as unknown on the screen, which is a
-/// prompt to finish TD-132, whereas a fabricated 0 was not.
+/// WHAT THAT USED TO COST, AND DOES NOT ANY MORE. This handler returned <c>Spent = null</c>
+/// whenever the id resolved to no row — which was always — so the budgets screen reported "not
+/// known" for every budget it could ever be given. The remaining reason for a null spend is a
+/// window that cannot be determined (<see cref="Budget.ResolveWindow"/>: a bi-weekly budget with no
+/// explicit dates has no calendar anchor). That is one honest unknown instead of a universal one.
 /// </para>
 /// <para>
 /// NAMES ARE COMPARED TRIMMED AND ORDINALLY, CASE INTACT, exactly as
@@ -138,20 +132,17 @@ public sealed class GetBudgetProgressQueryHandler
     : IRequestHandler<GetBudgetProgressQuery, IReadOnlyList<BudgetProgress>>
 {
     private readonly IBudgetRepository _budgets;
-    private readonly ICategoryRepository _categories;
     private readonly ITransactionRepository _transactions;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<GetBudgetProgressQueryHandler>? _logger;
 
     public GetBudgetProgressQueryHandler(
         IBudgetRepository budgets,
-        ICategoryRepository categories,
         ITransactionRepository transactions,
         TimeProvider timeProvider,
         ILogger<GetBudgetProgressQueryHandler>? logger = null)
     {
         _budgets = budgets;
-        _categories = categories;
         _transactions = transactions;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -167,10 +158,6 @@ public sealed class GetBudgetProgressQueryHandler
             return Array.Empty<BudgetProgress>();
         }
 
-        var categories = (await _categories.GetAllAsync(cancellationToken).ConfigureAwait(false))
-            .GroupBy(category => category.Id)
-            .ToDictionary(group => group.Key, group => group.First());
-
         // Only the transactions that can contribute: still in force, and actual spending.
         var spending = (await _transactions.GetAllAsync(cancellationToken).ConfigureAwait(false))
             .Where(transaction => !transaction.IsVoided && transaction.Type == TransactionType.Expense)
@@ -179,34 +166,38 @@ public sealed class GetBudgetProgressQueryHandler
         var now = _timeProvider.GetUtcNow();
 
         return budgets
-            .Select(budget => Measure(budget, categories, spending, now))
+            .Select(budget => Measure(budget, spending, now))
             .ToList();
     }
 
     private BudgetProgress Measure(
         Budget budget,
-        Dictionary<Guid, Category> categories,
         IReadOnlyList<Transaction> spending,
         DateTimeOffset now)
     {
-        categories.TryGetValue(budget.CategoryId, out var category);
         var window = budget.ResolveWindow(now);
 
-        if (category is null || window is null)
+        // EF materialises a budget without running its constructor, so the aggregate's "non-blank,
+        // trimmed" rule holds for budgets CREATED in this process and not necessarily for rows read
+        // back from a vault. A blank label would match every uncategorised split — measured by the
+        // independent review of plan item 2.3 as a confident spend against "no category" — so it is
+        // treated as unmeasurable rather than as a category.
+        var name = (budget.Category ?? string.Empty).Trim();
+
+        if (window is null || name.Length == 0)
         {
 #pragma warning disable CA1848, CA1873 // Same scoped exemption as CategorizationTrainingBackgroundService.
             _logger?.LogInformation(
-                "Budget {BudgetId} has no measurable spend: category resolved = {CategoryResolved}, window resolved = {WindowResolved}.",
+                "Budget {BudgetId} ({Category}) has no measurable spend: window resolved = {WindowResolved}, category present = {CategoryPresent}.",
                 budget.Id,
-                category is not null,
-                window is not null);
+                name,
+                window is not null,
+                name.Length > 0);
 #pragma warning restore CA1848, CA1873
 
             return new BudgetProgress(
                 budget.Id,
-                budget.CategoryId,
-                category?.Name,
-                category?.ColorHex,
+                name,
                 budget.Limit,
                 Spent: null,
                 PeriodStart: window?.Start,
@@ -215,7 +206,6 @@ public sealed class GetBudgetProgressQueryHandler
         }
 
         var (start, end) = window.Value;
-        var name = category.Name.Trim();
         var currency = budget.Limit.Currency.Value;
 
         var spent = Money.Zero(budget.Limit.Currency);
@@ -260,9 +250,7 @@ public sealed class GetBudgetProgressQueryHandler
 
         return new BudgetProgress(
             budget.Id,
-            budget.CategoryId,
-            category.Name,
-            category.ColorHex,
+            name,
             budget.Limit,
             spent,
             start,

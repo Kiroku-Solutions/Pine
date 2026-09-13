@@ -6,7 +6,6 @@ using Pine.Core.Attachments;
 using Pine.Core.Rules;
 using Pine.Infrastructure.Data.Converters;
 using Pine.Core.Transactions;
-using Pine.Core.Categories;
 using Pine.Core.Budgets;
 using Pine.Core.Settings;
 using Pine.Core.Importing;
@@ -26,7 +25,6 @@ public sealed class PineDbContext : DbContext
 
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
-    public DbSet<Category> Categories => Set<Category>();
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<ImportProfile> ImportProfiles => Set<ImportProfile>();
@@ -220,33 +218,17 @@ public sealed class PineDbContext : DbContext
             });
         });
 
-        modelBuilder.Entity<Category>(e =>
-        {
-            e.HasKey(c => c.Id);
-            e.Property(c => c.Name).IsRequired();
-            e.Property(c => c.ColorHex).IsRequired();
-
-            // TD-32. `ParentCategoryId` was a bare nullable Guid column with no constraint of any
-            // kind: the original CreateTable emitted no `table.ForeignKey` for it, and there was no
-            // `HasOne` here either, while `Budget.CategoryId` two blocks below has had a real FK all
-            // along. So a category could name a parent that does not exist, and deleting a parent
-            // left its children pointing at nothing.
-            //
-            // Restrict, matching Budget: deleting a category that others are filed under is a
-            // decision a person has to make about the children first, not something a cascade should
-            // make silently on their behalf.
-            //
-            // WHAT THIS STILL DOES NOT PREVENT, STATED PLAINLY: cycles. A foreign key constrains
-            // each row on its own, so A→B→A satisfies every constraint here. Preventing that needs a
-            // check on the write path, and the write path is `CreateCategoryCommand`, which no
-            // production code calls (TD-132). Adding a cycle guard now would be writing enforcement
-            // for a caller that does not exist; the referential integrity below is worth having
-            // regardless, because it is what makes the column mean anything at all.
-            e.HasOne<Category>()
-             .WithMany()
-             .HasForeignKey(c => c.ParentCategoryId)
-             .OnDelete(DeleteBehavior.Restrict);
-        });
+        // THERE IS NO `Category` ENTITY ANY MORE (TD-132, post-audit plan item 2.3).
+        // It was an aggregate with no production writer: `CreateCategoryCommand` was called by tests
+        // only, no query listed categories, no screen created one, and every category input in the
+        // UI is a free `TextBox`. Since `67af1f3` removed the Diagnostics "Test Features" button —
+        // which wrote one demo category and one budget — nothing wrote to the table at all, which made
+        // `Budget.CategoryId` a foreign key into nothing for any budget a user could create, and the
+        // parent-category foreign key added in TD-32 a constraint on rows no path could produce. `10-Domain-Model` §7 lists `Category` as
+        // a VALUE OBJECT — "a hierarchical label" — and §6 lists no `Category` aggregate at all, so
+        // deleting the class brought the code to the canonical document rather than away from it.
+        // The label is the model, everywhere: splits, rules, budgets, the categoriser's training
+        // set and its predictions.
 
         modelBuilder.Entity<Budget>(e =>
         {
@@ -261,11 +243,9 @@ public sealed class PineDbContext : DbContext
                         c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c)
                     );
             });
-            // Category mapping
-            e.HasOne<Category>()
-             .WithMany()
-             .HasForeignKey(b => b.CategoryId)
-             .OnDelete(DeleteBehavior.Restrict);
+            // The category label, not a foreign key (TD-132). Required for the same reason
+            // `Rule.Category` is: a budget that names no category measures nothing.
+            e.Property(b => b.Category).IsRequired();
         });
 
         modelBuilder.Entity<Setting>(e =>
@@ -321,8 +301,8 @@ public sealed class PineDbContext : DbContext
             // The action's value. A NAME, not a CategoryId, and that is the Phase 3 roadmap item's
             // premise corrected rather than followed: TransactionSplit.Category is a string and
             // iteration 29 rejected making it a foreign key in writing, because the Categories
-            // table has no production writer (TD-32, TD-132). A rule that pointed at a Category row
-            // would point into an empty table.
+            // table had no production writer (TD-32). Plan item 2.3 then deleted that table
+            // (TD-132), so the label is the model for rules, splits and budgets alike.
             e.Property(r => r.Category).IsRequired();
 
             e.Property(r => r.IsEnabled).IsRequired();

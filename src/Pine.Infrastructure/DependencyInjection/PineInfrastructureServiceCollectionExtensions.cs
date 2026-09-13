@@ -6,7 +6,6 @@ using Pine.Core.Accounts;
 using Pine.Core.Attachments;
 using Pine.Core.Ai;
 using Pine.Core.Budgets;
-using Pine.Core.Categories;
 using Pine.Core.Common;
 using Pine.Core.Configuration;
 using Pine.Core.Importing;
@@ -123,7 +122,6 @@ public static class PineInfrastructureServiceCollectionExtensions
         // Repositories. Scoped for the same reason: one context per request, shared by all of them.
         services.AddScoped<IAccountRepository, SqliteAccountRepository>();
         services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
-        services.AddScoped<ICategoryRepository, SqliteCategoryRepository>();
         services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
         services.AddScoped<ISettingRepository, SqliteSettingRepository>();
         services.AddScoped<IImportProfileRepository, SqliteImportProfileRepository>();

@@ -160,7 +160,7 @@ public partial class DashboardTilesTests
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
-                new BudgetProgress(Guid.NewGuid(), Guid.NewGuid(), null, null, new Money(100m, Usd), null, null, null, 0),
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0),
             }));
 
         var localizer = new Localizer();
@@ -175,7 +175,12 @@ public partial class DashboardTilesTests
         tile.Title.Should().Be("Presupuestos");
         tile.Rows.Single().SpentAmountText.Should().Be(localizer["Budgets.Progress.SpendUnknown"],
             "a Spanish heading over English rows is a half-translated screen");
-        tile.Rows.Single().CategoryName.Should().Be(localizer["Budgets.Category.Unresolved"]);
+
+        // The category is the USER'S label and is not translated. This line used to assert the
+        // opposite -- that "Unknown category" followed the switch -- because every budget rendered
+        // that string: its category id pointed at a table nothing wrote to (TD-132). The label is the
+        // model now, and translating "Groceries" would be rewriting the user's data on screen.
+        tile.Rows.Single().CategoryName.Should().Be("Groceries");
     }
 
     /// <summary>The page heading is a live key, not the English literal it was.</summary>
@@ -256,7 +261,7 @@ public partial class DashboardTilesTests
     public async Task TheBudgetTile_RanksUrgentFirst_UnknownLast_AndCountsWhatItHid()
     {
         BudgetProgress Row(string name, decimal limit, decimal? spent) => new(
-            Guid.NewGuid(), Guid.NewGuid(), name, "#123456",
+            Guid.NewGuid(), name,
             new Money(limit, Usd), spent is null ? null : new Money(spent.Value, Usd),
             null, null, 0);
 
@@ -289,7 +294,7 @@ public partial class DashboardTilesTests
     public async Task TheBudgetTile_RanksUnknownSpendBelowAKnownZero()
     {
         BudgetProgress Row(string name, decimal? spent) => new(
-            Guid.NewGuid(), Guid.NewGuid(), name, "#123456",
+            Guid.NewGuid(), name,
             new Money(100m, Usd), spent is null ? null : new Money(spent.Value, Usd), null, null, 0);
 
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
@@ -310,7 +315,7 @@ public partial class DashboardTilesTests
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
-                new BudgetProgress(Guid.NewGuid(), Guid.NewGuid(), null, null, new Money(100m, Usd), null, null, null, 0),
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0),
             }));
 
         var localizer = new Localizer();
@@ -320,7 +325,8 @@ public partial class DashboardTilesTests
 
         var row = tile.Rows.Single();
         row.SpentAmountText.Should().Be("Not known");
-        row.CategoryName.Should().Be("Unknown category");
+        row.CategoryName.Should().Be("Groceries",
+            "the budget carries its own label; \"Unknown category\" was what every row used to say");
         row.ProgressPercentage.Should().Be(0);
         row.IsExceeded.Should().BeFalse();
     }

@@ -13,7 +13,6 @@ using Pine.Core.Accounts;
 using Pine.Core.Rules;
 using Pine.Core.Ai;
 using Pine.Core.Configuration;
-using Pine.Core.Categories;
 
 namespace Pine.Application.Transactions.Commands;
 

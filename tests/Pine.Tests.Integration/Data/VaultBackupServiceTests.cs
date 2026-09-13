@@ -85,7 +85,7 @@ public class VaultBackupServiceTests : IDisposable
         // (TD-32), and again here for AddTransactionAttachments, which is now the head -- and this
         // line going red is the evidence that the newest migration really runs against a real
         // SQLCipher vault.
-        backup.SchemaVersionBefore.Should().Be("20260909210212_AddRowAuditColumns");
+        backup.SchemaVersionBefore.Should().Be("20260913030000_DropCategoriesTable");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

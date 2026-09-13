@@ -19,7 +19,6 @@
   "AddTransaction.TypeIncome": "Income",
   "AddTransaction.TypeTransfer": "Transfer",
   "BalanceWidget.EmptyState": "No accounts yet.",
-  "Budgets.Category.Unresolved": "Unknown category",
   "Budgets.Header.Subtitle": "Keep your spending in check",
   "Budgets.Header.Title": "Budgets",
   "Budgets.Progress.ExceededWarning": "You've exceeded your monthly limit for this category, reducing your real available balance.",

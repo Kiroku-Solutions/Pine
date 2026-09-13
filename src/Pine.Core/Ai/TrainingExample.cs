@@ -20,7 +20,9 @@ namespace Pine.Core.Ai;
 /// <para>
 /// Making the label a string means the type now matches the only data that exists. The alternative
 /// — making the ledger produce a <see cref="System.Guid"/> — needs a populated <c>Categories</c>
-/// table, and nothing in this application has ever inserted a row into one.
+/// table, and nothing in this application wrote to one beyond a single demo row the Diagnostics
+/// "Test Features" button created until <c>67af1f3</c>. Post-audit plan item 2.3 (TD-132) later
+/// deleted the table.
 /// </para>
 /// </remarks>
 public readonly record struct TrainingExample(string Text, decimal Amount, string Category);

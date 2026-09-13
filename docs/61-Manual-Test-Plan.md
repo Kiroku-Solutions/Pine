@@ -859,11 +859,13 @@ The defect this replaced showed a number that was not a quantity of anything.
 
 ### Known gaps — confirm, do not report
 
-- **The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
-  hardcoded to zero. The *formatting* of those figures is what §13.4 checks; the figures themselves
-  are not yet real.
-- **The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
-  identifier, not a name.
+- ~~**The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
+  hardcoded to zero.~~ Spend is measured from the ledger now. **What remains:** no budget can be
+  created from the screen (TD-99), so on a fresh vault the list is empty.
+- ~~**The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
+  identifier, not a name.~~ Fixed twice over: first by showing the category's name, then — since
+  plan item 2.3 (TD-132) — by making the category the budget's own label. There is no colour dot
+  beside it any more, deliberately.
 - **The difference shown before an account is selected** may differ slightly from the one shown after
   (TD-100). Only the second decides whether a save is allowed.
 

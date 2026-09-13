@@ -20,7 +20,7 @@ public class BudgetWindowTests
     private static readonly CurrencyCode Eur = new("EUR");
 
     private static Budget BudgetOf(BudgetPeriod period, DateTimeOffset? start = null, DateTimeOffset? end = null) =>
-        Budget.Create(Guid.NewGuid(), new Money(100m, Eur), period, start, end);
+        Budget.Create("Groceries", new Money(100m, Eur), period, start, end);
 
     private static readonly DateTimeOffset Wednesday20May2026 = new(2026, 5, 20, 15, 30, 0, TimeSpan.Zero);
 

@@ -16,7 +16,7 @@ public class CreateBudgetCommandTests
         // Arrange
         var repository = Substitute.For<IBudgetRepository>();
         var handler = new CreateBudgetCommandHandler(repository);
-        var command = new CreateBudgetCommand(Guid.NewGuid(), 500m, "USD", BudgetPeriod.Monthly);
+        var command = new CreateBudgetCommand("Groceries", 500m, "USD", BudgetPeriod.Monthly);
 
         // Act
         var result = await handler.Handle(command, CancellationToken.None);
@@ -26,7 +26,7 @@ public class CreateBudgetCommandTests
         await repository.Received(1).SaveAsync(Arg.Is<Budget>(b => 
             b.Limit.Amount == 500m && 
             b.Period == BudgetPeriod.Monthly &&
-            b.CategoryId == command.CategoryId
+            b.Category == command.Category
         ), Arg.Any<CancellationToken>());
     }
 }

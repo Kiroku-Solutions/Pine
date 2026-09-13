@@ -44,21 +44,23 @@ public class BudgetsPageProgressTests
     private static BudgetProgress Measured(string category, decimal limit, decimal spent) =>
         new(
             Guid.NewGuid(),
-            Guid.NewGuid(),
             category,
-            "#00AA00",
             new Money(limit, Eur),
             new Money(spent, Eur),
             new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
             0);
 
+    /// <summary>
+    /// A budget whose spend cannot be measured. Since TD-132 was decided (plan item 2.3) the only
+    /// way to reach this is a window that has no calendar anchor — a bi-weekly budget with no
+    /// stored dates. It used to be reachable by every budget in existence, because the category id
+    /// pointed at a table nothing wrote to; the category is a label now and is always present.
+    /// </summary>
     private static BudgetProgress Unmeasurable(decimal limit) =>
         new(
             Guid.NewGuid(),
-            Guid.NewGuid(),
-            CategoryName: null,
-            CategoryColorHex: null,
+            "Groceries",
             new Money(limit, Eur),
             Spent: null,
             PeriodStart: null,
@@ -74,7 +76,6 @@ public class BudgetsPageProgressTests
 
         var row = page.Budgets.Should().ContainSingle().Subject;
         row.CategoryName.Should().Be("Groceries", "the user's category, not four hex digits of its id");
-        row.CategoryColorHex.Should().Be("#00AA00");
         row.SpentAmount.Should().Be(120.25m);
         row.LimitAmount.Should().Be(500m);
         row.CurrencyCode.Should().Be("EUR");
@@ -130,8 +131,9 @@ public class BudgetsPageProgressTests
         row.SpentAmountText.Should().NotBe("0.00", "a zero here is a claim about the user's money");
         row.ProgressPercentage.Should().Be(0d);
         row.IsExceeded.Should().BeFalse("an unknown spend is not an exceeded one");
-        row.CategoryName.Should().Be(_localizer["Budgets.Category.Unresolved"],
-            "there is no name to show, and the old code invented one from the identifier");
+        row.CategoryName.Should().Be("Groceries",
+            "an unmeasurable window does not make the category unknown -- the budget carries its "
+            + "own label now, and 'Unknown category' was what every row on this page used to say");
     }
 
     [Fact]

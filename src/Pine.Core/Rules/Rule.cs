@@ -22,9 +22,10 @@ namespace Pine.Core.Rules;
 /// THE ROADMAP'S PREMISE FOR THIS ONE IS ALSO FALSE, AND THE DESIGN ACCOUNTS FOR IT. §10 Phase 3
 /// says "Rule engine, on top of the now-real <c>CategoryId</c> relationship". There is no such
 /// relationship: <c>TransactionSplit.Category</c> is a string, and iteration 29 rejected making it
-/// a foreign key IN WRITING because the <c>Categories</c> table has no production writer (TD-32,
+/// a foreign key IN WRITING because the <c>Categories</c> table had no production writer (TD-32,
 /// TD-132). So a rule's action is a category NAME, for exactly the reason §12.60 gave for the
-/// split: it is the model that has instances.
+/// split: it is the model that has instances. Plan item 2.3 later deleted that table outright, so
+/// there is no longer an id this could have pointed at even in principle.
 /// </para>
 /// <para>
 /// EVERY CONDITION MUST HOLD. `31-Rule-Engine` §5.2 lists <c>and</c>, <c>or</c> and <c>not</c> as

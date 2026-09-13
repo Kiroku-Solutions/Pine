@@ -9,8 +9,16 @@ using Pine.Core.Common.ValueObjects;
 
 namespace Pine.Application.Budgets.Commands;
 
+/// <summary>Creates a budget against a category label.</summary>
+/// <remarks>
+/// The first parameter was a <c>Guid CategoryId</c> into a table nothing in production had written
+/// to since <c>67af1f3</c> removed the Diagnostics "Test Features" button. Plan item
+/// 2.3 decided TD-132 in favour of the label, so a caller now passes the same kind of string the
+/// user types on the transaction form and the import wizard writes into a split. There is still no
+/// screen that sends this command; that is TD-99's half of the budgets story, not this one's.
+/// </remarks>
 public record CreateBudgetCommand(
-    Guid CategoryId,
+    string Category,
     decimal Amount,
     string CurrencyCode,
     BudgetPeriod Period,
@@ -28,8 +36,10 @@ public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, G
 
     public async Task<Guid> Handle(CreateBudgetCommand request, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         var limit = new Money(request.Amount, new CurrencyCode(request.CurrencyCode));
-        var budget = Budget.Create(request.CategoryId, limit, request.Period, request.StartDate, request.EndDate);
+        var budget = Budget.Create(request.Category, limit, request.Period, request.StartDate, request.EndDate);
         
         await _budgetRepository.SaveAsync(budget, cancellationToken);
         

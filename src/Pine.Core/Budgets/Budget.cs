@@ -7,7 +7,33 @@ namespace Pine.Core.Budgets;
 public class Budget
 {
     public Guid Id { get; private set; }
-    public Guid CategoryId { get; private set; }
+
+    /// <summary>The category this budget is measured against: the label itself (TD-132).</summary>
+    /// <remarks>
+    /// <para>
+    /// THIS WAS A <c>Guid CategoryId</c>, A FOREIGN KEY INTO A TABLE NOTHING IN PRODUCTION HAD WRITTEN
+    /// TO SINCE <c>67af1f3</c> (before it, one demo row from the Diagnostics "Test Features" button). TD-132
+    /// asked for the decision and post-audit plan item 2.3 took it: the `Category` aggregate is
+    /// gone and the label is the model. `10-Domain-Model` §7 had always said so — `Category` is
+    /// listed there as a VALUE OBJECT, "a hierarchical label", and §6 lists no `Category` aggregate
+    /// at all — so the class that existed in code was the thing that disagreed with the canonical
+    /// document, not this.
+    /// </para>
+    /// <para>
+    /// WHAT IT BUYS, CONCRETELY: a budget can now be compared with the ledger. Every other place a
+    /// category appears — <c>TransactionSplit.Category</c>, <c>Rule.Category</c>,
+    /// <c>Transaction.Category</c>, the categoriser's training set and its predictions — is already
+    /// a label, so this was the one endpoint speaking a different language, and
+    /// <c>GetBudgetProgressQuery</c> had to report "spend unknown" for every budget a user could
+    /// create because the id resolved to nothing.
+    /// </para>
+    /// <para>
+    /// It is compared TRIMMED AND ORDINALLY, case intact, the same rule
+    /// <c>CategorisationTrainingData</c> and <c>RuleEvaluator</c> use. Folding case would merge
+    /// categories a user chose to spell apart.
+    /// </para>
+    /// </remarks>
+    public string Category { get; private set; }
     public Money Limit { get; private set; }
     public BudgetPeriod Period { get; private set; }
     
@@ -17,12 +43,23 @@ public class Budget
     public DateTimeOffset? StartDate { get; private set; }
     public DateTimeOffset? EndDate { get; private set; }
 
-    private Budget() { Limit = null!; } // EF Core
+    private Budget() { Limit = null!; Category = null!; } // EF Core
 
-    private Budget(Guid id, Guid categoryId, Money limit, BudgetPeriod period, DateTimeOffset? startDate, DateTimeOffset? endDate)
+    private Budget(Guid id, string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate, DateTimeOffset? endDate)
     {
         Id = id;
-        CategoryId = categoryId;
+
+        // A budget against no category measures nothing: there is no set of splits it could be
+        // compared with, so the row would render as a limit with a permanently unknown spend. That
+        // was the old CategoryId's failure mode and it is refused here rather than reproduced.
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            throw new ArgumentException("A budget must name the category it is measured against.", nameof(category));
+        }
+
+        // Stored trimmed, because every comparison against it trims. Storing the untrimmed form and
+        // trimming at each use is the arrangement that eventually has one caller who forgets.
+        Category = category.Trim();
         Limit = limit ?? throw new ArgumentNullException(nameof(limit));
         Period = period;
         
@@ -36,9 +73,9 @@ public class Budget
         EndDate = endDate;
     }
 
-    public static Budget Create(Guid categoryId, Money limit, BudgetPeriod period, DateTimeOffset? startDate = null, DateTimeOffset? endDate = null)
+    public static Budget Create(string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate = null, DateTimeOffset? endDate = null)
     {
-        return new Budget(Guid.NewGuid(), categoryId, limit, period, startDate, endDate);
+        return new Budget(Guid.NewGuid(), category, limit, period, startDate, endDate);
     }
 
     /// <summary>

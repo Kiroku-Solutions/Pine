@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-12 · Extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-13 · Extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -121,6 +121,17 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   had spent, and named its category with a fragment of an internal identifier. Spend is now measured
   from your transactions within the budget's period, ignoring voided ones. Where Pine genuinely
   cannot match a budget to your spending it says so rather than showing you a zero.
+  **Correction (2026-09-13):** that last case was every budget. A budget pointed at a category record
+  that nothing in Pine had created since the Diagnostics "Test Features" button was removed, so each
+  one read "Unknown category" with an unknown spend.
+- **A category is the name you type, everywhere.** Budgets now use the same category name as your
+  transactions and rules, so a budget for "Groceries" is measured against the transactions you filed
+  under "Groceries". The separate category records behind the scenes are gone. A vault that had any
+  — the old "Test Features" button on the Diagnostics screen created one — keeps each budget's
+  category name when it upgrades, with stray spaces trimmed. The small colour dot beside a budget's
+  name is gone too: it came from those records, so a demo budget loses its green dot, and inventing a
+  colour you never chose would be worse than showing none. Pine still has no screen to rename or merge
+  categories, and still cannot create a budget from the budgets screen.
 - **The "Export Vault" button works.** It was connected to nothing at all. It now writes an
   encrypted backup and tells you where it went. The panel beside it also claimed the backup was
   *decrypted*; it never was, and the text has been corrected. "Lock Vault" in Settings was dead in
@@ -185,8 +196,10 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 ### Known limitations
 - There is no way to **edit** a transaction. Correcting one means voiding it and entering a
   replacement, which leaves two rows with no link between them (TD-68).
-- The **budgets screen computes nothing**: its progress bar is hard-coded to zero and a budget can
-  be exceeded without the screen saying so (TD-99).
+- ~~The **budgets screen computes nothing**: its progress bar is hard-coded to zero and a budget can
+  be exceeded without the screen saying so (TD-99).~~ Spend is measured now. **What remains:** there
+  is no way to create a budget from the screen, so it can only ever show budgets that already exist
+  (TD-99).
 - ~~The encrypted vault export has **no UI entry point and no restore path** (TD-56).~~ **Fixed:**
   the entry point shipped in iteration 37 and the restore path on 2026-09-10. Settings lists this
   vault's backups and restores the one you choose — refusing any file it cannot open with your
