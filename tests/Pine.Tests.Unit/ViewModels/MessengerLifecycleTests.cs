@@ -227,7 +227,7 @@ public class MessengerLifecycleTests
     public void Navigating_away_from_the_live_scanner_disposes_it()
     {
         var shell = CreateShell();
-        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), shell, _viewModels, new Localizer());
+        var scanner = new LiveScannerViewModel(Substitute.For<IAIProvider>(), Substitute.For<ICameraSource>(), shell, _viewModels, new Localizer());
 
         shell.NavigateTo(scanner);
         WeakReferenceMessenger.Default.IsRegistered<RetakeRequestedMessage>(scanner).Should().BeTrue();

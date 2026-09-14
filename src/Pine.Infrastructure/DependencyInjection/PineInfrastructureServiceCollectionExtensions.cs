@@ -167,6 +167,11 @@ public static class PineInfrastructureServiceCollectionExtensions
         {
             services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
             services.TryAddSingleton<IImageProcessor, OpenCvImageProcessor>();
+
+            // The live scanner's camera (TD-120). Beside the image processor for the same reason: its only
+            // consumer, LiveScannerViewModel, is refused by the view-model factory on a head without
+            // vision, so a head that cannot open a camera never has a screen asking for one.
+            services.TryAddSingleton<ICameraSource, OpenCvCameraSource>();
             return;
         }
 

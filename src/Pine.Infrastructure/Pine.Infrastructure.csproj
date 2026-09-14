@@ -4,6 +4,12 @@
     <ProjectReference Include="..\Pine.Core\Pine.Core.csproj" />
   </ItemGroup>
 
+  <!-- OpenCvCameraSource.Frame's pixel copy is tested against synthetic images, because no test may
+       turn a real camera on (TD-120). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pine.Tests.Unit" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="CsvHelper" />
     <PackageReference Include="ExcelDataReader" />

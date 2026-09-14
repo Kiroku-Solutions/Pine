@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using FluentAssertions;
 using NSubstitute;
 using Pine.Core.Ai;
+using Pine.Infrastructure.Ai.Vision;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
@@ -37,6 +38,7 @@ public partial class LiveScannerCameraListTests
 {
     private static LiveScannerViewModel Scanner() => new(
         Substitute.For<IAIProvider>(),
+        Substitute.For<ICameraSource>(),
         Substitute.For<IShellNavigator>(),
         Substitute.For<IViewModelFactory>(),
         new Localizer());
@@ -71,9 +73,10 @@ public partial class LiveScannerCameraListTests
     [Fact]
     public void TheScanner_UsesTheDefaultCamera()
     {
-        LiveScannerViewModel.DefaultCameraIndex.Should().Be(0, "0 is what OpenCV calls the system's default camera");
+        OpenCvCameraSource.DefaultCameraIndex.Should().Be(0, "0 is what OpenCV calls the system's default camera");
 
-        var source = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Pine.Ui.Avalonia", "ViewModels", "LiveScannerViewModel.cs"));
+        // The camera is opened behind the seam since TD-120, so that is where the openings are read.
+        var source = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Pine.Infrastructure", "Ai", "Vision", "OpenCvCameraSource.cs"));
 
         source.Should().NotContain("$\"Camera {", "a name built from an index is not a device name");
 
@@ -161,7 +164,7 @@ public partial class LiveScannerCameraListTests
         var localizer = new Localizer();
         localizer.SetLanguage("es");
         var scanner = new LiveScannerViewModel(
-            Substitute.For<IAIProvider>(), Substitute.For<IShellNavigator>(), Substitute.For<IViewModelFactory>(), localizer);
+            Substitute.For<IAIProvider>(), Substitute.For<ICameraSource>(), Substitute.For<IShellNavigator>(), Substitute.For<IViewModelFactory>(), localizer);
 
         scanner.StatusMessage.Should().Be(localizer["LiveScanner.Status.Idle"]).And.NotContain("Press Start");
 

@@ -491,6 +491,49 @@ public class ArchitectureTests
     }
 
     /// <summary>
+    /// TD-120. Nothing in the UI assembly depends on OpenCvSharp — not the view models, and not a
+    /// helper beside them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY THE WHOLE ASSEMBLY, WHEN THE RULE ABOVE IS SCOPED. That rule has to exempt the composition
+    /// root, whose job is to call <c>AddPineInfrastructure</c>. Nothing here has any business with a
+    /// native image library: the composition root registers <c>ICameraSource</c> through
+    /// Infrastructure's own extension method and never names the implementation. So this rule has no
+    /// exemption, and a helper outside <c>ViewModels/</c> — which is where <c>OpenCvAvaloniaBridge</c>
+    /// lived, in <c>Utils/</c> — fails it too.
+    /// </para>
+    /// <para>
+    /// The row this closes described the old rule's blind spot exactly: the architecture tests said no
+    /// view model named a <c>Pine.Infrastructure</c> type, and <c>VideoCapture</c>, <c>Mat</c> and
+    /// <c>Cv2</c> were in one anyway, because they are not Pine's types.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheUiAssembly_ShouldNot_DependOnOpenCv()
+    {
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+
+        // Anti-vacuity: the library is really in this process, so an absent dependency is a finding and
+        // not a name nobody could have matched.
+        typeof(Pine.Infrastructure.Ai.Vision.OpenCvCameraSource).Assembly.GetReferencedAssemblies()
+            .Should().Contain(name => name.Name == "OpenCvSharp", "the rule below must name a library that exists");
+
+        var result = Types
+            .InAssembly(uiAssembly)
+            .ShouldNot()
+            .HaveDependencyOn("OpenCvSharp")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "TD-120: the UI asks ICameraSource for frames; a native image library is Infrastructure's. Offending types: {0}",
+            string.Join(", ", result.FailingTypeNames ?? Array.Empty<string>()));
+
+        uiAssembly.GetReferencedAssemblies().Should().NotContain(name => name.Name == "OpenCvSharp",
+            "the compiler emits an assembly reference only for code that uses the library");
+    }
+
+    /// <summary>
     /// TD-28, the other half: the set of types in the UI assembly that touch
     /// <c>Pine.Infrastructure</c> at all is an explicit, enumerated allow-list.
     /// </summary>
