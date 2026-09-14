@@ -109,44 +109,62 @@ public class Budget
     /// rather than a plausible wrong one.
     /// </para>
     /// <para>
-    /// The window is computed in UTC and is half-open, matching the ledger's own
+    /// The window is the user's CALENDAR period, in <paramref name="zone"/>, and is half-open, matching the ledger's own
     /// ordering: <c>Transaction.DateUtc</c> is the instant the ledger sorts on, so a transaction at
     /// midnight on the first of the month belongs to that month and one at midnight on the first of
     /// the next belongs to the next.
     /// </para>
     /// </remarks>
+    /// <para>
+    /// IT WAS UTC, AND THAT WAS TD-149. Every path into the ledger stores a date-only entry as LOCAL
+    /// midnight, so a UTC month disagreed with the transactions near its edges: for an Ecuadorian user a
+    /// monthly budget measured October from 19:00 on 30 September. That was unreachable while no screen
+    /// could create a budget, and became the default the moment one could (post-audit plan item 3.0,
+    /// found by its independent review). Each edge is now local midnight at the offset in force AT THAT
+    /// EDGE — a month that crosses a daylight-saving change starts and ends at different offsets — the
+    /// rule <c>GetMonthlyCashFlowQueryHandler.CurrentLocalMonth</c> already applied to the dashboard.
+    /// </para>
+    /// </remarks>
     /// <param name="asOf">The instant "the current period" is relative to.</param>
+    /// <param name="zone">The user's time zone, which decides where a day, a week and a month begin.</param>
     /// <returns>The window, or <see langword="null"/> when this budget has no determinable one.</returns>
-    public (DateTimeOffset Start, DateTimeOffset End)? ResolveWindow(DateTimeOffset asOf)
+    public (DateTimeOffset Start, DateTimeOffset End)? ResolveWindow(DateTimeOffset asOf, TimeZoneInfo zone)
     {
+        ArgumentNullException.ThrowIfNull(zone);
+
         if (StartDate.HasValue && EndDate.HasValue)
         {
             return (StartDate.Value, EndDate.Value);
         }
 
-        var now = asOf.ToUniversalTime();
+        var local = TimeZoneInfo.ConvertTime(asOf, zone).DateTime;
+
+        DateTimeOffset Midnight(DateTime date)
+        {
+            var day = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Unspecified);
+            return new DateTimeOffset(day, zone.GetUtcOffset(day));
+        }
 
         switch (Period)
         {
             case BudgetPeriod.Monthly:
             {
-                var start = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-                return (start, start.AddMonths(1));
+                var first = new DateTime(local.Year, local.Month, 1);
+                return (Midnight(first), Midnight(first.AddMonths(1)));
             }
 
             case BudgetPeriod.Yearly:
             {
-                var start = new DateTimeOffset(now.Year, 1, 1, 0, 0, 0, TimeSpan.Zero);
-                return (start, start.AddYears(1));
+                var first = new DateTime(local.Year, 1, 1);
+                return (Midnight(first), Midnight(first.AddYears(1)));
             }
 
             case BudgetPeriod.Weekly:
             {
                 // ISO weeks start on Monday; DayOfWeek starts on Sunday, hence the rotation.
-                var sinceMonday = ((int)now.DayOfWeek + 6) % 7;
-                var midnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
-                var start = midnight.AddDays(-sinceMonday);
-                return (start, start.AddDays(7));
+                var sinceMonday = ((int)local.DayOfWeek + 6) % 7;
+                var monday = local.Date.AddDays(-sinceMonday);
+                return (Midnight(monday), Midnight(monday.AddDays(7)));
             }
 
             default:

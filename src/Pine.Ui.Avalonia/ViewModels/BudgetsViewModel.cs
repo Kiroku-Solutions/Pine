@@ -243,10 +243,11 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     /// True when the list loaded and holds nothing — the state every vault was in until this page could
     /// create a budget (TD-152). The page said nothing at all in that state.
     /// </summary>
-    public bool IsEmpty => !IsLoading && Budgets.Count == 0 && string.IsNullOrEmpty(ErrorMessage);
+    public bool IsEmpty => !IsLoading && !IsCreating && Budgets.Count == 0 && string.IsNullOrEmpty(ErrorMessage);
 
     /// <summary>Whether the new-budget form is open.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
     public partial bool IsCreating { get; set; }
 
     /// <summary>Whether a budget is being saved, which disables the form.</summary>
@@ -257,9 +258,15 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     [ObservableProperty]
     public partial string NewCategory { get; set; } = string.Empty;
 
-    /// <summary>The new budget's limit, in <see cref="NewCurrency"/>.</summary>
+    /// <summary>The new budget's limit, in <see cref="NewCurrency"/>; null while the box is empty.</summary>
+    /// <remarks>
+    /// NULLABLE ON PURPOSE (independent review of item 3.0). Bound as a plain <see cref="decimal"/>, clearing
+    /// the box pushed null into a property that cannot hold it, the binding kept the last number, and Save
+    /// sent a limit the screen was no longer showing. An empty box is now sent as zero, which the validator
+    /// refuses with a sentence.
+    /// </remarks>
     [ObservableProperty]
-    public partial decimal NewLimit { get; set; }
+    public partial decimal? NewLimit { get; set; }
 
     /// <summary>The currency the new budget is measured in.</summary>
     [ObservableProperty]
@@ -331,7 +338,41 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         _error = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text);
         _createMessage = new LocalizedMessageSlot(_localizer, text => CreateMessage = text ?? string.Empty);
         Budgets.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
+        _localizer.LanguageChanged += OnLanguageChanged;
     }
+
+    /// <summary>What the rows were built from, so a language change can build them again.</summary>
+    private IReadOnlyList<BudgetProgress> _lastProgress = Array.Empty<BudgetProgress>();
+
+    /// <summary>
+    /// Re-words the rows and the period picker when the language changes (independent review of item 3.0).
+    /// </summary>
+    /// <remarks>
+    /// Both were worded when built: a row's period and its "not known", and the picker's labels. The
+    /// dashboard's budgets tile already rebuilt its rows on a change; this page did not. The chosen period
+    /// is kept by value, since the options are rebuilt as new objects.
+    /// </remarks>
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        Budgets.Clear();
+        foreach (var row in _lastProgress)
+        {
+            Budgets.Add(BudgetProgressViewModel.From(row, _localizer));
+        }
+
+        if (PeriodOptions.Count > 0)
+        {
+            var chosen = NewPeriod?.Period;
+            PeriodOptions = PeriodChoices();
+            OnPropertyChanged(nameof(PeriodOptions));
+            NewPeriod = PeriodOptions.FirstOrDefault(o => o.Period == chosen) ?? PeriodOptions[0];
+        }
+    }
+
+    private List<BudgetPeriodOption> PeriodChoices() =>
+        new[] { BudgetPeriod.Monthly, BudgetPeriod.Weekly, BudgetPeriod.Yearly, BudgetPeriod.Custom }
+            .Select(period => new BudgetPeriodOption(period, _localizer[BudgetProgressViewModel.PeriodKey(period)]))
+            .ToList();
 
     private readonly LocalizedMessageSlot _createMessage;
 
@@ -353,7 +394,13 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         }
 
         CurrencyOptions.Clear();
-        foreach (var code in accounts.Select(a => a.Balance.Currency.Value).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        // Only codes the command will accept: an account can hold a non-ISO code read through
+        // CurrencyCode.FromStoredValue (TD-63), and offering it would refuse every save with no way forward.
+        foreach (var code in accounts
+                     .Select(a => a.Balance.Currency.Value)
+                     .Where(code => CurrencyCode.TryCreate(code, out _))
+                     .Distinct(StringComparer.Ordinal)
+                     .Order(StringComparer.Ordinal))
         {
             CurrencyOptions.Add(code);
         }
@@ -364,13 +411,11 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             return;
         }
 
-        PeriodOptions = new[] { BudgetPeriod.Monthly, BudgetPeriod.Weekly, BudgetPeriod.Yearly, BudgetPeriod.Custom }
-            .Select(period => new BudgetPeriodOption(period, _localizer[BudgetProgressViewModel.PeriodKey(period)]))
-            .ToList();
+        PeriodOptions = PeriodChoices();
         OnPropertyChanged(nameof(PeriodOptions));
 
         NewCategory = string.Empty;
-        NewLimit = 0m;
+        NewLimit = null;
         NewCurrency = CurrencyOptions[0];
         NewPeriod = PeriodOptions[0];
         NewStartDate = null;
@@ -417,22 +462,35 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
 
             await _mediator.Send(new CreateBudgetCommand(
                 NewCategory,
-                NewLimit,
+                NewLimit ?? 0m,
                 NewCurrency ?? string.Empty,
                 period,
                 custom ? NewStartDate?.Date is { } start ? new DateTimeOffset(start) : null : null,
                 custom ? NewLastDate?.Date is { } last ? new DateTimeOffset(last.AddDays(1)) : null : null));
 
-            IsCreating = false;
-            await LoadBudgetsAsync();
         }
         catch (Exception ex)
         {
             _createMessage.Set(UserFacingError.Report(_logger, ex, "budget-create", CreateFailed));
+            return;
         }
         finally
         {
             IsSaving = false;
+        }
+
+        // THE BUDGET IS SAVED FROM HERE ON, SO NOTHING BELOW MAY SAY OTHERWISE (independent review of item
+        // 3.0). The reload used to sit inside the try above: a failed reload was caught as a failed create,
+        // the screen said "Nothing was saved" about a budget that was, the list emptied, and a second attempt
+        // was refused as a duplicate. A reload failure is a load failure, reported where a load failure is.
+        IsCreating = false;
+        try
+        {
+            await LoadBudgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "budgets-reload-after-create", BudgetsUnavailable));
         }
     }
 
@@ -477,6 +535,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     /// </remarks>
     public void Dispose()
     {
+        _localizer.LanguageChanged -= OnLanguageChanged;
         _error.Dispose();
         _createMessage.Dispose();
         GC.SuppressFinalize(this);
@@ -501,6 +560,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         try
         {
             var progress = await _mediator.Send(new GetBudgetProgressQuery());
+            _lastProgress = progress;
 
             foreach (var row in progress)
             {

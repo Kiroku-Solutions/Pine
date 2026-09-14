@@ -127,4 +127,18 @@ public class CreateBudgetCommandValidatorTests
         (await KeysFor(new CreateBudgetCommand("Holiday", 1m, "USD", BudgetPeriod.Custom, June1, June1.AddDays(30))))
             .Should().BeEmpty();
     }
+
+    /// <summary>
+    /// Half a window is refused for a calendar period, which would silently ignore it (review finding m7).
+    /// </summary>
+    [Fact]
+    public async Task OneDateAlone_IsRefused_ForACalendarPeriod()
+    {
+        (await KeysFor(new CreateBudgetCommand("Groceries", 100m, "USD", BudgetPeriod.Monthly, May1, null)))
+            .Should().Equal("Validation.Budget.DatesIncomplete");
+        (await KeysFor(new CreateBudgetCommand("Groceries", 100m, "USD", BudgetPeriod.Weekly, null, June1)))
+            .Should().Equal("Validation.Budget.DatesIncomplete");
+        (await KeysFor(new CreateBudgetCommand("Groceries", 100m, "USD", BudgetPeriod.Monthly, May1, June1)))
+            .Should().BeEmpty("both dates make an explicit window, which ResolveWindow honours");
+    }
 }

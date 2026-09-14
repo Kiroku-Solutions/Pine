@@ -9,7 +9,7 @@
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 | Status | Non-normative — manual test procedures |
-| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, and 13E by item 2.5, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
+| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, 13E by item 2.5 and 13F by item 3.0, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.
@@ -860,8 +860,9 @@ The defect this replaced showed a number that was not a quantity of anything.
 ### Known gaps — confirm, do not report
 
 - ~~**The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
-  hardcoded to zero.~~ Spend is measured from the ledger now. **What remains:** no budget can be
-  created from the screen (TD-99), so on a fresh vault the list is empty.
+  hardcoded to zero.~~ Spend is measured from the ledger now. ~~**What remains:** no budget can be
+  created from the screen (TD-99), so on a fresh vault the list is empty.~~ A budget can be created since
+  plan item 3.0 (TD-152) — §13F. It still cannot be edited or deleted.
 - ~~**The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
   identifier, not a name.~~ Fixed twice over: first by showing the category's name, then — since
   plan item 2.3 (TD-132) — by making the category the budget's own label. There is no colour dot
@@ -984,8 +985,9 @@ so the sections after it keep the numbers other documents cite.)
 2. Near the end of a month, after 19:00 local time, add an expense dated today.
 3. **Expected:** it counts in *this* month's "Out". Before the fix, the tile had already moved on to
    UTC's next month and showed an almost empty one.
-4. **Known and registered, not a failure of this row:** the *budgets* screen still measures the UTC month
-   (TD-149), so for a few hours at a month boundary the two can disagree.
+4. ~~**Known and registered, not a failure of this row:** the *budgets* screen still measures the UTC month
+   (TD-149), so for a few hours at a month boundary the two can disagree.~~ Since plan item 3.0 the budgets
+   screen measures the same local month; after 19:00 on the last day of a month the two must agree (§13F.3).
 
 ### 13A.4 An import updates the tiles
 
@@ -1110,6 +1112,54 @@ Ecuador's — a sentence in English does not carry Spanish month names.
   the Settings page is visible when the language changes, which is why only it re-renders.
 - **The import wizard's own mapping text, the confidence hints and a few labels are still English**
   (TD-150).
+
+## 13F. Creating a budget — post-audit plan item 3.0
+
+**Read this before running it.** The form, the validator and the window are tested, including a rendered
+view in a headless window. What no test does is type into the real controls: the date pickers, the limit
+box being cleared, and a screen reader reading the fields.
+
+### 13F.1 The first budget
+
+1. On a vault with no budgets, open **Budgets**. **Expected:** a sentence saying you have no budgets yet,
+   and a **New budget** button. Before this item: an empty page and no way to add one.
+2. On a vault with **no accounts**, press **New budget**. **Expected:** the form does not open; a sentence
+   says to create an account first.
+3. With a USD account, press **New budget**. **Expected:** Category, Limit, Currency (only your accounts'
+   currencies, each once), Period (Monthly, Weekly, Yearly, Custom dates — **no "every two weeks"**). No
+   date pickers until you choose Custom dates.
+4. Enter *Groceries*, 200, Monthly, **Create budget**. **Expected:** the form closes and a *Groceries —
+   Monthly* row appears, measuring this month's Groceries spending.
+5. Try the same again. **Expected:** refused — there is already a budget for 'Groceries' in USD over that
+   period — and the form stays open with what you typed.
+
+### 13F.2 Refusals, and the limit box
+
+1. Leave Category empty and press Create. **Expected:** a sentence asking you to name the category.
+2. Type a limit, then **clear the box** and press Create. **Expected:** refused as not greater than zero —
+   not saved with the number you deleted.
+3. Choose Custom dates with only a start date. **Expected:** a sentence asking for both dates.
+4. Switch the language to Español with a refusal showing. **Expected:** the sentence, the row's period and
+   the period list all change language, and your chosen period stays chosen.
+
+### 13F.3 The month is yours — TD-149
+
+1. On a machine in a time zone west of Greenwich (Ecuador, UTC−5), on the **last day of a month after
+   19:00**, add an expense in a category with a monthly budget.
+2. **Expected:** it counts in **this** month's budget, and the dashboard's "This month" agrees. Before this
+   item the budget had already moved to UTC's next month.
+3. Create a **Custom dates** budget for this month, first to last day. **Expected:** it shows the same spend
+   as the monthly budget for the same category.
+
+### 13F.4 Accessibility
+
+With a screen reader, tab through the form. **Expected:** each field announces its label, and a refusal is
+announced when it appears.
+
+### Known gaps for §13F — confirm, do not report
+
+- **A budget cannot be edited or deleted** from the screen.
+- **"Every two weeks" budgets created elsewhere still show "Not known"** without explicit dates.
 
 ## 14. What a failure means
 

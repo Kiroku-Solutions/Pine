@@ -103,9 +103,12 @@ public class BudgetsViewRenderingTests
         }
         finally
         {
-            // Hidden, not closed: closing detaches the page's buttons and combo boxes, whose theme transitions
-            // subscribe to a render clock the headless session's thread does not own, so the close throws
-            // "a different thread owns it" — which, from a finally block, replaces any assertion failure above.
+            // Hidden, not closed. This page's controls have theme transitions, and a transition subscribes to a
+            // render clock owned by a thread other than the headless session's, so ANY change that re-applies
+            // one throws "a different thread owns it" — closing the window, and also closing and reopening the
+            // form (independent review of item 3.0). From a finally block that would replace a real failure
+            // above. It is a harness limitation: a rendered test here cannot exercise save-then-close or reopen,
+            // which the view-model tests cover instead. Hidden windows live until the process ends.
             window.Hide();
         }
     });
@@ -141,9 +144,12 @@ public class BudgetsViewRenderingTests
         }
         finally
         {
-            // Hidden, not closed: closing detaches the page's buttons and combo boxes, whose theme transitions
-            // subscribe to a render clock the headless session's thread does not own, so the close throws
-            // "a different thread owns it" — which, from a finally block, replaces any assertion failure above.
+            // Hidden, not closed. This page's controls have theme transitions, and a transition subscribes to a
+            // render clock owned by a thread other than the headless session's, so ANY change that re-applies
+            // one throws "a different thread owns it" — closing the window, and also closing and reopening the
+            // form (independent review of item 3.0). From a finally block that would replace a real failure
+            // above. It is a harness limitation: a rendered test here cannot exercise save-then-close or reopen,
+            // which the view-model tests cover instead. Hidden windows live until the process ends.
             window.Hide();
         }
     });

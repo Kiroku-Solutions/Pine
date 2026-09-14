@@ -128,6 +128,18 @@ public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudge
 
         var hasBothDates = request.StartDate.HasValue && request.EndDate.HasValue;
 
+        // Half a window is ignored by Budget.ResolveWindow, which falls back to the calendar period: a
+        // monthly budget sent with only a start date would silently not start then (independent review
+        // of item 3.0). Custom and bi-weekly report their own, more specific refusal below.
+        if (request.StartDate.HasValue != request.EndDate.HasValue
+            && request.Period is not (BudgetPeriod.Custom or BudgetPeriod.BiWeekly))
+        {
+            errors.Add(new ValidationError(
+                nameof(CreateBudgetCommand.StartDate),
+                "A budget's dates are both given or both left out; one alone would be ignored.",
+                ValidationText.BudgetDatesIncomplete()));
+        }
+
         if (request.Period == BudgetPeriod.Custom && !hasBothDates)
         {
             errors.Add(new ValidationError(

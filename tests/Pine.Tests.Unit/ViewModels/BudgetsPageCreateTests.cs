@@ -247,4 +247,162 @@ public class BudgetsPageCreateTests
             _localizer[BudgetProgressViewModel.PeriodKey(period)].Should().NotStartWith("!").And.NotStartWith("Budgets.");
         }
     }
+
+    // ------------------------------------------------------------------ independent review of item 3.0
+
+    /// <summary>
+    /// A budget that was saved is never reported as not saved (review finding M1).
+    /// </summary>
+    /// <remarks>
+    /// The reload after a create sat inside the create's try, so a failing reload read "Nothing was saved"
+    /// about a saved budget, emptied the list, and a second attempt was refused as a duplicate.
+    /// </remarks>
+    [Fact]
+    public async Task ASavedBudgetWhoseReloadFails_IsReportedAsALoadFailure_NotAsUnsaved()
+    {
+        WithAccounts("USD");
+        using var page = Page();
+        await page.BeginCreateCommand.ExecuteAsync(null);
+        page.NewCategory = "Groceries";
+        page.NewLimit = 10m;
+        _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("the vault locked between the write and the read"));
+
+        await page.SaveBudgetCommand.ExecuteAsync(null);
+
+        _sent.Should().ContainSingle();
+        page.CreateMessage.Should().BeEmpty("the budget WAS created");
+        page.ErrorMessage.Should().Be(_localizer["Budgets.Failure.Load"]);
+        page.IsCreating.Should().BeFalse();
+        page.IsEmpty.Should().BeFalse("a failed load is not an empty list");
+    }
+
+    /// <summary>The custom dates are local midnights, not UTC ones (review finding m1).</summary>
+    [Fact]
+    public async Task ACustomBudgetsDates_AreLocalMidnight_AtTheOffsetInForceOnThatDay()
+    {
+        WithAccounts("USD");
+        using var page = Page();
+        await page.BeginCreateCommand.ExecuteAsync(null);
+        page.NewCategory = "Holiday";
+        page.NewLimit = 100m;
+        page.NewPeriod = page.PeriodOptions.Single(o => o.Period == BudgetPeriod.Custom);
+        page.NewStartDate = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+        page.NewLastDate = new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);
+
+        await page.SaveBudgetCommand.ExecuteAsync(null);
+
+        var sent = _sent.Should().ContainSingle().Subject;
+        sent.StartDate!.Value.Offset.Should().Be(TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 3, 1)));
+        sent.EndDate!.Value.Offset.Should().Be(TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 8, 1)));
+    }
+
+    /// <summary>
+    /// After a load that found nothing, the page is told it is empty (review finding m2).
+    /// </summary>
+    /// <remarks>
+    /// On the real page the view binds before the load finishes, so it only learns the page is empty from a
+    /// notification raised when loading ends. The last notification must therefore read true.
+    /// </remarks>
+    [Fact]
+    public async Task WhenALoadFindsNothing_TheLastEmptyNotification_SaysEmpty()
+    {
+        using var page = Page();
+        var observed = new List<bool>();
+        page.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(BudgetsViewModel.IsEmpty))
+            {
+                observed.Add(page.IsEmpty);
+            }
+        };
+
+        await page.InitializeAsync(CancellationToken.None);
+
+        observed.Should().NotBeEmpty().And.EndWith(true);
+    }
+
+    /// <summary>An emptied limit box sends no stale number (review finding m4).</summary>
+    [Fact]
+    public async Task AnEmptyLimit_IsSentAsZero_SoTheValidatorRefusesIt()
+    {
+        WithAccounts("USD");
+        using var page = Page();
+        await page.BeginCreateCommand.ExecuteAsync(null);
+        page.NewCategory = "Groceries";
+        page.NewLimit = 12.5m;
+        page.NewLimit = null;
+
+        await page.SaveBudgetCommand.ExecuteAsync(null);
+
+        _sent.Should().ContainSingle().Which.Amount.Should().Be(0m);
+    }
+
+    /// <summary>A language change re-words the rows and the picker, keeping the choice (review finding m6).</summary>
+    [Fact]
+    public async Task ALanguageChange_ReWordsRowsAndPeriods_AndKeepsTheChosenPeriod()
+    {
+        WithAccounts("USD");
+        _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
+            {
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(10m, new CurrencyCode("USD")), null, null, null, 0, BudgetPeriod.Weekly),
+            }));
+        using var page = Page();
+        await page.InitializeAsync(CancellationToken.None);
+        await page.BeginCreateCommand.ExecuteAsync(null);
+        page.NewPeriod = page.PeriodOptions.Single(o => o.Period == BudgetPeriod.Yearly);
+
+        _localizer.SetLanguage("es");
+
+        page.Budgets.Should().ContainSingle().Which.PeriodText.Should().Be("Semanal");
+        page.Budgets[0].SpentAmountText.Should().Be("Desconocido");
+        page.PeriodOptions.Select(o => o.Label).Should().Equal("Mensual", "Semanal", "Anual", "Fechas personalizadas");
+        page.NewPeriod!.Period.Should().Be(BudgetPeriod.Yearly);
+    }
+
+    /// <summary>A disposed page stops listening to the process-lifetime localizer.</summary>
+    [Fact]
+    public void ADisposedPage_StopsListeningToTheLanguage()
+    {
+        var page = Page();
+        page.Dispose();
+        var notified = false;
+        page.PropertyChanged += (_, _) => notified = true;
+
+        _localizer.SetLanguage("es");
+
+        notified.Should().BeFalse();
+    }
+
+    /// <summary>A currency the command would refuse is never offered (review finding m8).</summary>
+    [Fact]
+    public async Task ACurrencyTheCommandWouldRefuse_IsNotOffered()
+    {
+        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Account>>(new[]
+            {
+                Account.Create("Legacy", AccountType.Bank, new Money(0m, CurrencyCode.FromStoredValue("ZZZ")), TimeProvider.System),
+                Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System),
+            }));
+        using var page = Page();
+
+        await page.BeginCreateCommand.ExecuteAsync(null);
+
+        page.CurrencyOptions.Should().Equal("USD");
+    }
+
+    /// <summary>The "no budgets yet" sentence does not sit under an open form (review finding m9).</summary>
+    [Fact]
+    public async Task TheEmptySentence_IsHidden_WhileTheFormIsOpen()
+    {
+        WithAccounts("USD");
+        using var page = Page();
+        await page.InitializeAsync(CancellationToken.None);
+        page.IsEmpty.Should().BeTrue();
+
+        await page.BeginCreateCommand.ExecuteAsync(null);
+
+        page.IsEmpty.Should().BeFalse();
+    }
 }

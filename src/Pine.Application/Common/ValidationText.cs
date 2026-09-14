@@ -131,6 +131,9 @@ public static class ValidationText
     /// <summary>A fortnightly budget with no dates, whose window cannot be known.</summary>
     public static UserFacingMessage BudgetBiWeeklyNeedsDates() => new("Validation.Budget.BiWeeklyNeedsDates");
 
+    /// <summary>A budget given one date without the other, which its window would ignore.</summary>
+    public static UserFacingMessage BudgetDatesIncomplete() => new("Validation.Budget.DatesIncomplete");
+
     /// <summary>A budget whose start is not before its end.</summary>
     public static UserFacingMessage BudgetDatesOutOfOrder() => new("Validation.Budget.DatesOutOfOrder");
 

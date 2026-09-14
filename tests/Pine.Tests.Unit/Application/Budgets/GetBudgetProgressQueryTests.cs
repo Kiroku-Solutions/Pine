@@ -422,4 +422,33 @@ public class GetBudgetProgressQueryTests
         progress.Should().BeEmpty();
         await _transactions.DidNotReceive().GetAllAsync(Arg.Any<CancellationToken>());
     }
+
+    /// <summary>
+    /// The query measures the USER'S month, through the clock's time zone (TD-149, post-audit plan item 3.0).
+    /// </summary>
+    /// <remarks>
+    /// The case the independent review of item 3.0 reproduced: at 22:00 on 30 September in Ecuador a monthly
+    /// budget measured October, because the window was built in UTC, so that evening's dinner counted as
+    /// October and the rest of September vanished. Every other test here runs on a UTC clock, which is why
+    /// none of them could see it.
+    /// </remarks>
+    [Fact]
+    public async Task AMonthlyBudget_IsMeasuredOverTheMonthWhereTheUserIs()
+    {
+        var ecuador = TimeZoneInfo.CreateCustomTimeZone("Test/Ecuador", TimeSpan.FromHours(-5), "Ecuador", "Ecuador");
+        var eveningOf30September = new DateTimeOffset(2026, 9, 30, 22, 0, 0, TimeSpan.FromHours(-5));
+        var clock = new FakeTimeProvider(eveningOf30September);
+        clock.SetLocalTimeZone(ecuador);
+
+        GivenBudgets(MonthlyBudgetOf("Dinner", 500m));
+        GivenLedger(
+            Expense(40m, "Dinner", new DateTimeOffset(2026, 9, 30, 20, 0, 0, TimeSpan.FromHours(-5))),
+            Expense(7m, "Dinner", new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.FromHours(-5))));
+
+        var progress = await new GetBudgetProgressQueryHandler(_budgets, _transactions, clock)
+            .Handle(new GetBudgetProgressQuery(), CancellationToken.None);
+
+        progress[0].PeriodStart.Should().Be(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.FromHours(-5)));
+        progress[0].Spent!.Amount.Should().Be(47m, "both dinners were in September where they were eaten");
+    }
 }

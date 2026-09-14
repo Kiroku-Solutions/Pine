@@ -31,6 +31,7 @@
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
                        IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             <TextBlock Text="{Binding CreateMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
                        IsVisible="{Binding CreateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         </StackPanel>
 
@@ -43,23 +44,27 @@
 
                 <StackPanel Spacing="5">
                     <TextBlock Text="{loc:Tr Budgets.Create.CategoryLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                    <TextBox Text="{Binding NewCategory}" PlaceholderText="{loc:Tr Budgets.Create.CategoryPlaceholder}" IsEnabled="{Binding !IsSaving}"/>
+                    <TextBox Text="{Binding NewCategory}" PlaceholderText="{loc:Tr Budgets.Create.CategoryPlaceholder}" IsEnabled="{Binding !IsSaving}"
+                             AutomationProperties.Name="{loc:Tr Budgets.Create.CategoryLabel}"/>
                 </StackPanel>
 
                 <Grid ColumnDefinitions="*,12,Auto">
                     <StackPanel Grid.Column="0" Spacing="5">
                         <TextBlock Text="{loc:Tr Budgets.Create.LimitLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                        <NumericUpDown Value="{Binding NewLimit}" Minimum="0" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"/>
+                        <NumericUpDown Value="{Binding NewLimit}" Minimum="0" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                       AutomationProperties.Name="{loc:Tr Budgets.Create.LimitLabel}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Spacing="5">
                         <TextBlock Text="{loc:Tr Budgets.Create.CurrencyLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                        <ComboBox ItemsSource="{Binding CurrencyOptions}" SelectedItem="{Binding NewCurrency}" MinWidth="100" IsEnabled="{Binding !IsSaving}"/>
+                        <ComboBox ItemsSource="{Binding CurrencyOptions}" SelectedItem="{Binding NewCurrency}" MinWidth="100" IsEnabled="{Binding !IsSaving}"
+                                  AutomationProperties.Name="{loc:Tr Budgets.Create.CurrencyLabel}"/>
                     </StackPanel>
                 </Grid>
 
                 <StackPanel Spacing="5">
                     <TextBlock Text="{loc:Tr Budgets.Create.PeriodLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                    <ComboBox ItemsSource="{Binding PeriodOptions}" SelectedItem="{Binding NewPeriod}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}">
+                    <ComboBox ItemsSource="{Binding PeriodOptions}" SelectedItem="{Binding NewPeriod}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                              AutomationProperties.Name="{loc:Tr Budgets.Create.PeriodLabel}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:BudgetPeriodOption">
                                 <TextBlock Text="{Binding Label}"/>
@@ -72,11 +77,13 @@
                 <StackPanel Spacing="12" IsVisible="{Binding NeedsDates}">
                     <StackPanel Spacing="5">
                         <TextBlock Text="{loc:Tr Budgets.Create.StartLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                        <DatePicker SelectedDate="{Binding NewStartDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"/>
+                        <DatePicker SelectedDate="{Binding NewStartDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                    AutomationProperties.Name="{loc:Tr Budgets.Create.StartLabel}"/>
                     </StackPanel>
                     <StackPanel Spacing="5">
                         <TextBlock Text="{loc:Tr Budgets.Create.LastLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                        <DatePicker SelectedDate="{Binding NewLastDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"/>
+                        <DatePicker SelectedDate="{Binding NewLastDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                    AutomationProperties.Name="{loc:Tr Budgets.Create.LastLabel}"/>
                     </StackPanel>
                 </StackPanel>
 

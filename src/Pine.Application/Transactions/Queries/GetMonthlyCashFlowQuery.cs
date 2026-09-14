@@ -46,11 +46,11 @@ public sealed record GetMonthlyCashFlowQuery() : IRequest<MonthlyCashFlow>;
 /// what it can measure, so they are one tile now, and this is what it measures.
 /// </para>
 /// <para>
-/// THE SAME RULES AS THE BUDGETS SCREEN, EXCEPT THE ONE IT GETS WRONG. Voided transactions do not
+/// THE SAME RULES AS THE BUDGETS SCREEN. Voided transactions do not
 /// count, for the same reason they do not count towards a balance. Transfers are money moving between
 /// the user's own accounts and are neither earned nor spent. The month is the user's LOCAL calendar
-/// month (see <see cref="CurrentLocalMonth"/>) -- which is where this parts company with
-/// <c>Budget.ResolveWindow</c>, whose UTC month is a defect of its own. And amounts in different currencies are never added
+/// month (see <see cref="CurrentLocalMonth"/>) -- which <c>Budget.ResolveWindow</c> also measures since
+/// TD-149 was closed; it used a UTC month until then. And amounts in different currencies are never added
 /// -- Pine has no exchange-rate source, so each currency gets its own row, the same refusal the
 /// dashboard's balance summary makes.
 /// </para>

@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-14 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-09-14 — Stage 3 item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -1572,10 +1572,103 @@ Only after Stages 0–2. Each of these is a subsystem, not a fix.
 
 | # | Work | Depends on | State |
 |---|---|---|---|
+| 3.0 | ✅ **Done** (2026-09-14) — **A budget can be created** (added ahead of 3.1: a screen that could not do what it exists for) | TD-152 (closed), TD-149 (closed) | Found by item 2.5's sender guard. The independent review found the form's default made TD-149's UTC month visible, so it was closed here too. See §6.1 |
 | 3.1 | **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
 | 3.2 | Rule engine, second half | TD-142 (retroactive application, with a preview), TD-143 (multi-condition UI) | The engine already evaluates up to eight conditions; the form writes one |
 | 3.3 | Attachments: the manual path | TD-141 | FR-TXN-02 asks for attaching a document to a transaction by hand; only the scanner path exists |
 | 3.4 | Notifications, forecasting, investments | — | Specified, unbuilt, and unblocked by nothing. Schedule deliberately or narrow the documents that promise them |
+
+### 6.1 Item 3.0, as built (2026-09-14, iteration 49)
+
+**TD-152 went ahead of 3.1 for the reason §9 gave: a screen that cannot do what it exists for.** The
+budgets page measured spend against budgets, and nothing in the product could create one —
+`CreateBudgetCommand` had no sender, which item 2.5's `EveryRequestHasASenderTests` found. On every real
+vault the page was an empty list with no sentence explaining it.
+
+**What was built.**
+
+- **A "New budget" form on the budgets page**: category (the same free label a transaction's split
+  carries — TD-132 made the label the model), limit, currency, period, and two dates when the period is
+  custom.
+  - **The currencies offered are those of the user's accounts**, and only codes the command accepts. A
+    budget is measured only against splits in its own currency, so a budget in a currency no account
+    holds could only ever report zero — a figure that looks measured and is not. With no accounts the
+    form says so instead of opening.
+  - **"Every two weeks" is not offered.** A fortnight has no calendar anchor, so a dateless bi-weekly
+    budget can never resolve its window and would say "not known" for ever; one with dates is what
+    "custom dates" already creates.
+  - **The last day picked is inside the budget.** The model's window is half-open, so the page sends
+    local midnight of the day *after* the last day. Sending the picked day would have silently dropped
+    every custom budget's last day.
+- **`CreateBudgetCommandValidator`**, which the command never had. Category required; limit greater than
+  zero and within its currency's decimal places; ISO currency; custom and bi-weekly budgets need both
+  dates, in order; a calendar budget may not carry one date alone; and no duplicate (category trimmed and
+  case intact, currency, period, dates). Before, a blank category reached `Budget.Create`'s English
+  `ArgumentException` inside an open database transaction.
+- **Each row names its period**, and the over-limit warning no longer says "monthly" whatever the period.
+- **The page shows its empty state and its load error**, both of which were silent.
+- The sender guard's ratchet fired exactly as designed: `CreateBudgetCommand` came off its allow-list.
+
+**The independent review found two major and ten minor problems, and two of its mutations survived the
+suite the first commit claimed had killed twenty of twenty.** Every finding was reproduced by the review
+before it was reported; the fixes are in the second commit.
+
+- **MAJOR — the screen said "Nothing was saved" about a budget that was.** The reload after a create sat
+  inside the create's `try`, so a failed reload was reported as a failed create; the list emptied, and a
+  second attempt was refused as a duplicate. A reload failure is now reported as a load failure, after
+  the form has closed.
+- **MAJOR — the form's default made TD-149 visible, so TD-149 is closed here.** `Budget.ResolveWindow`
+  built monthly, weekly and yearly windows in UTC. That was unreachable while no budget could be created,
+  and became the default the moment one could: at 22:00 on 30 September an Ecuadorian's monthly budget
+  measured October, so that evening's dinner counted as October and the rest of September vanished — and a
+  *custom* budget over the same September, which uses local midnight, showed a different total on the same
+  page. The window is now the user's calendar period, each edge at the offset in force at that edge (a
+  month across a daylight-saving change starts at +01:00 and ends at +02:00), the rule
+  `GetMonthlyCashFlowQueryHandler.CurrentLocalMonth` already applied. `ResolveWindow` takes the zone, so a
+  caller cannot fall back to UTC by omission. The test that had pinned the defect — `TheWindowIsComputedInUtc`
+  — is replaced by ones in Ecuador, Madrid across a DST change, and Tokyo at New Year, and the query is
+  tested on a clock whose zone is not UTC, which no test had been.
+- **MINOR, and the two survivors.** Nothing tested that the page's custom dates are *local* midnight (the
+  test compared the clock reading, not the offset; building them at UTC passed everything); nothing
+  tested that the page announces it is empty after a load that ends with nothing (removing that
+  notification passed everything). Both are tested now, and a custom budget is measured end to end
+  through the real query with transactions at 23:30 the evening before, 00:30 on the first day, 23:30 on
+  the last and 00:30 the morning after — only the middle two count.
+- **MINOR** — clearing the limit box silently kept the last number (bound as a non-nullable `decimal`;
+  now nullable and sent as zero, which the validator refuses); no accessible names on the new inputs and no
+  live region on the refusal (added, matching `RulesView` and `ScanReceiptView`); a language switch left
+  rows and the period picker in the old language (re-worded, the choice kept); a calendar budget sent with
+  one date was accepted and the date silently ignored (refused); an account in a stored non-ISO code offered
+  a currency every save would refuse (filtered); the empty sentence sat under an open form (hidden); the
+  Spanish bi-weekly sentence said *quincena*, which in Latin American usage is half a month, not fourteen
+  days (reworded); the form's title and its button both read "New budget" (the title is now "Budget
+  details").
+- **MINOR — the rendering tests' comment misdiagnosed a harness limit.** The windows are hidden rather than
+  closed, and the comment blamed closing; the review showed that *any* change that re-applies a theme
+  transition throws, because the render clock belongs to a thread other than the headless session's. So a
+  rendered test here cannot exercise save-then-close or reopening the form; the view-model tests cover
+  those. The full unit suite passed twice in a row with the hidden windows, so they do not leak into other
+  tests.
+
+**Falsified.** Twenty mutations on the first commit, all killed — and the review's two that were not.
+Sixteen on the second, including those two: sixteen killed. The first run of the second set missed one —
+passing UTC from the query instead of the clock's zone survived, because every query test ran on a UTC
+clock — which is what the Ecuador query test was added for.
+
+**Measured totals:** unit 1291 → **1342**; integration 252 → **256**; coverage gate green (overall 75%,
+`Pine.Ui.Avalonia` 49% → 51%); Windows, macOS and CLI heads build.
+
+**What this does not close, recorded rather than fixed.**
+
+- **Creating a budget broadcasts no `DataChangedMessage`.** It is the only write path that does not. No
+  screen goes stale today — the shell rebuilds a page on navigation and only one is alive — and the page
+  receiving its own broadcast would reload twice concurrently. Worth doing when a second live listener
+  exists.
+- **A monthly budget with explicit dates and a custom budget with the same dates are the same window and
+  are not refused as duplicates**, because the period differs. The page never sends the first shape.
+- **No budget can be edited or deleted** from the screen. Nothing sends an update or delete command because
+  none exists; that is the next half of the budgets story, not this one.
+- **Nothing here has been drawn on a real screen**; `61-Manual-Test-Plan` §13F.
 
 ## 7. Stage 4 — The documents
 
@@ -1632,3 +1725,7 @@ this project does not have. Two rows TD-148's guard registered belong to Stage 3
 than Stage 2's — TD-152 (no screen creates a budget) and TD-151 (import profiles are never saved) — and
 TD-152, being a screen that cannot do what it exists for, is the first candidate to go ahead of 3.1.
 **The next item is Stage 3.**
+
+~~The next item is Stage 3.~~ Item 3.0 done 2026-09-14 (§6.1): **a budget can be created**, and budgets
+measure the user's own month (TD-149). What the budgets page still cannot do is edit or delete one. **The
+next item is 3.1, sync** — starting, as its row says, with TD-144, TD-145 and TD-146, not the transport.

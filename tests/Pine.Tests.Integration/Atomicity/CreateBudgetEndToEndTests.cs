@@ -28,7 +28,7 @@ public class CreateBudgetEndToEndTests
     {
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", 1000m, "USD");
-        var thisMonth = DateTimeOffset.UtcNow;
+        var thisMonth = DateTimeOffset.Now;
 
         var budgetId = await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, "USD", BudgetPeriod.Monthly));
         await host.Mediator.Send(new AddTransactionCommand(account, thisMonth, "Grocer", -75.50m, "USD", "weekly shop", "Groceries"));
@@ -68,5 +68,35 @@ public class CreateBudgetEndToEndTests
         var thrown = await act.Should().ThrowAsync<RequestValidationException>();
         thrown.Which.Errors.Select(e => e.UserFacingMessage.Key).Should().Equal("Validation.Budget.CategoryRequired");
         (await host.QueryAsync(c => c.Budgets.AsNoTracking().CountAsync())).Should().Be(0);
+    }
+
+    /// <summary>
+    /// A custom budget includes its first and last day from local midnight to local midnight, measured by the
+    /// real query (review finding m1: no test ran a custom budget through <see cref="GetBudgetProgressQuery"/>).
+    /// </summary>
+    [Fact]
+    public async Task ACustomBudget_CountsItsFirstAndLastLocalDay_AndNothingOutside()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+        var account = await host.SeedAccountAsync("Current", 1000m, "USD");
+        var zone = TimeZoneInfo.Local;
+
+        DateTimeOffset Local(int month, int day, int hour, int minute)
+        {
+            var clock = new DateTime(2026, month, day, hour, minute, 0, DateTimeKind.Unspecified);
+            return new DateTimeOffset(clock, zone.GetUtcOffset(clock));
+        }
+
+        // Exactly what the page sends for "1 July to 31 July": local midnight of the 1st, and of the day after the 31st.
+        await host.Mediator.Send(new CreateBudgetCommand("Holiday", 500m, "USD", BudgetPeriod.Custom, Local(7, 1, 0, 0), Local(8, 1, 0, 0)));
+
+        await host.Mediator.Send(new AddTransactionCommand(account, Local(6, 30, 23, 30), "Before", -100m, "USD", "", "Holiday"));
+        await host.Mediator.Send(new AddTransactionCommand(account, Local(7, 1, 0, 30), "First day", -1m, "USD", "", "Holiday"));
+        await host.Mediator.Send(new AddTransactionCommand(account, Local(7, 31, 23, 30), "Last day", -10m, "USD", "", "Holiday"));
+        await host.Mediator.Send(new AddTransactionCommand(account, Local(8, 1, 0, 30), "After", -1000m, "USD", "", "Holiday"));
+
+        var progress = (await host.Mediator.Send(new GetBudgetProgressQuery())).Should().ContainSingle().Subject;
+
+        progress.Spent!.Amount.Should().Be(11m, "00:30 on the first day and 23:30 on the last are in; the evening before and the morning after are out");
     }
 }

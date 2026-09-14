@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-14 · Extended to cover figures and dates following the display language, misspelled configuration keys being refused, and the example configuration file (plan item 2.5). Previously extended to cover error and status messages following the display language, including the messages that come from below the screens (plan item 2.4). Previously extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-14 · Extended to cover creating a budget and budgets measuring your own month (plan item 3.0). Previously extended to cover figures and dates following the display language, misspelled configuration keys being refused, and the example configuration file (plan item 2.5). Previously extended to cover error and status messages following the display language, including the messages that come from below the screens (plan item 2.4). Previously extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -16,6 +16,11 @@ Nothing has been released. The build is stamped `0.1.0-alpha.1`; there is no ins
 signed artefact and no update mechanism, so "unreleased" is literal.
 
 ### Added
+- **You can create a budget.** The Budgets page has a **New budget** button: choose a category, a limit,
+  one of your accounts' currencies, and a period — monthly, weekly, yearly, or your own start and end
+  dates (the end date is included). Until now the page could only show budgets, and nothing in Pine could
+  make one. It also tells you when you have no budgets yet, names each budget's period, and explains why a
+  budget cannot be created instead of failing silently.
 - **Every record now carries when it was written and when it was last changed.** Two columns on
   every table, filled in by the database layer rather than by each feature, so nothing can forget
   them. They are not shown anywhere yet: this is the groundwork multi-device sync is gated behind,
@@ -83,6 +88,9 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **A monthly, weekly or yearly budget measures your own calendar period.** It used the UTC calendar, so
+  near the start or end of a month a purchase could count against the wrong month — in Ecuador, an evening
+  purchase on the last day of the month counted against the next one.
 - **Amounts and dates follow the display language.** Choosing Español used to change the words and
   leave every figure and date in your computer's own format — `1,500.00` and `Sep 14, 2026` under
   Spanish headings — and an English screen on a Spanish computer showed Spanish month names. Amounts,

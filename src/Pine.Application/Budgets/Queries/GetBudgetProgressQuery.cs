@@ -177,7 +177,7 @@ public sealed class GetBudgetProgressQueryHandler
         IReadOnlyList<Transaction> spending,
         DateTimeOffset now)
     {
-        var window = budget.ResolveWindow(now);
+        var window = budget.ResolveWindow(now, _timeProvider.LocalTimeZone);
 
         // EF materialises a budget without running its constructor, so the aggregate's "non-blank,
         // trimmed" rule holds for budgets CREATED in this process and not necessarily for rows read
