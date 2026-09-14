@@ -1,3 +1,4 @@
+using Pine.Core.Budgets;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -49,7 +50,8 @@ public class BudgetsPageProgressTests
             new Money(spent, Eur),
             new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
-            0);
+            0,
+            BudgetPeriod.Monthly);
 
     /// <summary>
     /// A budget whose spend cannot be measured. Since TD-132 was decided (plan item 2.3) the only
@@ -65,7 +67,8 @@ public class BudgetsPageProgressTests
             Spent: null,
             PeriodStart: null,
             PeriodEnd: null,
-            UncountedSplitCount: 0);
+            UncountedSplitCount: 0,
+            Period: BudgetPeriod.BiWeekly);
 
     [Fact]
     public async Task ARowShowsTheMeasuredSpendAndTheRealCategoryName()

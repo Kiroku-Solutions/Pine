@@ -34,8 +34,6 @@ public partial class EveryRequestHasASenderTests
     /// <summary>Requests with no sender in <c>src/</c>, each kept on purpose, with the row that decides it.</summary>
     private static readonly Dictionary<string, string> KnownUnsent = new(StringComparer.Ordinal)
     {
-        ["CreateBudgetCommand"] =
-            "TD-152: no screen creates a budget. The budgets page measures spend for budgets nothing in the product can make",
         ["CreateImportProfileCommand"] =
             "TD-151: import profiles are never saved. The wizard builds a throwaway profile per import",
         ["UpdateImportProfileCommand"] = "TD-151: as above",

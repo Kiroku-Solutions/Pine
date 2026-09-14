@@ -114,4 +114,27 @@ public static class ValidationText
 
     /// <summary>A new password identical to the current one.</summary>
     public static UserFacingMessage PasswordUnchanged() => new("Validation.Password.Unchanged");
+
+    /// <summary>A budget that names no category, so there is nothing to measure it against.</summary>
+    public static UserFacingMessage BudgetCategoryRequired() => new("Validation.Budget.CategoryRequired");
+
+    /// <summary>A budget whose limit is zero or less.</summary>
+    public static UserFacingMessage BudgetLimitNotPositive() => new("Validation.Budget.LimitNotPositive");
+
+    /// <summary>A budget limit with more decimal places than its currency has.</summary>
+    public static UserFacingMessage BudgetLimitTooPrecise(string currency, int minorUnits)
+        => new("Validation.Budget.LimitTooPrecise", currency, minorUnits);
+
+    /// <summary>A custom-dated budget missing one of its dates.</summary>
+    public static UserFacingMessage BudgetCustomNeedsDates() => new("Validation.Budget.CustomNeedsDates");
+
+    /// <summary>A fortnightly budget with no dates, whose window cannot be known.</summary>
+    public static UserFacingMessage BudgetBiWeeklyNeedsDates() => new("Validation.Budget.BiWeeklyNeedsDates");
+
+    /// <summary>A budget whose start is not before its end.</summary>
+    public static UserFacingMessage BudgetDatesOutOfOrder() => new("Validation.Budget.DatesOutOfOrder");
+
+    /// <summary>A budget identical in category, currency and period to one that exists.</summary>
+    public static UserFacingMessage BudgetAlreadyExists(string category, string currency)
+        => new("Validation.Budget.AlreadyExists", category, currency);
 }

@@ -1,3 +1,4 @@
+using Pine.Core.Budgets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -230,7 +231,7 @@ public class DashboardTileRenderingTests
         mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
-                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(500m, Usd), new Money(120m, Usd), null, null, 0),
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(500m, Usd), new Money(120m, Usd), null, null, 0, BudgetPeriod.Monthly),
             }));
 
         var tile = new BudgetWidgetViewModel(mediator, localizer);

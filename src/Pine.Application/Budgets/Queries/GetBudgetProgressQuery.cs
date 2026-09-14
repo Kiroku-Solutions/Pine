@@ -39,6 +39,7 @@ namespace Pine.Application.Budgets.Queries;
 /// </param>
 /// <param name="PeriodStart">Inclusive start of the window measured, or <see langword="null"/>.</param>
 /// <param name="PeriodEnd">Exclusive end of the window measured, or <see langword="null"/>.</param>
+/// <param name="Period">What the budget is called — weekly, monthly — shown beside it on the page (TD-152).</param>
 /// <param name="UncountedSplitCount">
 /// How many splits matched the category and the window but were denominated in a currency other
 /// than the budget's, and therefore could not be added to <paramref name="Spent"/>.
@@ -50,7 +51,8 @@ public sealed record BudgetProgress(
     Money? Spent,
     DateTimeOffset? PeriodStart,
     DateTimeOffset? PeriodEnd,
-    int UncountedSplitCount)
+    int UncountedSplitCount,
+    BudgetPeriod Period)
 {
     /// <summary>Whether a real spend figure was computed for this budget.</summary>
     public bool IsSpendKnown => Spent is not null;
@@ -202,7 +204,8 @@ public sealed class GetBudgetProgressQueryHandler
                 Spent: null,
                 PeriodStart: window?.Start,
                 PeriodEnd: window?.End,
-                UncountedSplitCount: 0);
+                UncountedSplitCount: 0,
+                Period: budget.Period);
         }
 
         var (start, end) = window.Value;
@@ -255,6 +258,7 @@ public sealed class GetBudgetProgressQueryHandler
             spent,
             start,
             end,
-            uncounted);
+            uncounted,
+            budget.Period);
     }
 }

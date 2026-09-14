@@ -1,3 +1,4 @@
+using Pine.Core.Budgets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -160,7 +161,7 @@ public partial class DashboardTilesTests
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
-                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0),
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0, BudgetPeriod.Monthly),
             }));
 
         var localizer = new Localizer();
@@ -263,7 +264,7 @@ public partial class DashboardTilesTests
         BudgetProgress Row(string name, decimal limit, decimal? spent) => new(
             Guid.NewGuid(), name,
             new Money(limit, Usd), spent is null ? null : new Money(spent.Value, Usd),
-            null, null, 0);
+            null, null, 0, BudgetPeriod.Monthly);
 
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
@@ -295,7 +296,7 @@ public partial class DashboardTilesTests
     {
         BudgetProgress Row(string name, decimal? spent) => new(
             Guid.NewGuid(), name,
-            new Money(100m, Usd), spent is null ? null : new Money(spent.Value, Usd), null, null, 0);
+            new Money(100m, Usd), spent is null ? null : new Money(spent.Value, Usd), null, null, 0, BudgetPeriod.Monthly);
 
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[] { Row("Unknown", null), Row("Zero", 0m), Row("Half", 50m) }));
@@ -315,7 +316,7 @@ public partial class DashboardTilesTests
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
-                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0),
+                new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(100m, Usd), null, null, null, 0, BudgetPeriod.Monthly),
             }));
 
         var localizer = new Localizer();

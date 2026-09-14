@@ -10,8 +10,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
+using Pine.Application.Accounts.Queries;
 using Pine.Application.Budgets.Commands;
 using Pine.Application.Budgets.Queries;
+using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Common;
 using Pine.Ui.Avalonia.Localization;
@@ -59,6 +61,7 @@ public partial class BudgetProgressViewModel : ObservableObject
             // remove. When category management is built, the swatch comes back with a real value
             // behind it.
             CategoryName = row.Category,
+            PeriodText = localizer[PeriodKey(row.Period)],
             LimitAmount = row.Limit.Amount,
             CurrencyCode = row.Limit.Currency.Value,
             IsSpendKnown = row.IsSpendKnown,
@@ -67,8 +70,36 @@ public partial class BudgetProgressViewModel : ObservableObject
         };
     }
 
+    /// <summary>The string-table key naming a period on screen.</summary>
+    /// <remarks>
+    /// A switch rather than <c>"Budgets.Period." + period</c>, so every key is a literal the catalog test
+    /// can find, and a new enum member fails to compile here instead of rendering as a raw key.
+    /// </remarks>
+    /// <param name="period">The period.</param>
+    /// <returns>The key.</returns>
+    public static string PeriodKey(BudgetPeriod period) => period switch
+    {
+        BudgetPeriod.Weekly => "Budgets.Period.Weekly",
+        BudgetPeriod.BiWeekly => "Budgets.Period.BiWeekly",
+        BudgetPeriod.Monthly => "Budgets.Period.Monthly",
+        BudgetPeriod.Yearly => "Budgets.Period.Yearly",
+        BudgetPeriod.Custom => "Budgets.Period.Custom",
+        _ => throw new ArgumentOutOfRangeException(nameof(period), period, "A budget period with no name on screen."),
+    };
+
     [ObservableProperty]
     public partial Guid BudgetId { get; set; }
+
+    /// <summary>
+    /// What the budget is measured over — weekly, monthly — in the user's language (TD-152).
+    /// </summary>
+    /// <remarks>
+    /// The row never said. That was survivable while nothing could create a budget; with a form that
+    /// offers four periods, two rows for the same category would otherwise be indistinguishable, and
+    /// the over-limit warning used to say "monthly" whatever the period was.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string PeriodText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string CategoryName { get; set; } = string.Empty;
@@ -205,7 +236,76 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     public partial ObservableCollection<BudgetProgressViewModel> Budgets { get; set; } = new();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
     public partial bool IsLoading { get; set; }
+
+    /// <summary>
+    /// True when the list loaded and holds nothing — the state every vault was in until this page could
+    /// create a budget (TD-152). The page said nothing at all in that state.
+    /// </summary>
+    public bool IsEmpty => !IsLoading && Budgets.Count == 0 && string.IsNullOrEmpty(ErrorMessage);
+
+    /// <summary>Whether the new-budget form is open.</summary>
+    [ObservableProperty]
+    public partial bool IsCreating { get; set; }
+
+    /// <summary>Whether a budget is being saved, which disables the form.</summary>
+    [ObservableProperty]
+    public partial bool IsSaving { get; set; }
+
+    /// <summary>The category the new budget measures: the same free label a transaction's split carries.</summary>
+    [ObservableProperty]
+    public partial string NewCategory { get; set; } = string.Empty;
+
+    /// <summary>The new budget's limit, in <see cref="NewCurrency"/>.</summary>
+    [ObservableProperty]
+    public partial decimal NewLimit { get; set; }
+
+    /// <summary>The currency the new budget is measured in.</summary>
+    [ObservableProperty]
+    public partial string? NewCurrency { get; set; }
+
+    /// <summary>The period the new budget is measured over.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NeedsDates))]
+    public partial BudgetPeriodOption? NewPeriod { get; set; }
+
+    /// <summary>First day of a custom budget.</summary>
+    [ObservableProperty]
+    public partial DateTimeOffset? NewStartDate { get; set; }
+
+    /// <summary>Last day of a custom budget, inclusive as the user picks it.</summary>
+    [ObservableProperty]
+    public partial DateTimeOffset? NewLastDate { get; set; }
+
+    /// <summary>Whether the chosen period needs the two date pickers.</summary>
+    public bool NeedsDates => NewPeriod?.Period == BudgetPeriod.Custom;
+
+    /// <summary>What went wrong creating a budget, in the user's language, or empty.</summary>
+    [ObservableProperty]
+    public partial string CreateMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The currencies a budget may be created in: those of the user's accounts.
+    /// </summary>
+    /// <remarks>
+    /// NOT A FIXED LIST OF CURRENCIES. A budget is measured against splits in its own currency and
+    /// excludes the rest (<c>GetBudgetProgressQuery</c>), so a budget in a currency none of the user's
+    /// accounts holds could only ever report zero — a figure that looks measured and is not. With no
+    /// accounts there is nothing to offer, and the form says so instead of opening.
+    /// </remarks>
+    public ObservableCollection<string> CurrencyOptions { get; } = new();
+
+    /// <summary>
+    /// The periods the form offers: weekly, monthly, yearly, and custom dates.
+    /// </summary>
+    /// <remarks>
+    /// BI-WEEKLY IS NOT OFFERED. A fortnight has no calendar anchor, so a bi-weekly budget without dates
+    /// can never resolve its window and would render "not known" for ever (<c>Budget.ResolveWindow</c>),
+    /// and one with dates is exactly what "custom dates" already creates. The validator refuses the
+    /// dateless form too, for any caller that is not this page.
+    /// </remarks>
+    public IReadOnlyList<BudgetPeriodOption> PeriodOptions { get; private set; } = Array.Empty<BudgetPeriodOption>();
 
     /// <param name="mediator">The request pipeline.</param>
     /// <param name="localizer">
@@ -229,7 +329,114 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         _localizer = localizer ?? Localizer.Instance;
         _logger = logger;
         _error = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text);
+        _createMessage = new LocalizedMessageSlot(_localizer, text => CreateMessage = text ?? string.Empty);
+        Budgets.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
     }
+
+    private readonly LocalizedMessageSlot _createMessage;
+
+    /// <summary>Opens the new-budget form, offering the currencies of the user's accounts.</summary>
+    [RelayCommand]
+    private async Task BeginCreateAsync()
+    {
+        _createMessage.Clear();
+
+        IReadOnlyList<Pine.Core.Accounts.Account> accounts;
+        try
+        {
+            accounts = await _mediator.Send(new GetAccountsQuery());
+        }
+        catch (Exception ex)
+        {
+            _createMessage.Set(UserFacingError.Report(_logger, ex, "budget-create-accounts", CreateFailed));
+            return;
+        }
+
+        CurrencyOptions.Clear();
+        foreach (var code in accounts.Select(a => a.Balance.Currency.Value).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            CurrencyOptions.Add(code);
+        }
+
+        if (CurrencyOptions.Count == 0)
+        {
+            _createMessage.Set("Budgets.Create.NoAccounts");
+            return;
+        }
+
+        PeriodOptions = new[] { BudgetPeriod.Monthly, BudgetPeriod.Weekly, BudgetPeriod.Yearly, BudgetPeriod.Custom }
+            .Select(period => new BudgetPeriodOption(period, _localizer[BudgetProgressViewModel.PeriodKey(period)]))
+            .ToList();
+        OnPropertyChanged(nameof(PeriodOptions));
+
+        NewCategory = string.Empty;
+        NewLimit = 0m;
+        NewCurrency = CurrencyOptions[0];
+        NewPeriod = PeriodOptions[0];
+        NewStartDate = null;
+        NewLastDate = null;
+        IsCreating = true;
+    }
+
+    /// <summary>Closes the form without creating anything.</summary>
+    [RelayCommand]
+    private void CancelCreate()
+    {
+        _createMessage.Clear();
+        IsCreating = false;
+    }
+
+    /// <summary>Creates the budget, and shows it with its measured spend.</summary>
+    /// <remarks>
+    /// <para>
+    /// THE LAST DAY IS INCLUSIVE ON SCREEN AND EXCLUSIVE IN THE MODEL. A person choosing "1 May to 31 May"
+    /// means to include the 31st; <c>Budget.ResolveWindow</c> is half-open, <c>[Start, End)</c>. So the end
+    /// sent is the day after the one picked. Sending the picked day would silently drop the last day's
+    /// spending from every custom budget.
+    /// </para>
+    /// <para>
+    /// Refusals come back from <c>CreateBudgetCommandValidator</c> as keys and are shown here; nothing is
+    /// checked twice on the page, so the page cannot disagree with the command about what is valid.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task SaveBudgetAsync()
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        _createMessage.Clear();
+
+        try
+        {
+            var period = NewPeriod?.Period ?? BudgetPeriod.Monthly;
+            var custom = period == BudgetPeriod.Custom;
+
+            await _mediator.Send(new CreateBudgetCommand(
+                NewCategory,
+                NewLimit,
+                NewCurrency ?? string.Empty,
+                period,
+                custom ? NewStartDate?.Date is { } start ? new DateTimeOffset(start) : null : null,
+                custom ? NewLastDate?.Date is { } last ? new DateTimeOffset(last.AddDays(1)) : null : null));
+
+            IsCreating = false;
+            await LoadBudgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _createMessage.Set(UserFacingError.Report(_logger, ex, "budget-create", CreateFailed));
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private static readonly UserFacingMessage CreateFailed = new("Budgets.Create.Failure");
 
     /// <summary>Reloads the budgets when something elsewhere changed the data.</summary>
     /// <remarks>
@@ -271,10 +478,12 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     public void Dispose()
     {
         _error.Dispose();
+        _createMessage.Dispose();
         GC.SuppressFinalize(this);
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
     public partial string? ErrorMessage { get; set; }
 
     /// <inheritdoc />
@@ -303,4 +512,13 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             IsLoading = false;
         }
     }
+}
+
+/// <summary>A period the new-budget form offers, with its name in the user's language.</summary>
+/// <param name="Period">The period.</param>
+/// <param name="Label">What the picker shows.</param>
+public sealed record BudgetPeriodOption(BudgetPeriod Period, string Label)
+{
+    /// <inheritdoc />
+    public override string ToString() => Label;
 }
