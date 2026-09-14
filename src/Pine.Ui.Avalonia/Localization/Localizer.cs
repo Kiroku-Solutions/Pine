@@ -54,13 +54,12 @@ public sealed class Localizer : ILocalizer
     /// Creates the localizer on the fallback language, with this machine's regional format.
     /// </summary>
     /// <remarks>
-    /// The regional format is read ONCE, here. <see cref="Instance"/> is created while the composition
-    /// root registers localisation, before anything has changed the process culture, so what it reads
-    /// is the operating system's. Reading it again later would read back the culture this localizer
-    /// itself caused to be set (<c>DisplayCultureFollower</c>) and could never return to the region.
+    /// The regional format is <c>MachineCulture.RegionalFormat</c>, captured once for the process. Reading
+    /// <see cref="CultureInfo.CurrentCulture"/> here instead would, for any localizer built after
+    /// <c>DisplayCultureFollower</c> ran, read back the display culture and never return to the region.
     /// </remarks>
     public Localizer()
-        : this(CultureInfo.CurrentCulture)
+        : this(Pine.Core.Common.MachineCulture.RegionalFormat)
     {
     }
 

@@ -39,6 +39,10 @@ public static class DisplayCultureFollower
     {
         ArgumentNullException.ThrowIfNull(localizer);
 
+        // Capture the machine's region BEFORE the process culture moves, for the readers that need where the
+        // user is rather than what language they chose (receipt date order). See MachineCulture.
+        _ = Pine.Core.Common.MachineCulture.RegionalFormat;
+
         Apply(localizer.CurrentCulture);
 
         void OnLanguageChanged(object? sender, EventArgs e) => Apply(localizer.CurrentCulture);

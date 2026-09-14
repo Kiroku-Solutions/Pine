@@ -17,10 +17,10 @@ namespace Pine.Core.Configuration;
 /// outside its bounds at startup; a key now refuses the same way, in the same exception.
 /// </para>
 /// <para>
-/// WHY IT LIVES HERE AND TAKES KEY PATHS. Its sentences are the same kind as
+/// WHY IT LIVES HERE AND TAKES KEYS AS STRINGS. Its sentences are the same kind as
 /// <see cref="PineOptions.Validate"/>'s — for a person editing a file, read from the crash log, never
 /// shown on a screen — so they sit beside those rather than in the presentation layer, whose C# holds no
-/// English sentences (TD-150). Taking the paths as strings keeps this assembly BCL-only; the caller
+/// English sentences (TD-150). Taking the keys and values as strings keeps this assembly BCL-only; the caller
 /// flattens its <c>IConfiguration</c>.
 /// </para>
 /// <para>
@@ -51,14 +51,20 @@ public static class PineConfigurationKeys
     /// <summary>
     /// Every key Pine would ignore, as one sentence each.
     /// </summary>
-    /// <param name="keyPaths">
-    /// The configuration's key paths, <c>:</c>-separated, as <c>IConfiguration.AsEnumerable()</c> yields
-    /// them. Section paths with no value of their own may be included or left out; both are handled.
+    /// <param name="entries">
+    /// The configuration's keys and values, <c>:</c>-separated, as <c>IConfiguration.AsEnumerable()</c>
+    /// yields them. An entry with no value is a section heading, not something set, and is skipped.
     /// </param>
     /// <returns>One sentence per unknown key, in path order; empty when every key is one Pine reads.</returns>
-    public static IReadOnlyList<string> FindUnknown(IEnumerable<string> keyPaths)
+    /// <remarks>
+    /// A VALUE SET ON A SECTION IS REFUSED TOO (found by this item's own review pass). <c>"Ai": 5</c> in the
+    /// file, or <c>PINE_Pine__Ai=5</c>, names a key that exists — the section — so a check on names alone
+    /// accepted it, and the binder ignored the value. That is TD-117's defect in a different shape.
+    /// </remarks>
+    public static IReadOnlyList<string> FindUnknown(IEnumerable<KeyValuePair<string, string?>> entries)
     {
-        ArgumentNullException.ThrowIfNull(keyPaths);
+        ArgumentNullException.ThrowIfNull(entries);
+        var keyPaths = entries.Where(entry => entry.Value is not null).Select(entry => entry.Key);
 
         var problems = new List<string>();
         var reported = new List<string>();
@@ -93,6 +99,7 @@ public static class PineConfigurationKeys
 
             var type = typeof(PineOptions);
             var walked = segments[0];
+            var endedOnSection = true;
             for (var i = 1; i < segments.Length; i++)
             {
                 var known = SettableProperties(type).ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
@@ -102,6 +109,7 @@ public static class PineConfigurationKeys
                 {
                     reported.Add(here);
                     problems.Add(Describe(here, segments[i], walked, known.Keys));
+                    endedOnSection = false;
                     break;
                 }
 
@@ -113,11 +121,19 @@ public static class PineConfigurationKeys
                         problems.Add($"{here} is a single value, so the keys beneath it would be ignored. Set {here} itself.");
                     }
 
+                    endedOnSection = false;
                     break;
                 }
 
                 type = property.PropertyType;
                 walked = here;
+            }
+
+            if (endedOnSection)
+            {
+                var example = SettableProperties(type).Select(p => p.Name).Order(StringComparer.Ordinal).First();
+                reported.Add(walked);
+                problems.Add($"{walked} is a section, so a single value given for it would be ignored. Set the settings inside it, such as {walked}:{example}.");
             }
         }
 

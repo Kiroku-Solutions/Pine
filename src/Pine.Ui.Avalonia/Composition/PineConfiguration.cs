@@ -93,7 +93,22 @@ public static class PineConfiguration
         ArgumentNullException.ThrowIfNull(configuration);
 
         var options = new PineOptions();
-        configuration.GetSection(PineOptions.SectionName).Bind(options);
+
+        // A value that cannot be converted ("abc" for a page size) makes the binder throw at the first one,
+        // with no mention of anything else wrong in the file. It is collected with the other problems instead,
+        // so one refusal still lists everything (found by this item's own review pass). The binder stops at
+        // the first conversion failure, so later values in the same file may still be defaults here; the
+        // validation below then runs on those, which can only add refusals, never hide one.
+        string? conversionFailure = null;
+        try
+        {
+            configuration.GetSection(PineOptions.SectionName).Bind(options);
+        }
+        catch (InvalidOperationException ex)
+        {
+            conversionFailure = ex.Message;
+        }
+
         configure?.Invoke(options);
 
         // VALIDATION HAPPENS ONCE, HERE, AND THROWS WITH EVERY PROBLEM. The alternative -- letting
@@ -106,7 +121,13 @@ public static class PineConfiguration
         // operator's experience was that configuration does not work. A warning would go to a log
         // nobody editing a config file is reading; the value bounds below already refuse, so a key
         // refuses the same way.
-        var problems = FindUnknownKeys(configuration).Concat(options.Validate()).ToList();
+        var problems = FindUnknownKeys(configuration).ToList();
+        if (conversionFailure is not null)
+        {
+            problems.Add(conversionFailure);
+        }
+
+        problems.AddRange(options.Validate());
         if (problems.Count > 0)
         {
             throw new PineOptionsValidationException(problems);
@@ -124,7 +145,7 @@ public static class PineConfiguration
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        return PineConfigurationKeys.FindUnknown(configuration.AsEnumerable().Select(pair => pair.Key));
+        return PineConfigurationKeys.FindUnknown(configuration.AsEnumerable());
     }
 
     /// <summary>

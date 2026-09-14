@@ -597,10 +597,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                     // language, an invariant "24.50" and "2026-05-03" beside a total the NumericUpDown
                     // writes as "24,50" would be the one figure on the screen in a different notation.
                     // The amount carries its currency, so its scale is the currency's rather than an
-                    // assumed two decimals.
+                    // assumed two decimals. The non-throwing factories on purpose: `new Money` and
+                    // `new CurrencyCode` refuse an out-of-scale amount or a malformed stored code, and a
+                    // WARNING must not turn a save into a failure.
                     _duplicate.Set(
                         "ScanReceipt.DuplicateWarning",
-                        new Money(Math.Abs(duplicate.Amount), new CurrencyCode(currency)),
+                        Money.FromRounded(Math.Abs(duplicate.Amount), CurrencyCode.FromStoredValue(currency)),
                         duplicate.Payee,
                         duplicate.Date);
                     _acknowledgedDuplicateKey = importKey;

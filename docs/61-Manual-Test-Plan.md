@@ -9,7 +9,7 @@
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 | Status | Non-normative — manual test procedures |
-| Reconciled | 2026-09-12 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1; none of them has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
+| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, and 13E by item 2.5, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.
@@ -876,7 +876,14 @@ Scan a receipt whose date is printed as an ambiguous `dd/MM` vs `MM/dd` string, 
 
 **Expect:** the date field is filled with the reading your machine's locale implies — day-first on
 `es-EC` or `en-GB`, month-first on `en-US` — and a warning row appears beneath it reading *"This could
-also be 3 May 2026. Check the receipt."* with a **Use this date instead** button.
+also be Sunday, May 3, 2026. Check the receipt."* (English, US conventions) or *"También podría ser el
+domingo, 3 de mayo de 2026. Revisa el recibo."* (Spanish) with a **Use this date instead** button. The
+weekday is there on purpose: this is the one sentence whose job is to make you compare two dates.
+
+**Switch the display language in Settings and come back** while the warning is showing, or before
+scanning. **Expect:** the sentence, including the month name, is in the language you chose — not the
+one your operating system uses. Until plan item 2.5 an English screen on a Spanish machine read *"This
+could also be 3 mayo 2026"* (TD-21).
 
 **Then press the button.** The two readings swap. The warning stays on screen, and pressing the button
 again swaps them back.
@@ -916,7 +923,9 @@ A well-lit, flat receipt should show **no hints at all**.
 Scan a receipt and save it. Then scan the same receipt again, against the same account.
 
 **Expect:** on pressing Save, the transaction is **not** written. A warning appears reading *"This looks
-like a duplicate of 24.50 to ACME on 2026-03-05. Save again to add it anyway."*
+like a duplicate of 24.50 USD to ACME on Thursday, March 5, 2026. Save again to add it anyway."* in
+English, or *"Parece un duplicado de 24,50 USD a ACME del jueves, 5 de marzo de 2026. Guarda de nuevo
+para agregarlo de todos modos."* in Spanish.
 
 **Press Save a second time without changing anything.** The transaction **is** written and you are
 taken to the transaction list.
@@ -932,9 +941,11 @@ warning — it is genuinely a different transaction now.
 **And the reverse.** Get the warning, change the date, change it *back*, then press Save. Expect the
 warning again, because you are once more about to write the duplicate.
 
-Finally, confirm the amount in the warning is shown as `24.50` and not `24,50`, whatever your machine's
-locale — the figure is deliberately not localised, so that a support conversation and this document
-describe the same string.
+Finally, **switch the display language while the warning is showing.** Expect the whole sentence to
+change, the figure included: `24.50` in English, `24,50` in Spanish. **This reverses what this step used
+to say.** The figure was deliberately left in invariant notation while nothing else on the screen was
+localised; once the total above it followed the language (plan item 2.5, TD-21), an invariant `24.50`
+beside a `24,50` total would have been the one figure on the screen in a different notation.
 
 ### Known gaps for §13.6–13.8 — confirm, do not report
 
@@ -1003,7 +1014,12 @@ there is. The picker that used to sit here offered "Camera 0" to "Camera 3" what
    names your *default camera* and says to check that nothing else is using it — not the old bare
    "Failed to open camera."
 5. **Known limitation, deliberate:** with two cameras attached you cannot choose the second one any
-   more. That waits on the camera seam (TD-120).
+   more. The camera seam now exists (plan item 2.5, TD-120), but its only implementation is OpenCV's,
+   which cannot enumerate devices, so choosing a camera is still TD-153.
+6. **Since plan item 2.5 the camera is opened behind `ICameraSource`.** Repeat steps 3 and 4, then press
+   **Stop**, and confirm the camera's indicator light goes off; start again and confirm it comes back.
+   The fake-camera tests prove the scanner releases what it opens; only this proves the real device is
+   released by the real implementation.
 
 ## 13C. Pine lets go of a backup after you restore from it — post-audit plan item 2.1
 
@@ -1051,6 +1067,49 @@ Windows machine with a Windows SDK.
    mislabelled one is worse than an honestly unsigned one.
 
 ---
+
+## 13E. Configuration, and figures in the language you chose — post-audit plan item 2.5
+
+**Read this before running it.** The behaviour is unit-tested against in-memory configuration and
+explicit cultures. What no test does is run the real heads against a real file and a real operating
+system locale.
+
+### 13E.1 A misspelled configuration key stops Pine and says which one — TD-117
+
+1. Copy `packaging/appsettings.example.json` to Pine's data directory as `appsettings.json`
+   (`%LOCALAPPDATA%\Pine\appsettings.json` on Windows). **Expected:** Pine starts normally — the example
+   is every setting at its default.
+2. Change `"CategorisationConfidenceThreshold"` to `"ConfidenceThreshold"` and start Pine. **Expected:**
+   Pine does not start; the crash log names `Pine:Ai:ConfidenceThreshold` and asks *"Did you mean
+   Pine:Ai:CategorisationConfidenceThreshold?"* Before this item Pine started and ignored the key.
+3. Put the key back and set the environment variable `PINE_Ui__TransactionsPageSize=10` (the `Pine__`
+   is missing). **Expected:** refused, and the message spells out `PINE_Pine__Ui__<setting>`.
+4. Remove that variable and set `PINE_SIGNTOOL=C:\anything.exe`. **Expected:** Pine starts. The packaging
+   scripts share the prefix, and a machine that has built a release must still run Pine.
+5. Delete `appsettings.json` afterwards.
+
+### 13E.2 Figures and dates follow the display language — TD-21
+
+On a machine whose regional format is **not** Spanish (English – United States is the clearest):
+
+1. Open a vault with a transaction of more than a thousand, and choose **Español** in Settings.
+2. **Expected, on the transactions list:** amounts read `1.500,00 USD` and dates `3 de mayo de 2026`.
+   Before this item they read `1,500.00 USD` and `May 03, 2026` under Spanish headings.
+3. **Expected, on the same Settings page, without leaving it:** the backup list's dates and sizes change
+   notation the moment the language changes.
+4. Open **Add transaction**. **Expected:** the amount box takes and shows a decimal comma.
+5. Switch back to English. **Expected:** `1,500.00 USD` and `May 3, 2026`.
+
+On a machine set to **Spanish (Ecuador)** with the display language **Español**: dates and figures follow
+Ecuador's own conventions. With the display language **English**, they follow the United States', not
+Ecuador's — a sentence in English does not carry Spanish month names.
+
+### Known gaps for §13E — confirm, do not report
+
+- **A page other than Settings keeps the notation it was drawn in** until you navigate to it again. Only
+  the Settings page is visible when the language changes, which is why only it re-renders.
+- **The import wizard's own mapping text, the confidence hints and a few labels are still English**
+  (TD-150).
 
 ## 14. What a failure means
 

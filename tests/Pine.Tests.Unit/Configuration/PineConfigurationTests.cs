@@ -199,11 +199,30 @@ public class PineConfigurationTests
     [InlineData("Pine:Storage:VaultsDirectory", "Did you mean Pine:Storage:VaultsDirectoryName?")]
     [InlineData("Pine:Ai:CategorisationConfidenceThreshold:Value", "is a single value, so the keys beneath it would be ignored")]
     [InlineData("Ai:CategorisationConfidenceThreshold", "Did you mean Pine:Ai? As an environment variable, that is PINE_Pine__Ai__<setting>.")]
+    [InlineData("Pine:Ai", "Pine:Ai is a section, so a single value given for it would be ignored")]
+    [InlineData("Pine", "Pine is a section, so a single value given for it would be ignored")]
     public void EveryShapeOfUnknownKey_ShouldBeRefused(string key, string expected)
     {
         var problems = PineConfiguration.FindUnknownKeys(ConfigurationFrom((key, "1")));
 
         problems.Should().ContainSingle().Which.Should().Contain(expected);
+    }
+
+    /// <summary>
+    /// A value Pine cannot convert is reported with everything else, not thrown alone as the binder's own
+    /// exception.
+    /// </summary>
+    [Fact]
+    public void AnUnconvertibleValue_IsReported_AlongsideTheOtherProblems()
+    {
+        var bind = () => PineConfiguration.Bind(ConfigurationFrom(
+            ("Pine:Ui:TransactionsPageSize", "abc"),
+            ("Pine:Ai:ConfidenceThreshold", "0.75")));
+
+        var problems = bind.Should().Throw<PineOptionsValidationException>().Which.Problems;
+
+        problems.Should().Contain(p => p.Contains("Pine:Ui:TransactionsPageSize", StringComparison.Ordinal) && p.Contains("abc", StringComparison.Ordinal));
+        problems.Should().Contain(p => p.StartsWith("Pine:Ai:ConfidenceThreshold is not a setting", StringComparison.Ordinal));
     }
 
     /// <summary>

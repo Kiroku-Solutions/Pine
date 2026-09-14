@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-13 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3) and 2.4 (§5.4) |
+| Last Updated     | 2026-09-14 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -727,7 +727,7 @@ TD-99 and the language picker is now the house rule and should be applied withou
 | 2.2 | 🟡 **Everything but the certificate** (2026-09-12) — Sign the release artefact | TD-108 | SmartScreen warns on first launch and a user cannot distinguish this build from anyone else's. Blocks any real distribution. **The row's Fix column asks for two things and only one of them is in a commit's gift.** A certificate is bought from a CA against a verified legal identity; no engineering work produces one. What was in reach was the other half, and the state the signing seam was actually in: it had never been executed, and it could not have worked. See §5.2 |
 | 2.3 | ✅ **Decided and done** (2026-09-13) — the label is the model; the `Category` aggregate is deleted. Decide `TD-132`, and stop deferring it | TD-132, TD-134 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
 | 2.4 | ✅ **Done** (2026-09-13) — Exception sentences below the UI layer | TD-139 (closed), TD-150 (registered) | The domain names the message and the presentation layer words it. The row counted two sets of English sentences below the UI; there were four — the import review's row reasons, and the live scanner's guidance, which was Spanish on every screen — and a live defect underneath them: a language switch re-rendered a stale key over the error on screen. TD-45's "every message in the view models" was false too. See §5.4 |
-| 2.5 | `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | several | Small, mechanical |
+| 2.5 | ✅ **Done** (2026-09-14), TD-138 narrowed — `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | TD-148, TD-117, TD-120, TD-21 (closed); TD-138 (narrowed); TD-151, TD-152, TD-153 (registered) | ~~Small, mechanical~~. Two of five were not: the camera seam, and a display culture the whole process follows. TD-148's guard found five unsent requests, among them the command the ledger's rollback tests had been written against, and the fact that no screen creates a budget. See §5.5 |
 
 ### 5.1 Item 2.1, as built (2026-09-11, iteration 44)
 
@@ -1390,6 +1390,182 @@ build; coverage gate green.
 - **Not a result type.** Refusal is still an exception; this item changed what reaches a human, not
   how failure travels.
 
+### 5.5 Item 2.5, as built (2026-09-14, iteration 48)
+
+**Five rows the plan called "small, mechanical". Two of the five were not, and three of them were
+hiding something the row did not say.** Four commits, one per row that changed code, and one
+measurement for the row that could not; then a fifth commit for what the review pass found.
+
+| Row | Outcome | Commit |
+|---|---|---|
+| TD-148 | ✅ Closed — and the guard written to close it found five more unsent requests | `3d4db1c` |
+| TD-117 | ✅ Closed (the misspelled-key half; the abort half closed in iteration 31) | `6116b26` |
+| TD-120 | ✅ Closed — the seam exists; choosing between cameras is TD-153 | `1efda4d` |
+| TD-21 | ✅ Closed (the on-screen half the row's closure in iteration 18 never covered) | `a5277a0` |
+| TD-138 | 🟡 Narrowed — the trimmer half measured, the device half still unanswerable here | — |
+| Review pass | Four defects in this item's own code, fixed | see below |
+
+#### TD-148 — `GetBudgetsQuery`, and the guard that found five more
+
+`GetBudgetsQuery` is deleted. The row's Fix column was one type, but the class of defect is "a request
+nobody sends", so the guard is `EveryRequestHasASenderTests`: every MediatR request in
+`Pine.Application`, read by reflection, must be constructed somewhere in `src/` (comments stripped, a
+fully-qualified name counts). Writing it found five more that no row named:
+
+- **`RecordTransactionCommand` was sent only by the integration suite** — 22 call sites, and no product
+  code. It was a second way of recording a transaction, without splits or rules, and the ledger's
+  *rollback* and *cancellation* tests were written against it. So the atomicity that was proved was
+  the atomicity of a path no user reaches; the path the add-transaction form and the receipt scanner
+  take had its commit asserted (the currency tests check the unit-of-work log) but never a rollback.
+  The command is deleted and the tests drive `AddTransactionCommand`. **Porting them was not a rename**:
+  the deleted handler moved the balance *before* staging the row and the real one moves it *after*, so
+  the ported fault hook saw the row but not yet the balance, and failed. The fault now fires on the
+  account write, where both are in the database.
+- **`CreateBudgetCommand` has no sender** — no screen creates a budget. The budgets page measures spend
+  for budgets nothing in the product can make. Registered as **TD-152**; the manual test plan already
+  said so under the closed TD-99, which is not where an open gap belongs.
+- **`CreateImportProfileCommand`, `UpdateImportProfileCommand`, `GetImportProfilesQuery`** — import
+  profiles are never saved; the wizard builds a throwaway profile per import. **TD-151.**
+
+The four kept requests are an allow-list ratchet with the row that owns each; an entry that gains a
+sender fails the test too. Falsified both ways (the deleted query restored; a sender added for an
+allow-listed command), and the port by taking `ITransactionalRequest` off `AddTransactionCommand`: all
+three ported atomicity tests die.
+
+#### TD-117 — a misspelled key stops Pine
+
+`PineConfigurationKeys` (in `Pine.Core`, beside `PineOptions.Validate`, whose sentences are the same
+kind — for the crash log, not a screen) walks every configuration entry against the options tree,
+read by reflection, and each unknown key joins the value bounds in the one
+`PineOptionsValidationException` thrown at startup, with *"Did you mean …?"* when exactly one setting is
+close. `Pine:Ai:ConfidenceThreshold` now names `Pine:Ai:CategorisationConfidenceThreshold`.
+
+**The top level is not checked wholesale, and the reason was found by grepping, not by thinking.** The
+`PINE_` environment prefix is shared with the packaging scripts (`PINE_SIGNTOOL`, `PINE_SIGNING_CERT`,
+`PINE_TIMESTAMP_URL`), which reach the configuration root as `SIGNTOOL` and so on. Refusing every
+unknown top-level key would have stopped Pine starting on any machine that has built a signed release.
+Only a top-level key naming a Pine section is refused — `PINE_Ai__…`, the variable with `Pine__`
+forgotten — and a test pins that the signing variables are left alone.
+
+`packaging/appsettings.example.json` ships the "commented example file" the row asked for: every
+setting at its default, with the JSON provider's comment support. Tests hold it to binding cleanly,
+changing nothing, and naming every settable property — so a new setting that is not documented fails.
+
+#### TD-120 — the camera seam
+
+`ICameraSource` / `ICameraSession` / `ICameraFrame` in `Pine.Core.Ai`; `OpenCvCameraSource` in
+Infrastructure owns the backend choice, the DirectShow fallback and the handle released between
+attempts, and copies BGRA **row by row at each side's own stride** — the view model used to copy
+`stride × height` in one block without comparing the bitmap's stride. `LiveScannerViewModel` asks for
+frames and names no native type; `OpenCvAvaloniaBridge`, which nothing called, is deleted.
+
+**What the seam bought beyond the architecture rule: the device handling became testable.** Every
+release path the review of item 1.5 fixed had been fixed by reading, because testing it needed a
+webcam. With a fake camera: stopping, disposing, a camera failing mid-read, a manual capture, and no
+camera at all each release what they opened. The frame copy is tested against synthetic `Mat`s
+(padded destination rows, grey frames, a destination too small), because no test may turn a real
+camera on. `TheUiAssembly_ShouldNot_DependOnOpenCv` covers the whole assembly with no exemption — the
+bridge lived in `Utils/`, outside the namespace the older rule scopes to — and checks the compiled
+assembly's references too. Six mutations, six killed.
+
+**Choosing between cameras is still impossible**: OpenCV cannot enumerate devices. The seam is where an
+implementation that can would go. **TD-153.**
+
+#### TD-21 — figures and dates in the language the user chose
+
+TD-21 was closed in iteration 18 for receipt *parsing*. What remained, recorded in every "Next" list
+since iteration 32, was the screen: the string table followed the chosen language and nothing else did.
+`Money`, Avalonia's `StringFormat`, `NumericUpDown`, `DatePicker` and `DataGrid` cells formatted in the
+operating system's culture, and two view patterns were hard-coded besides — so a Spanish screen on an
+English machine read `1,500.00` and `Sep 14, 2026`, and an English screen on a Spanish machine put
+Spanish month names into English sentences.
+
+- **`Localizer.DisplayCulture`**: the chosen language, in the machine's region when that region speaks
+  it. Spanish on an `es-EC` machine stays `es-EC`; Spanish on `en-US` becomes `es-ES`; English on
+  `es-EC` becomes `en-US`. Following the region regardless of language is the state this row was in;
+  following the language regardless of region would give an Ecuadorian who chose Spanish Spain's
+  conventions for nothing.
+- **`DisplayCultureFollower`** keeps the process culture equal to it, because most of what formats is
+  not Pine's code. **Measured before it was done**: both suites were run with the process culture
+  forced to `es-EC` — decimal comma, day-first — and passed in full (1258 unit, 252 integration),
+  import, import keys, backups and migrations included. Attached only in `InitializeUi`, which no test
+  calls, so a test switching the shared localizer does not switch the culture of every parallel test.
+- **`Money` is `IFormattable`**, so a sentence writes its figure in the sentence's own culture — a
+  composite format hands its provider only to an `IFormattable` argument.
+- **`MMM dd, yyyy` and `yyyy-MM-dd`** in three views became the culture's long date without the weekday:
+  *May 3, 2026*, *3 May 2026*, *3 de mayo de 2026*. **Not the short date**: `3/5/2026` is 3 May in Quito
+  and 5 March in New York — the ambiguity this row was opened for, on the screen where a user checks what
+  was imported.
+- **The two TD-150 sentences parked on this row are keys**: the receipt's date-ambiguity warning and its
+  duplicate warning. The duplicate warning had been invariant on purpose ("24.50 whatever the locale"),
+  which, once the total above it followed the language, would have made it the one figure on its screen
+  in a different notation. `61-Manual-Test-Plan` §13.8 said the opposite and is rewritten.
+- **The Settings page re-words its backup list** on a language change. Every other page is rebuilt when
+  next visited; this is the page the language is switched on.
+
+Eleven mutations, eleven killed; the working tree's diff hash identical before and after.
+
+#### TD-138 — measured on the trimmer, still owed a device
+
+The row asks whether a trimmed AOT head keeps `SQLitePCLRaw.batteries_v2`, which `Microsoft.Data.Sqlite`
+loads by name. No Android or iOS workload is installed here, but the trimmer those heads run is ILLink,
+so the trimmer's half of the question can be asked on a desktop. A probe — `Microsoft.EntityFrameworkCore
+.Sqlite.Core` 10.0.11 and `SQLitePCLRaw.bundle_e_sqlcipher` 2.1.11, self-contained, trimmed, win-x64 —
+was published four ways: `TrimMode` partial and full, each with and without `Batteries_V2.Init()`.
+**All four opened a `Password=` database, reported `cipher_version` 4.5.2, round-tripped a row, and
+refused a wrong password.**
+
+**The pass is not vacuous**: in full mode the trimmer cut `Microsoft.Data.Sqlite.dll` from 172 KB to
+57 KB and `SQLitePCLRaw.core.dll` from 51 KB to 19 KB, so it really processed those assemblies — and kept
+`batteries_v2`. The likely reason is in the DLL: it carries the assembly-qualified literal
+`"SQLitePCL.Batteries_V2, SQLitePCLRaw.batteries_v2"`, the form of `Type.GetType` the trimmer resolves
+statically. That mechanism is inferred from the literal and the result, not read from the IL.
+
+**What it does not answer, and why the row stays open**: the Android and iOS heads add Mono/native AOT
+and their own native SQLCipher packages (`SQLitePCLRaw.lib.e_sqlcipher.android`; on iOS, the `__Internal`
+static-linking provider), and no machine here builds or runs them. The explicit `Init()` call stays: it
+is now shown to be unnecessary for the trimmer, but it costs nothing and is still a static reference on a
+toolchain nobody has measured. The probe lives in the session scratchpad and is not committed; it is
+described here precisely enough to rebuild.
+
+#### The review pass
+
+**The independent review was commissioned and died on an API session limit** before reporting, the same
+way item 1.4's did. What stands in its place is the author's own adversarial pass over the checklist
+the review had been given, which found four defects in this item's own code — each reproduced first:
+
+- **MAJOR — a value set on a section was accepted silently.** `"Pine:Ai": 5` or `PINE_Pine=5` names a key
+  that exists — the section — so a check on names accepted it, and the binder ignored the value: TD-117's
+  defect in a different shape. Refused now, naming a setting inside the section.
+- **MAJOR — an ambiguous receipt date would have been read in the display language's convention.**
+  `ReceiptDateParser` chooses day-first or month-first from the ambient culture, which the follower had
+  just turned into "the chosen language". An Ecuadorian with an English screen would have had
+  `05/03/2026` read as 5 March. A receipt is printed where the user shops, so the parser now reads
+  `MachineCulture.RegionalFormat`, captured once before the follower runs. The test forces the current
+  culture to the convention *opposite* the machine's, so it means the same thing on any machine; the
+  mutation back to `CurrentCulture` kills it.
+- **MINOR — an unconvertible value** (`"abc"` for a page size) escaped as the binder's own exception,
+  alone, before the unknown-key and bounds checks could run. It is collected with the other problems now.
+- **MINOR — the duplicate warning built its figure with `new Money` and `new CurrencyCode`**, which refuse
+  an out-of-scale amount or a malformed stored code: a warning could have turned a save into a failure.
+  It uses the non-throwing factories the budgets screen already uses. There is no test for this one: an
+  out-of-scale amount cannot be built through the domain to reproduce it, which is also why it is minor.
+
+**Unverified, reasoning only**: that a frame read from `VideoCapture` owns its pixels once `Read` returns,
+so the session can be released while the capture loop still holds a frame. OpenCV's DirectShow backend
+copies into the output `Mat`; no test can check it without a camera. `61-Manual-Test-Plan` §13B step 6.
+
+**Measured totals:** unit 1238 → **1291**; integration 253 → **252** (one currency test deleted
+with the command it tested); coverage gate green (74% overall, 90% Pine.Core); Windows, macOS and CLI heads build.
+
+**What this does not close.**
+
+- **TD-138's device half**, above. **TD-151**, **TD-152**, **TD-153**, registered.
+- **TD-150** is down to four sentences and the non-sentence labels.
+- **A page other than Settings keeps the notation it was drawn in** until it is next visited. No other
+  page is visible while the language is switched, so this is recorded rather than engineered around.
+- **Translation quality** is still unchecked by any test.
+
 ## 6. Stage 3 — Breadth: the features the documents promise
 
 Only after Stages 0–2. Each of these is a subsystem, not a fix.
@@ -1448,3 +1624,11 @@ than "finished" and the only one the evidence supports.
 **Stage 1 is closed.** The next item is Stage 2's 2.1: the intermittent SQLite handle disposal
 (TD-140), which this run met twice more — once in item 1.3's integration run and once in an import
 test — and which costs a re-run every time a number in this document is measured.
+
+~~The next item is Stage 2's 2.1.~~ Done 2026-09-11 (§5.1), then 2.2 (§5.2), 2.3 (§5.3), 2.4 (§5.4) and,
+on 2026-09-14, 2.5 (§5.5). **Stage 2 is closed as far as any commit can close it**: what remains of it is
+TD-108's certificate, which is a purchase, and TD-138's device half, which needs hardware and workloads
+this project does not have. Two rows TD-148's guard registered belong to Stage 3's kind of work rather
+than Stage 2's — TD-152 (no screen creates a budget) and TD-151 (import profiles are never saved) — and
+TD-152, being a screen that cannot do what it exists for, is the first candidate to go ahead of 3.1.
+**The next item is Stage 3.**

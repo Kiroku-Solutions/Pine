@@ -295,3 +295,41 @@ public class DisplayCultureFollowerTests
         return directory!.FullName;
     }
 }
+
+/// <summary>
+/// A receipt's ambiguous date is read in the machine's region, not the display language (TD-21).
+/// </summary>
+/// <remarks>
+/// Found in plan item 2.5's review pass: once the process culture followed the display language, the
+/// parser's ambient default would have read an Ecuadorian receipt month-first on an English screen.
+/// In the process-wide collection because it moves the current culture.
+/// </remarks>
+[Collection("ProcessWideState")]
+public class ReceiptDatesFollowTheRegionTests
+{
+    [Fact]
+    public void AnAmbiguousReceiptDate_IsReadInTheMachinesRegion_WhateverTheProcessCultureIs()
+    {
+        var regional = Pine.Core.Common.MachineCulture.RegionalFormat;
+        var regionDayFirst = Pine.Core.Ai.ReceiptDateParser.PrefersDayFirst(regional);
+
+        // The opposite convention to this machine's, so the test means the same thing on any machine.
+        var opposite = CultureInfo.GetCultureInfo(regionDayFirst ? "en-US" : "es-EC");
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = opposite;
+
+            var parsed = Pine.Core.Ai.ReceiptDateParser.Parse("05/03/2026", culture: null, now: new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
+
+            parsed.Should().NotBeNull();
+            parsed!.Value.IsAmbiguous.Should().BeTrue();
+            parsed.Value.Value.Month.Should().Be(regionDayFirst ? 3 : 5, "the region decides the preferred reading, not the process culture");
+            Pine.Core.Common.MachineCulture.RegionalFormat.Should().BeSameAs(regional, "captured once and never re-read");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+}

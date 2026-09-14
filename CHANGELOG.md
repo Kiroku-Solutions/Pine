@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-13 · Extended to cover error and status messages following the display language, including the messages that come from below the screens (plan item 2.4). Previously extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-14 · Extended to cover figures and dates following the display language, misspelled configuration keys being refused, and the example configuration file (plan item 2.5). Previously extended to cover error and status messages following the display language, including the messages that come from below the screens (plan item 2.4). Previously extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -83,6 +83,19 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **Amounts and dates follow the display language.** Choosing Español used to change the words and
+  leave every figure and date in your computer's own format — `1,500.00` and `Sep 14, 2026` under
+  Spanish headings — and an English screen on a Spanish computer showed Spanish month names. Amounts,
+  dates and number boxes now follow the language you chose, keeping your region's conventions when your
+  region speaks that language. Dates in lists are written out (`3 de mayo de 2026`, `May 3, 2026`)
+  rather than as numbers whose order depends on the country. A receipt's printed date is still read the
+  way your region writes dates, whatever language the screen is in.
+- **A misspelled setting in `appsettings.json` stops Pine and says which one**, suggesting the setting
+  you probably meant. It used to be ignored without a word. An example listing every setting at its
+  default is in the source repository as `packaging/appsettings.example.json`; it is not part of the
+  installed files.
+- **The receipt scanner's duplicate and date warnings are translated**, with the amount and date in
+  your language's format.
 - **Error messages follow the display language, and stay correct when you switch it.** Messages that
   explain why something could not be saved, imported, restored or voided were written in English
   wherever they came from below the screen — a validation refusal, a locked vault, a concurrency
