@@ -6,13 +6,18 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Pine.Application.Security;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializable
+public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializable, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _lockNotice;
+
     private readonly VaultManager _vaultManager;
     private readonly INavigationService _navigationService;
     private readonly IViewModelFactory _viewModels;
@@ -29,7 +34,11 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
     /// vault", the normal vault picker).
     /// </summary>
     [ObservableProperty]
-    public partial string? LockNotice { get; set; }
+    public partial string? LockNotice { get; private set; }
+
+    /// <summary>Shows why the vault locked, in the active language (TD-139).</summary>
+    /// <param name="notice">Named by <c>MainViewModel</c>, which knows the reason.</param>
+    public void ShowLockNotice(UserFacingMessage notice) => _lockNotice.Set(notice);
 
     /// <summary>
     /// What the user reads when the vault list cannot be read.
@@ -42,9 +51,7 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
     /// no vaults. For a local-first application whose entire contents live in those files, that is
     /// the single most alarming lie the UI could tell, and it told it silently.
     /// </remarks>
-    private const string VaultsUnavailable =
-        "Pine could not read the list of your vaults. They have not been deleted -- "
-        + "this screen simply could not load them. Try again, or restart Pine.";
+    private static readonly UserFacingMessage VaultsUnavailable = new("VaultSelection.Failure.Load");
 
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
@@ -53,12 +60,28 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
         VaultManager vaultManager,
         INavigationService navigationService,
         IViewModelFactory viewModels,
-        ILogger<VaultSelectionViewModel>? logger = null)
+        ILogger<VaultSelectionViewModel>? logger = null,
+        ILocalizer? localizer = null)
     {
         _vaultManager = vaultManager;
         _navigationService = navigationService;
         _viewModels = viewModels;
         _logger = logger;
+        localizer ??= new Localizer();
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
+        _lockNotice = new LocalizedMessageSlot(localizer, text => LockNotice = text);
+    }
+
+    /// <summary>Releases the localized message slot.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: it subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        _lockNotice.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc />
@@ -69,7 +92,7 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
         _logger,
         "vault-list-load",
         VaultsUnavailable,
-        message => ErrorMessage = message);
+        _error.Set);
 
     private async Task LoadVaultsAsync()
     {
@@ -78,7 +101,7 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
         // Cleared only after the await has produced a list. Clearing first would empty the screen
         // and then leave it empty if the read threw -- the same "your vaults are gone" lie, just
         // arrived at from the other direction.
-        ErrorMessage = null;
+        _error.Clear();
         Vaults.Clear();
         foreach (var vault in vaults)
         {

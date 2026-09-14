@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | | |
 |---|---|
 | **Status** | Non-normative — release record |
-| **Reconciled** | 2026-09-13 · Extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
+| **Reconciled** | 2026-09-13 · Extended to cover error and status messages following the display language, including the messages that come from below the screens (plan item 2.4). Previously extended to cover categories becoming plain labels everywhere and the budgets screen's category names (plan item 2.3), and corrected: the entry below promised that Pine says so "where it genuinely cannot match a budget to your spending", which was every budget. Previously extended to cover the release artefact's signing path (plan item 2.2), and corrected: the entry below claimed a signing step that "refuses rather than pretending", and that step had never run and could not have worked. Previously extended to cover the backup file Pine would not release after a restore, found while diagnosing TD-140 (plan item 2.1). Previously extended to cover the dashboard (plan item 1.3) and the navigation fix (TD-121). Previously extended to cover iteration 37's import, budget and backup fixes. Previously extended to cover iteration 36's withdrawal of the plugin host (ADR-0021). Previously extended to cover iteration 35's row audit columns and stable child identity. Previously extended to cover iteration 34's rule engine. Previously extended to cover iteration 33's receipt attachments. Previously extended to cover iteration 32's localisation. Previously extended to cover iteration 30's coverage gate. Previously extended to cover iteration 29's categoriser fix. Previously extended to cover iteration 28's build and artefact changes. Previously extended to cover remediation iterations 14–21, which had shipped user-visible changes with no entry here (TD-39) |
 
 ## [Unreleased]
 
@@ -83,6 +83,20 @@ signed artefact and no update mechanism, so "unreleased" is literal.
 - Initial project scaffold for Phase 0.
 
 ### Fixed
+- **Error messages follow the display language, and stay correct when you switch it.** Messages that
+  explain why something could not be saved, imported, restored or voided were written in English
+  wherever they came from below the screen — a validation refusal, a locked vault, a concurrency
+  conflict, a refused restore — so a Spanish screen showed them in English. They are now translated,
+  and so are each imported row's explanation, the balance-check report, the lock notice, the password
+  strength meter and its advice on both the setup and settings screens, and the master-password change
+  messages. Switching language while a message was showing could also **replace it with an earlier,
+  unrelated one** — a save conflict turned into "Payee is required." — and no longer does.
+- **The live receipt scanner's guidance was in Spanish on every screen** ("Acércate más a la factura").
+  It follows the display language now.
+- **Messages no longer show internal identifiers.** "Account 3f2a… was not found." now reads "The
+  account was not found. It may have been removed; reload and try again."
+- **The unsupported-file message no longer suggests a PDF**, which Pine stopped importing earlier in
+  this release; it names CSV files and spreadsheets.
 - **Pine no longer holds on to a backup file after you restore from it.** Restoring opens the backup
   to check it first, and Pine was not letting go of it afterwards — so for the rest of the session it
   could not delete that backup, which is what it does when tidying up old ones. Merely *attempting* a

@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-13 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate) and 2.3 (§5.3) |
+| Last Updated     | 2026-09-13 — Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); Stage 2 items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3) and 2.4 (§5.4) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -726,7 +726,7 @@ TD-99 and the language picker is now the house rule and should be applied withou
 | 2.1 | Diagnose the intermittent SQLite handle disposal | TD-140 | Seen on four different integration tests across three iterations. Every test count in the audit currently costs a re-run. It is a flake in the harness, not in the product, which is why it is here and not in Stage 0 |
 | 2.2 | 🟡 **Everything but the certificate** (2026-09-12) — Sign the release artefact | TD-108 | SmartScreen warns on first launch and a user cannot distinguish this build from anyone else's. Blocks any real distribution. **The row's Fix column asks for two things and only one of them is in a commit's gift.** A certificate is bought from a CA against a verified legal identity; no engineering work produces one. What was in reach was the other half, and the state the signing seam was actually in: it had never been executed, and it could not have worked. See §5.2 |
 | 2.3 | ✅ **Decided and done** (2026-09-13) — the label is the model; the `Category` aggregate is deleted. Decide `TD-132`, and stop deferring it | TD-132, TD-134 | Its Fix column says "build category management, or delete the `Category` aggregate and let the string be the model — but not both, and not neither". It is now load-bearing in THREE subsystems: splits, rules, and budgets, where iteration 37 had to route spend through a name because the id relationship does not exist. Every further subsystem decides it by default |
-| 2.4 | Exception sentences below the UI layer | TD-139 | |
+| 2.4 | ✅ **Done** (2026-09-13) — Exception sentences below the UI layer | TD-139 (closed), TD-150 (registered) | The domain names the message and the presentation layer words it. The row counted two sets of English sentences below the UI; there were four — the import review's row reasons, and the live scanner's guidance, which was Spanish on every screen — and a live defect underneath them: a language switch re-rendered a stale key over the error on screen. TD-45's "every message in the view models" was false too. See §5.4 |
 | 2.5 | `TD-148`, `TD-117`'s remaining half, `TD-138`, `TD-120`, `TD-21` | several | Small, mechanical |
 
 ### 5.1 Item 2.1, as built (2026-09-11, iteration 44)
@@ -1241,6 +1241,154 @@ label; the tile binding the limit instead of the label. Each was killed by the t
 - **A vault that pressed the old "Test Features" button loses that budget's `#00FF00` colour.** Its
   name survives.
 - **There is no way down from `DropCategoryAggregate` for a vault that has budgets.**
+
+### 5.4 Item 2.4, as built (2026-09-13, iteration 47)
+
+**The decision TD-139's Fix column asked for, taken: the domain names the message, the presentation
+layer words it.** `IUserFacingFailure` carried a finished English sentence, so `Pine.Core` and
+`Pine.Application` — which have no string table — chose the wording of the screen, in English. It
+carries `UserFacingMessage`s now: a key and the values the sentence needs. `UserFacingError` returns
+those messages instead of a string, and a `LocalizedMessageSlot` words them in the active language and
+words them again when the language changes. `Exception.Message` stays English, for the log.
+
+**The row counted two sets. There were four, and a live defect underneath them.**
+
+- **Counted, and converted:** the call sites' fallback sentences — the row said 16 call sites; counting `ObservedTask` and the
+  failure policies too, they needed **36** distinct fallback messages — and the sentences of the
+  exception types that opt in. `RequestValidationException`'s were really **33 validator sites** naming
+  30 distinct messages across eight commands, and seven `VaultRestoreRefusedException` refusals written at their throw sites.
+- **Not counted — the import review's reasons.** `ImportTransactionsCommand` wrote an English
+  sentence into every `ImportReviewRow`, and the wizard showed it verbatim beside each row. Now
+  `ImportReviewText`.
+- **Not counted, and found only by the independent review — the live scanner's guidance.**
+  `ReceiptDetector` in `Pine.Infrastructure` returned ten **Spanish** literals ("Acércate más a la
+  factura") that the scanner put on screen whatever the language: an English screen showed Spanish,
+  and "factura" broke the `41-Localization` §18 glossary besides. Now keys in `UserFacingText`.
+- **TD-45's closing claim was false.** It recorded that "every status and error message in the view
+  models" had been localised, and its guard read only `.axaml`. The master-password change flow, the
+  strength meter on **both** Setup and Settings (six band names, two band sentences, seven pieces of
+  advice, duplicated word for word and kept in step by a comment), the balance-check report, the lock
+  notice, the import headline and the receipt-scan stage lines were all English literals in view
+  models. They had to move with the rest, for the reason in the next paragraph.
+
+**The defect, reproduced before anything was changed.** Every call site assigned the funnel's
+returned string straight to its property — while a slot on the same property still held whatever key
+it had shown before. On the add-transaction form: "Payee is required.", the user fills the payee in,
+the save is refused with a concurrency conflict, the conflict sentence appears — and switching the
+language to Spanish re-rendered the **stale** key over it. Measured: the screen read
+**"El beneficiario es obligatorio."** in place of the conflict. So converting only the sentences was
+never an option: any property with a slot has to receive *everything* through the slot, or a language
+change resurrects the last key. That is why same-property literals moved too, and why
+`LocalizedMessageSlot.SetRendered` — the escape hatch that made this possible — is deleted.
+
+**What changed.**
+
+- `UserFacingMessage` (key, arguments) in `Pine.Core.Common`; `IUserFacingFailure.UserFacingMessages`.
+- **Three catalogs, one factory per key**: `UserFacingText` (Core/Infrastructure: vault locked,
+  concurrency conflict, corrupted attachment, scanning unavailable, unsupported import format, seven
+  restore refusals, ten scanner guidance lines), `ValidationText` (30 distinct validator messages, plus the empty-refusal one) and
+  `ImportReviewText` (four row reasons). A factory's parameters are its template's placeholders.
+- `ValidationError` gained a required third argument, so a validator cannot report a reason with no
+  on-screen form. `ImportReviewRow.Reason` and `ReceiptAnalysisResult.StatusMessage` are messages.
+- `UserFacingError.Describe/Report`, `ObservedTask` and `InitializationFailurePolicy` take a
+  `UserFacingMessage` fallback and report message lists. An implementer returning an empty list or a
+  null element gets the fallback rather than a blank error area.
+- The slot gained `Set(UserFacingMessage)` and `Set(IReadOnlyList<UserFacingMessage>)` (joined by a
+  space, in order) and renders a message passed **as an argument** in the same language — so "1
+  transaction", "5 minutes" and the password band are worded, and pluralised, by the language of the
+  sentence around them rather than frozen at the moment they were formatted.
+- Seventeen view models and four views' code-behind route every failure through slots. Five view models
+  gained slots and `IDisposable`; the four code-behinds call a new `ReportFailure` on their view model,
+  because a view has no localizer. `PasswordFeedbackText` replaces the meter's duplicated literals.
+- **130 keys** added to `en.json` and `es.json` (329 → 459), the Spanish held to §18's glossary.
+
+**Three sentences were false as well as untranslated.** The unsupported-file message told users to
+"choose a statement exported as a spreadsheet **or a PDF**" — PDF import was deleted in iteration 37
+(`8b9a12e`). And the validator sentences put **entity identifiers on screen**: "Account
+`3f2a…` was not found." and "Transaction `9c1e…` was not found." — the TD-24 rule broken by
+messages that had opted in to being shown. The identifiers stay in the English `Message`, which is the
+log's; they are not arguments of the user's half.
+
+**`PineOptionsValidationException` came OFF the interface rather than being translated.** It is thrown
+by `PineConfiguration.Bind` while `PineCompositionRoot.Build` is still building the container, before
+any window, view model or localizer exists; the Windows and macOS heads write it to the crash log and
+rethrow, and no path reaches `UserFacingError`. Its opt-in was a claim nothing exercised. Translating it
+would have produced Spanish for a crash log. The review confirmed the reachability.
+
+**Tests, and what each guards.**
+
+- `FailuresFollowTheLanguageTests` — the stale-key defect above, a validator refusal on a Spanish
+  screen, a fallback following a switch, an import row's reason, a balance report with its count, and
+  the lock notice with a nested duration.
+- `UserFacingCatalogTests` — by reflection, every catalog factory's key exists in every table with
+  exactly as many placeholders as the factory has parameters; every translation uses its English
+  original's placeholders; nothing below the UI constructs a message outside a catalog; every
+  key-shaped literal in the presentation layer's C# is in the English table, and where the call is on
+  the line, a template that takes arguments is handed some and one that takes none is handed none.
+- `NoSentenceLiteralsInUiCodeTests` — the view models' half of `41-Localization` §14, which until now
+  was executable only for markup: no English sentence literal in `Pine.Ui.Avalonia`'s C#, except six
+  registered under TD-150 as a ratchet — and an entry whose sentence is gone fails the test too.
+- `DisposingTheWizard_ReleasesItsReviewRows` — each row now listens to the process-lifetime localizer.
+- `UserFacingErrorTests`, `ObservedTaskTests` and `LocalizedMessageSlotTests` rewritten against keys;
+  integration tests assert keys and arguments, because that project has no string table.
+
+**A flake this item nearly shipped.** Four view models first defaulted to `Localizer.Instance` when
+constructed by hand. `TrExtensionTests` switches that shared instance to Spanish for a moment, and xUnit
+runs classes in parallel — so tests asserting English failed in the full run and passed alone. A
+hand-constructed view model gets a private English localizer now; the container still injects the
+singleton, which the review verified for all four.
+
+**The independent review found four major and seven minor problems.** Every one was reproduced before
+it was fixed:
+
+- **MAJOR — the scanner's Spanish guidance lines**, described above. The defect this item exists to
+  remove, one layer further down than the row looked.
+- **MAJOR — "constructed only in a catalog" could be walked around.** The guard matched
+  `new UserFacingMessage(`; a fully qualified name and a target-typed `new("Validation.Void.ReasonRequird")`
+  both put a mistyped key past all 1227 tests. Both forms are matched now.
+- **MAJOR — the sentence guard skipped the one property it most needed to see.** It skipped any line
+  containing `Message = "` (meant for `[LoggerMessage]`), so `ErrorMessage = "Your rule was saved
+  successfully.";` — a new English sentence *and* the stale-key shape — passed. It also skipped any
+  line containing `Log`, which includes `Login`, `Dialog` and `Catalog`. Both narrowed.
+- **MAJOR — review-row disposal was untested.** A no-op `Dispose` in `ClearReviewRows` passed everything,
+  leaking every row of every import. Tested now.
+- **MINOR** — adding `{0}` to a template the UI passes no arguments to survived (the catalog check only
+  covered catalogs; the call-site check above is the answer); a key typo in casing (`Rules.Failure.toggle`)
+  survived, because the key regex required every segment capitalised while lookup is ordinal; the
+  stale-key shape survived untouched in `UnlockViewModel`'s migration-failure path (unreachable today —
+  the language can only be switched after unlock — converted anyway, taking two sentences off TD-150);
+  "Se importaron 1 de 1 fila" does not agree in Spanish (now "1 de 1 fila importada en '…'"); the
+  imported-row date was passed as an invariant `yyyy-MM-dd` string against the type's own remark
+  (now a date, formatted in the active culture); a stale `cref` in `ObservedTask`; and **claim 8 was
+  false** — see what this does not close.
+
+**Falsified.** The review ran twenty mutations: fourteen killed, six survived, one survivor expected (an
+English value in `es.json` — translation *quality* has no automated check, and that is stated rather
+than papered over). The six survivors became the review's findings above; after the fixes they and a
+seventh (a mistyped scanner key) were re-run: **seven of seven killed**, and the working tree's diff hash
+was identical before and after. The original defect was reproduced by mutation too: restoring the
+direct assignment turned the stale-key test red with "El beneficiario es obligatorio."
+
+**Measured totals:** unit 1165 → **1238**; integration **253**, unchanged; Windows, macOS and CLI heads
+build; coverage gate green.
+
+**What this closes, and what it does not.**
+
+- **TD-139 is closed.** Nothing below the UI writes a sentence for a person any more, and the guards
+  make a new one a test failure rather than a review finding.
+- **TD-150 is registered for what is still English on screen.** Six sentences the guard names (the
+  scan screen's confidence hints, the diagnostics empty-log texts, the receipt date-ambiguity and
+  duplicate warnings — the last two carry deliberate culture decisions that belong to TD-21), and the
+  review's list of non-sentence text the guard's pattern cannot see: the unlock screen's title, the
+  diagnostics status words, "Copied!", three file-picker titles, and raw enum names in the account-type,
+  rule field/operator and adjustment-kind lists.
+- **Translation quality is not tested.** A Spanish value replaced with English passes. The glossary is
+  enforced by review, as §18 says.
+- **Unverified, recorded:** the live scanner renders its slot on the capture thread and posts the result
+  to the UI thread, so a frame rendered just before a language switch can post just after it and show
+  the old language until the next frame. Not reproduced.
+- **Not a result type.** Refusal is still an exception; this item changed what reaches a human, not
+  how failure travels.
 
 ## 6. Stage 3 — Breadth: the features the documents promise
 

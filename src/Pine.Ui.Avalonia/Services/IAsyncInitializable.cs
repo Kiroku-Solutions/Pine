@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Pine.Core.Common;
 
 namespace Pine.Ui.Avalonia.Services;
 
@@ -86,14 +88,16 @@ public interface IAsyncInitializable
 /// Short stable identifier for the log record -- <c>"dashboard-initialise"</c>. Never shown.
 /// </param>
 /// <param name="Fallback">
-/// The complete sentence shown when the exception is not one permitted to speak for itself.
+/// The message shown when the exception is not one permitted to speak for itself, as a key the
+/// screen words in the active language (TD-139).
 /// </param>
 /// <param name="Report">
-/// Puts the sentence on the screen, or <see langword="null"/> when the page has nowhere to put one
+/// Puts the messages on the screen -- through a <c>LocalizedMessageSlot</c>, so they follow a language
+/// change -- or <see langword="null"/> when the page has nowhere to put one
 /// -- in which case the failure is still logged, and that fact must be stated at the call site.
 /// </param>
 public sealed record InitializationFailurePolicy(
     ILogger? Logger,
     string Operation,
-    string Fallback,
-    Action<string>? Report);
+    UserFacingMessage Fallback,
+    Action<IReadOnlyList<UserFacingMessage>>? Report);

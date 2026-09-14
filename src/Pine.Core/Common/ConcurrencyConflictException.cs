@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Pine.Core.Common;
 
@@ -45,12 +46,12 @@ public sealed class ConcurrencyConflictException : Exception, IUserFacingFailure
     }
 
     /// <summary>
-    /// Gets the sentence shown to the user. This is one of the few exceptions whose
-    /// <see cref="Exception.Message"/> was written for a person rather than for a log — it names
-    /// nothing (see the remarks on the type) and it ends in the one instruction that resolves the
-    /// conflict — so the two coincide here by decision rather than by omission (TD-98).
+    /// Gets the message shown to the user. It names nothing (see the remarks on the type) and it
+    /// ends in the one instruction that resolves the conflict (TD-98). It is the same message
+    /// whichever constructor ran: the <see cref="Exception.Message"/> a caller passes is for the log,
+    /// and since TD-139 the screen's half is a key worded in the active language.
     /// </summary>
-    public string UserFacingMessage => Message;
+    public IReadOnlyList<UserFacingMessage> UserFacingMessages { get; } = [UserFacingText.ConcurrencyConflict()];
 
     public ConcurrencyConflictException(string message)
         : base(message)

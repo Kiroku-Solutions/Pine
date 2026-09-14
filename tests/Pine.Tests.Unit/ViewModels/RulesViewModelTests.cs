@@ -159,7 +159,7 @@ public class RulesViewModelTests
         var viewModel = CreateViewModel();
         _sender.Send(Arg.Any<CreateRuleCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(
-                [new ValidationError("Conditions", "Add at least one condition; a rule with none would match every transaction.")]));
+                [new ValidationError("Conditions", "Add at least one condition; a rule with none would match every transaction.", ValidationText.RuleConditionsRequired())]));
 
         viewModel.NewTitle = "Everything";
         viewModel.NewCategory = "Coffee";

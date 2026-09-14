@@ -110,14 +110,16 @@ public class PineConfigurationTests
     /// when most are not.
     /// </remarks>
     [Fact]
-    public void TheRefusal_ShouldBeOnTheUserFacingTaxonomy()
+    public void TheRefusal_ShouldNameTheKey_InTheMessageTheCrashLogRecords()
     {
         var bind = () => PineConfiguration.Bind(ConfigurationFrom(("Pine:Security:BackupsToKeep", "0")));
 
         var thrown = bind.Should().Throw<PineOptionsValidationException>().Which;
 
-        thrown.Should().BeAssignableTo<IUserFacingFailure>();
-        ((IUserFacingFailure)thrown).UserFacingMessage.Should().Contain("BackupsToKeep");
+        // Off the user-facing taxonomy since TD-139: it is thrown while the container is built, before
+        // any screen exists, and no path from it reaches UserFacingError. See the type's remarks.
+        thrown.Should().NotBeAssignableTo<IUserFacingFailure>();
+        thrown.Message.Should().Contain("BackupsToKeep");
     }
 
     /// <summary>

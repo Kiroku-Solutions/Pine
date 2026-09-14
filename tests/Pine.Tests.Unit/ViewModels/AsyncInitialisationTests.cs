@@ -7,6 +7,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
+using Pine.Tests.Unit.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
@@ -121,12 +122,15 @@ public class AsyncInitialisationTests
         mediator.Send(Arg.Any<IRequest<object>>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("unreadable"));
 
-        var viewModel = new BudgetsViewModel(mediator);
+        // A private localizer, not the shared Localizer.Instance the page defaults to: since TD-139 the
+        // failure is worded when it is shown, and a parallel test may be switching that instance to
+        // Spanish at the same moment.
+        var viewModel = new BudgetsViewModel(mediator, new Localizer());
         var policy = viewModel.InitializationFailurePolicy;
 
         policy.Report.Should().NotBeNull(
             "a page whose load can fail must have somewhere to put the sentence.");
-        policy.Fallback.Should().NotBeNullOrWhiteSpace();
+        policy.Fallback.Should().NotBeNull();
 
         // Drive the reporting path the way PageActivation does.
         Pine.Ui.Avalonia.Diagnostics.ObservedTask.Run(
@@ -138,7 +142,7 @@ public class AsyncInitialisationTests
 
         await WaitForAsync(() => !string.IsNullOrEmpty(viewModel.ErrorMessage));
 
-        viewModel.ErrorMessage.Should().Be(policy.Fallback);
+        viewModel.ErrorMessage.Should().Be(Rendered.Text(policy.Fallback));
     }
 
     private static async Task InitialiseAndSwallowAsync(SettingsViewModel viewModel)

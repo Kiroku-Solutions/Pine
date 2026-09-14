@@ -14,6 +14,7 @@ using Pine.Core.Diagnostics;
 using Pine.Core.Security;
 using Pine.Infrastructure.Ai;
 using Pine.Infrastructure.Data;
+using Pine.Tests.Unit.Localization;
 using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels;
@@ -330,8 +331,8 @@ public class PineCompositionRootTests
 
         var thrown = extract.Should().Throw<AiCapabilityUnavailableException>().Which;
         thrown.Should().BeAssignableTo<IUserFacingFailure>();
-        ((IUserFacingFailure)thrown).UserFacingMessage.Should().NotBeNullOrWhiteSpace();
-        ((IUserFacingFailure)thrown).UserFacingMessage.Should().NotContain("Paddle")
+        Rendered.Text((IUserFacingFailure)thrown).Should().NotBeNullOrWhiteSpace();
+        Rendered.Text((IUserFacingFailure)thrown).Should().NotContain("Paddle")
             .And.NotContain("OpenCv");
     }
 

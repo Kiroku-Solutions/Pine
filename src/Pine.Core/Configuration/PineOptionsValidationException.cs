@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Pine.Core.Common;
 
 namespace Pine.Core.Configuration;
 
@@ -18,13 +17,18 @@ namespace Pine.Core.Configuration;
 /// first one -- a person fixing a config file should need one round trip, not five.
 /// </para>
 /// <para>
-/// IT IS ON <see cref="IUserFacingFailure"/> (TD-24) BECAUSE THE SENTENCES ARE ALREADY FOR A
-/// PERSON. Each problem names the configuration key, the bound it violated and the value that was
-/// read. Those are three things the reader supplied themselves, so none of them is a disclosure --
-/// which is exactly the test that interface's remarks set.
+/// NOT ON <c>IUserFacingFailure</c>, AND IT USED TO BE (TD-139). It was put there in TD-24 because
+/// its sentences are safe to show: each names a configuration key, a bound and the value read, all
+/// supplied by the reader. Safe, and never shown. It is thrown by <c>PineConfiguration.Bind</c> while
+/// <c>PineCompositionRoot.Build</c> is still building the container — before any window, view model
+/// or localizer exists — and every head's handler passes it to <c>PineCrashLogger</c> and rethrows. No
+/// path from this throw reaches <c>UserFacingError</c>. When TD-139 turned the interface's sentences
+/// into keys, translating these would have produced Spanish text for a crash log. The opt-in is
+/// removed instead of kept as a claim nothing exercises; the sentences stay in
+/// <see cref="Exception.Message"/>, which is where a person editing the file will read them.
 /// </para>
 /// </remarks>
-public sealed class PineOptionsValidationException : Exception, IUserFacingFailure
+public sealed class PineOptionsValidationException : Exception
 {
     /// <summary>Creates the exception from the problems validation found.</summary>
     /// <param name="problems">One sentence per problem. Must not be empty.</param>
@@ -57,9 +61,6 @@ public sealed class PineOptionsValidationException : Exception, IUserFacingFailu
 
     /// <summary>Every problem found, in the order the sections were checked.</summary>
     public IReadOnlyList<string> Problems { get; }
-
-    /// <inheritdoc />
-    public string UserFacingMessage => Message;
 
     private static string BuildMessage(IEnumerable<string> problems)
     {

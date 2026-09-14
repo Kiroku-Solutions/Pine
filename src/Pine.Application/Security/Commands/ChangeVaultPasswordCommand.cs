@@ -205,7 +205,8 @@ public sealed class ChangeVaultPasswordCommandValidator : IRequestValidator<Chan
         {
             errors.Add(new ValidationError(
                 nameof(ChangeVaultPasswordCommand.CurrentPassword),
-                "Enter your current vault password."));
+                "Enter your current vault password.",
+                ValidationText.PasswordCurrentRequired()));
         }
 
         if (string.IsNullOrWhiteSpace(request.NewPassword))
@@ -215,7 +216,8 @@ public sealed class ChangeVaultPasswordCommandValidator : IRequestValidator<Chan
             // both blank and weak is noise, not help.
             errors.Add(new ValidationError(
                 nameof(ChangeVaultPasswordCommand.NewPassword),
-                "Enter a new vault password."));
+                "Enter a new vault password.",
+                ValidationText.PasswordNewRequired()));
         }
         else if (!PasswordStrengthPolicy.Evaluate(request.NewPassword).MeetsFloor)
         {
@@ -223,7 +225,8 @@ public sealed class ChangeVaultPasswordCommandValidator : IRequestValidator<Chan
             // those describes the secret, and this message is not a place a secret may appear.
             errors.Add(new ValidationError(
                 nameof(ChangeVaultPasswordCommand.NewPassword),
-                "The new password does not meet Pine's minimum strength for a vault password."));
+                "The new password does not meet Pine's minimum strength for a vault password.",
+                ValidationText.PasswordTooWeak()));
         }
 
         // Ordinal, not culture-aware: two passwords that a culture considers equivalent are still
@@ -240,7 +243,8 @@ public sealed class ChangeVaultPasswordCommandValidator : IRequestValidator<Chan
             // vault -- notably that an old password they meant to retire no longer opens it.
             errors.Add(new ValidationError(
                 nameof(ChangeVaultPasswordCommand.NewPassword),
-                "The new password must be different from your current password."));
+                "The new password must be different from your current password.",
+                ValidationText.PasswordUnchanged()));
         }
 
         return Task.FromResult<IReadOnlyList<ValidationError>>(errors);

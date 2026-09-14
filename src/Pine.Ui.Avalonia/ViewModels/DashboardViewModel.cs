@@ -139,7 +139,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
                     () => tile.InitializeAsync(cancellationToken),
                     _logger,
                     $"dashboard-widget-initialise:{tile.GetType().Name}",
-                    _localizer["Dashboard.Tile.LoadFailed"],
+                    DashboardWidgetViewModelBase.LoadFailed,
                     tile.ReportFailure);
             }
         }
@@ -156,8 +156,8 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     public InitializationFailurePolicy InitializationFailurePolicy => new(
         _logger,
         "dashboard-initialise",
-        _localizer["Dashboard.Tile.LoadFailed"],
-        message => _greeting.SetRendered(message));
+        DashboardWidgetViewModelBase.LoadFailed,
+        _greeting.Set);
 
     /// <summary>
     /// Releases the greeting and the tiles, which each hold subscriptions to the process-lifetime

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Pine.Core.Common;
 
 namespace Pine.Core.Ai;
 
@@ -79,10 +80,17 @@ public record CategorisationResult(
 /// <summary>
 /// Result of analyzing and optionally cropping a receipt.
 /// </summary>
+/// <remarks>
+/// <see cref="StatusMessage"/> IS A KEY, AND WAS A SPANISH SENTENCE (TD-139). The detector wrote
+/// "Acércate más a la factura" and eight siblings as literals, and the live scanner put them on screen
+/// whatever the active language — so an English screen showed Spanish, and "factura" broke the
+/// glossary besides. The item that turned every other sentence below the UI into a key did not count
+/// these, and its independent review found them.
+/// </remarks>
 public record ReceiptAnalysisResult(
     float Confidence,
     bool PassedFilters,
-    string? StatusMessage,
+    UserFacingMessage? StatusMessage,
     Stream? CroppedImageStream,
     Stream? OcrImageStream = null
 );

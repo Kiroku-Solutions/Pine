@@ -9,6 +9,7 @@ using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
@@ -116,8 +117,8 @@ public partial class AddTransactionViewModel : ObservableObject, IDisposable
             LoadAccountsAsync,
             _logger,
             "add-transaction-accounts-load",
-            "Pine could not load your accounts, so this form cannot be saved yet. Close it and try again.",
-            message => ErrorMessage = message);
+            new UserFacingMessage("AddTransaction.Failure.AccountsLoad"),
+            _message.Set);
     }
 
     private async Task LoadAccountsAsync()
@@ -154,7 +155,7 @@ public partial class AddTransactionViewModel : ObservableObject, IDisposable
         }
 
         IsBusy = true;
-        ErrorMessage = string.Empty;
+        _message.Clear();
 
         try
         {
@@ -203,11 +204,11 @@ public partial class AddTransactionViewModel : ObservableObject, IDisposable
             // error text carrying the vault file path. A refused write also reaches here as a
             // ConcurrencyConflictException, which nothing used to catch (TD-98) and which now
             // arrives with its own sentence and its "Reload and try again." instruction intact.
-            ErrorMessage = UserFacingError.Report(
+            _message.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "add-transaction",
-                "The transaction could not be saved. Nothing was changed.");
+                new UserFacingMessage("AddTransaction.Failure.Save")));
         }
         finally
         {

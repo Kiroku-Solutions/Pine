@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Pine.Core.Common;
 
 namespace Pine.Core.Ai;
@@ -63,6 +64,5 @@ public sealed class AiCapabilityUnavailableException : Exception, IUserFacingFai
     /// the receipt can act on. What they can act on is knowing the feature is absent here rather
     /// than broken, and that another head has it.
     /// </remarks>
-    public string UserFacingMessage
-        => "Receipt scanning is not available on this device. Use the Windows app to scan receipts.";
+    public IReadOnlyList<UserFacingMessage> UserFacingMessages { get; } = [UserFacingText.ReceiptScanningUnavailable()];
 }

@@ -5,6 +5,7 @@ using FluentAssertions;
 using NSubstitute;
 using Pine.Application.Attachments;
 using Pine.Core.Attachments;
+using Pine.Tests.Unit.Localization;
 using Xunit;
 
 namespace Pine.Tests.Unit.Application.Attachments;
@@ -86,8 +87,8 @@ public class AttachmentQueryTests
         var exception = new AttachmentCorruptedException();
 
         exception.Should().BeAssignableTo<Pine.Core.Common.IUserFacingFailure>();
-        exception.UserFacingMessage.Should().NotBeNullOrWhiteSpace();
-        exception.UserFacingMessage.Should().Contain(
+        Rendered.Text(exception).Should().NotBeNullOrWhiteSpace();
+        Rendered.Text(exception).Should().Contain(
             "transaction",
             "the user needs to know the ledger is intact and only the evidence is suspect");
     }

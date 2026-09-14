@@ -5,12 +5,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Pine.Core.Common;
 using Pine.Core.Diagnostics;
 using Microsoft.Extensions.Options;
 using Pine.Core.Configuration;
 using System.Threading;
 using Microsoft.Extensions.Logging;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
+using System.Collections.Generic;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -138,8 +141,10 @@ public sealed class DiagnosticsLogEntryViewModel
 /// since SQLite and EF messages routinely carry the vault file path.
 /// </para>
 /// </remarks>
-public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializable
+public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializable, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+
     /// <summary>
     /// How many of the newest log records the terminal reads.
     /// </summary>
@@ -280,7 +285,8 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
         IDatabaseHealthProbe databaseHealthProbe,
         IRuntimeInfoProvider runtimeInfoProvider,
         IOptions<PineUiOptions>? uiOptions = null,
-        ILogger<DiagnosticsViewModel>? logger = null)
+        ILogger<DiagnosticsViewModel>? logger = null,
+        ILocalizer? localizer = null)
     {
         ArgumentNullException.ThrowIfNull(logTailReader);
         ArgumentNullException.ThrowIfNull(databaseHealthProbe);
@@ -292,6 +298,25 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
         _logger = logger;
         _databaseHealthProbe = databaseHealthProbe;
         _runtimeInfoProvider = runtimeInfoProvider;
+        _error = new LocalizedMessageSlot(localizer ?? new Localizer(), text => ErrorMessage = text);
+    }
+
+    /// <summary>
+    /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
+    /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
+    /// </summary>
+    /// <param name="messages">What <c>UserFacingError.Report</c> or <c>ObservedTask</c> produced.</param>
+    public void ReportFailure(IReadOnlyList<UserFacingMessage> messages) => _error.Set(messages);
+
+    /// <summary>Releases the localized message slot.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: it subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -335,8 +360,8 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     public InitializationFailurePolicy InitializationFailurePolicy => new(
         _logger,
         "diagnostics-refresh",
-        "The diagnostics panel could not be read.",
-        message => ErrorMessage = message);
+        new UserFacingMessage("Diagnostics.Failure.Refresh"),
+        _error.Set);
 
     /// <summary>What the user reads when something on this page fails -- in practice, the clipboard.</summary>
     [ObservableProperty]

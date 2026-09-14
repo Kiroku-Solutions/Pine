@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Pine.Core.Common;
 
 namespace Pine.Core.Attachments;
@@ -53,8 +54,8 @@ public sealed class AttachmentCorruptedException : Exception, IUserFacingFailure
     }
 
     /// <summary>
-    /// Gets the sentence shown to the user, which is <see cref="Exception.Message"/> because it was
-    /// written for a person and names nothing (TD-98).
+    /// Gets the message shown to the user (TD-98), worded by the presentation layer in the active
+    /// language (TD-139). <see cref="Exception.Message"/> stays English, for the log.
     /// </summary>
-    public string UserFacingMessage => Message;
+    public IReadOnlyList<UserFacingMessage> UserFacingMessages { get; } = [UserFacingText.AttachmentCorrupted()];
 }

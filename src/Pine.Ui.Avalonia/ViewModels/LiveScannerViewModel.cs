@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using OpenCvSharp;
 using Pine.Core.Ai;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
@@ -179,8 +180,8 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                         () => CaptureAndNavigateAsync(frame),
                         _logger,
                         "camera-manual-capture",
-                        "That frame could not be captured. Try again.",
-                        message => PostToUI(() => StatusMessage = message));
+                        new UserFacingMessage("LiveScanner.Failure.ManualCapture"),
+                        _status.Set);
                 }
             }
         }
@@ -269,7 +270,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                             _consecutiveDetections = 0; // Reset if confidence drops or filters fail
                             
                             // If confidence is high but filters failed, show the specific reason to the user
-                            if (result.Confidence > 0.85f && !string.IsNullOrEmpty(result.StatusMessage))
+                            if (result.Confidence > 0.85f && result.StatusMessage is not null)
                             {
                                 _status.Set("LiveScanner.Status.ProviderWarningFormat", result.StatusMessage);
                             }
@@ -294,12 +295,12 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             // WAS: $"Camera error: {ex.Message}" (TD-24). OpenCV and the DirectShow backend report
             // failures as native strings naming device paths and library entry points; none of it is
             // actionable and all of it is now in the log instead.
-            var message = UserFacingError.Report(
+            // The slot marshals to the UI thread itself (see its assign delegate in the constructor).
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "camera-capture-loop",
-                "The camera could not be read. Check that it is connected and not in use by another application, then try again.");
-            PostToUI(() => StatusMessage = message);
+                new UserFacingMessage("LiveScanner.Failure.CaptureLoop")));
         }
         finally
         {
@@ -396,12 +397,11 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             // WAS: $"AI Error: {ex.Message}" (TD-24). A per-frame detection failure is not the
             // user's problem to diagnose, and the frame loop keeps running, so the sentence says what
             // it costs them rather than which model threw.
-            var message = UserFacingError.Report(
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "camera-detect-receipt",
-                "Pine could not find a receipt in the camera image. Move the receipt into frame, or take the photo manually.");
-            PostToUI(() => StatusMessage = message);
+                new UserFacingMessage("LiveScanner.Failure.DetectReceipt")));
             return null;
         }
     }

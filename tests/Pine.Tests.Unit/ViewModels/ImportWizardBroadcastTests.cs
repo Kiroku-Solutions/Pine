@@ -59,7 +59,10 @@ public sealed class ImportWizardBroadcastTests : IDisposable
     private static Transaction Row(Guid accountId) =>
         Transaction.Create(accountId, DateTimeOffset.UtcNow.AddDays(-1), "SHOP", new Money(-5m, Usd), TransactionType.Expense, TimeProvider.System);
 
-    private async Task<ImportWizardViewModel> ImportAsync(params ImportRowDisposition[] dispositions)
+    private Task<ImportWizardViewModel> ImportAsync(params ImportRowDisposition[] dispositions)
+        => ImportAsync(new Localizer(), dispositions);
+
+    private async Task<ImportWizardViewModel> ImportAsync(Localizer localizer, params ImportRowDisposition[] dispositions)
     {
         var account = Account.Create("Current", AccountType.Bank, new Money(0m, Usd), TimeProvider.System);
         var mediator = Substitute.For<IMediator>();
@@ -69,7 +72,7 @@ public sealed class ImportWizardBroadcastTests : IDisposable
         var rows = new List<ImportReviewRow>();
         foreach (var disposition in dispositions)
         {
-            rows.Add(new ImportReviewRow(Row(account.Id), disposition, "reason"));
+            rows.Add(new ImportReviewRow(Row(account.Id), disposition, ImportReviewText.Imported()));
         }
 
         mediator.Send(Arg.Any<ImportTransactionsCommand>(), Arg.Any<CancellationToken>())
@@ -78,7 +81,7 @@ public sealed class ImportWizardBroadcastTests : IDisposable
         var importers = Substitute.For<IImporterFactory>();
         importers.ForFile(Arg.Any<string>()).Returns(Substitute.For<IImporter>());
 
-        var wizard = new ImportWizardViewModel(mediator, TimeProvider.System, importers, new Localizer(), () => { })
+        var wizard = new ImportWizardViewModel(mediator, TimeProvider.System, importers, localizer, () => { })
         {
             SelectedAccount = account,
             SelectedFilePath = _file,
@@ -100,6 +103,30 @@ public sealed class ImportWizardBroadcastTests : IDisposable
 
         wizard.ImportedCount.Should().Be(1, "positive control: the import did write a row");
         _recipient.Count.Should().Be(1, "every tile on the dashboard waits for this message to re-read the ledger");
+    }
+
+    /// <summary>
+    /// Each review row words its reason through a slot on the process-lifetime localizer (TD-139), so
+    /// the wizard must release its rows -- or every row of every import stays reachable for the life
+    /// of the application, following every language change.
+    /// </summary>
+    /// <remarks>
+    /// Found by the independent review of plan item 2.4: making <c>ClearReviewRows</c> skip
+    /// <c>Dispose</c> passed every test there was.
+    /// </remarks>
+    [Fact]
+    public async Task DisposingTheWizard_ReleasesItsReviewRows()
+    {
+        var localizer = new Localizer();
+        var wizard = await ImportAsync(localizer, ImportRowDisposition.Imported, ImportRowDisposition.SkippedAlreadyInAccount);
+        var row = wizard.ReviewRows[0];
+        var english = row.Reason;
+        english.Should().Be(localizer["ImportReview.Imported"], "positive control: the row is worded");
+
+        wizard.Dispose();
+        localizer.SetLanguage("es");
+
+        row.Reason.Should().Be(english, "a released row no longer listens to the localizer");
     }
 
     /// <summary>Nothing written, nothing to announce -- and five tiles are spared a pointless read.</summary>

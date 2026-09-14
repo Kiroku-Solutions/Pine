@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
@@ -79,7 +80,7 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
         }
 
         IsBusy = true;
-        ErrorMessage = string.Empty;
+        _message.Clear();
 
         try
         {
@@ -98,11 +99,11 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
             // (TD-78), so an unknown currency arrives here as a raw ArgumentException from inside
             // CurrencyCode naming its own parameter. That is exactly the class of text this stops
             // showing; giving the command a validator is TD-78 and would turn it into a sentence.
-            ErrorMessage = UserFacingError.Report(
+            _message.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "create-account",
-                "The account could not be created. Nothing was changed.");
+                new UserFacingMessage("CreateAccount.Failure.Create")));
         }
         finally
         {

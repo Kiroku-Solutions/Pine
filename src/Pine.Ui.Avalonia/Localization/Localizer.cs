@@ -274,4 +274,12 @@ public sealed class Localizer : ILocalizer
     /// fixture, which is the only version of this assertion worth having.
     /// </remarks>
     public static IReadOnlyCollection<string> KeysOf(string code) => Load(code).Keys;
+
+    /// <summary>
+    /// One shipped language table, key to template, for the tests that hold the code's keys and
+    /// argument counts to it (TD-139).
+    /// </summary>
+    /// <param name="code">The language whose table to read.</param>
+    /// <returns>Its entries, or an empty table if it is missing.</returns>
+    public static IReadOnlyDictionary<string, string> TableOf(string code) => Load(code);
 }

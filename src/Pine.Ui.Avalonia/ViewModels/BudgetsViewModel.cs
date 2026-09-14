@@ -185,8 +185,10 @@ public partial class BudgetProgressViewModel : ObservableObject
 /// case where the answer is "not known".
 /// </para>
 /// </remarks>
-public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable
+public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+
     private readonly IMediator _mediator;
     private readonly ILocalizer _localizer;
     private readonly ILogger<BudgetsViewModel>? _logger;
@@ -226,6 +228,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         _mediator = mediator;
         _localizer = localizer ?? Localizer.Instance;
         _logger = logger;
+        _error = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text);
     }
 
     /// <summary>Reloads the budgets when something elsewhere changed the data.</summary>
@@ -242,7 +245,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             _logger,
             "budgets-reload",
             BudgetsUnavailable,
-            reported => ErrorMessage = reported);
+            _error.Set);
     }
 
     /// <inheritdoc />
@@ -250,7 +253,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         _logger,
         "budgets-load",
         BudgetsUnavailable,
-        message => ErrorMessage = message);
+        _error.Set);
 
     /// <summary>What the user reads when the budget list cannot be read.</summary>
     /// <remarks>
@@ -258,8 +261,18 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     /// <c>Budgets</c> BEFORE its await -- so a failure used to leave an empty list with
     /// <c>IsLoading</c> correctly false, which reads as "you have no budgets" (TD-35).
     /// </remarks>
-    private const string BudgetsUnavailable =
-        "Your budgets could not be loaded, so this page is not showing them. Try again.";
+    private static readonly UserFacingMessage BudgetsUnavailable = new("Budgets.Failure.Load");
+
+    /// <summary>Releases the localized message slot.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: it subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Avalonia.Controls;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Diagnostics;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -53,12 +54,12 @@ public partial class ImportWizardView : UserControl
             SelectFileAsync,
             null,
             "import-file-select",
-            "That file could not be opened. Try another one.",
-            message =>
+            new UserFacingMessage("ImportWizard.Failure.SelectFile"),
+            messages =>
             {
                 if (DataContext is ImportWizardViewModel target)
                 {
-                    target.StatusMessage = message;
+                    target.ReportFailure(messages);
                 }
             });
     }

@@ -120,7 +120,7 @@ public class ErrorMessageTaxonomyTests
         mediator.Send(Arg.Any<AddTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(new[]
             {
-                new ValidationError("Currency", "Transaction currency EUR does not match account currency USD."),
+                new ValidationError("Currency", "Transaction currency EUR does not match account currency USD.", ValidationText.CurrencyMismatch("EUR", "USD")),
             }));
         var vm = BuildAddTransaction(mediator, account);
 
@@ -245,13 +245,14 @@ public class ErrorMessageTaxonomyTests
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(new[]
             {
-                new ValidationError("AccountId", "That account no longer exists."),
+                new ValidationError("AccountId", "Account 3f2a was not found.", ValidationText.AccountNotFound()),
             }));
         var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
-        vm.RecalculationReport.Should().Be("That account no longer exists.");
+        vm.RecalculationReport.Should().Be(new Localizer()["Validation.AccountNotFound"]);
+        vm.RecalculationReport.Should().NotContain("3f2a", "the id is the log's half, not the screen's");
     }
 
     // ---- The dashboard's tiles (a read path) -------------------------------------------------

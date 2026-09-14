@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Pine.Core.Common;
 using Pine.Core.Security;
 
 namespace Pine.Infrastructure.Data;
@@ -103,21 +104,21 @@ public sealed class VaultRestoreService : IVaultRestoreService
         {
             throw new VaultRestoreRefusedException(
                 $"Refused to restore '{source}': it is not inside this vault's backups directory '{backupsDirectory}'.",
-                "That file is not one of this vault's backups, so it was not restored. Your vault is unchanged.");
+                UserFacingText.RestoreNotAVaultBackup());
         }
 
         if (!File.Exists(source))
         {
             throw new VaultRestoreRefusedException(
                 $"Refused to restore '{source}': the file no longer exists.",
-                "That backup is no longer on disk, so nothing was restored. Your vault is unchanged.");
+                UserFacingText.RestoreBackupMissing());
         }
 
         if (!File.Exists(databasePath))
         {
             throw new VaultRestoreRefusedException(
                 $"Refused to restore into '{vaultRoot}': it holds no {VaultBackupService.DatabaseFileName}.",
-                "The vault could not be found on disk, so nothing was restored.");
+                UserFacingText.RestoreVaultMissing());
         }
 
         // Step 2 and 3: the backup must open with this vault's key and must not be from a newer
@@ -131,8 +132,7 @@ public sealed class VaultRestoreService : IVaultRestoreService
         {
             throw new VaultRestoreRefusedException(
                 $"Refused to restore '{source}': it carries {unknown.Length} migration(s) this build does not know ({string.Join(", ", unknown)}).",
-                "That backup was made by a newer version of Pine than the one you are running. "
-                + "Restoring it could damage your data, so nothing was changed. Update Pine and try again.");
+                UserFacingText.RestoreFromNewerVersion());
         }
 
         var backupCreatedAtUtc = DescribeCreationTime(source);
@@ -224,8 +224,7 @@ public sealed class VaultRestoreService : IVaultRestoreService
 
             throw new VaultRestoreRefusedException(
                 $"Failed to put '{source}' in place of '{databasePath}': {ex.Message}",
-                "The backup could not be written into place, so nothing was changed and your vault "
-                + "is as it was. Check that the disk is not full and try again.",
+                UserFacingText.RestoreCouldNotReplace(),
                 ex);
         }
     }
@@ -278,7 +277,7 @@ public sealed class VaultRestoreService : IVaultRestoreService
             {
                 throw new VaultRestoreRefusedException(
                     $"Refused to restore '{backupPath}': it has an empty __EFMigrationsHistory, so it is not a Pine vault.",
-                    "That file is not a usable Pine backup, so nothing was restored. Your vault is unchanged.");
+                    UserFacingText.RestoreNotAPineBackup());
             }
 
             return applied;
@@ -290,8 +289,7 @@ public sealed class VaultRestoreService : IVaultRestoreService
             // and the engineer's version below carries the SQLite error itself.
             throw new VaultRestoreRefusedException(
                 $"Refused to restore '{backupPath}': it could not be read with this vault's key ({ex.Message}).",
-                "That backup could not be opened with this vault's password, or the file is damaged. "
-                + "Nothing was restored and your vault is unchanged.",
+                UserFacingText.RestoreUnreadable(),
                 ex);
         }
         finally

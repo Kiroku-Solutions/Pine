@@ -233,13 +233,15 @@ public sealed class VoidTransactionCommandValidator : IRequestValidator<VoidTran
         {
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.Reason),
-                "A reason is required to void a transaction."));
+                "A reason is required to void a transaction.",
+                ValidationText.VoidReasonRequired()));
         }
         else if (request.Reason.Trim().Length > Transaction.MaxVoidReasonLength)
         {
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.Reason),
-                $"The reason cannot exceed {Transaction.MaxVoidReasonLength} characters."));
+                $"The reason cannot exceed {Transaction.MaxVoidReasonLength} characters.",
+                ValidationText.VoidReasonTooLong(Transaction.MaxVoidReasonLength)));
         }
 
         var transaction = await _transactionRepository.GetByIdAsync(request.TransactionId, cancellationToken);
@@ -249,7 +251,8 @@ public sealed class VoidTransactionCommandValidator : IRequestValidator<VoidTran
             // accumulating: errors derived from an absent row would be noise, not help.
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.TransactionId),
-                $"Transaction {request.TransactionId} was not found."));
+                $"Transaction {request.TransactionId} was not found.",
+                ValidationText.TransactionNotFound()));
             return errors;
         }
 
@@ -257,7 +260,8 @@ public sealed class VoidTransactionCommandValidator : IRequestValidator<VoidTran
         {
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.TransactionId),
-                "This transaction has already been voided."));
+                "This transaction has already been voided.",
+                ValidationText.VoidAlreadyVoided()));
             return errors;
         }
 
@@ -289,7 +293,8 @@ public sealed class VoidTransactionCommandValidator : IRequestValidator<VoidTran
         {
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.TransactionId),
-                $"The account for transaction {leg.Id} was not found, so its effect cannot be undone."));
+                $"The account for transaction {leg.Id} was not found, so its effect cannot be undone.",
+                ValidationText.VoidAccountMissing()));
             return;
         }
 
@@ -298,7 +303,8 @@ public sealed class VoidTransactionCommandValidator : IRequestValidator<VoidTran
             errors.Add(new ValidationError(
                 nameof(VoidTransactionCommand.TransactionId),
                 $"Transaction {leg.Id} is in {leg.TotalAmount.Currency} but its account is in "
-                + $"{account.Balance.Currency}, so its effect on the balance cannot be undone."));
+                + $"{account.Balance.Currency}, so its effect on the balance cannot be undone.",
+                ValidationText.VoidCurrencyMismatch(leg.TotalAmount.Currency.Value, account.Balance.Currency.Value)));
         }
     }
 }

@@ -106,14 +106,16 @@ public sealed class CreateRuleCommandValidator : IRequestValidator<CreateRuleCom
 
         if (string.IsNullOrWhiteSpace(request.Title))
         {
-            errors.Add(new ValidationError(nameof(CreateRuleCommand.Title), "Give the rule a name."));
+            errors.Add(new ValidationError(nameof(CreateRuleCommand.Title), "Give the rule a name.",
+            ValidationText.RuleTitleRequired()));
         }
 
         if (string.IsNullOrWhiteSpace(request.Category))
         {
             errors.Add(new ValidationError(
                 nameof(CreateRuleCommand.Category),
-                "Name the category this rule should apply."));
+                "Name the category this rule should apply.",
+                ValidationText.RuleCategoryRequired()));
         }
 
         if (request.Conditions is null || request.Conditions.Count == 0)
@@ -122,7 +124,8 @@ public sealed class CreateRuleCommandValidator : IRequestValidator<CreateRuleCom
             // empty form would re-file an entire import under one category.
             errors.Add(new ValidationError(
                 nameof(CreateRuleCommand.Conditions),
-                "Add at least one condition; a rule with none would match every transaction."));
+                "Add at least one condition; a rule with none would match every transaction.",
+                ValidationText.RuleConditionsRequired()));
         }
         else
         {
@@ -130,14 +133,16 @@ public sealed class CreateRuleCommandValidator : IRequestValidator<CreateRuleCom
             {
                 errors.Add(new ValidationError(
                     nameof(CreateRuleCommand.Conditions),
-                    $"A rule may have at most {Rule.MaximumConditions} conditions."));
+                    $"A rule may have at most {Rule.MaximumConditions} conditions.",
+                    ValidationText.RuleTooManyConditions(Rule.MaximumConditions)));
             }
 
             if (request.Conditions.Any(c => string.IsNullOrWhiteSpace(c.Value)))
             {
                 errors.Add(new ValidationError(
                     nameof(CreateRuleCommand.Conditions),
-                    "Every condition needs a value to compare against."));
+                    "Every condition needs a value to compare against.",
+                    ValidationText.RuleConditionValueRequired()));
             }
         }
 

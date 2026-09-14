@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Diagnostics;
 using System.IO;
@@ -26,12 +27,12 @@ public partial class ScanReceiptView : UserControl
             SelectImageAsync,
             null,
             "receipt-image-select",
-            "That image could not be opened. Try another file.",
-            message =>
+            new UserFacingMessage("ScanReceipt.Failure.SelectImage"),
+            messages =>
             {
                 if (DataContext is ScanReceiptViewModel target)
                 {
-                    target.ErrorMessage = message;
+                    target.ReportFailure(messages);
                 }
             });
     }

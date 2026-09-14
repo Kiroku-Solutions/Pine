@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Diagnostics;
 
@@ -30,7 +31,7 @@ public partial class CropReceiptView : UserControl
                 Cropper.BottomLeft.X, Cropper.BottomLeft.Y),
             null,
             "receipt-crop-confirm",
-            "The crop could not be applied. Try adjusting the corners, or retake the photo.",
-            message => vm.ErrorMessage = message);
+            new UserFacingMessage("CropReceipt.Failure.Confirm"),
+            vm.ReportFailure);
     }
 }

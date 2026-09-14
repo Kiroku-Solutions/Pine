@@ -6,7 +6,9 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Pine.Core.Common;
+using Pine.Tests.Unit.Localization;
 using Pine.Ui.Avalonia.Diagnostics;
+using System.Collections.Generic;
 using Xunit;
 
 namespace Pine.Tests.Unit.Diagnostics;
@@ -31,7 +33,7 @@ namespace Pine.Tests.Unit.Diagnostics;
 /// </remarks>
 public class ObservedTaskTests
 {
-    private const string Fallback = "The thing could not be done.";
+    private static readonly UserFacingMessage Fallback = new("AddTransaction.Failure.Save");
 
     /// <summary>An exception whose own text must never reach a screen — it does not opt in.</summary>
     private sealed class SecretiveException : Exception
@@ -42,10 +44,12 @@ public class ObservedTaskTests
         }
     }
 
-    /// <summary>An exception that DID opt in, so its sentence may be shown verbatim.</summary>
+    private static readonly UserFacingMessage Speakable = new("Failure.VaultLocked");
+
+    /// <summary>An exception that DID opt in, so its messages may be shown.</summary>
     private sealed class SpeakableException : Exception, IUserFacingFailure
     {
-        public string UserFacingMessage => "Pine could not reach the vault.";
+        public IReadOnlyList<UserFacingMessage> UserFacingMessages => [Speakable];
     }
 
     [Fact]
@@ -58,7 +62,7 @@ public class ObservedTaskTests
         // would pass or fail for a reason unrelated to the code under test.
         logger.IsEnabled(Arg.Any<LogLevel>()).Returns(true);
 
-        string? reported = null;
+        IReadOnlyList<UserFacingMessage>? reported = null;
 
         ObservedTask.Run(
             Task.FromException(new SecretiveException()),
@@ -69,10 +73,10 @@ public class ObservedTaskTests
 
         await WaitForAsync(() => reported is not null);
 
-        reported.Should().Be(
+        reported.Should().ContainSingle().Which.Should().BeSameAs(
             Fallback,
-            "an exception that did not opt in to being shown must be replaced by the caller's sentence (TD-24).");
-        reported.Should().NotContain("pine.db", "the store's path must never reach the screen.");
+            "an exception that did not opt in to being shown must be replaced by the caller's message (TD-24).");
+        Rendered.Text(reported!).Should().NotContain("pine.db", "the store's path must never reach the screen.");
 
         logger.ReceivedWithAnyArgs(1).Log(
             LogLevel.Error, default, default(object)!, default, default!);
@@ -81,7 +85,7 @@ public class ObservedTaskTests
     [Fact]
     public async Task AnOptedInException_KeepsItsOwnSentence()
     {
-        string? reported = null;
+        IReadOnlyList<UserFacingMessage>? reported = null;
 
         ObservedTask.Run(
             Task.FromException(new SpeakableException()),
@@ -92,7 +96,7 @@ public class ObservedTaskTests
 
         await WaitForAsync(() => reported is not null);
 
-        reported.Should().Be("Pine could not reach the vault.");
+        reported.Should().ContainSingle().Which.Should().BeSameAs(Speakable);
     }
 
     /// <summary>
@@ -149,7 +153,7 @@ public class ObservedTaskTests
     [Fact]
     public async Task ASynchronousThrowFromTheFactory_IsCaughtToo()
     {
-        string? reported = null;
+        IReadOnlyList<UserFacingMessage>? reported = null;
 
         ObservedTask.Run(
             () => throw new SecretiveException(),
@@ -160,7 +164,7 @@ public class ObservedTaskTests
 
         await WaitForAsync(() => reported is not null);
 
-        reported.Should().Be(Fallback);
+        reported.Should().ContainSingle().Which.Should().BeSameAs(Fallback);
     }
 
     [Fact]

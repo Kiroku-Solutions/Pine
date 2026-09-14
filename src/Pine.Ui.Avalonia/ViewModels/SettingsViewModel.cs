@@ -18,6 +18,7 @@ using Pine.Application.Security.Queries;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Utils;
@@ -111,6 +112,21 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     /// <summary>Holds the vault-export sentence as a KEY, so it survives a language switch.</summary>
     private readonly LocalizedMessageSlot _exportMessage;
     private readonly LocalizedMessageSlot _restoreMessage;
+    private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _recalculationReport;
+    private readonly LocalizedMessageSlot _passwordChangeMessage;
+    private readonly LocalizedMessageSlot _newPasswordStatus;
+    private readonly LocalizedMessageSlot _newPasswordAdvice;
+
+    private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
+    {
+        if (message is null) slot.Clear(); else slot.Set(message);
+    }
+
+    private static void SetOrClear(LocalizedMessageSlot slot, IReadOnlyList<UserFacingMessage> messages)
+    {
+        if (messages.Count == 0) slot.Clear(); else slot.Set(messages);
+    }
 
     private bool _isInitializing = true;
 
@@ -131,6 +147,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _vaultSession = vaultSession;
         _exportMessage = new LocalizedMessageSlot(localizer, text => VaultExportMessage = text);
         _restoreMessage = new LocalizedMessageSlot(localizer, text => VaultRestoreMessage = text);
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
+        _recalculationReport = new LocalizedMessageSlot(localizer, text => RecalculationReport = text);
+        _passwordChangeMessage = new LocalizedMessageSlot(localizer, text => PasswordChangeMessage = text);
+        _newPasswordStatus = new LocalizedMessageSlot(localizer, text => NewPasswordStrengthStatusText = text ?? string.Empty);
+        _newPasswordAdvice = new LocalizedMessageSlot(localizer, text => NewPasswordAdviceText = text ?? string.Empty);
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -163,12 +184,10 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _logger,
         "settings-load",
         SettingsUnavailable,
-        message => ErrorMessage = message);
+        _error.Set);
 
     /// <summary>What the user reads when their saved settings cannot be read back.</summary>
-    private const string SettingsUnavailable =
-        "Pine could not read your saved appearance settings, so this page is showing the defaults. "
-        + "Changing anything here will still be saved.";
+    private static readonly UserFacingMessage SettingsUnavailable = new("Settings.Failure.Load");
 
     /// <summary>What the user reads when a change they just made could not be stored.</summary>
     /// <remarks>
@@ -177,8 +196,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     /// sentence the user sees the new theme, believes it is saved, and finds it reverted at the
     /// next launch with nothing having said otherwise.
     /// </remarks>
-    private const string SettingNotSaved =
-        "Pine applied that change but could not save it, so it will revert the next time you open Pine.";
+    private static readonly UserFacingMessage SettingNotSaved = new("Settings.Failure.SettingNotSaved");
 
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
@@ -278,36 +296,38 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         if (account is null || IsRecalculating) return;
 
         IsRecalculating = true;
-        RecalculationReport = null;
+        _recalculationReport.Clear();
         try
         {
             var result = await _sender.Send(new RecalculateAccountBalanceCommand(account.Id));
 
+            // The count is its own message, one key per grammatical number, because which word agrees
+            // with it is a rule of each language rather than of this code (TD-139).
             var counted = result.TransactionsCounted;
-            var rows = counted == 1 ? "1 transaction" : $"{counted} transactions";
+            var rows = new UserFacingMessage(
+                counted == 1 ? "Settings.Recalculation.TransactionCountOne" : "Settings.Recalculation.TransactionCountMany",
+                counted);
 
             if (result.OpeningBalanceWasInferred)
             {
                 RecalculationNeedsAttention = true;
-                RecalculationReport =
-                    $"'{account.Name}' had no opening balance on record, so one was inferred from its "
-                    + $"current balance ({result.OpeningBalance} {result.CurrencyCode}) and {rows}. "
-                    + "This first check could not detect drift; run it again from now on and it will.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceInferred",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows);
             }
             else if (result.Drift == 0m)
             {
                 RecalculationNeedsAttention = false;
-                RecalculationReport =
-                    $"'{account.Name}' agrees with its ledger: {result.RecalculatedBalance} "
-                    + $"{result.CurrencyCode} across {rows}.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.Agrees",
+                    account.Name, result.RecalculatedBalance, result.CurrencyCode, rows);
             }
             else
             {
                 RecalculationNeedsAttention = true;
-                RecalculationReport =
-                    $"'{account.Name}' did not agree with its ledger and was repaired: "
-                    + $"{result.PreviousBalance} → {result.RecalculatedBalance} {result.CurrencyCode} "
-                    + $"(off by {result.Drift}), recomputed from {rows}.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.Repaired",
+                    account.Name, result.PreviousBalance, result.RecalculatedBalance, result.CurrencyCode, result.Drift, rows);
 
                 // The dashboard and the balance widget are showing the old figure.
                 WeakReferenceMessenger.Default.Send(new DataChangedMessage());
@@ -324,11 +344,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             // their own instructions through it now, where before both were flattened into "The
             // balance could not be checked" and the user was never told to reload or unlock (TD-98).
             RecalculationNeedsAttention = true;
-            RecalculationReport = UserFacingError.Report(
+            _recalculationReport.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "recalculate-balance",
-                "The balance could not be checked. Nothing was changed.");
+                new UserFacingMessage("Settings.Recalculation.Failure")));
         }
         finally
         {
@@ -345,7 +365,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             _logger,
             "setting-save",
             SettingNotSaved,
-            message => ErrorMessage = message);
+            _error.Set);
     }
 
     partial void OnSelectedPaletteIndexChanged(int value)
@@ -358,7 +378,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             _logger,
             "setting-save",
             SettingNotSaved,
-            message => ErrorMessage = message);
+            _error.Set);
     }
 
     /// <summary>
@@ -568,8 +588,8 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
         NewPasswordMeetsFloor = result.MeetsFloor;
         NewPasswordStrengthLevelValue = result.Level;
-        NewPasswordStrengthStatusText = BuildPasswordStatusText(result);
-        NewPasswordAdviceText = BuildPasswordAdviceText(result);
+        SetOrClear(_newPasswordStatus, PasswordFeedbackText.Status(result));
+        SetOrClear(_newPasswordAdvice, PasswordFeedbackText.Advice(result));
 
         UpdateNewPasswordsMatch();
     }
@@ -580,63 +600,6 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     {
         NewPasswordsMatch = string.IsNullOrEmpty(ConfirmNewPassword) || ConfirmNewPassword == NewPassword;
     }
-
-    /// <summary>Word-for-word the same banding sentence SetupViewModel produces; see the note above on the duplication.</summary>
-    private static string BuildPasswordStatusText(PasswordStrengthResult result)
-    {
-        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
-        {
-            return string.Empty;
-        }
-
-        var band = result.Level switch
-        {
-            PasswordStrengthLevel.VeryWeak => "Very weak",
-            PasswordStrengthLevel.Weak => "Weak",
-            PasswordStrengthLevel.Moderate => "Moderate",
-            PasswordStrengthLevel.Strong => "Strong",
-            PasswordStrengthLevel.VeryStrong => "Very strong",
-            _ => "Unusable",
-        };
-
-        return result.MeetsFloor
-            ? $"{band} -- meets Pine's minimum for a vault password."
-            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
-    }
-
-    /// <summary>
-    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
-    /// already said by <see cref="BuildPasswordStatusText"/> (<see cref="PasswordWeakness.Empty"/>
-    /// and <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of
-    /// "does not meet the minimum").
-    /// </summary>
-    private static string BuildPasswordAdviceText(PasswordStrengthResult result)
-    {
-        var sentences = result.Weaknesses
-            .Select(AdviceForPasswordWeakness)
-            .Where(static s => s is not null);
-
-        return string.Join(" ", sentences);
-    }
-
-    private static string? AdviceForPasswordWeakness(PasswordWeakness weakness) => weakness switch
-    {
-        PasswordWeakness.Empty => null,
-        PasswordWeakness.BelowEntropyFloor => null,
-        PasswordWeakness.TooShort =>
-            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
-        PasswordWeakness.CommonPassword =>
-            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
-        PasswordWeakness.RepeatedPattern =>
-            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
-        PasswordWeakness.SequentialRun =>
-            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
-        PasswordWeakness.KeyboardPattern =>
-            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
-        PasswordWeakness.LimitedCharacterVariety =>
-            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
-        _ => null,
-    };
 
     /// <summary>
     /// Re-wraps the vault's data key under a new master password.
@@ -669,7 +632,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         if (string.IsNullOrEmpty(CurrentPassword))
         {
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "Enter your current master password.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.CurrentRequired");
             return;
         }
 
@@ -678,7 +641,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         if (NewPassword != ConfirmNewPassword)
         {
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "The new passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.Mismatch");
             return;
         }
 
@@ -686,16 +649,13 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         var strength = PasswordStrengthPolicy.Evaluate(NewPassword);
         if (!strength.MeetsFloor)
         {
-            var advice = BuildPasswordAdviceText(strength);
             PasswordChangeFailed = true;
-            PasswordChangeMessage = string.IsNullOrEmpty(advice)
-                ? "This password does not meet Pine's minimum strength for a vault password."
-                : $"This password does not meet Pine's minimum strength for a vault password. {advice}";
+            _passwordChangeMessage.Set([new UserFacingMessage("Password.BelowMinimum"), .. PasswordFeedbackText.Advice(strength)]);
             return;
         }
 
         IsChangingPassword = true;
-        PasswordChangeMessage = null;
+        _passwordChangeMessage.Clear();
         PasswordChangeFailed = false;
 
         try
@@ -712,9 +672,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             ConfirmNewPassword = string.Empty;
 
             PasswordChangeFailed = false;
-            PasswordChangeMessage =
-                "Your master password was changed. Your vault stayed open and none of your data was re-encrypted -- "
-                + "only the key that protects it was re-wrapped. Use the new password the next time you unlock.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Changed");
         }
         catch (VaultKeyUnwrapException)
         {
@@ -722,7 +680,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             // open, so whoever is typing has demonstrably passed authentication once. Being vague
             // here would only make a mistyped current password look like a broken feature.
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "The current password is incorrect. Your master password was not changed.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.CurrentIncorrect");
         }
         catch (Exception ex)
         {
@@ -739,11 +697,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             // here it would produce the generic sentence and a mistyped current password would look
             // like a broken feature.
             PasswordChangeFailed = true;
-            PasswordChangeMessage = UserFacingError.Report(
+            _passwordChangeMessage.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "change-vault-password",
-                "Your master password could not be changed. Your vault is unchanged and your current password still works.");
+                new UserFacingMessage("Settings.MasterPassword.Failure.Change")));
         }
         finally
         {
@@ -834,11 +792,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         catch (Exception ex)
         {
             VaultExportFailed = true;
-            _exportMessage.SetRendered(UserFacingError.Report(
+            _exportMessage.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "export-vault-backup",
-                _localizer["Settings.Security.ExportVault.Failed"]));
+                new UserFacingMessage("Settings.Security.ExportVault.Failed")));
         }
         finally
         {
@@ -995,11 +953,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         catch (Exception ex)
         {
             VaultRestoreFailed = true;
-            _restoreMessage.SetRendered(UserFacingError.Report(
+            _restoreMessage.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "restore-vault-backup",
-                _localizer["Settings.Security.RestoreVault.Failed"]));
+                new UserFacingMessage("Settings.Security.RestoreVault.Failed")));
         }
         finally
         {
@@ -1115,6 +1073,11 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     {
         _exportMessage.Dispose();
         _restoreMessage.Dispose();
+        _error.Dispose();
+        _recalculationReport.Dispose();
+        _passwordChangeMessage.Dispose();
+        _newPasswordStatus.Dispose();
+        _newPasswordAdvice.Dispose();
         GC.SuppressFinalize(this);
     }
 }

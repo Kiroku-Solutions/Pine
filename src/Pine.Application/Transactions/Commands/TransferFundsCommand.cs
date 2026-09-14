@@ -148,14 +148,16 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.SourceAccountId),
-                "Source and destination accounts cannot be the same."));
+                "Source and destination accounts cannot be the same.",
+                ValidationText.TransferSameAccount()));
         }
 
         if (request.Amount <= 0)
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.Amount),
-                "Transfer amount must be greater than zero."));
+                "Transfer amount must be greater than zero.",
+                ValidationText.TransferAmountNotPositive()));
         }
 
         var sourceAccount = await _accountRepository.GetByIdAsync(request.SourceAccountId, cancellationToken);
@@ -163,7 +165,8 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.SourceAccountId),
-                $"Account {request.SourceAccountId} was not found."));
+                $"Account {request.SourceAccountId} was not found.",
+                ValidationText.TransferSourceNotFound()));
         }
 
         var destinationAccount = await _accountRepository.GetByIdAsync(request.DestinationAccountId, cancellationToken);
@@ -171,7 +174,8 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.DestinationAccountId),
-                $"Account {request.DestinationAccountId} was not found."));
+                $"Account {request.DestinationAccountId} was not found.",
+                ValidationText.TransferDestinationNotFound()));
         }
 
         // Nothing below can say anything useful without both accounts in hand.
@@ -184,7 +188,8 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.CurrencyCode),
-                $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code."));
+                $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code.",
+                ValidationText.CurrencyCodeInvalid(request.CurrencyCode)));
             return errors;
         }
 
@@ -193,7 +198,8 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.CurrencyCode),
-                $"Transfer currency {normalised} does not match source account currency {sourceCurrency}."));
+                $"Transfer currency {normalised} does not match source account currency {sourceCurrency}.",
+                ValidationText.TransferSourceCurrencyMismatch(normalised, sourceCurrency)));
         }
 
         var destinationCurrency = destinationAccount.Balance.Currency.Value;
@@ -201,7 +207,8 @@ public sealed class TransferFundsCommandValidator : IRequestValidator<TransferFu
         {
             errors.Add(new ValidationError(
                 nameof(TransferFundsCommand.CurrencyCode),
-                $"Transfer currency {normalised} does not match destination account currency {destinationCurrency}."));
+                $"Transfer currency {normalised} does not match destination account currency {destinationCurrency}.",
+                ValidationText.TransferDestinationCurrencyMismatch(normalised, destinationCurrency)));
         }
 
         return errors;

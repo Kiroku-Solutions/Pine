@@ -12,6 +12,7 @@ using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     private readonly IImporterFactory _importerFactory;
     private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _status;
+    private readonly LocalizedMessageSlot _headline;
     private readonly ILogger<ImportWizardViewModel>? _logger;
 
     private int _stepIndex;
@@ -190,6 +192,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
         _importerFactory = importerFactory;
         _localizer = localizer;
         _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _headline = new LocalizedMessageSlot(localizer, text => ReviewHeadline = text ?? string.Empty);
         _onClose = onClose;
         // NOT MOVED ONTO IAsyncInitializable, AND THE REASON IS STRUCTURAL (TD-35). That interface
         // is driven by PageActivation, which only ever sees a page assigned to a navigator's
@@ -202,9 +205,16 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             LoadAccountsAsync,
             _logger,
             "import-accounts-load",
-            "Pine could not load your accounts, so there is nowhere to import into. Close the wizard and try again.",
-            message => StatusMessage = message);
+            new UserFacingMessage("ImportWizard.Failure.AccountsLoad"),
+            _status.Set);
     }
+
+    /// <summary>
+    /// Shows <paramref name="messages"/> in the status line, in the active language, and keeps them in
+    /// step with a language change. For the view's code-behind, which has no localizer (TD-139).
+    /// </summary>
+    /// <param name="messages">What <c>ObservedTask</c> produced.</param>
+    public void ReportFailure(IReadOnlyList<UserFacingMessage> messages) => _status.Set(messages);
 
     private async Task LoadAccountsAsync()
     {
@@ -256,11 +266,11 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             // chose, so its exceptions are precisely the ones that name a filesystem path -- and the
             // user already knows which file they picked, so the path adds nothing they did not have
             // and everything an over-the-shoulder reader did not.
-            StatusMessage = UserFacingError.Report(
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "import-read-headers",
-                "That file's columns could not be read. Check that it is a CSV file and try again.");
+                new UserFacingMessage("ImportWizard.Failure.ReadHeaders")));
         }
     }
 
@@ -274,7 +284,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
                 _status.Set("ImportWizard.Status.SelectFileAndAccount");
                 return;
             }
-            StatusMessage = "";
+            _status.Clear();
             StepIndex = 1;
         }
         else if (StepIndex == 1)
@@ -349,11 +359,11 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             // WAS: $"Preview error: {ex.Message}" (TD-24). Nothing is written on the preview path,
             // so the sentence says so: a user who reads "preview error" has no way to know whether
             // the wizard has already started touching their ledger.
-            StatusMessage = UserFacingError.Report(
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "import-preview",
-                "The preview could not be built from that file and column mapping. Nothing was imported.");
+                new UserFacingMessage("ImportWizard.Failure.Preview")));
         }
         finally
         {
@@ -408,14 +418,14 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             // that they have to be able to read, so the wizard stops on the review step and waits for them.
             if (!HasSkippedRows && !HasUncheckedRows)
             {
-                StatusMessage = ReviewHeadline;
+                _status.Set(_headline.Messages);
                 await Task.Delay(1500); // Give user time to see success message
                 _onClose?.Invoke();
                 return;
             }
 
             // The review pane states the outcome in full; a second copy in the header would only compete.
-            StatusMessage = "";
+            _status.Clear();
             StepIndex = 3;
         }
         catch (Exception ex)
@@ -424,11 +434,11 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             // claim, and it is true because ImportTransactionsCommand runs inside TransactionBehavior's
             // single database transaction: a throw anywhere in the handler rolls the whole batch back.
             // If that ever stops being true, this sentence becomes a lie and must change with it.
-            StatusMessage = UserFacingError.Report(
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "import-execute",
-                "The import failed and was stopped. No transactions were imported.");
+                new UserFacingMessage("ImportWizard.Failure.Execute")));
         }
         finally
         {
@@ -449,7 +459,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     /// </remarks>
     private void ApplyImportResult(ImportTransactionsResult result, string accountName)
     {
-        ReviewRows.Clear();
+        ClearReviewRows();
 
         var uncheckedRows = 0;
         var alreadyInAccount = 0;
@@ -457,7 +467,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
 
         foreach (var row in result.Rows)
         {
-            ReviewRows.Add(new ImportReviewRowViewModel(row));
+            ReviewRows.Add(new ImportReviewRowViewModel(row, _localizer));
 
             switch (row.Disposition)
             {
@@ -482,8 +492,24 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
         SkippedAlreadyInAccountCount = alreadyInAccount;
         SkippedDuplicateInFileCount = duplicateInFile;
 
-        var rowWord = TotalRowCount == 1 ? "row" : "rows";
-        ReviewHeadline = $"Imported {ImportedCount} of {TotalRowCount} {rowWord} into '{accountName}'.";
+        // Two keys rather than one template with a "row"/"rows" argument: which word agrees with
+        // the count is a rule of each language, not of this code (TD-139).
+        _headline.Set(
+            TotalRowCount == 1 ? "ImportWizard.Review.HeadlineOne" : "ImportWizard.Review.HeadlineMany",
+            ImportedCount,
+            TotalRowCount,
+            accountName);
+    }
+
+    /// <summary>Empties the review list, releasing each row's subscription to the localizer.</summary>
+    private void ClearReviewRows()
+    {
+        foreach (var row in ReviewRows)
+        {
+            row.Dispose();
+        }
+
+        ReviewRows.Clear();
     }
 
     [RelayCommand]
@@ -511,6 +537,8 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _status.Dispose();
+        _headline.Dispose();
+        ClearReviewRows();
         GC.SuppressFinalize(this);
     }
 
@@ -521,27 +549,36 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
 /// </summary>
 /// <remarks>
 /// Deliberately exposes booleans and nothing else derived. The outcome's explanation is
-/// <see cref="Reason"/>, written by the import handler and passed through verbatim; the flags exist only so
-/// the view can tint a row and pick a short status chip, which needs the shape of the decision rather than
-/// a restatement of it.
+/// <see cref="Reason"/>, named by the import handler and worded here in the active language; the flags
+/// exist only so the view can tint a row and pick a short status chip, which needs the shape of the
+/// decision rather than a restatement of it.
 /// </remarks>
-public sealed class ImportReviewRowViewModel
+public sealed partial class ImportReviewRowViewModel : ObservableObject, IDisposable
 {
     private readonly ImportReviewRow _row;
+    private readonly LocalizedMessageSlot _reason;
 
     /// <summary>Initialises the row from one decision returned by the import handler.</summary>
     /// <param name="row">The parsed row and its disposition. Never null.</param>
-    public ImportReviewRowViewModel(ImportReviewRow row)
+    /// <param name="localizer">Words <see cref="Reason"/>, and re-words it when the language changes.</param>
+    public ImportReviewRowViewModel(ImportReviewRow row, ILocalizer localizer)
     {
         ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(localizer);
         _row = row;
+        _reason = new LocalizedMessageSlot(localizer, text => Reason = text ?? string.Empty);
+        _reason.Set(row.Reason);
     }
 
     /// <summary>Gets the parsed transaction, whether or not it was saved.</summary>
     public Transaction Transaction => _row.Transaction;
 
-    /// <summary>Gets the handler's user-facing explanation of this row's outcome.</summary>
-    public string Reason => _row.Reason;
+    /// <summary>Gets the handler's explanation of this row's outcome, in the active language.</summary>
+    [ObservableProperty]
+    public partial string Reason { get; private set; } = string.Empty;
+
+    /// <summary>Releases the reason's subscription to the process-lifetime localizer.</summary>
+    public void Dispose() => _reason.Dispose();
 
     /// <summary>Gets a value indicating whether this row was written to the vault.</summary>
     public bool WasImported => _row.WasImported;

@@ -7,13 +7,18 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Pine.Core.Ai;
+using Pine.Core.Common;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
+using System.Collections.Generic;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>
+public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+
     /// <summary>
     /// The shell this page is shown in (TD-121). It was the window's navigator, so confirming or
     /// cancelling a crop replaced the shell; it is now the shell that created this page, and it is
@@ -47,7 +52,15 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// code-behind that called it was <c>async void</c> with no <c>try</c> at all.
     /// </remarks>
     [ObservableProperty]
-    public partial string? ErrorMessage { get; set; }
+    public partial string? ErrorMessage { get; private set; }
+
+    /// <summary>
+    /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
+    /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
+    /// </summary>
+    /// <param name="messages">What <c>UserFacingError.Report</c> or <c>ObservedTask</c> produced.</param>
+    public void ReportFailure(IReadOnlyList<UserFacingMessage> messages) => _error.Set(messages);
+
 
     /// <summary>Creates the crop screen's view model.</summary>
     /// <param name="navigationService">The shell this page is shown in; see <c>IViewModelFactory.CreateCropReceipt</c>.</param>
@@ -60,12 +73,25 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
         IShellNavigator navigationService,
         IViewModelFactory viewModels,
         IImageProcessor imageProcessor,
-        ILogger<CropReceiptViewModel>? logger = null)
+        ILogger<CropReceiptViewModel>? logger = null,
+        ILocalizer? localizer = null)
     {
         _navigationService = navigationService;
         _viewModels = viewModels;
         _imageProcessor = imageProcessor;
         _logger = logger;
+        _error = new LocalizedMessageSlot(localizer ?? new Localizer(), text => ErrorMessage = text);
+    }
+
+    /// <summary>Releases the localized message slot.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: it subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>

@@ -163,9 +163,9 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
             // auth failure would send the user to reset a password that is not the problem.
             // The path itself is deliberately not shown (TD-24), only where to look.
             _vaultSession.Lock();
-            StatusMessage = ex.BackupPath is null
-                ? "Your password was accepted, but Pine could not update the vault database. Your data was not modified. Please try again or reinstall the latest version of Pine."
-                : "Your password was accepted, but Pine could not update the vault database. An encrypted backup of your data was saved in the 'backups' folder inside your vault before the update was attempted, so nothing is lost.";
+            _message.Set(ex.BackupPath is null
+                ? "Unlock.Status.MigrationFailedNoBackup"
+                : "Unlock.Status.MigrationFailedBackupKept");
         }
         catch (VaultBackupFailedException)
         {

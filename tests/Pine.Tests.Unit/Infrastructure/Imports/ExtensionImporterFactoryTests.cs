@@ -11,6 +11,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Infrastructure.Importing;
+using Pine.Tests.Unit.Localization;
 using Xunit;
 
 namespace Pine.Tests.Unit.Infrastructure.Importing;
@@ -121,7 +122,7 @@ public class ExtensionImporterFactoryTests
 
         var thrown = Assert.Throws<UnsupportedImportFormatException>(() => factory.ForFile(path));
 
-        var message = thrown.UserFacingMessage;
+        var message = Rendered.Text(thrown);
 
         message.Should().NotBeNullOrWhiteSpace();
         message.Trim().Should().EndWith(".", "a message shown to a person is a sentence, not a fragment.");

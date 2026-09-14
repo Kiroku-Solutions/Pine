@@ -115,7 +115,8 @@ public sealed class RecordTransactionCommandValidator : IRequestValidator<Record
             {
                 new ValidationError(
                     nameof(RecordTransactionCommand.AccountId),
-                    $"Account {request.AccountId} was not found."),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 
@@ -125,7 +126,8 @@ public sealed class RecordTransactionCommandValidator : IRequestValidator<Record
             {
                 new ValidationError(
                     nameof(RecordTransactionCommand.CurrencyCode),
-                    $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code."),
+                    $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code.",
+                    ValidationText.CurrencyCodeInvalid(request.CurrencyCode)),
             };
         }
 
@@ -136,7 +138,8 @@ public sealed class RecordTransactionCommandValidator : IRequestValidator<Record
             {
                 new ValidationError(
                     nameof(RecordTransactionCommand.CurrencyCode),
-                    $"Transaction currency {normalised} does not match account currency {accountCurrency}."),
+                    $"Transaction currency {normalised} does not match account currency {accountCurrency}.",
+                    ValidationText.CurrencyMismatch(normalised, accountCurrency)),
             };
         }
 

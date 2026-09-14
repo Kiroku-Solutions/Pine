@@ -130,11 +130,10 @@ public class ImportDeduplicationTests
 
         foreach (var row in second.Skipped)
         {
-            row.Reason.Should().NotBeNullOrWhiteSpace();
-            row.Reason.Should().Contain("Everyday",
+            row.Reason.Key.Should().Be(ImportReviewText.SkippedAlreadyInAccount("x").Key,
+                "the explanation must state the outcome, so it can be shown to a user");
+            row.Reason.Arguments.Should().Contain("Everyday",
                 "the explanation must name the account the row is already in, not merely say 'duplicate'");
-            row.Reason.Should().Contain("Not imported",
-                "the sentence must state the outcome, so it can be shown to a user unchanged");
         }
 
         host.CountRowsRaw("Transactions").Should().Be(3, "re-importing a statement must not double the vault");
@@ -166,8 +165,7 @@ public class ImportDeduplicationTests
 
         result.Rows[0].Disposition.Should().Be(ImportRowDisposition.Imported);
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.SkippedDuplicateInFile);
-        result.Rows[1].Reason.Should().NotBeNullOrWhiteSpace();
-        result.Rows[1].Reason.Should().Contain("same file",
+        result.Rows[1].Reason.Key.Should().Be(ImportReviewText.SkippedDuplicateInFile().Key,
             "the user must be able to tell an in-file twin from a row already in the account");
 
         host.CountRowsRaw("Transactions").Should().Be(1, "the batch guard must hold before the rows are written, not after");
@@ -244,7 +242,7 @@ public class ImportDeduplicationTests
         var row = first.Rows.Should().ContainSingle().Subject;
         row.Disposition.Should().Be(ImportRowDisposition.ImportedWithoutKeyCheck);
         row.WasImported.Should().BeTrue();
-        row.Reason.Should().Contain("no import key");
+        row.Reason.Key.Should().Be(ImportReviewText.ImportedWithoutKeyCheck().Key);
         first.Skipped.Should().BeEmpty("an unverifiable row is still the user's data, and it was saved");
 
         host.CountRowsRaw("Transactions").Should().Be(1);

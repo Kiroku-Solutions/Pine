@@ -1,5 +1,8 @@
 using FluentAssertions;
+using Pine.Core.Common;
+using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
+using System;
 using Xunit;
 
 namespace Pine.Tests.Unit.Localization;
@@ -56,17 +59,78 @@ public class LocalizedMessageSlotTests
     /// <c>Pine.Application</c> or <c>Pine.Core</c>, and the slot has no key to re-render from.
     /// </remarks>
     [Fact]
-    public void RenderedText_IsShownAsGiven_AndDoesNotFollowALanguageChange()
+    public void AFailure_FollowsALanguageChange_LikeAnyOtherMessage()
     {
         string? shown = null;
         var localizer = new Localizer();
         using var slot = new LocalizedMessageSlot(localizer, text => shown = text);
 
-        slot.SetRendered("Nothing was changed.");
+        slot.Set(UserFacingError.Describe(new ConcurrencyConflictException(), new UserFacingMessage("AddTransaction.Failure.Save")));
+        shown.Should().Contain("Reload and try again.");
+
         localizer.SetLanguage("es");
 
-        shown.Should().Be("Nothing was changed.");
-        slot.Key.Should().BeNull("the slot cannot re-render what it cannot name");
+        shown.Should().Be(localizer["Failure.ConcurrencyConflict"]);
+        shown.Should().NotContain("Reload", "a failure used to be frozen in English (TD-139)");
+    }
+
+    /// <summary>Several messages are worded one by one and joined, in order, in the active language.</summary>
+    [Fact]
+    public void SeveralMessages_AreJoinedInOrder()
+    {
+        string? shown = null;
+        var localizer = new Localizer();
+        using var slot = new LocalizedMessageSlot(localizer, text => shown = text);
+
+        slot.Set([new UserFacingMessage("Validation.Transfer.SameAccount"), new UserFacingMessage("Validation.Rule.TooManyConditions", 8)]);
+
+        shown.Should().Be("Source and destination accounts cannot be the same. A rule may have at most 8 conditions.");
+    }
+
+    /// <summary>
+    /// A message used as an argument is worded in the same language as the sentence around it, and
+    /// re-worded with it — not rendered once, early, in whatever language was active then.
+    /// </summary>
+    [Fact]
+    public void ANestedMessage_IsWordedInTheSameLanguage_AndFollowsAChange()
+    {
+        string? shown = null;
+        var localizer = new Localizer();
+        using var slot = new LocalizedMessageSlot(localizer, text => shown = text);
+
+        slot.Set(new UserFacingMessage("Shell.Lock.IdleTimeout", new UserFacingMessage("Shell.Lock.DurationMinutesMany", 5)));
+        shown.Should().Be("Pine locked your vault after 5 minutes of inactivity.");
+
+        localizer.SetLanguage("es");
+
+        shown.Should().Be("Pine bloqueó tu bóveda después de 5 minutos de inactividad.");
+    }
+
+    /// <summary>An empty list would paint an empty message area, which reads as success.</summary>
+    [Fact]
+    public void AnEmptyList_IsRefused()
+    {
+        using var slot = new LocalizedMessageSlot(new Localizer(), _ => { });
+
+        var act = () => slot.Set(Array.Empty<UserFacingMessage>());
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>After Clear, a language change must not bring back what was cleared.</summary>
+    [Fact]
+    public void AClearedSlot_StaysClearAcrossALanguageChange()
+    {
+        string? shown = "untouched";
+        var localizer = new Localizer();
+        using var slot = new LocalizedMessageSlot(localizer, text => shown = text);
+
+        slot.Set("AddTransaction.Error.PayeeRequired");
+        slot.Clear();
+        localizer.SetLanguage("es");
+
+        shown.Should().BeNull();
+        slot.Key.Should().BeNull();
     }
 
     /// <summary>

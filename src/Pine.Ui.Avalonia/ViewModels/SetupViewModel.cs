@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Pine.Application.Security;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
 using Microsoft.Extensions.Options;
 using Pine.Core.Configuration;
+using System.Collections.Generic;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -35,6 +37,18 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     /// </remarks>
     private readonly VaultManager _vaultManager;
     private readonly LocalizedMessageSlot _message;
+    private readonly LocalizedMessageSlot _strengthStatus;
+    private readonly LocalizedMessageSlot _advice;
+
+    private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
+    {
+        if (message is null) slot.Clear(); else slot.Set(message);
+    }
+
+    private static void SetOrClear(LocalizedMessageSlot slot, IReadOnlyList<UserFacingMessage> messages)
+    {
+        if (messages.Count == 0) slot.Clear(); else slot.Set(messages);
+    }
 
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
@@ -84,7 +98,7 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     public partial string ConfirmPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Enter a strong master password to encrypt your vault.";
+    public partial string StatusMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -158,8 +172,8 @@ public partial class SetupViewModel : ObservableObject, IDisposable
             : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
         PasswordMeetsFloor = result.MeetsFloor;
         PasswordStrengthLevelValue = result.Level;
-        PasswordStrengthStatusText = BuildStatusText(result);
-        PasswordAdviceText = BuildAdviceText(result);
+        SetOrClear(_strengthStatus, PasswordFeedbackText.Status(result));
+        SetOrClear(_advice, PasswordFeedbackText.Advice(result));
 
         UpdatePasswordsMatch();
     }
@@ -170,62 +184,6 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     {
         PasswordsMatch = string.IsNullOrEmpty(ConfirmPassword) || ConfirmPassword == MasterPassword;
     }
-
-    private static string BuildStatusText(PasswordStrengthResult result)
-    {
-        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
-        {
-            return string.Empty;
-        }
-
-        var band = result.Level switch
-        {
-            PasswordStrengthLevel.VeryWeak => "Very weak",
-            PasswordStrengthLevel.Weak => "Weak",
-            PasswordStrengthLevel.Moderate => "Moderate",
-            PasswordStrengthLevel.Strong => "Strong",
-            PasswordStrengthLevel.VeryStrong => "Very strong",
-            _ => "Unusable",
-        };
-
-        return result.MeetsFloor
-            ? $"{band} -- meets Pine's minimum for a vault password."
-            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
-    }
-
-    /// <summary>
-    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
-    /// already said by <see cref="BuildStatusText"/> (<see cref="PasswordWeakness.Empty"/> and
-    /// <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of "does
-    /// not meet the minimum").
-    /// </summary>
-    private static string BuildAdviceText(PasswordStrengthResult result)
-    {
-        var sentences = result.Weaknesses
-            .Select(AdviceFor)
-            .Where(static s => s is not null);
-
-        return string.Join(" ", sentences);
-    }
-
-    private static string? AdviceFor(PasswordWeakness weakness) => weakness switch
-    {
-        PasswordWeakness.Empty => null,
-        PasswordWeakness.BelowEntropyFloor => null,
-        PasswordWeakness.TooShort =>
-            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
-        PasswordWeakness.CommonPassword =>
-            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
-        PasswordWeakness.RepeatedPattern =>
-            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
-        PasswordWeakness.SequentialRun =>
-            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
-        PasswordWeakness.KeyboardPattern =>
-            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
-        PasswordWeakness.LimitedCharacterVariety =>
-            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
-        _ => null,
-    };
 
     private readonly PineSecurityOptions _securityOptions;
 
@@ -248,6 +206,9 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(localizer);
         _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _strengthStatus = new LocalizedMessageSlot(localizer, text => PasswordStrengthStatusText = text ?? string.Empty);
+        _advice = new LocalizedMessageSlot(localizer, text => PasswordAdviceText = text ?? string.Empty);
+        _message.Set("Setup.Status.Prompt");
         _securityOptions = securityOptions?.Value ?? new PineSecurityOptions();
         _vaultManager = vaultManager;
         _vaultSession = vaultSession;
@@ -287,9 +248,7 @@ public partial class SetupViewModel : ObservableObject, IDisposable
         var strength = PasswordStrengthPolicy.Evaluate(MasterPassword);
         if (!strength.MeetsFloor)
         {
-            StatusMessage = string.IsNullOrEmpty(PasswordAdviceText)
-                ? "This password does not meet Pine's minimum strength for a vault password."
-                : $"This password does not meet Pine's minimum strength for a vault password. {PasswordAdviceText}";
+            _message.Set([new UserFacingMessage("Password.BelowMinimum"), .. PasswordFeedbackText.Advice(strength)]);
             return;
         }
 
@@ -367,11 +326,11 @@ public partial class SetupViewModel : ObservableObject, IDisposable
             // and a database, so its failures are filesystem and SQLCipher exceptions naming the
             // absolute path the user is about to store their finances in -- shown on a screen that
             // is, by definition, the first one a new user ever sees.
-            StatusMessage = UserFacingError.Report(
+            _message.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "vault-setup",
-                "Your vault could not be created. Choose a different folder or free up disk space, then try again.");
+                new UserFacingMessage("Setup.Failure.Create")));
         }
         finally
         {
@@ -392,6 +351,8 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _message.Dispose();
+        _strengthStatus.Dispose();
+        _advice.Dispose();
         GC.SuppressFinalize(this);
     }
 

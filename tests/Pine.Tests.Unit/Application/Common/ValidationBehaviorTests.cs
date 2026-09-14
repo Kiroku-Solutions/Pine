@@ -99,7 +99,7 @@ public class ValidationBehaviorTests
     public async Task Handle_WhenTheValidatorReportsErrors_ThrowsAndNeverInvokesTheHandler()
     {
         var handlerRan = false;
-        var error = new ValidationError("Currency", "Transaction currency EUR does not match account currency USD.");
+        var error = new ValidationError("Currency", "Transaction currency EUR does not match account currency USD.", ValidationText.CurrencyMismatch("EUR", "USD"));
         var behavior = new ValidationBehavior<ValidatedProbeRequest, string>([new FakeProbeValidator(error)]);
 
         var act = async () => await behavior.Handle(
@@ -123,8 +123,8 @@ public class ValidationBehaviorTests
     [Fact]
     public async Task Handle_WithTwoValidators_RunsBothAndAggregatesTheirErrors()
     {
-        var first = new FakeProbeValidator(new ValidationError("Currency", "First problem."));
-        var second = new FakeProbeValidator(new ValidationError("Amount", "Second problem."));
+        var first = new FakeProbeValidator(new ValidationError("Currency", "First problem.", ValidationText.RequestRejected()));
+        var second = new FakeProbeValidator(new ValidationError("Amount", "Second problem.", ValidationText.TransferAmountNotPositive()));
         var behavior = new ValidationBehavior<ValidatedProbeRequest, string>([first, second]);
 
         var act = async () => await behavior.Handle(

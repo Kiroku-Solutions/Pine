@@ -12,7 +12,9 @@ using Pine.Application.Transactions.Queries;
 using System.IO;
 using Avalonia.Media.Imaging;
 using Pine.Application.Attachments;
+using Pine.Core.Common;
 using Pine.Core.Transactions;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
@@ -22,8 +24,11 @@ using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class TransactionsViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable
+public partial class TransactionsViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _voidError;
+
     private readonly IMediator _mediator;
 
     /// <summary>
@@ -123,13 +128,22 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     /// <summary>Creates the transaction list.</summary>
     /// <param name="mediator">The dispatcher.</param>
     /// <param name="uiOptions">Carries the page size. Optional, for tests that construct this by hand.</param>
+    /// <param name="localizer">
+    /// Words this page's error messages. The container injects the process-wide instance. Optional for
+    /// tests that construct this page by hand, which get a private English localizer -- NOT
+    /// <see cref="Localizer.Instance"/>, which a parallel test may be switching to Spanish at that moment.
+    /// </param>
     /// <param name="logger">The category logger.</param>
     public TransactionsViewModel(
         IMediator mediator,
         IViewModelFactory viewModels,
         IOptions<PineUiOptions>? uiOptions = null,
+        ILocalizer? localizer = null,
         ILogger<TransactionsViewModel>? logger = null)
     {
+        localizer ??= new Localizer();
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
+        _voidError = new LocalizedMessageSlot(localizer, text => VoidError = text);
         _mediator = mediator;
         _viewModels = viewModels;
         _pageSize = (uiOptions?.Value ?? new PineUiOptions()).TransactionsPageSize;
@@ -157,11 +171,10 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         _logger,
         "transactions-initialise",
         TransactionsUnavailable,
-        message => ErrorMessage = message);
+        _error.Set);
 
     /// <summary>What the user reads when the list cannot be read. Written once; used by both paths.</summary>
-    private const string TransactionsUnavailable =
-        "Your transactions could not be loaded, so this list is not showing all of them. Try again.";
+    private static readonly UserFacingMessage TransactionsUnavailable = new("Transactions.Failure.Load");
 
     /// <summary>Reloads the list when something elsewhere changed the data.</summary>
     /// <remarks>
@@ -176,7 +189,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
             _logger,
             "transactions-reload",
             TransactionsUnavailable,
-            reported => ErrorMessage = reported);
+            _error.Set);
     }
 
     [RelayCommand]
@@ -188,7 +201,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
 
         // Cleared here rather than in LoadNextPageAsync: paging forward must not erase the
         // explanation of a page that failed, but a fresh load from the top must.
-        ErrorMessage = null;
+        _error.Clear();
 
         await LoadNextPageAsync();
     }
@@ -224,11 +237,11 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
             // WAS: `catch { }` with the comment "Handle error silently or via status message"
             // (TD-35). It did the first and never the second, so every failure of the only query
             // this page makes produced an empty list and no record anywhere.
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "transactions-load-page",
-                TransactionsUnavailable);
+                TransactionsUnavailable));
         }
         finally
         {
@@ -250,8 +263,8 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 LoadDataAsync,
                 _logger,
                 "transactions-reload",
-                "The transaction was saved, but this list could not be refreshed. Reopen the page to see it.",
-                reported => ErrorMessage = reported);
+                new UserFacingMessage("Transactions.Failure.ReloadAfterSave"),
+                _error.Set);
         });
         IsAddTransactionDialogVisible = true;
     }
@@ -274,7 +287,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
 
         VoidTarget = transaction;
         VoidReason = string.Empty;
-        VoidError = null;
+        _voidError.Clear();
         IsVoidDialogVisible = true;
     }
 
@@ -285,7 +298,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         IsVoidDialogVisible = false;
         VoidTarget = null;
         VoidReason = string.Empty;
-        VoidError = null;
+        _voidError.Clear();
     }
 
     /// <summary>
@@ -314,7 +327,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         if (VoidTarget is null || IsVoiding) return;
 
         IsVoiding = true;
-        VoidError = null;
+        _voidError.Clear();
         try
         {
             await _mediator.Send(new VoidTransactionCommand(VoidTarget.Id, VoidReason));
@@ -333,11 +346,11 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         }
         catch (Exception ex)
         {
-            VoidError = UserFacingError.Report(
+            _voidError.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "void-transaction",
-                "The transaction could not be voided. Nothing was changed.");
+                new UserFacingMessage("Transactions.Failure.Void")));
         }
         finally
         {
@@ -393,11 +406,11 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         }
         catch (Exception ex)
         {
-            VoidError = UserFacingError.Report(
+            _voidError.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "attachment-view",
-                "The receipt could not be opened.");
+                new UserFacingMessage("Transactions.Failure.OpenReceipt")));
         }
     }
 
@@ -435,11 +448,11 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         }
         catch (Exception ex)
         {
-            VoidError = UserFacingError.Report(
+            _voidError.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "attachment-remove",
-                "The receipt could not be removed. Nothing was changed.");
+                new UserFacingMessage("Transactions.Failure.RemoveReceipt")));
         }
     }
 
@@ -464,5 +477,17 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 TransactionsWithReceipts.Add(transaction.Id);
             }
         }
+    }
+
+    /// <summary>Releases the localized message slots.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: each subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        _voidError.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

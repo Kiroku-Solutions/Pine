@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Pine.Core.Common;
 
 namespace Pine.Ui.Avalonia.Localization;
 
@@ -23,13 +26,12 @@ namespace Pine.Ui.Avalonia.Localization;
 /// changes.
 /// </para>
 /// <para>
-/// WHAT IT DELIBERATELY DOES NOT DO. <see cref="SetRendered"/> exists for text that is NOT a key --
-/// most importantly whatever <c>UserFacingError.Report</c> returns, which may be an exception's own
-/// <c>IUserFacingFailure.UserFacingMessage</c> from <c>Pine.Application</c> or <c>Pine.Core</c>.
-/// Those sentences live outside <c>ViewModels/</c> and are not part of this phase; text set that way
-/// is shown as given and is NOT re-rendered on a language change, because the slot has no key to
-/// re-render from. That gap is real and is recorded as a debt row rather than hidden behind a
-/// re-render that would silently do nothing.
+/// FAILURES TOO (TD-139). <see cref="Set(IReadOnlyList{UserFacingMessage})"/> takes what
+/// <c>UserFacingError.Report</c> returns — an exception's own messages or the call site's fallback, as
+/// keys — and re-renders them on a language change like any other key, joined by a space when there
+/// are several. Before TD-139 those arrived as finished English sentences through a
+/// <c>SetRendered</c> that could not re-render them. That method is gone, so nothing that reaches a
+/// user through a slot is frozen in one language any more.
 /// </para>
 /// <para>
 /// IT UNSUBSCRIBES. <see cref="Dispose"/> detaches from the localizer, which is a process-lifetime
@@ -39,12 +41,9 @@ namespace Pine.Ui.Avalonia.Localization;
 /// </remarks>
 public sealed class LocalizedMessageSlot : IDisposable
 {
-    private static readonly object?[] NoArguments = [];
-
     private readonly ILocalizer _localizer;
     private readonly Action<string?> _assign;
-    private string? _key;
-    private object?[] _arguments = NoArguments;
+    private UserFacingMessage[]? _messages;
     private bool _disposed;
 
     /// <summary>Creates a slot that writes through <paramref name="assign"/>.</summary>
@@ -62,37 +61,52 @@ public sealed class LocalizedMessageSlot : IDisposable
         _localizer.LanguageChanged += OnLanguageChanged;
     }
 
-    /// <summary>The key currently displayed, or <see langword="null"/>.</summary>
+    /// <summary>The key of the first message displayed, or <see langword="null"/>.</summary>
     /// <remarks>Exposed so a test can assert WHICH message a view model chose, not merely its text.</remarks>
-    public string? Key => _key;
+    public string? Key => _messages is { Length: > 0 } ? _messages[0].Key : null;
+
+    /// <summary>Every message displayed, in order; empty when the slot is clear.</summary>
+    public IReadOnlyList<UserFacingMessage> Messages => _messages ?? [];
 
     /// <summary>Shows the message for <paramref name="key"/>, and keeps showing it after a language change.</summary>
     /// <param name="key">A string ID from the shipped tables.</param>
     /// <param name="arguments">Values for the template's placeholders.</param>
-    public void Set(string key, params object?[] arguments)
+    public void Set(string key, params object?[] arguments) => Set([new UserFacingMessage(key, arguments)]);
+
+    /// <summary>Shows <paramref name="message"/>, and keeps showing it after a language change.</summary>
+    /// <param name="message">The message, typically a call site's fallback.</param>
+    public void Set(UserFacingMessage message)
     {
-        _key = key;
-        _arguments = arguments ?? NoArguments;
-        Render();
+        ArgumentNullException.ThrowIfNull(message);
+        Set([message]);
     }
 
     /// <summary>
-    /// Shows text that is not a key, and will not survive a language change.
+    /// Shows <paramref name="messages"/> joined by a space, and keeps showing them after a language
+    /// change.
     /// </summary>
-    /// <param name="text">An already-rendered sentence, typically from <c>UserFacingError.Report</c>.</param>
-    /// <remarks>
-    /// The key is cleared, which is the honest state: the slot cannot re-render what it cannot
-    /// name. See this type's remarks.
-    /// </remarks>
-    public void SetRendered(string? text)
+    /// <param name="messages">What <c>UserFacingError.Report</c> returned. Must not be empty.</param>
+    public void Set(IReadOnlyList<UserFacingMessage> messages)
     {
-        _key = null;
-        _arguments = NoArguments;
-        _assign(text);
+        ArgumentNullException.ThrowIfNull(messages);
+
+        if (messages.Count == 0)
+        {
+            // An empty list would render an empty message area, which reads as success. Clearing is
+            // a different request with its own method.
+            throw new ArgumentException("At least one message is required; call Clear() to clear.", nameof(messages));
+        }
+
+        _messages = [.. messages];
+        Render();
     }
 
-    /// <summary>Clears the message.</summary>
-    public void Clear() => SetRendered(null);
+    /// <summary>Clears the message, and stops re-rendering anything on a language change.</summary>
+    public void Clear()
+    {
+        _messages = null;
+        _assign(null);
+    }
 
     /// <inheritdoc />
     public void Dispose()
@@ -110,11 +124,21 @@ public sealed class LocalizedMessageSlot : IDisposable
 
     private void Render()
     {
-        if (_key is null)
+        if (_messages is null)
         {
             return;
         }
 
-        _assign(_arguments.Length == 0 ? _localizer[_key] : _localizer.Format(_key, _arguments));
+        _assign(string.Join(" ", _messages.Select(RenderOne)));
     }
+
+    // An argument that is itself a message is worded first, in the same language, so that a
+    // sentence can carry a translatable word -- a strength band, "1 transaction" -- without the
+    // caller rendering it early and freezing it in whatever language was active at the time.
+    private string RenderOne(UserFacingMessage message)
+        => message.Arguments.Count == 0
+            ? _localizer[message.Key]
+            : _localizer.Format(
+                message.Key,
+                [.. message.Arguments.Select(argument => argument is UserFacingMessage nested ? RenderOne(nested) : argument)]);
 }

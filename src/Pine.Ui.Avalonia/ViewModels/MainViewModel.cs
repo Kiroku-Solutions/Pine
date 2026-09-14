@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Pine.Application.Security;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.Diagnostics;
 
@@ -110,26 +111,32 @@ public partial class MainViewModel : ObservableObject, INavigationService
         var message = reason switch
         {
             VaultLockReason.IdleTimeout =>
-                $"Pine locked your vault after {FormatIdleTimeout(_autoLockService.IdleTimeout)} of inactivity.",
+                new UserFacingMessage("Shell.Lock.IdleTimeout", DescribeIdleTimeout(_autoLockService.IdleTimeout)),
             VaultLockReason.ApplicationSuspended =>
-                "Pine locked your vault because the app was moved to the background.",
+                new UserFacingMessage("Shell.Lock.ApplicationSuspended"),
             // UserRequested: the manual lock button, or a lock the user just triggered themselves.
             // Told plainly rather than left silent so this screen never reads as a crash.
-            _ => "Your vault was locked.",
+            _ => new UserFacingMessage("Shell.Lock.UserRequested"),
         };
 
         var picker = _viewModels.CreateVaultSelection();
-        picker.LockNotice = message;
+        picker.ShowLockNotice(message);
         NavigateTo(picker);
     }
 
-    private static string FormatIdleTimeout(TimeSpan timeout)
+    // A nested message rather than a formatted string, so the duration is worded -- and pluralised --
+    // by the same language as the sentence around it, and again after a language change (TD-139).
+    private static UserFacingMessage DescribeIdleTimeout(TimeSpan timeout)
     {
         var minutes = (int)Math.Round(timeout.TotalMinutes);
 
-        return minutes >= 1
-            ? $"{minutes} minute{(minutes == 1 ? string.Empty : "s")}"
-            : $"{(int)Math.Round(timeout.TotalSeconds)} seconds";
+        if (minutes >= 1)
+        {
+            return new UserFacingMessage(minutes == 1 ? "Shell.Lock.DurationMinutesOne" : "Shell.Lock.DurationMinutesMany", minutes);
+        }
+
+        var seconds = (int)Math.Round(timeout.TotalSeconds);
+        return new UserFacingMessage(seconds == 1 ? "Shell.Lock.DurationSecondsOne" : "Shell.Lock.DurationSecondsMany", seconds);
     }
 
     /// <summary>
@@ -149,7 +156,7 @@ public partial class MainViewModel : ObservableObject, INavigationService
             InitializeAsync,
             null,
             "app-bootstrap",
-            "Pine could not work out which screen to open. The vault picker is shown instead.");
+            new UserFacingMessage("Shell.Failure.Bootstrap"));
 
     private async Task InitializeAsync()
     {

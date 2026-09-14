@@ -226,7 +226,8 @@ public sealed class RecalculateAccountBalanceCommandValidator
             {
                 new ValidationError(
                     nameof(RecalculateAccountBalanceCommand.AccountId),
-                    $"Account {request.AccountId} was not found."),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 
@@ -247,7 +248,8 @@ public sealed class RecalculateAccountBalanceCommandValidator
                     nameof(RecalculateAccountBalanceCommand.AccountId),
                     $"'{account.Name}' holds transactions in {string.Join(", ", foreign)} but the "
                     + $"account is in {accountCurrency}. Its balance cannot be recomputed until those "
-                    + "transactions are corrected, because there is no meaningful total to compute."),
+                    + "transactions are corrected, because there is no meaningful total to compute.",
+                    ValidationText.AccountHoldsForeignCurrencies(account.Name, string.Join(", ", foreign), accountCurrency)),
             };
         }
 

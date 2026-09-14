@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input.Platform;
 using System.Linq;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Diagnostics;
 
@@ -33,8 +34,8 @@ public partial class DiagnosticsView : UserControl
                 () => CopyLogsAsync(sender, vm),
                 null,
                 "diagnostics-copy-logs",
-                "The log could not be copied to the clipboard.",
-                message => vm.ErrorMessage = message);
+                new UserFacingMessage("Diagnostics.Failure.CopyLogs"),
+                vm.ReportFailure);
         }
     }
 

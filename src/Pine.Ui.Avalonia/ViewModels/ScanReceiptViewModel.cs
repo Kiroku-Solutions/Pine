@@ -18,6 +18,7 @@ using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
+using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
@@ -247,7 +248,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _logger,
         "scan-accounts-load",
         AccountsUnavailable,
-        message => ErrorMessage = message);
+        _error.Set);
 
     /// <summary>What the user reads when the account list behind the Save button cannot load.</summary>
     /// <remarks>
@@ -256,8 +257,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// until the user had scanned a receipt, filled the form and pressed Save, at which point the
     /// screen said "Please select an account." about a list that had never loaded.
     /// </remarks>
-    private const string AccountsUnavailable =
-        "Pine could not load your accounts, so this receipt cannot be saved yet. Try again.";
+    private static readonly UserFacingMessage AccountsUnavailable = new("ScanReceipt.Failure.AccountsLoad");
+
+    /// <summary>
+    /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
+    /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
+    /// </summary>
+    /// <param name="messages">What <c>ObservedTask</c> produced.</param>
+    public void ReportFailure(IReadOnlyList<UserFacingMessage> messages) => _error.Set(messages);
 
     /// <summary>
     /// Starts the scan for a receipt captured elsewhere (the live scanner, or the crop screen).
@@ -306,11 +313,11 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
         catch (Exception ex)
         {
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "receipt-process",
-                "Pine could not read that receipt. Try taking the photo again in better light.");
+                new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
             IsBusy = false;
         }
     }
@@ -381,7 +388,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     public async Task ProcessReceiptImageAsync(Stream imageStream, Stream? ocrImageStream = null)
     {
         IsBusy = true;
-        ErrorMessage = string.Empty;
+        _error.Clear();
         _status.Set("ScanReceipt.Status.LoadingImage");
 
         // A second scan must not inherit the first scan's confidence bands or ambiguity: without
@@ -421,7 +428,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // Progress arrives on the UI thread: MediatR reports it from whichever thread the
             // pipeline happens to be on, and Progress<T> captures the SynchronizationContext at
             // construction -- which is this one, because the view model is built on the UI thread.
-            var progress = new Progress<ScanReceiptStage>(stage => StatusMessage = Describe(stage));
+            var progress = new Progress<ScanReceiptStage>(stage => _status.Set(Describe(stage)));
 
             var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr, progress));
 
@@ -471,16 +478,16 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         {
             // WAS: $"Failed to process receipt: {ex.Message}" (TD-24). The OCR stack throws through
             // PaddleInference and Skia, whose messages name native library paths and model files.
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "receipt-process",
-                "The receipt could not be read. Try a clearer photo, or enter the transaction manually.");
+                new UserFacingMessage("ScanReceipt.Failure.Process")));
         }
         finally
         {
             IsBusy = false;
-            StatusMessage = string.Empty;
+            _status.Clear();
         }
     }
 
@@ -496,9 +503,9 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </remarks>
     private static string Describe(ScanReceiptStage stage) => stage switch
     {
-        ScanReceiptStage.DetectingReceipt => "Looking for the receipt...",
-        ScanReceiptStage.ExtractingText => "Reading the text...",
-        _ => "Working...",
+        ScanReceiptStage.DetectingReceipt => "ScanReceipt.Status.DetectingReceipt",
+        ScanReceiptStage.ExtractingText => "ScanReceipt.Status.ExtractingText",
+        _ => "ScanReceipt.Status.Working",
     };
 
     [RelayCommand]
@@ -527,14 +534,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         // that fixes it already on screen, is the difference between an invariant and an obstacle.
         if (!IsReconciled)
         {
-            ErrorMessage =
-                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
-                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
+            _error.Set("ScanReceipt.Error.Unreconciled", LineItemsTotal, UnreconciledDifference, Amount);
             return;
         }
 
         IsBusy = true;
-        ErrorMessage = string.Empty;
+        _error.Clear();
         DuplicateWarning = string.Empty;
         // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
         // user gets a scrim with no sentence under it.
@@ -620,16 +625,16 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // the same guarantee: ScanReceiptCommand runs inside TransactionBehavior's transaction,
             // and a ConcurrencyConflictException now arrives with its "Reload and try again."
             // instruction intact instead of being flattened (TD-98).
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "receipt-save-transaction",
-                "The transaction could not be saved. Nothing was changed.");
+                new UserFacingMessage("ScanReceipt.Failure.Save")));
         }
         finally
         {
             IsBusy = false;
-            StatusMessage = string.Empty;
+            _status.Clear();
         }
     }
 

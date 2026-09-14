@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Pine.Core.Common;
 
 namespace Pine.Core.Importing;
@@ -37,7 +38,7 @@ namespace Pine.Core.Importing;
 /// It implements <see cref="IUserFacingFailure"/> (TD-24) because the sentence is the entire point:
 /// a user who picked the wrong file needs to know which files this screen accepts, and nothing else.
 /// <see cref="Exception.Message"/> is the engineer's version and names the extension for the log;
-/// <see cref="UserFacingMessage"/> names no path, no extension, no type and no package.
+/// <see cref="UserFacingMessages"/> names no path, no extension, no type and no package.
 /// </para>
 /// </remarks>
 public sealed class UnsupportedImportFormatException : Exception, IUserFacingFailure
@@ -79,6 +80,5 @@ public sealed class UnsupportedImportFormatException : Exception, IUserFacingFai
     /// everything an over-the-shoulder reader did not (TD-24). What they cannot know, and what this
     /// says, is which formats this screen actually reads.
     /// </remarks>
-    public string UserFacingMessage
-        => "This screen cannot read that kind of file. Choose a statement exported as a spreadsheet or a PDF, or use receipt scanning for a photo.";
+    public IReadOnlyList<UserFacingMessage> UserFacingMessages { get; } = [UserFacingText.ImportFormatUnsupported()];
 }

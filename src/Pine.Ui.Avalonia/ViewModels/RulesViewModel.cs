@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Pine.Application.Rules;
+using Pine.Core.Common;
 using Pine.Core.Rules;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
@@ -130,8 +131,8 @@ public partial class RulesViewModel : ObservableObject, IAsyncInitializable, IDi
     public InitializationFailurePolicy InitializationFailurePolicy => new(
         _logger,
         "rules-load",
-        "Your rules could not be loaded.",
-        message => ErrorMessage = message);
+        new UserFacingMessage("Rules.Failure.Load"),
+        _message.Set);
 
     /// <summary>Reads every rule.</summary>
     private async Task LoadAsync()
@@ -194,11 +195,10 @@ public partial class RulesViewModel : ObservableObject, IAsyncInitializable, IDi
         }
         catch (Exception ex)
         {
-            // A validator's sentence reaches the user verbatim through IUserFacingFailure; anything
-            // else gets the fallback. Nothing was written either way -- validation runs outside the
-            // transaction.
-            _message.SetRendered(UserFacingError.Report(
-                _logger, ex, "rule-create", "The rule could not be saved. Nothing was changed."));
+            // A validator's messages reach the user through IUserFacingFailure; anything else gets the
+            // fallback. Nothing was written either way -- validation runs outside the transaction.
+            _message.Set(UserFacingError.Report(
+                _logger, ex, "rule-create", new UserFacingMessage("Rules.Failure.Create")));
         }
         finally
         {
@@ -222,8 +222,8 @@ public partial class RulesViewModel : ObservableObject, IAsyncInitializable, IDi
         }
         catch (Exception ex)
         {
-            _message.SetRendered(UserFacingError.Report(
-                _logger, ex, "rule-toggle", "The rule could not be changed. Nothing was changed."));
+            _message.Set(UserFacingError.Report(
+                _logger, ex, "rule-toggle", new UserFacingMessage("Rules.Failure.Toggle")));
         }
     }
 
@@ -247,8 +247,8 @@ public partial class RulesViewModel : ObservableObject, IAsyncInitializable, IDi
         }
         catch (Exception ex)
         {
-            _message.SetRendered(UserFacingError.Report(
-                _logger, ex, "rule-delete", "The rule could not be deleted. Nothing was changed."));
+            _message.Set(UserFacingError.Report(
+                _logger, ex, "rule-delete", new UserFacingMessage("Rules.Failure.Delete")));
         }
     }
 

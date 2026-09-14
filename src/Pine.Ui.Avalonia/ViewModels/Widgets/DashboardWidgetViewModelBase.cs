@@ -3,8 +3,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
+using System.Collections.Generic;
 
 namespace Pine.Ui.Avalonia.ViewModels.Widgets;
 
@@ -113,21 +115,24 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
         () => InitializeAsync(CancellationToken.None),
         DiagnosticsLogger,
         operation,
-        Localizer["Dashboard.Tile.LoadFailed"],
+        LoadFailed,
         ReportFailure);
 
-    /// <summary>Shows <paramref name="message"/> as this tile's failure, in place of its empty state.</summary>
-    /// <param name="message">An already-rendered sentence, typically from <c>UserFacingError.Report</c>.</param>
+    /// <summary>What a tile, or the dashboard around it, says when a read fails and nothing more specific can.</summary>
+    internal static readonly UserFacingMessage LoadFailed = new("Dashboard.Tile.LoadFailed");
+
+    /// <summary>Shows <paramref name="messages"/> as this tile's failure, in place of its empty state.</summary>
+    /// <param name="messages">What <c>UserFacingError.Report</c> produced, re-worded on a language change.</param>
     /// <remarks>
     /// IT CLEARS <see cref="IsEmpty"/>, AND THE FIRST VERSION DID NOT. <c>IsEmpty</c> is only written by
     /// a successful read, so a reload that failed after an empty success showed the failure AND "No
     /// budgets yet" at once -- the independent review caught it with a probe. A failed read knows
     /// nothing about emptiness, so it withdraws the claim.
     /// </remarks>
-    internal void ReportFailure(string message)
+    internal void ReportFailure(IReadOnlyList<UserFacingMessage> messages)
     {
         IsEmpty = false;
-        _failure.SetRendered(message);
+        _failure.Set(messages);
     }
 
     /// <summary>

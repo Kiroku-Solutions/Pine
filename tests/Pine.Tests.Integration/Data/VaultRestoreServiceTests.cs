@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Pine.Core.Settings;
 using Pine.Infrastructure.Data;
@@ -146,8 +147,10 @@ public class VaultRestoreServiceTests : IDisposable
                 _vault.VaultDirectory, backup.Path, CancellationToken.None);
 
             var thrown = await restore.Should().ThrowAsync<VaultRestoreRefusedException>();
-            thrown.Which.UserFacingMessage.Should().Contain(
-                "nothing was changed",
+            // The key, not the words: this project has no string table (TD-139). The key's English
+            // wording, "...so nothing was changed...", is pinned by UserFacingCatalogTests.
+            thrown.Which.UserFacingMessages.Should().ContainSingle().Which.Key.Should().Be(
+                UserFacingText.RestoreCouldNotReplace().Key,
                 "the sentence the user reads has to be true, and before the staging file existed it "
                 + "was not");
         }
@@ -230,8 +233,9 @@ public class VaultRestoreServiceTests : IDisposable
             _vault.VaultDirectory, impostor, CancellationToken.None);
 
         var thrown = await restore.Should().ThrowAsync<VaultRestoreRefusedException>();
-        thrown.Which.UserFacingMessage.Should().NotContain(
-            impostor, "a user-facing sentence must name no file path (TD-24)");
+        thrown.Which.UserFacingMessages.Should().OnlyContain(
+            message => !message.ToString().Contains(impostor, StringComparison.Ordinal),
+            "a user-facing message must name no file path, in its key or its arguments (TD-24)");
 
         await AssertVaultStillHoldsAsync("untouched");
     }
@@ -269,11 +273,12 @@ public class VaultRestoreServiceTests : IDisposable
             _vault.VaultDirectory, backup.Path, CancellationToken.None);
 
         var thrown = await restore.Should().ThrowAsync<VaultRestoreRefusedException>();
-        thrown.Which.UserFacingMessage.Should().Contain(
-            "newer version",
+        thrown.Which.UserFacingMessages.Should().ContainSingle().Which.Key.Should().Be(
+            UserFacingText.RestoreFromNewerVersion().Key,
             "the one fact that tells the user what to do next is that their Pine is out of date");
-        thrown.Which.UserFacingMessage.Should().NotContain(
-            "29990101000000_FromTheFuture", "a migration identifier is not a sentence for a person");
+        thrown.Which.UserFacingMessages.Should().OnlyContain(
+            message => !message.ToString().Contains("29990101000000_FromTheFuture", StringComparison.Ordinal),
+            "a migration identifier is not a sentence for a person");
 
         await AssertVaultStillHoldsAsync("untouched");
     }

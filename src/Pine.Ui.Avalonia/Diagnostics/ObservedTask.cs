@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Pine.Core.Common;
 
 namespace Pine.Ui.Avalonia.Diagnostics;
 
@@ -74,12 +76,12 @@ public static partial class ObservedTask
     /// Reaches the log only.
     /// </param>
     /// <param name="fallback">
-    /// The complete sentence the user reads when the exception is not one that may speak for
-    /// itself. See <see cref="UserFacingError.Describe(Exception, string)"/>.
+    /// The message the user reads when the exception is not one that may speak for itself, as a key.
+    /// See <see cref="UserFacingError.Describe(Exception, UserFacingMessage)"/>.
     /// </param>
     /// <param name="report">
-    /// Where the sentence goes -- typically <c>message =&gt; ErrorMessage = message</c> on the view
-    /// model that started the work. <see langword="null"/> means "log it, show nothing", which is
+    /// Where the messages go -- typically a <c>LocalizedMessageSlot</c>'s <c>Set</c> on the view model
+    /// that started the work, so that they are re-worded when the language changes (TD-139). <see langword="null"/> means "log it, show nothing", which is
     /// honest only where the screen has nowhere to put a sentence; it is never the reason a failure
     /// disappears, because the log record is written either way.
     /// </param>
@@ -87,8 +89,8 @@ public static partial class ObservedTask
         Task task,
         ILogger? logger,
         string operation,
-        string fallback,
-        Action<string>? report = null)
+        UserFacingMessage fallback,
+        Action<IReadOnlyList<UserFacingMessage>>? report = null)
     {
         ArgumentNullException.ThrowIfNull(task);
 
@@ -105,7 +107,7 @@ public static partial class ObservedTask
     /// <para>
     /// THIS OVERLOAD EXISTS BECAUSE "IT RETURNS A TASK" DOES NOT MEAN "IT THROWS INTO A TASK". A
     /// method declared <c>async Task</c> captures its own exceptions into the task it returns, so
-    /// <see cref="Run(Task, ILogger?, string, string, Action{string}?)"/> is enough for one. A
+    /// <see cref="Run(Task, ILogger?, string, UserFacingMessage, Action{IReadOnlyList{UserFacingMessage}}?)"/> is enough for one. A
     /// method declared <c>Task Foo()</c> that is NOT <c>async</c> does not: everything before its
     /// first <c>return</c> throws straight out at the call site, before there is any task to
     /// observe. <c>LiveScannerViewModel.CaptureAndNavigateAsync</c> is exactly that shape -- a
@@ -129,8 +131,8 @@ public static partial class ObservedTask
         Func<Task> work,
         ILogger? logger,
         string operation,
-        string fallback,
-        Action<string>? report = null)
+        UserFacingMessage fallback,
+        Action<IReadOnlyList<UserFacingMessage>>? report = null)
     {
         ArgumentNullException.ThrowIfNull(work);
 
@@ -141,8 +143,8 @@ public static partial class ObservedTask
         Func<Task> work,
         ILogger? logger,
         string operation,
-        string fallback,
-        Action<string>? report)
+        UserFacingMessage fallback,
+        Action<IReadOnlyList<UserFacingMessage>>? report)
     {
         Task task;
 
@@ -182,8 +184,8 @@ public static partial class ObservedTask
         Task task,
         ILogger? logger,
         string operation,
-        string fallback,
-        Action<string>? report)
+        UserFacingMessage fallback,
+        Action<IReadOnlyList<UserFacingMessage>>? report)
     {
         try
         {
@@ -226,8 +228,8 @@ public static partial class ObservedTask
         Exception exception,
         ILogger? logger,
         string operation,
-        string fallback,
-        Action<string>? report)
+        UserFacingMessage fallback,
+        Action<IReadOnlyList<UserFacingMessage>>? report)
     {
         var message = UserFacingError.Report(logger, exception, operation, fallback);
 

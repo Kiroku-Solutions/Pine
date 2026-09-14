@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Options;
 using Pine.Application.Common;
+using Pine.Core.Common;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 using Pine.Core.Accounts;
@@ -54,11 +55,14 @@ public enum ImportRowDisposition
 /// </summary>
 /// <param name="Transaction">The parsed transaction, whether or not it was saved.</param>
 /// <param name="Disposition">What the import did with it.</param>
-/// <param name="Reason">A user-facing explanation of <paramref name="Disposition"/>.</param>
+/// <param name="Reason">
+/// The explanation of <paramref name="Disposition"/> a person reads, as a key from
+/// <see cref="ImportReviewText"/> — worded by the presentation layer in the active language (TD-139).
+/// </param>
 public sealed record ImportReviewRow(
     Transaction Transaction,
     ImportRowDisposition Disposition,
-    string Reason)
+    UserFacingMessage Reason)
 {
     /// <summary>Gets a value indicating whether this row was written to the vault.</summary>
     public bool WasImported =>
@@ -194,7 +198,7 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
                 reviewRows.Add(new ImportReviewRow(
                     tx,
                     ImportRowDisposition.ImportedWithoutKeyCheck,
-                    "Imported, but this importer supplied no import key, so it could not be checked against transactions already in the account."));
+                    ImportReviewText.ImportedWithoutKeyCheck()));
                 importedTransactions.Add(tx);
                 continue;
             }
@@ -204,7 +208,7 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
                 reviewRows.Add(new ImportReviewRow(
                     tx,
                     ImportRowDisposition.SkippedAlreadyInAccount,
-                    $"Not imported: '{account.Name}' already holds this row from an earlier import of the same file."));
+                    ImportReviewText.SkippedAlreadyInAccount(account.Name)));
                 continue;
             }
 
@@ -213,14 +217,14 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
                 reviewRows.Add(new ImportReviewRow(
                     tx,
                     ImportRowDisposition.SkippedDuplicateInFile,
-                    "Not imported: an earlier row in this same file is identical to it; only the first occurrence was imported."));
+                    ImportReviewText.SkippedDuplicateInFile()));
                 continue;
             }
 
             reviewRows.Add(new ImportReviewRow(
                 tx,
                 ImportRowDisposition.Imported,
-                "Imported as a new transaction."));
+                ImportReviewText.Imported()));
             importedTransactions.Add(tx);
         }
 
@@ -249,7 +253,8 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
                 var transactionDate = tx.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                 currencyErrors.Add(new ValidationError(
                     nameof(ImportTransactionsCommand.TargetAccountId),
-                    $"Imported transaction '{tx.Payee}' dated {transactionDate} is in {transactionCurrency}, but account '{account.Name}' is in {accountCurrency}."));
+                    $"Imported transaction '{tx.Payee}' dated {transactionDate} is in {transactionCurrency}, but account '{account.Name}' is in {accountCurrency}.",
+                    ValidationText.ImportedCurrencyMismatch(tx.Payee, tx.Date, transactionCurrency, account.Name, accountCurrency)));
             }
         }
 
@@ -406,7 +411,8 @@ public sealed class ImportTransactionsCommandValidator : IRequestValidator<Impor
             {
                 new ValidationError(
                     nameof(ImportTransactionsCommand.TargetAccountId),
-                    $"Account {request.TargetAccountId} was not found."),
+                    $"Account {request.TargetAccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 

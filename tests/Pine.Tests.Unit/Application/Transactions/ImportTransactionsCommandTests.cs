@@ -96,8 +96,8 @@ public class ImportTransactionsCommandTests
         var skipped = result.Rows[0];
         skipped.Disposition.Should().Be(ImportRowDisposition.SkippedAlreadyInAccount);
         skipped.WasImported.Should().BeFalse();
-        skipped.Reason.Should().NotBeNullOrWhiteSpace();
-        skipped.Reason.Should().Contain(Scenario.AccountName,
+        skipped.Reason.Key.Should().Be(ImportReviewText.SkippedAlreadyInAccount("x").Key);
+        skipped.Reason.Arguments.Should().Contain(Scenario.AccountName,
             "the explanation must name the account the row is already in, not merely say 'duplicate'");
 
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.Imported);
@@ -129,8 +129,7 @@ public class ImportTransactionsCommandTests
 
         result.Rows[0].Disposition.Should().Be(ImportRowDisposition.Imported);
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.SkippedDuplicateInFile);
-        result.Rows[1].Reason.Should().NotBeNullOrWhiteSpace();
-        result.Rows[1].Reason.Should().Contain("earlier row",
+        result.Rows[1].Reason.Key.Should().Be(ImportReviewText.SkippedDuplicateInFile().Key,
             "the user needs to know the twin is in the same file, not already in the account");
 
         result.Imported.Should().ContainSingle().Which.Should().BeSameAs(first);
@@ -158,7 +157,7 @@ public class ImportTransactionsCommandTests
         var row = result.Rows.Should().ContainSingle().Subject;
         row.Disposition.Should().Be(ImportRowDisposition.ImportedWithoutKeyCheck);
         row.WasImported.Should().BeTrue("an unverifiable row is still the user's data");
-        row.Reason.Should().Contain("no import key");
+        row.Reason.Key.Should().Be(ImportReviewText.ImportedWithoutKeyCheck().Key);
 
         result.Imported.Should().ContainSingle().Which.Should().BeSameAs(keyless);
         result.Skipped.Should().BeEmpty("a saved row is not a skipped row, whatever its key");

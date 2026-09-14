@@ -273,7 +273,8 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
             {
                 new ValidationError(
                     nameof(AddTransactionCommand.AccountId),
-                    $"Account {request.AccountId} was not found."),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 
@@ -283,7 +284,8 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
             {
                 new ValidationError(
                     nameof(AddTransactionCommand.Currency),
-                    $"'{request.Currency}' is not a valid ISO 4217 currency code."),
+                    $"'{request.Currency}' is not a valid ISO 4217 currency code.",
+                    ValidationText.CurrencyCodeInvalid(request.Currency)),
             };
         }
 
@@ -294,7 +296,8 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
             {
                 new ValidationError(
                     nameof(AddTransactionCommand.Currency),
-                    $"Transaction currency {normalised} does not match account currency {accountCurrency}."),
+                    $"Transaction currency {normalised} does not match account currency {accountCurrency}.",
+                    ValidationText.CurrencyMismatch(normalised, accountCurrency)),
             };
         }
 
@@ -324,7 +327,8 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
                         nameof(AddTransactionCommand.LineItems),
                         $"The line items add up to {lineItemSum.Amount} but the transaction total is " +
                         $"{total.Amount}. The {(total - lineItemSum).Amount} difference must be recorded " +
-                        "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed)."),
+                        "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed).",
+                        ValidationText.LineItemsDoNotAddUp(lineItemSum.Amount, total.Amount, (total - lineItemSum).Amount)),
                 };
             }
         }

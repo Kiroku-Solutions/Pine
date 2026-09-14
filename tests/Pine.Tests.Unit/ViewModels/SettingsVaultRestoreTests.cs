@@ -9,6 +9,7 @@ using NSubstitute.ExceptionExtensions;
 using Pine.Application.Security;
 using Pine.Application.Security.Commands;
 using Pine.Application.Security.Queries;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
@@ -205,8 +206,7 @@ public class SettingsVaultRestoreTests
         sender.Send(Arg.Any<RestoreVaultBackupCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new VaultRestoreRefusedException(
                 $"Refused to restore '{ManualBackup}': it carries a migration this build does not know.",
-                "That backup was made by a newer version of Pine than the one you are running. "
-                + "Restoring it could damage your data, so nothing was changed. Update Pine and try again."));
+                UserFacingText.RestoreFromNewerVersion()));
         var vm = NewSettings(sender);
         await vm.LoadBackupsCommand.ExecuteAsync(null);
         vm.SelectedBackup = vm.Backups[0];

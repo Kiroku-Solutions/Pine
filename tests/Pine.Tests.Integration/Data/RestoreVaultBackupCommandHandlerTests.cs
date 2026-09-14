@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Pine.Application.Security;
 using Pine.Application.Security.Commands;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Xunit;
 
@@ -123,7 +124,7 @@ public class RestoreVaultBackupCommandHandlerTests
             string vaultDirectory, string backupPath, CancellationToken cancellationToken)
             => throw new VaultRestoreRefusedException(
                 "engineer's version",
-                "That backup could not be opened, so nothing was restored.");
+                UserFacingText.RestoreUnreadable());
     }
 
     private sealed class SpyVaultSession : IVaultSession
