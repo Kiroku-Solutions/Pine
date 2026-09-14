@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Pine.Core.Configuration;
 
@@ -98,13 +99,32 @@ public static class PineConfiguration
         // VALIDATION HAPPENS ONCE, HERE, AND THROWS WITH EVERY PROBLEM. The alternative -- letting
         // each component check its own values when it first reads them -- turns one editing mistake
         // into several unrelated-looking defects discovered weeks apart on different screens.
-        var problems = options.Validate();
+        //
+        // Unknown keys come first and are refused, not warned about (TD-117). The binder ignores a key
+        // that matches no property, so `Pine:Ai:ConfidenceThreshold` -- the natural misspelling of
+        // CategorisationConfidenceThreshold -- used to change nothing and report nothing, and the
+        // operator's experience was that configuration does not work. A warning would go to a log
+        // nobody editing a config file is reading; the value bounds below already refuse, so a key
+        // refuses the same way.
+        var problems = FindUnknownKeys(configuration).Concat(options.Validate()).ToList();
         if (problems.Count > 0)
         {
             throw new PineOptionsValidationException(problems);
         }
 
         return options;
+    }
+
+    /// <summary>
+    /// Every key in <paramref name="configuration"/> that Pine would silently ignore, as one sentence each.
+    /// </summary>
+    /// <param name="configuration">The configuration about to be bound.</param>
+    /// <returns>The problems <see cref="PineConfigurationKeys.FindUnknown"/> found.</returns>
+    public static IReadOnlyList<string> FindUnknownKeys(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        return PineConfigurationKeys.FindUnknown(configuration.AsEnumerable().Select(pair => pair.Key));
     }
 
     /// <summary>
