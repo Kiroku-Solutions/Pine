@@ -19,7 +19,7 @@ namespace Pine.Core.Common;
 /// <para>
 /// THE ROW SAID "DISPATCH OR REMOVE", AND REMOVE IS THE HONEST HALF. The two mutations that raised
 /// events already do their work synchronously and atomically in the same handler and the same
-/// database transaction — <c>RecordTransactionCommandHandler</c> calls <c>Deposit</c>/<c>Withdraw</c>
+/// database transaction — <c>AddTransactionCommandHandler</c> calls <c>Deposit</c>/<c>Withdraw</c>
 /// directly, and <c>VoidTransactionCommandHandler</c> reverses the effect the same way, with a
 /// written argument for why it must not recompute the ledger instead. A dispatcher would therefore
 /// have had no subscriber to deliver to, and building one would have moved the same emptiness down

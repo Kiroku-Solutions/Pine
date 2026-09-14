@@ -62,8 +62,8 @@ public class VoidTransactionAtomicityTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var transactionId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        var transactionId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         var rowsBeforeTheVoid = host.CountRowsRaw("Transactions");
         rowsBeforeTheVoid.Should().Be(1);
@@ -112,10 +112,10 @@ public class VoidTransactionAtomicityTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var expenseId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
-        var incomeId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Employer", Income, "USD", "salary"));
+        var expenseId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
+        var incomeId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Employer", Income, "USD", "salary", "Groceries"));
 
         (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance + Expense + Income);
 
@@ -150,8 +150,8 @@ public class VoidTransactionAtomicityTests
         await using var host = await AtomicityHost.CreateAsync(FaultInjection.Install);
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var transactionId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        var transactionId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         var voidedInsideTransaction = false;
         var balanceInsideTransaction = decimal.MinValue;
@@ -329,8 +329,8 @@ public class VoidTransactionAtomicityTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var transactionId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        var transactionId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         await host.Mediator.Send(new VoidTransactionCommand(transactionId, Reason));
         var balanceAfterTheFirstVoid = await host.ReadBalanceAsync(account);

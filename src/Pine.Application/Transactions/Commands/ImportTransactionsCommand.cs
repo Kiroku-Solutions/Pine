@@ -350,7 +350,7 @@ public sealed class ImportTransactionsCommandHandler : IRequestHandler<ImportTra
 /// <remarks>
 /// <para>
 /// WHAT THIS VALIDATOR DELIBERATELY DOES NOT DO. Its siblings
-/// (<see cref="AddTransactionCommandValidator"/>, <see cref="RecordTransactionCommandValidator"/>,
+/// (<see cref="AddTransactionCommandValidator"/>,
 /// <see cref="TransferFundsCommandValidator"/>) also check that the money's currency matches the
 /// account's. This one cannot, and pretending otherwise would be worse than not trying: an import
 /// command carries a <see cref="Stream"/> and an <see cref="IImporter"/>, not transactions. The
