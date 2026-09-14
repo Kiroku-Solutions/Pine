@@ -124,9 +124,9 @@ public class MoneyFormattingTests
     {
         using var _ = new InvariantCulture();
 
-        new Money(12m, Usd).ToAmountString().Should().Be("12.00");
-        new Money(1500m, Jpy).ToAmountString().Should().Be("1,500");
-        new Money(12.3m, Kwd).ToAmountString().Should().Be("12.300");
+        new Money(12m, Usd).ToAmountString(CultureInfo.InvariantCulture).Should().Be("12.00");
+        new Money(1500m, Jpy).ToAmountString(CultureInfo.InvariantCulture).Should().Be("1,500");
+        new Money(12.3m, Kwd).ToAmountString(CultureInfo.InvariantCulture).Should().Be("12.300");
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class MoneyFormattingTests
     {
         using var _ = new InvariantCulture();
 
-        var rendered = new Money(12m, Usd).ToAmountString();
+        var rendered = new Money(12m, Usd).ToAmountString(CultureInfo.InvariantCulture);
 
         rendered.Should().NotContain("USD");
         rendered.Should().NotContain("$");
@@ -148,7 +148,7 @@ public class MoneyFormattingTests
 
         var money = new Money(1234.5m, Kwd);
 
-        money.ToString().Should().Be($"{money.ToAmountString()} {money.Currency}");
+        money.ToString().Should().Be($"{money.ToAmountString(CultureInfo.InvariantCulture)} {money.Currency}");
     }
     /// <summary>
     /// Pins the current culture to the invariant one for the duration of a test, so an assertion on a

@@ -252,6 +252,11 @@ public static class PineCompositionRoot
     {
         ArgumentNullException.ThrowIfNull(provider);
 
+        // Numbers and dates follow the chosen language from here on, including the ones Avalonia formats
+        // itself (TD-21). Here and not in Build(), because tests build the container and must not have
+        // the culture of every parallel test switched under them. The handle lives as long as the process.
+        _ = DisplayCultureFollower.Follow(provider.GetRequiredService<ILocalizer>());
+
         App.InitializeServices(new PineUiServices(
             provider.GetRequiredService<MainViewModel>(),
             provider.GetRequiredService<IVaultSession>()));

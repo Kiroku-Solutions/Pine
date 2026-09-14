@@ -159,7 +159,7 @@ public partial class BudgetProgressViewModel : ObservableObject
         }
 
         var currency = Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(CurrencyCode);
-        return Money.FromRounded(amount, currency).ToAmountString();
+        return Money.FromRounded(amount, currency).ToAmountString(CultureInfo.CurrentCulture);
     }
 }
 

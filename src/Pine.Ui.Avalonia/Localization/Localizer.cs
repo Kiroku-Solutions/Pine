@@ -47,17 +47,36 @@ public sealed class Localizer : ILocalizer
     ];
 
     private readonly Dictionary<string, string> _fallback;
+    private readonly CultureInfo _regionalFormat;
     private Dictionary<string, string> _active;
 
     /// <summary>
-    /// Creates the localizer on the fallback language.
+    /// Creates the localizer on the fallback language, with this machine's regional format.
     /// </summary>
+    /// <remarks>
+    /// The regional format is read ONCE, here. <see cref="Instance"/> is created while the composition
+    /// root registers localisation, before anything has changed the process culture, so what it reads
+    /// is the operating system's. Reading it again later would read back the culture this localizer
+    /// itself caused to be set (<c>DisplayCultureFollower</c>) and could never return to the region.
+    /// </remarks>
     public Localizer()
+        : this(CultureInfo.CurrentCulture)
     {
+    }
+
+    /// <summary>
+    /// Creates the localizer on the fallback language, with an explicit regional format.
+    /// </summary>
+    /// <param name="regionalFormat">The culture the user's machine formats with; see <see cref="DisplayCulture"/>.</param>
+    public Localizer(CultureInfo regionalFormat)
+    {
+        ArgumentNullException.ThrowIfNull(regionalFormat);
+
+        _regionalFormat = regionalFormat;
         _fallback = Load(FallbackLanguage);
         _active = _fallback;
         CurrentLanguage = FallbackLanguage;
-        CurrentCulture = CultureInfo.GetCultureInfo(FallbackLanguage);
+        CurrentCulture = DisplayCulture(FallbackLanguage, regionalFormat);
     }
 
     /// <summary>
@@ -158,7 +177,7 @@ public sealed class Localizer : ILocalizer
             : Load(resolved);
 
         CurrentLanguage = resolved;
-        CurrentCulture = CultureInfo.GetCultureInfo(resolved);
+        CurrentCulture = DisplayCulture(resolved, _regionalFormat);
 
         // BOTH NAMES ARE RAISED, AND THE SECOND ONE IS THE ONE THAT WORKS.
         //
@@ -179,7 +198,47 @@ public sealed class Localizer : ILocalizer
         // Avalonia would most plausibly move to.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item"));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentCulture)));
         LanguageChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// The culture numbers and dates are written in, for a language and a machine's regional format
+    /// (TD-21).
+    /// </summary>
+    /// <param name="language">A language code from <see cref="Available"/>.</param>
+    /// <param name="regionalFormat">The culture the operating system formats with.</param>
+    /// <returns>A specific, read-only culture.</returns>
+    /// <remarks>
+    /// <para>
+    /// THE REGION IS KEPT WHEN IT SPEAKS THE LANGUAGE, AND ONLY THEN. A Spanish screen on a machine set
+    /// to Ecuador writes <c>es-EC</c>'s figures and dates; a Spanish screen on a machine set to the
+    /// United States writes Spain's, <c>es-ES</c>. The alternative in each direction is visibly wrong:
+    /// following the region regardless of language put "sept. 14, 2026" and "1,500.00" into sentences
+    /// on a Spanish screen — the state this row was left in — and following the language regardless of
+    /// region would write British dates for an Ecuadorian who chose Spanish, or American ones for a
+    /// British user who chose English. The language decides the conventions a sentence needs to read
+    /// naturally; the region decides among the variants of that language.
+    /// </para>
+    /// <para>
+    /// A NEUTRAL CULTURE IS NEVER RETURNED. <c>es</c> has number and date formats in .NET, but they are
+    /// a guess at a region; <see cref="CultureInfo.CreateSpecificCulture"/> names the guess.
+    /// </para>
+    /// </remarks>
+    public static CultureInfo DisplayCulture(string language, CultureInfo regionalFormat)
+    {
+        ArgumentNullException.ThrowIfNull(regionalFormat);
+
+        var resolved = Resolve(language);
+
+        if (!regionalFormat.IsNeutralCulture
+            && !string.IsNullOrEmpty(regionalFormat.Name)
+            && string.Equals(regionalFormat.TwoLetterISOLanguageName, resolved, StringComparison.OrdinalIgnoreCase))
+        {
+            return CultureInfo.ReadOnly(regionalFormat);
+        }
+
+        return CultureInfo.ReadOnly(CultureInfo.CreateSpecificCulture(resolved));
     }
 
     /// <summary>

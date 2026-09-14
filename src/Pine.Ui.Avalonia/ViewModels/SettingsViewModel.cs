@@ -152,6 +152,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _passwordChangeMessage = new LocalizedMessageSlot(localizer, text => PasswordChangeMessage = text);
         _newPasswordStatus = new LocalizedMessageSlot(localizer, text => NewPasswordStrengthStatusText = text ?? string.Empty);
         _newPasswordAdvice = new LocalizedMessageSlot(localizer, text => NewPasswordAdviceText = text ?? string.Empty);
+        _localizer.LanguageChanged += OnLanguageChanged;
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -417,6 +418,46 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             // is not worth interrupting anyone over, so this is a log line and not an ErrorMessage.
             _logger?.LogWarning(
                 "The UI language preference could not be written; it applies to this session only.");
+        }
+    }
+
+    /// <summary>
+    /// Re-renders what this page formatted once, because this is the page the language is changed on
+    /// (TD-21).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EVERY OTHER PAGE IS REBUILT WHEN IT IS NEXT VISITED, SO THIS ONE IS THE CASE THAT MATTERS. The
+    /// backup list's date, size and reason, and each account's balance in the integrity section, were
+    /// formatted when they were loaded. Switching the language here left them in the old language and the
+    /// old notation — beside a picker that had just changed — until the user left and came back.
+    /// </para>
+    /// <para>
+    /// The balances are re-added, the same objects in the same order, because an item template only
+    /// re-reads a <c>Money</c> it is handed again. The backups are rebuilt from what they were built from,
+    /// and the selection is kept by path, since the restore panel may be open on one of them.
+    /// </para>
+    /// </remarks>
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        var accounts = Accounts.ToList();
+        Accounts.Clear();
+        foreach (var account in accounts)
+        {
+            Accounts.Add(account);
+        }
+
+        var selectedPath = SelectedBackup?.Path;
+        var backups = Backups.Select(option => option.Source).ToList();
+        Backups.Clear();
+        foreach (var backup in backups)
+        {
+            Backups.Add(new VaultBackupOption(backup, _localizer));
+        }
+
+        if (selectedPath is not null)
+        {
+            SelectedBackup = Backups.FirstOrDefault(option => string.Equals(option.Path, selectedPath, StringComparison.Ordinal));
         }
     }
 
@@ -989,9 +1030,13 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             ArgumentNullException.ThrowIfNull(backup);
             ArgumentNullException.ThrowIfNull(localizer);
 
+            Source = backup;
             Path = backup.Path;
             CreatedAtUtc = backup.CreatedAtUtc;
-            Taken = backup.CreatedAtUtc.ToLocalTime().ToString("f", CultureInfo.CurrentCulture);
+
+            // The localizer's culture, not the process's: they are the same object's decision in a running
+            // head, and only this one is the language this option's Reason is worded in (TD-21).
+            Taken = backup.CreatedAtUtc.ToLocalTime().ToString("f", localizer.CurrentCulture);
 
             var reasonKey = backup.Reason switch
             {
@@ -1003,10 +1048,13 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
 
             Reason = localizer[reasonKey];
             Size = string.Format(
-                CultureInfo.CurrentCulture,
+                localizer.CurrentCulture,
                 "{0:N0} KB",
                 Math.Max(1, backup.SizeBytes / 1024));
         }
+
+        /// <summary>What this option was built from, so a language change can build it again.</summary>
+        public VaultBackupInfo Source { get; }
 
         /// <summary>Absolute path, which is what the command needs and what the list does not show.</summary>
         public string Path { get; }
@@ -1071,6 +1119,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     /// </remarks>
     public void Dispose()
     {
+        _localizer.LanguageChanged -= OnLanguageChanged;
         _exportMessage.Dispose();
         _restoreMessage.Dispose();
         _error.Dispose();

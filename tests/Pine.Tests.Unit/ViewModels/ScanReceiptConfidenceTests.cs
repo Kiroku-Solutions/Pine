@@ -34,13 +34,16 @@ public class ScanReceiptConfidenceTests
     private static Account UsdAccount() =>
         Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System);
 
+    /// <summary>English, in the United States' conventions, whatever machine runs the test (TD-21).</summary>
+    private readonly Localizer _localizer = new(System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+
     private ScanReceiptViewModel CreateViewModel()
     {
         var account = UsdAccount();
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
 
-        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), new Localizer());
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), _localizer);
         viewModel.SelectedAccount = account;
         return viewModel;
     }
@@ -85,10 +88,9 @@ public class ScanReceiptConfidenceTests
 
         viewModel.IsDateAmbiguous.Should().BeTrue();
         // Phrased with the month name, not a numeric date, so a 05/03 vs 03/05 mix-up can never
-        // read as confirmation of the very reading that is in question. Formatted in the current
-        // culture rather than hard-coded English, since the sentence is user-facing.
-        viewModel.DateAmbiguityMessage.Should().Contain(
-            viewModel.AlternativeDate!.Value.ToString("MMMM", System.Globalization.CultureInfo.CurrentCulture));
+        // read as confirmation of the very reading that is in question. In the screen's culture, not
+        // the machine's (TD-21).
+        viewModel.DateAmbiguityMessage.Should().Be("This could also be Sunday, May 3, 2026. Check the receipt.");
         viewModel.Date.Month.Should().Be(3);
     }
 

@@ -41,12 +41,14 @@ public interface ILocalizer : INotifyPropertyChanged
     /// <returns>The formatted sentence.</returns>
     /// <remarks>
     /// Formatting uses <see cref="CurrentCulture"/>, so a number inside a Spanish sentence is
-    /// rendered with Spanish separators. That is the one place this type touches number formatting;
-    /// locale-driven formatting in general is TD-21 and deliberately out of scope here.
+    /// rendered with Spanish separators.
     /// </remarks>
     string Format(string key, params object?[] arguments);
 
-    /// <summary>The active language's culture.</summary>
+    /// <summary>
+    /// The culture numbers and dates are written in: the active language, in the machine's region when
+    /// the region speaks it (TD-21). See <c>Localizer.DisplayCulture</c>.
+    /// </summary>
     CultureInfo CurrentCulture { get; }
 
     /// <summary>The active language's BCP-47 code.</summary>

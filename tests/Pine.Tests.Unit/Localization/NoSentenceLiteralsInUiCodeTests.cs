@@ -40,10 +40,6 @@ public partial class NoSentenceLiteralsInUiCodeTests
             "DiagnosticsViewModel.NoRecordsText: a public constant tests compare against by reference",
         ["View cleared. Refresh to read the log again."] =
             "DiagnosticsViewModel.ViewClearedText: as above",
-        ["This could also be {AlternativeDate:d MMMM yyyy}. Check the receipt."] =
-            "ScanReceiptViewModel.DateAmbiguityMessage: the month name's culture is a TD-21 decision, not a wording one",
-        ["This looks like a duplicate of {0:0.00} to {1} on {2:yyyy-MM-dd}. Save again to add it anyway."] =
-            "ScanReceiptViewModel.DuplicateWarning: deliberately invariant-culture figures; changing that is TD-21",
     };
 
     [Fact]

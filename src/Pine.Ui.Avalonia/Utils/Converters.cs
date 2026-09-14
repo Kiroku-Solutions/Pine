@@ -40,7 +40,64 @@ public static class Converters
     /// </para>
     /// </remarks>
     public static readonly IValueConverter MoneyAmount =
-        new FuncValueConverter<Money?, string>(m => m is null ? string.Empty : m.ToAmountString());
+        new FuncValueConverter<Money?, string>(m => m is null ? string.Empty : m.ToAmountString(CultureInfo.CurrentCulture));
+
+    /// <summary>
+    /// Renders a date as the current culture writes a date in prose, without the weekday (TD-21):
+    /// <c>May 3, 2026</c>, <c>3 May 2026</c>, <c>3 de mayo de 2026</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IT REPLACES TWO HARD-CODED PATTERNS, BOTH WRONG FOR SOMEONE. The transaction list and the recent
+    /// transactions widget used <c>MMM dd, yyyy</c> — American order with the operating system's month
+    /// names, so a Spanish reader got "may. 03, 2026" — and the import wizard used <c>yyyy-MM-dd</c>, which
+    /// is unambiguous but is nobody's way of writing a date on a screen that is otherwise in their
+    /// language.
+    /// </para>
+    /// <para>
+    /// WHY NOT THE SHORT DATE. It is the culture's own, but <c>3/5/2026</c> is 3 May in Quito and 5 March
+    /// in New York — the ambiguity TD-21 was opened for, reproduced on the one screen where a user checks
+    /// what was imported. The month is spelled out so no reader has to know which convention they are
+    /// looking at.
+    /// </para>
+    /// <para>
+    /// The culture is <see cref="CultureInfo.CurrentCulture"/>, which <c>DisplayCultureFollower</c> keeps
+    /// equal to the language the user chose.
+    /// </para>
+    /// </remarks>
+    public static readonly IValueConverter ProseDate =
+        new FuncValueConverter<object?, string>(value => value switch
+        {
+            DateTimeOffset date => date.ToString(ProseDatePattern(CultureInfo.CurrentCulture), CultureInfo.CurrentCulture),
+            DateTime date => date.ToString(ProseDatePattern(CultureInfo.CurrentCulture), CultureInfo.CurrentCulture),
+            _ => string.Empty,
+        });
+
+    /// <summary>
+    /// The culture's long date pattern without its weekday.
+    /// </summary>
+    /// <param name="culture">The culture to read the patterns of.</param>
+    /// <returns>A custom date format string.</returns>
+    /// <remarks>
+    /// Taken from the culture's own list of long date patterns rather than built by editing one, because
+    /// the list already holds the weekday-free form for every culture Pine ships (<c>MMMM d, yyyy</c>,
+    /// <c>d MMMM yyyy</c>, <c>d 'de' MMMM 'de' yyyy</c>), and string surgery on a pattern is how a
+    /// literal such as <c>'de'</c> gets mangled. A culture with no such form keeps its long date whole.
+    /// </remarks>
+    public static string ProseDatePattern(CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+
+        foreach (var pattern in culture.DateTimeFormat.GetAllDateTimePatterns('D'))
+        {
+            if (!pattern.Contains("ddd", StringComparison.Ordinal))
+            {
+                return pattern;
+            }
+        }
+
+        return culture.DateTimeFormat.LongDatePattern;
+    }
 
     /// <summary>
     /// True for a <see cref="ConfidenceBand"/> weak enough to warrant a hint next to the field

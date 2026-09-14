@@ -35,6 +35,15 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private readonly IMediator _mediator;
     private readonly LocalizedMessageSlot _status;
     private readonly LocalizedMessageSlot _error;
+
+    /// <summary>
+    /// Words <see cref="DuplicateWarning"/>, and words it again on a language change (TD-21). The figure
+    /// and the date inside it are arguments, so they are written in the sentence's own culture.
+    /// </summary>
+    private readonly LocalizedMessageSlot _duplicate;
+
+    /// <summary>Words <see cref="DateAmbiguityMessage"/>, which is computed on read.</summary>
+    private readonly ILocalizer _localizer;
     /// <summary>
     /// The shell this page is shown in (TD-121). It was the window's navigator, so Save and Cancel
     /// replaced the whole shell with a bare transactions page -- which a vault lock then failed to
@@ -166,9 +175,18 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// The sentence shown next to the date field while it is ambiguous, or null otherwise. Notified
     /// from both halves of the ambiguity state so the binding tracks either one changing.
     /// </summary>
+    /// <remarks>
+    /// IT WAS AN ENGLISH SENTENCE WITH A FORMAT PATTERN IN IT, <c>d MMMM yyyy</c>, and the pattern was the
+    /// harder half (TD-21, TD-150). Month names came from the operating system's culture, so an English
+    /// screen on a Spanish machine read "This could also be 3 mayo 2026"; and the pattern's day-month-year
+    /// order was fixed, where Spanish needs "3 de mayo de 2026" and American English "May 3, 2026". The
+    /// sentence is a key now and the date a <c>{0:D}</c> argument: the culture's own long date, in the
+    /// language of the sentence around it. For a warning whose whole job is to make a reader compare two
+    /// dates, the unambiguous long form with the weekday is the right one.
+    /// </remarks>
     public string? DateAmbiguityMessage =>
         IsDateAmbiguous && AlternativeDate.HasValue
-            ? $"This could also be {AlternativeDate:d MMMM yyyy}. Check the receipt."
+            ? _localizer.Format("ScanReceipt.DateAmbiguity", AlternativeDate.Value)
             : null;
 
     partial void OnIsDateAmbiguousChanged(bool value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
@@ -230,8 +248,11 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _mediator = mediator;
         _navigationService = navigationService;
         _viewModels = viewModels;
+        _localizer = localizer;
         _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
+        _duplicate = new LocalizedMessageSlot(localizer, text => DuplicateWarning = text ?? string.Empty);
+        _localizer.LanguageChanged += OnLanguageChanged;
         _logger = logger;
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
@@ -540,7 +561,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
         IsBusy = true;
         _error.Clear();
-        DuplicateWarning = string.Empty;
+        _duplicate.Clear();
         // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
         // user gets a scrim with no sentence under it.
         _status.Set("ScanReceipt.Status.Saving");
@@ -570,14 +591,18 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
                 if (duplicate is not null)
                 {
-                    // Invariant culture: the figure has to contain "24.50", not a locale-dependent
-                    // "24,50", both because that is what tests (and support conversations) can rely
-                    // on, and because the receipt total shown elsewhere on this screen is never
-                    // localised either.
-                    DuplicateWarning = string.Format(
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        "This looks like a duplicate of {0:0.00} to {1} on {2:yyyy-MM-dd}. Save again to add it anyway.",
-                        Math.Abs(duplicate.Amount), duplicate.Payee, duplicate.Date);
+                    // IN THE SCREEN'S CULTURE, AND IT WAS DELIBERATELY NOT (TD-21). This used invariant
+                    // culture on the grounds that the rest of the screen was not localised either --
+                    // true then, and the reason this row existed. With the whole screen following the
+                    // language, an invariant "24.50" and "2026-05-03" beside a total the NumericUpDown
+                    // writes as "24,50" would be the one figure on the screen in a different notation.
+                    // The amount carries its currency, so its scale is the currency's rather than an
+                    // assumed two decimals.
+                    _duplicate.Set(
+                        "ScanReceipt.DuplicateWarning",
+                        new Money(Math.Abs(duplicate.Amount), new CurrencyCode(currency)),
+                        duplicate.Payee,
+                        duplicate.Date);
                     _acknowledgedDuplicateKey = importKey;
                     return;
                 }
@@ -808,9 +833,13 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </remarks>
     public void Dispose()
     {
+        _localizer.LanguageChanged -= OnLanguageChanged;
         _status.Dispose();
         _error.Dispose();
+        _duplicate.Dispose();
         GC.SuppressFinalize(this);
     }
+
+    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(DateAmbiguityMessage));
 
 }

@@ -85,7 +85,7 @@
                                                                    Foreground="{DynamicResource PineDanger}" />
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding Date, StringFormat='MMM dd, yyyy'}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                                                <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
                                             </StackPanel>
 
                                             <!-- Notes -->

@@ -25,7 +25,7 @@
                                 <!-- Tx Info -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Payee}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Date, StringFormat=\{0:MMM dd\, yyyy\}}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                    <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
                                 </StackPanel>
                                 
                                 <!-- Amount -->

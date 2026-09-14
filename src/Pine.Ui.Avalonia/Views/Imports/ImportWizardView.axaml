@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Importing"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.Importing.ImportWizardView"
              x:DataType="vm:ImportWizardViewModel">
@@ -64,7 +65,7 @@
                           IsReadOnly="True" Background="Transparent" Foreground="{DynamicResource PineText}"
                           HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnDate}" Binding="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}" />
+                        <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnDate}" Binding="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" />
                         <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnPayee}" Binding="{Binding Payee}" Width="*"/>
                         <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnAmount}" Binding="{Binding TotalAmount}" />
                     </DataGrid.Columns>
@@ -140,10 +141,10 @@
                                         <Binding Path="WasSkipped"/>
                                     </Classes.skipped>
 
-                                    <Grid ColumnDefinitions="100,*,Auto" RowDefinitions="Auto,Auto">
+                                    <Grid ColumnDefinitions="140,*,Auto" RowDefinitions="Auto,Auto">
 
                                         <TextBlock Grid.Row="0" Grid.Column="0"
-                                                   Text="{Binding Transaction.Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                                   Text="{Binding Transaction.Date, Converter={x:Static conv:Converters.ProseDate}}"
                                                    FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
 
                                         <TextBlock Grid.Row="0" Grid.Column="1"
