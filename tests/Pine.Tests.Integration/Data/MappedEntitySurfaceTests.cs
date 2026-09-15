@@ -67,6 +67,15 @@ public class MappedEntitySurfaceTests
         nameof(Pine.Core.Rules.Rule),
         nameof(Pine.Core.Settings.Setting),
         nameof(Pine.Core.Transactions.Transaction),
+
+        // THE STORE'S OWN BOOKKEEPING, added by a deliberate edit (post-audit plan item 3.1, TD-144 and
+        // TD-145). Neither is a thing the user owns and neither has a repository, which is exactly what this
+        // list exists to question — so the reader and writer are named: PineDbContext writes both on every
+        // save that touches a root, and a merge is what will read them. Until a merge exists their readers
+        // are SyncBookkeepingTests; that is the same standing TD-37 refused a dead entity, and the difference
+        // is that these are written by every save rather than by nothing.
+        nameof(Pine.Infrastructure.Data.SyncClockRow),
+        nameof(Pine.Infrastructure.Data.SyncTombstone),
     ];
 
     /// <summary>The names that stayed removed, kept explicit so the regression reads clearly.</summary>

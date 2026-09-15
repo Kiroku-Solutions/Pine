@@ -1,4 +1,6 @@
 ﻿using System;
+using Pine.Core.Sync;
+using Pine.Infrastructure.Sync;
 using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -112,8 +114,18 @@ public static class PineInfrastructureServiceCollectionExtensions
                 throw new InvalidOperationException("Cannot access database: Vault is locked.");
             }
 
-            return new PineDbContext(Path.Combine(vault.DbPath, "pine.db"), vault.Key!);
+            return new PineDbContext(
+                Path.Combine(vault.DbPath, "pine.db"),
+                vault.Key!,
+                timeProvider: null,
+                sp.GetRequiredService<IDeviceIdentity>().DeviceId);
         });
+
+        // This installation's id, stamped on every row it writes (TD-144). In the data directory, not the
+        // vault: see IDeviceIdentity for why a vault file is the wrong place for an id that must differ per
+        // machine. The storage options come from the composition root; a host without them uses the default.
+        services.TryAddSingleton<IDeviceIdentity>(sp => new FileDeviceIdentity(
+            sp.GetService<PineStorageOptions>()?.DataDirectory ?? PineStorageOptions.DefaultDataDirectory()));
 
         // Unit of work (TD-01). Scoped so it shares the request's PineDbContext with every
         // repository resolved in the same scope, giving one transactional boundary per request.

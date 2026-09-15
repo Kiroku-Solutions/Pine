@@ -139,6 +139,9 @@ public class ImportKeyMigrationTests
     /// <summary>The head of the migration list: the now-unreferenced <c>Categories</c> table goes.</summary>
     private const string DropCategoriesTableSchemaVersion = "20260913030000_DropCategoriesTable";
 
+    /// <summary>The head of the migration list: the sync clock, device column and tombstones (TD-144, TD-145).</summary>
+    private const string SyncBookkeepingSchemaVersion = "20260914224324_AddSyncClockDeviceAndTombstones";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -301,7 +304,8 @@ public class ImportKeyMigrationTests
             RulesSchemaVersion,
             RowAuditSchemaVersion,
             DropCategoryAggregateSchemaVersion,
-            DropCategoriesTableSchemaVersion
+            DropCategoriesTableSchemaVersion,
+            SyncBookkeepingSchemaVersion
         });
     }
 

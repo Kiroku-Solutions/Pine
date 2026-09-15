@@ -11,6 +11,8 @@ using Pine.Core.Settings;
 using Pine.Core.Importing;
 using System.Text.Json;
 using System.Collections.Generic;
+using System.Globalization;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Pine.Infrastructure.Data;
 
@@ -22,6 +24,7 @@ public sealed class PineDbContext : DbContext
     private readonly string _databasePath;
     private readonly byte[] _encryptionKey;
     private readonly TimeProvider _timeProvider;
+    private readonly Guid _deviceId;
 
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
@@ -31,6 +34,12 @@ public sealed class PineDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
 
+    /// <summary>Deletions a merge will need to see (TD-145). Store bookkeeping, not user data.</summary>
+    public DbSet<SyncTombstone> Tombstones => Set<SyncTombstone>();
+
+    /// <summary>The vault's Lamport counter, one row (TD-144). Store bookkeeping, not user data.</summary>
+    public DbSet<SyncClockRow> SyncClock => Set<SyncClockRow>();
+
     /// <param name="databasePath">Path to the keyed SQLite file.</param>
     /// <param name="encryptionKey">The SQLCipher key.</param>
     /// <param name="timeProvider">
@@ -38,11 +47,20 @@ public sealed class PineDbContext : DbContext
     /// sites and almost all of them are tests that do not care what time it is; the ones that DO
     /// care pass a fake and get a deterministic stamp.
     /// </param>
-    public PineDbContext(string databasePath, byte[] encryptionKey, TimeProvider? timeProvider = null)
+    /// <param name="databasePath">The vault's database file.</param>
+    /// <param name="encryptionKey">The vault's data key.</param>
+    /// <param name="timeProvider">The clock the audit columns read.</param>
+    /// <param name="deviceId">
+    /// The installation writing through this context (TD-144). Optional so a test or a tool can open a vault
+    /// without one; rows it writes then say <see cref="Guid.Empty"/>, "not known", rather than borrowing an
+    /// identity. The application's container always supplies the real one.
+    /// </param>
+    public PineDbContext(string databasePath, byte[] encryptionKey, TimeProvider? timeProvider = null, Guid? deviceId = null)
     {
         _databasePath = databasePath;
         _encryptionKey = encryptionKey;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _deviceId = deviceId ?? Guid.Empty;
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -330,9 +348,71 @@ public sealed class PineDbContext : DbContext
             e.Navigation(r => r.Conditions).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
+        modelBuilder.Entity<SyncClockRow>(e =>
+        {
+            e.ToTable("SyncClock");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Id).ValueGeneratedNever();
+
+            // Seeded by the migration, so every vault — new or upgraded — has the row the increment updates.
+            e.HasData(new SyncClockRow { Id = SyncClockRow.SingletonId, Value = 0 });
+        });
+
+        modelBuilder.Entity<SyncTombstone>(e =>
+        {
+            e.ToTable("Tombstones");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.EntityType).IsRequired().HasMaxLength(64);
+            e.HasIndex(t => new { t.EntityType, t.EntityId });
+            e.HasIndex(t => t.Clock);
+        });
+
         ConfigureConcurrencyTokens(modelBuilder);
         ConfigureAuditColumns(modelBuilder);
+        ConfigureSyncColumns(modelBuilder);
     }
+
+    /// <summary>The Lamport clock of the save that last wrote the row (TD-144). Zero: never stamped.</summary>
+    public const string ClockColumnName = "RowClock";
+
+    /// <summary>The installation that last wrote the row (TD-144). <see cref="Guid.Empty"/>: not known.</summary>
+    public const string DeviceColumnName = "RowDeviceId";
+
+    /// <summary>
+    /// Gives every aggregate root the pair a merge orders changes by: <c>(RowClock, RowDeviceId)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ALONGSIDE THE ROW VERSION, NOT INSTEAD OF IT, because they answer different questions (TD-144's Fix
+    /// column). <see cref="ConcurrencyTokenName"/> is random and says whether a row changed since it was read;
+    /// it cannot say which of two changes came first. The clock can, and the device breaks a tie between two
+    /// installations that reached the same number independently — which a Lamport clock permits.
+    /// </para>
+    /// <para>
+    /// NOT A WALL CLOCK. <see cref="UpdatedAtColumnName"/> already exists and two machines' clocks disagree;
+    /// ordering changes by it is the silent-data-loss shape `14-Synchronization` §4 rejected by name.
+    /// </para>
+    /// <para>
+    /// Rows written before this column existed read zero and <see cref="Guid.Empty"/>, for the reason the audit
+    /// columns read <c>0001-01-01</c>: nothing can recover which device wrote them, and a backfill would claim
+    /// this one did.
+    /// </para>
+    /// </remarks>
+    private static void ConfigureSyncColumns(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (IsRoot(entityType))
+            {
+                modelBuilder.Entity(entityType.ClrType).Property<long>(ClockColumnName);
+                modelBuilder.Entity(entityType.ClrType).Property<Guid>(DeviceColumnName);
+            }
+        }
+    }
+
+    /// <summary>An aggregate root the user owns: not an owned child, and not the store's own bookkeeping.</summary>
+    private static bool IsRoot(Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType entityType) =>
+        !entityType.IsOwned() && !typeof(ISyncBookkeeping).IsAssignableFrom(entityType.ClrType);
 
     /// <summary>When the row was first written. A fact about the row, not about the domain.</summary>
     public const string CreatedAtColumnName = "RowCreatedAtUtc";
@@ -376,7 +456,7 @@ public sealed class PineDbContext : DbContext
     {
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (entityType.IsOwned())
+            if (!IsRoot(entityType))
             {
                 continue;
             }
@@ -418,7 +498,7 @@ public sealed class PineDbContext : DbContext
     {
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (entityType.IsOwned())
+            if (!IsRoot(entityType))
             {
                 continue;
             }
@@ -430,31 +510,114 @@ public sealed class PineDbContext : DbContext
     }
 
     /// <inheritdoc />
-    public override int SaveChanges()
-    {
-        BumpConcurrencyTokens();
-        return base.SaveChanges();
-    }
+    public override int SaveChanges() => SaveChanges(acceptAllChangesOnSuccess: true);
 
     /// <inheritdoc />
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        BumpConcurrencyTokens();
+        var roots = BumpConcurrencyTokens();
+        if (roots.Count > 0)
+        {
+            StampSync(roots, NextClock());
+        }
+
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     /// <inheritdoc />
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        BumpConcurrencyTokens();
-        return base.SaveChangesAsync(cancellationToken);
-    }
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        SaveChangesAsync(acceptAllChangesOnSuccess: true, cancellationToken);
 
     /// <inheritdoc />
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        BumpConcurrencyTokens();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var roots = BumpConcurrencyTokens();
+        if (roots.Count > 0)
+        {
+            StampSync(roots, await NextClockAsync(cancellationToken).ConfigureAwait(false));
+        }
+
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
+    }
+
+    private const string IncrementClockSql = "UPDATE SyncClock SET Value = Value + 1 WHERE Id = 1 RETURNING Value;";
+
+    /// <summary>Takes the next number from the vault's Lamport counter, inside the save's transaction if there is one.</summary>
+    private long NextClock()
+    {
+        Database.OpenConnection();
+        try
+        {
+            using var command = ClockCommand();
+            return ReadClock(command.ExecuteScalar());
+        }
+        finally
+        {
+            Database.CloseConnection();
+        }
+    }
+
+    private async Task<long> NextClockAsync(CancellationToken cancellationToken)
+    {
+        await Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = ClockCommand();
+            return ReadClock(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+        }
+        finally
+        {
+            await Database.CloseConnectionAsync().ConfigureAwait(false);
+        }
+    }
+
+    private System.Data.Common.DbCommand ClockCommand()
+    {
+        var command = Database.GetDbConnection().CreateCommand();
+        command.Transaction = Database.CurrentTransaction?.GetDbTransaction();
+        command.CommandText = IncrementClockSql;
+        return command;
+    }
+
+    private static long ReadClock(object? value) =>
+        value is null or DBNull
+            ? throw new InvalidOperationException("The vault has no sync clock row. Its schema is older than this build expects; it has not been migrated.")
+            : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Stamps every root written by this save with the clock and the device, and records every root it deletes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ONE CLOCK VALUE FOR THE WHOLE SAVE, for the reason the audit stamp reads the time once: rows saved
+    /// together are one change, and a merge that saw them a tick apart could order them against each other.
+    /// </para>
+    /// <para>
+    /// A DELETE STILL DELETES (TD-145). The row goes; a <see cref="SyncTombstone"/> carrying only its type, id,
+    /// clock and device takes its place. See that type for why the row is not kept behind a flag.
+    /// </para>
+    /// </remarks>
+    private void StampSync(IReadOnlyList<EntityEntry> roots, long clock)
+    {
+        foreach (var entry in roots)
+        {
+            if (entry.State == EntityState.Deleted)
+            {
+                Tombstones.Add(new SyncTombstone
+                {
+                    Id = Guid.NewGuid(),
+                    EntityType = entry.Metadata.ClrType.Name,
+                    EntityId = (Guid)entry.Property("Id").CurrentValue!,
+                    Clock = clock,
+                    DeviceId = _deviceId,
+                    DeletedAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
+                });
+                continue;
+            }
+
+            entry.CurrentValues[ClockColumnName] = clock;
+            entry.CurrentValues[DeviceColumnName] = _deviceId;
+        }
     }
 
     /// <summary>
@@ -476,7 +639,8 @@ public sealed class PineDbContext : DbContext
     /// <see cref="EntityState.Deleted"/> and is no longer in the collection to be walked.
     /// </para>
     /// </remarks>
-    private void BumpConcurrencyTokens()
+    /// <returns>Every root this save inserts, updates or deletes, for <see cref="StampSync"/>.</returns>
+    private List<EntityEntry> BumpConcurrencyTokens()
     {
         // SaveChanges would do this itself, but the states have to be settled before they are read.
         ChangeTracker.DetectChanges();
@@ -487,18 +651,28 @@ public sealed class PineDbContext : DbContext
         // saved together are one change, and a merge that saw them a few ticks apart could order
         // them against each other, which is a distinction this system does not have.
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var roots = new List<EntityEntry>();
 
-        foreach (var entry in ChangeTracker.Entries())
+        // Materialised: StampSync adds tombstones to the tracker afterwards.
+        foreach (var entry in ChangeTracker.Entries().ToList())
         {
+            if (entry.Metadata.FindProperty(ConcurrencyTokenName) is null)
+            {
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+            {
+                roots.Add(entry);
+                continue;
+            }
+
             if (entry.State is not (EntityState.Added or EntityState.Modified))
             {
                 continue;
             }
 
-            if (entry.Metadata.FindProperty(ConcurrencyTokenName) is null)
-            {
-                continue;
-            }
+            roots.Add(entry);
 
             // CurrentValues only: the ORIGINAL value is what EF puts in the WHERE clause, and
             // overwriting it here would compare the row against the token being written and match
@@ -507,6 +681,8 @@ public sealed class PineDbContext : DbContext
 
             StampAuditColumns(entry, now);
         }
+
+        return roots;
     }
 
     /// <summary>

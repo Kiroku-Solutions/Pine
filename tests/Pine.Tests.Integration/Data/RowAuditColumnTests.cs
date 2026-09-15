@@ -53,8 +53,11 @@ public class RowAuditColumnTests
         await using var context = vault.CreateContext();
         await context.Database.MigrateAsync(CancellationToken.None);
 
+        // The store's own bookkeeping (the sync clock and the tombstones, TD-144/TD-145) is not a root: it
+        // carries no audit columns of its own, by design. The count below still pins the seven roots.
         var rootTables = context.Model.GetEntityTypes()
             .Where(entityType => !entityType.IsOwned())
+            .Where(entityType => !typeof(ISyncBookkeeping).IsAssignableFrom(entityType.ClrType))
             .Select(entityType => entityType.GetTableName())
             .Where(table => table is not null)
             .Distinct()

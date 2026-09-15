@@ -34,7 +34,13 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<long?>("OpeningBalanceAmount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -96,7 +102,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -140,7 +152,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -202,7 +220,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -239,7 +263,13 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -270,7 +300,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -325,7 +361,13 @@ namespace Pine.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
@@ -377,6 +419,58 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.HasIndex("AccountId", "VoidedAt");
 
                     b.ToTable("Transactions");
+                });
+
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncClockRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SyncClock", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Value = 0L
+                        });
+                });
+
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncTombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Clock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("DeletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Clock");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.ToTable("Tombstones", (string)null);
                 });
 
             modelBuilder.Entity("Pine.Core.Attachments.Attachment", b =>

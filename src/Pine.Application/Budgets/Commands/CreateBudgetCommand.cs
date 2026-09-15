@@ -8,6 +8,7 @@ using Pine.Application.Common;
 using Pine.Core.Budgets;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
+using Pine.Core.Sync;
 
 namespace Pine.Application.Budgets.Commands;
 
@@ -170,12 +171,12 @@ public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudge
             var category = request.Category.Trim();
             var existing = await _budgets.GetAllAsync(cancellationToken).ConfigureAwait(false);
 
-            if (existing.Any(b =>
-                    string.Equals(b.Category, category, StringComparison.Ordinal)
-                    && string.Equals(b.Limit.Currency.Value, currency.Value, StringComparison.Ordinal)
-                    && b.Period == request.Period
-                    && b.StartDate == request.StartDate
-                    && b.EndDate == request.EndDate))
+            // THE NATURAL KEY, NOT A SECOND COPY OF ITS RULE (TD-146). The tuple that stops one vault holding
+            // two such budgets is the tuple a merge recognises one budget across two vaults by; written twice
+            // they would drift, and a budget one rule calls new the other would call a duplicate.
+            var key = NaturalKeys.BudgetKey(category, currency.Value, request.Period, request.StartDate, request.EndDate);
+
+            if (existing.Any(b => string.Equals(NaturalKeys.For(b), key, StringComparison.Ordinal)))
             {
                 errors.Add(new ValidationError(
                     nameof(CreateBudgetCommand.Category),

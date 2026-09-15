@@ -138,6 +138,9 @@ public class VoidAndOpeningBalanceMigrationTests
     /// <summary>The head of the migration list: the now-unreferenced <c>Categories</c> table goes.</summary>
     private const string DropCategoriesTableSchemaVersion = "20260913030000_DropCategoriesTable";
 
+    /// <summary>The head of the migration list: the sync clock, device column and tombstones (TD-144, TD-145).</summary>
+    private const string SyncBookkeepingSchemaVersion = "20260914224324_AddSyncClockDeviceAndTombstones";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
     [
@@ -152,6 +155,7 @@ public class VoidAndOpeningBalanceMigrationTests
         RowAuditSchemaVersion,
         DropCategoryAggregateSchemaVersion,
         DropCategoriesTableSchemaVersion,
+        SyncBookkeepingSchemaVersion,
     ];
 
     private const decimal LegacyBalance = 1000.00m;
