@@ -56,7 +56,7 @@ public class ViewModelFactoryTests
     [MemberData(nameof(PineCompositionRootTests.AllProfiles), MemberType = typeof(PineCompositionRootTests))]
     public void EveryFactoryMethod_ShouldProduceItsPage_OnAHeadThatOffersIt(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         var factory = FactoryFor(provider);
 
         factory.CreateVaultSelection().Should().BeOfType<VaultSelectionViewModel>();
@@ -111,7 +111,7 @@ public class ViewModelFactoryTests
     [MemberData(nameof(PineCompositionRootTests.AllProfiles), MemberType = typeof(PineCompositionRootTests))]
     public void TheFactory_ShouldHaveOneMethod_PerNavigableViewModel(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         var factory = FactoryFor(provider);
         var shell = Substitute.For<IShellNavigator>();
 
@@ -157,7 +157,7 @@ public class ViewModelFactoryTests
     [Fact]
     public void TheReceiptPages_ShouldNavigateTheShellTheyWereBuiltFor_AndHandItOn()
     {
-        using var provider = PineCompositionRoot.Build(PineHeadProfile.Windows);
+        using var provider = TestContainer.Build(PineHeadProfile.Windows);
         var factory = FactoryFor(provider);
 
         var reviewShell = Substitute.For<IShellNavigator>();
@@ -198,7 +198,7 @@ public class ViewModelFactoryTests
     [Fact]
     public void TheCallbackTakingMethods_ShouldPassTheCallbackThrough()
     {
-        using var provider = PineCompositionRoot.Build(PineHeadProfile.Windows);
+        using var provider = TestContainer.Build(PineHeadProfile.Windows);
         var factory = FactoryFor(provider);
 
         var addTransactionRan = false;
@@ -228,7 +228,7 @@ public class ViewModelFactoryTests
     [Fact]
     public void TheCallbackTakingViewModels_ShouldReceiveTheContainersLoggerAndClock()
     {
-        using var provider = PineCompositionRoot.Build(PineHeadProfile.Windows);
+        using var provider = TestContainer.Build(PineHeadProfile.Windows);
         var factory = FactoryFor(provider);
 
         var addTransaction = factory.CreateAddTransaction(() => { });

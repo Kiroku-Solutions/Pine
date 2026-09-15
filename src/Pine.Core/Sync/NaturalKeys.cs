@@ -46,15 +46,19 @@ public enum NaturalKeyKind
 /// user, and the schema already enforces them unique.</description></item>
 /// <item><description><b>Budget — derived: category, currency, period and dates.</b> The same tuple
 /// <c>CreateBudgetCommandValidator</c> refuses a duplicate on, so the rule that stops one vault holding
-/// two such budgets is the rule that recognises one budget across two. A budget cannot be edited, so none
-/// of its parts can move under the key.</description></item>
+/// two such budgets is the rule that recognises one budget across two. No screen edits a budget, so none
+/// of its parts can move under the key — <c>Budget.UpdateLimit</c> exists, can change the currency, and has
+/// no caller; if one is ever added, the key moves with it and a merge must treat that as a new
+/// budget.</description></item>
 /// <item><description><b>Attachment — derived: its transaction and its content hash.</b> The bytes are
 /// hashed by the domain and cannot change; the same file on the same transaction is the same
 /// evidence.</description></item>
-/// <item><description><b>Transaction — partial: its import key, when it has one.</b> An imported or scanned
-/// transaction carries a key derived from its source (TD-20); one typed by hand has nothing that makes
-/// two identical coffees on one day one purchase rather than two, so it has no key and a merge must
-/// ask.</description></item>
+/// <item><description><b>Transaction — partial: its account and its import key, when it has one.</b> An
+/// imported or scanned transaction carries a key derived from its source (TD-20); one typed by hand has
+/// nothing that makes two identical coffees on one day one purchase rather than two, so it has no key and a
+/// merge must ask. THE ACCOUNT IS PART OF THE KEY because most import keys are not: the same CSV row imported
+/// into two accounts is two legitimate transactions with one import key, and the import's own duplicate check
+/// is per account for that reason (independent review of plan item 3.1).</description></item>
 /// <item><description><b>Account — none.</b> Two accounts called "Savings" in the same currency are, often
 /// enough, two accounts. A name is the one thing the register forbade manufacturing a key from.</description></item>
 /// <item><description><b>Rule — none.</b> Its title is free text; two rules with the same conditions may
@@ -102,7 +106,7 @@ public static class NaturalKeys
     /// </summary>
     /// <param name="aggregate">The aggregate.</param>
     /// <returns>
-    /// A string that is equal for two instances exactly when they are the same thing, prefixed by the type so
+    /// A string that is equal for two instances when a merge should treat them as the same thing, prefixed by the type so
     /// keys of different aggregates never collide; <see langword="null"/> for a type whose decision is
     /// <see cref="NaturalKeyKind.None"/>, and for a <see cref="NaturalKeyKind.Partial"/> instance without one.
     /// </returns>
@@ -115,7 +119,9 @@ public static class NaturalKeys
             Setting setting => "setting|" + setting.Key,
             Budget budget => BudgetKey(budget.Category, budget.Limit.Currency.Value, budget.Period, budget.StartDate, budget.EndDate),
             Attachment attachment => string.Create(CultureInfo.InvariantCulture, $"attachment|{attachment.TransactionId:D}|{attachment.Sha256.ToUpperInvariant()}"),
-            Transaction transaction => string.IsNullOrWhiteSpace(transaction.ImportKey) ? null : "transaction|" + transaction.ImportKey,
+            Transaction transaction => string.IsNullOrWhiteSpace(transaction.ImportKey)
+                ? null
+                : string.Create(CultureInfo.InvariantCulture, $"transaction|{transaction.AccountId:D}|{transaction.ImportKey}"),
             _ => KindOf(aggregate.GetType()) == NaturalKeyKind.None
                 ? null
                 : throw new ArgumentException($"{aggregate.GetType().Name} is decided but has no key function.", nameof(aggregate)),

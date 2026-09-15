@@ -85,6 +85,7 @@ public class NaturalKeyDecisionTests
         NaturalKeys.For(Make("holiday", "USD", BudgetPeriod.Custom, start, end)).Should().NotBe(key, "case is kept, as Budget.Category documents");
         NaturalKeys.For(Make("Holiday", "EUR", BudgetPeriod.Custom, start, end)).Should().NotBe(key);
         NaturalKeys.For(Make("Holiday", "USD", BudgetPeriod.Custom, start, end.AddDays(1))).Should().NotBe(key);
+        NaturalKeys.For(Make("Holiday", "USD", BudgetPeriod.Custom, start.AddDays(-1), end)).Should().NotBe(key, "the start date is part of the window too");
         NaturalKeys.For(Make("Holiday", "USD", BudgetPeriod.Monthly, null, null)).Should().NotBe(key);
 
         NaturalKeys.BudgetKey("  Holiday ", "usd", BudgetPeriod.Custom, start, end).Should().Be(key,
@@ -121,7 +122,13 @@ public class NaturalKeyDecisionTests
 
         var imported = Transaction.Create(Guid.NewGuid(), DateTimeOffset.UtcNow.AddDays(-1), "Cafe", new Money(-3m, Usd), TransactionType.Expense, TimeProvider.System);
         imported.AssignImportKey("RECEIPT-ABC");
-        NaturalKeys.For(imported).Should().Be("transaction|RECEIPT-ABC");
+        NaturalKeys.For(imported).Should().Be($"transaction|{imported.AccountId:D}|RECEIPT-ABC");
+
+        // The same import key in another account is another transaction (independent review of plan item 3.1):
+        // most import keys leave the account out, and importing one file into two accounts is legitimate.
+        var sameRowOtherAccount = Transaction.Create(Guid.NewGuid(), DateTimeOffset.UtcNow.AddDays(-1), "Cafe", new Money(-3m, Usd), TransactionType.Expense, TimeProvider.System);
+        sameRowOtherAccount.AssignImportKey("RECEIPT-ABC");
+        NaturalKeys.For(sameRowOtherAccount).Should().NotBe(NaturalKeys.For(imported));
         NaturalKeys.KindOf(typeof(Transaction)).Should().Be(NaturalKeyKind.Partial);
     }
 

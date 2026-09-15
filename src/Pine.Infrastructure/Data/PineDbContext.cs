@@ -516,12 +516,22 @@ public sealed class PineDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         var roots = BumpConcurrencyTokens();
-        if (roots.Count > 0)
+        if (roots.Count == 0)
         {
-            StampSync(roots, NextClock());
+            return base.SaveChanges(acceptAllChangesOnSuccess);
         }
 
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        if (Database.CurrentTransaction is not null)
+        {
+            StampSync(roots, NextClock());
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        using var transaction = Database.BeginTransaction();
+        StampSync(roots, NextClock());
+        var written = base.SaveChanges(acceptAllChangesOnSuccess);
+        transaction.Commit();
+        return written;
     }
 
     /// <inheritdoc />
@@ -529,15 +539,37 @@ public sealed class PineDbContext : DbContext
         SaveChangesAsync(acceptAllChangesOnSuccess: true, cancellationToken);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// THE CLOCK IS TAKEN INSIDE THE SAVE'S TRANSACTION, AND THE SAVE OPENS ONE IF THE CALLER DID NOT
+    /// (independent review of plan item 3.1). Taken outside, the increment committed on its own: context A
+    /// could take 1, context B take 2 and commit, and A commit after it — commit order and clock order
+    /// disagreeing, which a "changes since clock N" export would read as A's change being older than it is;
+    /// and a save that then failed still spent its number. Inside one transaction, the increment takes
+    /// SQLite's write lock and holds it until commit, so the clock order IS the commit order, and a failed
+    /// or rolled-back save gives its number back. Every request that writes already runs in
+    /// <c>TransactionBehavior</c>'s transaction; this is for the callers that do not.
+    /// </para>
+    /// </remarks>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var roots = BumpConcurrencyTokens();
-        if (roots.Count > 0)
+        if (roots.Count == 0)
         {
-            StampSync(roots, await NextClockAsync(cancellationToken).ConfigureAwait(false));
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
         }
 
-        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
+        if (Database.CurrentTransaction is not null)
+        {
+            StampSync(roots, await NextClockAsync(cancellationToken).ConfigureAwait(false));
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var transaction = await Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        StampSync(roots, await NextClockAsync(cancellationToken).ConfigureAwait(false));
+        var written = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return written;
     }
 
     private const string IncrementClockSql = "UPDATE SyncClock SET Value = Value + 1 WHERE Id = 1 RETURNING Value;";

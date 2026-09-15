@@ -98,7 +98,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void Build_ShouldProduceAClosedGraph_ForEveryHead(PineHeadProfile profile)
     {
-        var build = () => PineCompositionRoot.Build(profile);
+        var build = () => TestContainer.Build(profile);
 
         using var provider = build.Should().NotThrow(
             "every head's container must validate on build; a missing registration is a startup failure, not a click failure")
@@ -132,7 +132,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void EveryNavigationTarget_ShouldResolve_OnTheHeadThatOffersIt(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
 
         var capabilities = PineHeadCapabilities.For(profile);
@@ -168,7 +168,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void TheReceiptPages_ShouldBeBuildable_ExactlyWhenTheirButtonsAreShown(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
 
         var expected = PineHeadCapabilities.For(profile).HasReceiptVision;
@@ -228,7 +228,7 @@ public class PineCompositionRootTests
         Descriptor(profile, typeof(IShellNavigator)).Should().BeNull(
             "the shell is transient; a registered IShellNavigator can only be a shell nobody is looking at");
 
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
 
         scope.ServiceProvider.GetService<IShellNavigator>().Should().BeNull();
@@ -294,7 +294,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void TheAiProvider_ShouldBeTheOneThePlatformCanActuallyRun(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
 
         var expectVision = PineHeadCapabilities.For(profile).HasReceiptVision;
         var descriptor = Descriptor(profile, typeof(IAIProvider));
@@ -319,7 +319,7 @@ public class PineCompositionRootTests
     [Fact]
     public void PortableAiProvider_ShouldRefuseVision_WithAUserFacingSentence()
     {
-        using var provider = PineCompositionRoot.Build(PineHeadProfile.Android);
+        using var provider = TestContainer.Build(PineHeadProfile.Android);
         var ai = provider.GetRequiredService<IAIProvider>();
 
         using var image = new MemoryStream([1, 2, 3]);
@@ -381,7 +381,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void TheCrossCuttingSeams_ShouldReachEveryHead(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
         var services = scope.ServiceProvider;
 
@@ -407,7 +407,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void TheTrainingService_ShouldRun_OnlyWhereTheHeadClaimsIt(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
 
         var hasTrainer = provider.GetServices<IHostedService>()
             .Any(service => service.GetType().Name == "CategorizationTrainingBackgroundService");
@@ -427,7 +427,7 @@ public class PineCompositionRootTests
     [MemberData(nameof(AllProfiles))]
     public void TheDbContext_ShouldRefuseToResolve_WhileTheVaultIsLocked(PineHeadProfile profile)
     {
-        using var provider = PineCompositionRoot.Build(profile);
+        using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
 
         var resolve = () => scope.ServiceProvider.GetRequiredService<PineDbContext>();
@@ -530,5 +530,30 @@ public class PineCompositionRootTests
 
         throw new DirectoryNotFoundException(
             $"Could not find Pine.slnx above '{AppContext.BaseDirectory}'.");
+    }
+
+    /// <summary>
+    /// The container keeps the device id in the CONFIGURED data directory, not the default one (review of plan
+    /// item 3.1: a hard-coded default passed every test).
+    /// </summary>
+    [Fact]
+    public void TheDeviceId_LivesInTheConfiguredDataDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pine-device-dir-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var provider = PineCompositionRoot.Build(PineHeadProfile.Windows, options => options.Storage.DataDirectory = directory);
+
+            var id = provider.GetRequiredService<Pine.Core.Sync.IDeviceIdentity>().DeviceId;
+
+            File.ReadAllText(Path.Combine(directory, Pine.Infrastructure.Sync.FileDeviceIdentity.FileName)).Should().Be(id.ToString("D"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 }

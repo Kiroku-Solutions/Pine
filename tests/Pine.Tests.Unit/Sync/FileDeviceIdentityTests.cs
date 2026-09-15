@@ -72,4 +72,22 @@ public sealed class FileDeviceIdentityTests : IDisposable
         ids.Distinct().Should().ContainSingle("the loser of the race reads the winner's id rather than keeping its own");
         Directory.GetFiles(_directory).Should().ContainSingle("no temporary file is left behind");
     }
+
+    /// <summary>
+    /// Deleting a damaged file, as the refusal says to, works without restarting (review: the refusal was cached).
+    /// </summary>
+    [Fact]
+    public void AfterARefusal_DeletingTheFile_RecoversTheSameInstance()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(IdFile, "");
+        var identity = new FileDeviceIdentity(_directory);
+
+        var first = () => identity.DeviceId;
+        first.Should().Throw<InvalidDataException>();
+
+        File.Delete(IdFile);
+
+        identity.DeviceId.Should().NotBe(Guid.Empty, "the singleton lives as long as the app; one refusal must not outlive its cause");
+    }
 }

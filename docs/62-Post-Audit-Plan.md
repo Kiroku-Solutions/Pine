@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-14 — Stage 3 item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-09-14 — Stage 3 item 3.1a (§6.2, sync preconditions: TD-146 closed, TD-144 and TD-145 narrowed); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -1573,7 +1573,7 @@ Only after Stages 0–2. Each of these is a subsystem, not a fix.
 | # | Work | Depends on | State |
 |---|---|---|---|
 | 3.0 | ✅ **Done** (2026-09-14) — **A budget can be created** (added ahead of 3.1: a screen that could not do what it exists for) | TD-152 (closed), TD-149 (closed) | Found by item 2.5's sender guard. The independent review found the form's default made TD-149's UTC month visible, so it was closed here too. See §6.1 |
-| 3.1 | **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
+| 3.1 | 🟡 **Preconditions built** (2026-09-14, §6.2 — TD-146 closed, TD-144 and TD-145 narrowed). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
 | 3.2 | Rule engine, second half | TD-142 (retroactive application, with a preview), TD-143 (multi-condition UI) | The engine already evaluates up to eight conditions; the form writes one |
 | 3.3 | Attachments: the manual path | TD-141 | FR-TXN-02 asks for attaching a document to a transaction by hand; only the scanner path exists |
 | 3.4 | Notifications, forecasting, investments | — | Specified, unbuilt, and unblocked by nothing. Schedule deliberately or narrow the documents that promise them |
@@ -1670,6 +1670,109 @@ clock — which is what the Ecuador query test was added for.
   none exists; that is the next half of the budgets story, not this one.
 - **Nothing here has been drawn on a real screen**; `61-Manual-Test-Plan` §13F.
 
+### 6.2 Item 3.1a, as built (2026-09-14, iteration 50): what a merge will need, before any merge
+
+**The row said "do not start with the transport", and nothing here goes near one.** It names three
+preconditions — TD-144, TD-145, TD-146 — and this is those three, built into the store so that every row
+written from now on carries what a merge will need. No envelope, no provider, no network: `NetworkEgressTests`
+is untouched.
+
+| Row | Outcome |
+|---|---|
+| TD-144 | 🟡 **Narrowed** — every written root carries `(RowClock, RowDeviceId)`; the merge-side half of a Lamport clock, and restore, remain |
+| TD-145 | 🟡 **Narrowed** — deletes leave tombstones; no retention policy and no tombstones for owned children |
+| TD-146 | ✅ **Closed** — every aggregate has a written, tested natural-key decision |
+
+#### TD-144 — which device, and when in logical time
+
+- **A device id per installation**, in Pine's data directory (`device-id`), not in the vault file — the vault
+  file is exactly what travels between machines, and an id inside it would be shared by every machine it
+  reached. Created once, with a flushed temporary file moved into place without overwriting, so racing
+  processes agree on one id; a damaged file is **refused, never silently regenerated**, because a new id
+  would make this installation a second device to every vault it has written.
+- **A counter in the vault**, one `SyncClock` row. Every save that writes or deletes a root takes one number
+  and stamps it, with the device, on every root it writes: shadow columns `RowClock` and `RowDeviceId` beside
+  the row version, which still answers a different question. Rows from before the migration read 0 and the
+  empty id — "never stamped" and "not known" — for the reason the audit columns read `0001-01-01`.
+- The container passes the installation's id; a context built without one stamps the empty id rather than
+  borrowing one.
+
+#### TD-145 — a delete leaves a tombstone, and nothing else
+
+The row is still physically deleted. A `Tombstones` row keeps the type, the id, the clock, the device and the
+time — and a test pins its columns, so it cannot grow a copy of what the user deleted. The alternative, an
+`IsDeleted` flag with a query filter on every table, would have kept every deleted payee and note in the
+vault for ever, readable by anything that forgot the filter; the register itself argued a hard delete is
+what a privacy-first ledger should mean by the word.
+
+#### TD-146 — a natural key, decided per aggregate
+
+`NaturalKeys` writes the decision down where a test holds it, and does not manufacture a key from a name a
+user can edit, as the register required:
+
+| Aggregate | Decision | Key |
+|---|---|---|
+| Setting | Derived | its key — chosen by code, unique in the schema |
+| Budget | Derived | category, currency, period, dates — **the same tuple the create validator refuses a duplicate on, now computed by the same function** |
+| Attachment | Derived | its transaction and its content hash |
+| Transaction | Partial | its account and its import key, when it has one; none when typed by hand |
+| Account, Rule, ImportProfile | None | a merge must ask (§4's third layer) |
+
+A test reads the real model and fails for any mapped aggregate without a decision.
+
+#### The independent review
+
+**It found two major problems and six minor ones, and four of its mutations survived.** Every finding was
+reproduced with a probe or a mutation before it was reported.
+
+- **MAJOR — the transaction key was not a key.** Most import keys leave the account out (the import's own
+  duplicate check is per account for that reason), so the same CSV row imported into two accounts — two
+  legitimate transactions — got one natural key, and a merge keyed on it would have collapsed them. The key
+  is `transaction|{account}|{import key}` now, and the decision table says why.
+- **MAJOR — the race test raced nothing.** Each writer spent ~150 ms opening its SQLCipher connection, so the
+  twelve saves finished one after another, and a counter read and written in two statements passed three runs
+  out of three. The connections are opened before a barrier now, and a deterministic test holds one writer's
+  lock while another waits. **Then a further measurement corrected the review and the first write-up alike**:
+  once every save runs in a transaction (next item), Microsoft.Data.Sqlite begins it `IMMEDIATE`, which takes
+  the write lock before the counter is read — so uniqueness comes from the lock, and the single `UPDATE …
+  RETURNING` statement is defence in depth. The two-statement mutation is equivalent under that design, and
+  the code's comment now says the lock, not the statement, is what guarantees it.
+- **MAJOR, recorded rather than fixed — this is half a Lamport clock.** There is no receive step
+  (`max(local, remote) + 1`); it belongs to the merge, and until one exists two vaults' clocks cannot be
+  compared. **Restoring an older copy of the vault file puts the counter back**, so the next write can reuse a
+  `(clock, device)` pair a discarded change already carried; migrating down and up reseeds it. A
+  per-installation high-water mark beside the device id is the likely remedy and the merge's to build, because
+  the merge is what would be deceived. **TD-144 stays open for these**, which is why it is narrowed and not
+  closed.
+- **MINOR, fixed** — the clock was taken outside the save's transaction when the caller opened none, so commit
+  order and clock order could disagree and a failed save still spent its number (every save that writes now
+  runs in a transaction, opened by the context if the caller did not); the composition-root unit tests wrote a
+  real `device-id` into the developer's `%LOCALAPPDATA%\Pine` (they build against a temporary data directory
+  now); the device id's `Lazy` cached a refusal for the life of the process, so deleting the damaged file as
+  instructed did not help until a restart (`PublicationOnly` now, and the file is flushed before the move);
+  the synchronous save, the tombstone's time, a no-op save, the budget key's start date and the container
+  honouring the configured data directory were each untested — each mutation passed everything — and each is
+  tested now.
+- **MINOR, recorded** — **no retention policy** for tombstones (TD-145's Fix column asks for one; a retention
+  without a sync cursor would be a guess about when every device has seen a deletion, so it waits for the
+  cursor); **removing a split leaves no tombstone**, and §7 merges splits by set union, so a merge would need
+  child tombstones — pinned by a test that says so; SQLite without `secure_delete` keeps deleted rows in free
+  pages until they are reused, readable with the key, which qualifies "a hard delete is still a hard delete";
+  and `Budget.UpdateLimit` exists, can change the currency, and has no caller — if one is added, the budget's
+  key moves with it.
+
+**Falsified.** Eighteen mutations on the first commit: fifteen killed, three shown equivalent and each replaced
+by one that was killed. The review then ran eleven of its own, four of which survived. Nine on the fixes,
+including those four: eight killed, and one — the review's two-statement counter — shown equivalent by the
+`IMMEDIATE` transaction as described above.
+
+**Measured totals:** unit 1342 → **1359**; integration 256 → **270**; coverage gate green (overall 75% → 76%,
+`Pine.Infrastructure` 83% → 84%); Windows, macOS and CLI heads build.
+
+**What this does not close.** TD-144's receive step and restore regression; TD-145's retention and child
+tombstones; everything after the preconditions — the envelope, the provider, the offline queue, the conflict
+matrix of §7 — which is the rest of item 3.1.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -1729,3 +1832,11 @@ TD-152, being a screen that cannot do what it exists for, is the first candidate
 ~~The next item is Stage 3.~~ Item 3.0 done 2026-09-14 (§6.1): **a budget can be created**, and budgets
 measure the user's own month (TD-149). What the budgets page still cannot do is edit or delete one. **The
 next item is 3.1, sync** — starting, as its row says, with TD-144, TD-145 and TD-146, not the transport.
+
+~~The next item is 3.1, sync — starting with TD-144, TD-145 and TD-146.~~ Those three done 2026-09-14 (§6.2):
+every written row says which device wrote it and when in the vault's logical time, deletes leave tombstones
+that keep nothing the user deleted, and every aggregate has a natural-key decision. What is left of 3.1 is
+the sync itself — and the first thing it owes, before any transport, is the merge-side half of the clock
+(receive, and a high-water mark that survives a restore), because the preconditions built here are only as
+trustworthy as that step. **The next item is 3.1b: the change set and the merge, locally, between two vault
+files — still no transport.**

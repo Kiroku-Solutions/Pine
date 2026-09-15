@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Text;
+using System.Threading;
 using Pine.Core.Sync;
 
 namespace Pine.Infrastructure.Sync;
@@ -35,7 +37,10 @@ public sealed class FileDeviceIdentity : IDeviceIdentity
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         _path = Path.Combine(dataDirectory, FileName);
-        _deviceId = new Lazy<Guid>(LoadOrCreate);
+        // PublicationOnly: a refusal or an I/O error is NOT cached. With the default mode the first exception was
+        // remembered for the life of this singleton, so deleting a damaged file as the refusal instructs still
+        // failed every vault operation until the app restarted (independent review of plan item 3.1).
+        _deviceId = new Lazy<Guid>(LoadOrCreate, LazyThreadSafetyMode.PublicationOnly);
     }
 
     /// <inheritdoc />
@@ -52,7 +57,14 @@ public sealed class FileDeviceIdentity : IDeviceIdentity
         var candidate = Guid.NewGuid();
         var temporary = _path + "." + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".tmp";
 
-        File.WriteAllText(temporary, candidate.ToString("D", CultureInfo.InvariantCulture));
+        // Flushed to disk before the move, so a power cut cannot leave a zero-length id in place — which would be
+        // refused on every start until someone found and deleted a hidden file.
+        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            var bytes = Encoding.ASCII.GetBytes(candidate.ToString("D", CultureInfo.InvariantCulture));
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Flush(flushToDisk: true);
+        }
         try
         {
             File.Move(temporary, _path, overwrite: false);

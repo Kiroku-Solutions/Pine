@@ -9,7 +9,7 @@
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 | Status | Non-normative — manual test procedures |
-| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, 13E by item 2.5 and 13F by item 3.0, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
+| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, 13E by item 2.5, 13F by item 3.0 and 13G by item 3.1a, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.
@@ -1160,6 +1160,27 @@ announced when it appears.
 
 - **A budget cannot be edited or deleted** from the screen.
 - **"Every two weeks" budgets created elsewhere still show "Not known"** without explicit dates.
+
+## 13G. Every write is stamped for a future merge — post-audit plan item 3.1a
+
+**Read this before running it.** Nothing here is visible in the application; it is checked with a file
+browser and by opening an existing vault. The stamping itself is covered by integration tests against real
+encrypted vaults.
+
+1. On a machine that has run an older build, open an **existing vault**. **Expected:** it opens and every
+   screen shows the same data. The upgrade adds columns and two tables and changes no value.
+2. **Expected:** a file `device-id` exists in Pine's data directory (`%LOCALAPPDATA%\Pine` on Windows) holding
+   one GUID, and it is the same after restarting Pine.
+3. Replace its contents with `nonsense` and start Pine, then open a vault. **Expected:** the vault does not
+   open and the log names the file; Pine does **not** write a new id over it. **What the screen says in this
+   case has not been observed** — the refusal is tested below the UI only; record what appears. Delete the file: **expected** the
+   vault opens without restarting Pine, and a new id is written.
+4. Delete a transaction. **Expected:** it is gone from every screen, exactly as before this item.
+
+### Known gaps for §13G — confirm, do not report
+
+- **Restoring an older backup rewinds the vault's logical clock** (TD-144). Harmless until sync exists.
+- **Tombstones are never pruned** (TD-145).
 
 ## 14. What a failure means
 

@@ -130,7 +130,7 @@ public class SyncBookkeepingTests
 
     /// <summary>
     /// Many writers at once never share a number. This is what the random row version could not promise of a
-    /// counter the application reads, and what one incremented by the database in a single statement can.
+    /// counter the application reads, and what one taken under SQLite's write lock can.
     /// </summary>
     [Fact]
     public async Task ConcurrentWriters_NeverReceiveTheSameClock()
@@ -139,12 +139,26 @@ public class SyncBookkeepingTests
         const int Writers = 12;
         var ids = Enumerable.Range(0, Writers).Select(_ => Guid.Empty).ToArray();
 
-        await Task.WhenAll(Enumerable.Range(0, Writers).Select(i => Task.Run(async () =>
+        // CONNECTIONS OPENED FIRST, THEN RELEASED TOGETHER (independent review of plan item 3.1). Opening a
+        // SQLCipher connection takes about 150 ms, so writers that each opened their own on the way in finished
+        // one after another and never overlapped: a counter read and then written in two statements passed this
+        // test three times out of three. With every connection open before the barrier drops, the saves race.
+        var contexts = new PineDbContext[Writers];
+        for (var i = 0; i < Writers; i++)
         {
-            await using var context = On(vault, ThisDevice);
+            contexts[i] = On(vault, ThisDevice);
+            await contexts[i].Database.OpenConnectionAsync(CancellationToken.None);
+        }
+
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var writers = Enumerable.Range(0, Writers).Select(i => Task.Run(async () =>
+        {
+            var context = contexts[i];
             var account = NewAccount($"Writer {i}");
             ids[i] = account.Id;
             context.Accounts.Add(account);
+            await start.Task;
 
             // SQLite serialises writers; a busy writer retries rather than failing the test for contention.
             for (var attempt = 0; ; attempt++)
@@ -159,7 +173,15 @@ public class SyncBookkeepingTests
                     await Task.Delay(20);
                 }
             }
-        })));
+        })).ToList();
+
+        start.SetResult();
+        await Task.WhenAll(writers);
+
+        foreach (var context in contexts)
+        {
+            await context.DisposeAsync();
+        }
 
         var clocks = ids.Select(id => ReadStamp(vault, "Accounts", id).Clock).ToList();
         clocks.Should().OnlyHaveUniqueItems("two writers must never be handed the same number");
@@ -358,5 +380,171 @@ public class SyncBookkeepingTests
         public byte[]? Key => vault.Key;
 
         public string? DbPath => vault.VaultDirectory;
+    }
+
+    /// <summary>
+    /// Clock order is commit order: a save waiting for another's write lock takes the NEXT number after it commits.
+    /// </summary>
+    /// <remarks>
+    /// Deterministic where the race test is statistical. A holds the write lock inside an open transaction; B's
+    /// save must wait for it and take the next number. What it guards is that the number is taken under the
+    /// lock: a save that took its number before its transaction (the first version of this item) would not wait.
+    /// </remarks>
+    [Fact]
+    public async Task ASaveWaitingOnAnother_TakesTheNextNumber_AfterItCommits()
+    {
+        using var vault = await MigratedVaultAsync();
+        var first = NewAccount("First");
+        var second = NewAccount("Second");
+
+        await using var holder = On(vault, ThisDevice);
+        await using var waiter = On(vault, OtherDevice);
+        await waiter.Database.OpenConnectionAsync(CancellationToken.None);
+
+        await using (var transaction = await holder.Database.BeginTransactionAsync(CancellationToken.None))
+        {
+            holder.Accounts.Add(first);
+            await holder.SaveChangesAsync(CancellationToken.None);
+
+            waiter.Accounts.Add(second);
+            var waiting = Task.Run(() => waiter.SaveChangesAsync(CancellationToken.None));
+
+            await Task.Delay(500);
+            waiting.IsCompleted.Should().BeFalse("the holder has the write lock until it commits");
+
+            await transaction.CommitAsync(CancellationToken.None);
+            await waiting;
+        }
+
+        ReadStamp(vault, "Accounts", first.Id).Clock.Should().Be(1);
+        ReadStamp(vault, "Accounts", second.Id).Clock.Should().Be(2, "it committed second, so it is later");
+    }
+
+    /// <summary>A save that fails gives its number back (review finding: it used to spend it).</summary>
+    [Fact]
+    public async Task AFailedSave_DoesNotAdvanceTheClock()
+    {
+        using var vault = await MigratedVaultAsync();
+        var account = NewAccount("Current");
+        await using (var context = On(vault, ThisDevice))
+        {
+            context.Accounts.Add(account);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var stale = On(vault, ThisDevice);
+        var asStaleSawIt = await stale.Accounts.SingleAsync(a => a.Id == account.Id, CancellationToken.None);
+
+        await using (var context = On(vault, ThisDevice))
+        {
+            var fresh = await context.Accounts.SingleAsync(a => a.Id == account.Id, CancellationToken.None);
+            fresh.Deposit(new Money(1m, Usd), TimeProvider.System);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        ReadVaultClock(vault).Should().Be(2);
+
+        asStaleSawIt.Deposit(new Money(5m, Usd), TimeProvider.System);
+        var act = () => stale.SaveChangesAsync(CancellationToken.None);
+        await act.Should().ThrowAsync<DbUpdateConcurrencyException>();
+
+        ReadVaultClock(vault).Should().Be(2, "the refused save's transaction rolled its increment back");
+    }
+
+    /// <summary>A save that writes nothing takes no number.</summary>
+    [Fact]
+    public async Task ASaveThatWritesNothing_DoesNotAdvanceTheClock()
+    {
+        using var vault = await MigratedVaultAsync();
+
+        await using (var context = On(vault, ThisDevice))
+        {
+            await context.SaveChangesAsync(CancellationToken.None);
+            context.SaveChanges();
+        }
+
+        ReadVaultClock(vault).Should().Be(0);
+    }
+
+    /// <summary>The synchronous save stamps exactly as the asynchronous one does (review: nothing tested it).</summary>
+    [Fact]
+    public async Task TheSynchronousSave_StampsAndTombstonesToo()
+    {
+        using var vault = await MigratedVaultAsync();
+        var account = NewAccount("Current");
+
+        using (var context = On(vault, ThisDevice))
+        {
+            context.Accounts.Add(account);
+            context.SaveChanges();
+        }
+
+        ReadStamp(vault, "Accounts", account.Id).Should().Be((1L, ThisDevice));
+
+        using (var context = On(vault, OtherDevice))
+        {
+            context.Accounts.Remove(context.Accounts.Single(a => a.Id == account.Id));
+            context.SaveChanges();
+        }
+
+        await using var reader = vault.CreateContext();
+        var tombstone = await reader.Tombstones.SingleAsync(CancellationToken.None);
+        tombstone.Clock.Should().Be(2);
+        tombstone.DeviceId.Should().Be(OtherDevice);
+    }
+
+    /// <summary>The tombstone's time is the context's clock, not a default (review: MinValue passed everything).</summary>
+    [Fact]
+    public async Task ATombstonesTime_IsWhenTheDeleteHappened()
+    {
+        using var vault = await MigratedVaultAsync();
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 9, 1, 10, 30, 0, TimeSpan.Zero));
+        var account = NewAccount("Current");
+
+        await using (var context = new PineDbContext(vault.DatabasePath, vault.Key, clock, ThisDevice))
+        {
+            context.Accounts.Add(account);
+            await context.SaveChangesAsync(CancellationToken.None);
+            clock.Advance(TimeSpan.FromDays(3));
+            context.Accounts.Remove(account);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var reader = vault.CreateContext();
+        (await reader.Tombstones.SingleAsync(CancellationToken.None)).DeletedAtUtc
+            .Should().Be(new DateTime(2026, 9, 4, 10, 30, 0, DateTimeKind.Utc));
+    }
+
+    /// <summary>
+    /// Removing a split leaves no tombstone. Recorded, not fixed: tombstones are on roots, and §7's set-union
+    /// merge of splits would need child tombstones — the merge's to build (review of plan item 3.1).
+    /// </summary>
+    [Fact]
+    public async Task RemovingASplit_LeavesNoTombstone_WhichIsTheRecordedLimit()
+    {
+        using var vault = await MigratedVaultAsync();
+        var account = NewAccount("Current");
+        var transaction = Transaction.Create(account.Id, DateTimeOffset.UtcNow.AddDays(-1), "Grocer",
+            new Money(-20m, Usd), TransactionType.Expense, TimeProvider.System);
+        transaction.ReplaceSplits([new SplitDefinition(new Money(-10m, Usd), "Food"), new SplitDefinition(new Money(-10m, Usd), "Drink")]);
+
+        await using (var context = On(vault, ThisDevice))
+        {
+            context.Accounts.Add(account);
+            context.Transactions.Add(transaction);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using (var context = On(vault, ThisDevice))
+        {
+            var repository = new SqliteTransactionRepository(context);
+            var loaded = await repository.GetByIdAsync(transaction.Id, CancellationToken.None);
+            loaded!.ReplaceSplits([new SplitDefinition(new Money(-20m, Usd), "Food")]);
+            await repository.SaveAsync(loaded, CancellationToken.None);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var reader = vault.CreateContext();
+        (await reader.Tombstones.CountAsync(CancellationToken.None)).Should().Be(0);
     }
 }
