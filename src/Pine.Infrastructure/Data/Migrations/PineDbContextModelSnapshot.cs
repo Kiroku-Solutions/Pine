@@ -43,6 +43,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -111,6 +114,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -160,6 +166,9 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
@@ -229,6 +238,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -272,6 +284,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -308,6 +323,9 @@ namespace Pine.Infrastructure.Data.Migrations
 
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
@@ -370,6 +388,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<Guid>("RowDeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("RowUpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -429,6 +450,9 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<long>("Value")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("VaultId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("SyncClock", (string)null);
@@ -437,8 +461,89 @@ namespace Pine.Infrastructure.Data.Migrations
                         new
                         {
                             Id = 1,
-                            Value = 0L
+                            Value = 0L,
+                            VaultId = new Guid("00000000-0000-0000-0000-000000000000")
                         });
+                });
+
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncConflict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityTable")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PeerVaultId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RemoteClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("RemoteDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePayload")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PeerVaultId", "EntityTable", "EntityId", "RemoteClock", "RemoteDeviceId")
+                        .IsUnique();
+
+                    b.ToTable("SyncConflicts", (string)null);
+                });
+
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncIdAlias", b =>
+                {
+                    b.Property<Guid>("PeerVaultId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityTable")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RemoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("LocalId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PeerVaultId", "EntityTable", "RemoteId");
+
+                    b.ToTable("SyncIdAliases", (string)null);
+                });
+
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncPeer", b =>
+                {
+                    b.Property<Guid>("PeerVaultId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastRemoteClockSeen")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("LocalClockAtLastSync")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PeerVaultId");
+
+                    b.ToTable("SyncPeers", (string)null);
                 });
 
             modelBuilder.Entity("Pine.Infrastructure.Data.SyncTombstone", b =>
@@ -464,9 +569,14 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("LocalClock")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Clock");
+
+                    b.HasIndex("LocalClock");
 
                     b.HasIndex("EntityType", "EntityId");
 

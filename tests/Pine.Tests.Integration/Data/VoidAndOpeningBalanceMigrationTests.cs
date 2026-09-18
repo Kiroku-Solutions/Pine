@@ -141,6 +141,9 @@ public class VoidAndOpeningBalanceMigrationTests
     /// <summary>The head of the migration list: the sync clock, device column and tombstones (TD-144, TD-145).</summary>
     private const string SyncBookkeepingSchemaVersion = "20260914224324_AddSyncClockDeviceAndTombstones";
 
+    /// <summary>The head of the migration list: the merge's peer, conflict and alias tables (item 3.1b, TD-144).</summary>
+    private const string SyncMergeStateSchemaVersion = "20260918145142_AddSyncMergeState";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
     [
@@ -156,6 +159,7 @@ public class VoidAndOpeningBalanceMigrationTests
         DropCategoryAggregateSchemaVersion,
         DropCategoriesTableSchemaVersion,
         SyncBookkeepingSchemaVersion,
+        SyncMergeStateSchemaVersion,
     ];
 
     private const decimal LegacyBalance = 1000.00m;

@@ -41,7 +41,7 @@ public class SyncBookkeepingTests
 {
     private static readonly CurrencyCode Usd = new("USD");
     private static readonly Guid ThisDevice = Guid.Parse("0f6f1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b");
-    private static readonly string[] TombstoneColumns = ["Id", "EntityType", "EntityId", "Clock", "DeviceId", "DeletedAtUtc"];
+    private static readonly string[] TombstoneColumns = ["Id", "EntityType", "EntityId", "Clock", "LocalClock", "DeviceId", "DeletedAtUtc"];
     private static readonly Guid OtherDevice = Guid.Parse("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
 
     private static async Task<TempVault> MigratedVaultAsync()

@@ -116,16 +116,42 @@ public static class NaturalKeys
 
         return aggregate switch
         {
-            Setting setting => "setting|" + setting.Key,
+            Setting setting => SettingKey(setting.Key),
             Budget budget => BudgetKey(budget.Category, budget.Limit.Currency.Value, budget.Period, budget.StartDate, budget.EndDate),
-            Attachment attachment => string.Create(CultureInfo.InvariantCulture, $"attachment|{attachment.TransactionId:D}|{attachment.Sha256.ToUpperInvariant()}"),
-            Transaction transaction => string.IsNullOrWhiteSpace(transaction.ImportKey)
-                ? null
-                : string.Create(CultureInfo.InvariantCulture, $"transaction|{transaction.AccountId:D}|{transaction.ImportKey}"),
+            Attachment attachment => AttachmentKey(attachment.TransactionId, attachment.Sha256),
+            Transaction transaction => TransactionKey(transaction.AccountId, transaction.ImportKey),
             _ => KindOf(aggregate.GetType()) == NaturalKeyKind.None
                 ? null
                 : throw new ArgumentException($"{aggregate.GetType().Name} is decided but has no key function.", nameof(aggregate)),
         };
+    }
+
+    /// <summary>The natural key of a setting from its key (post-audit plan item 3.1b: a merge reads rows, not aggregates).</summary>
+    /// <param name="key">The setting's key, exactly as stored.</param>
+    /// <returns>The key.</returns>
+    public static string SettingKey(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return "setting|" + key;
+    }
+
+    /// <summary>The natural key of a transaction from its parts, or <see langword="null"/> when it has no import key.</summary>
+    /// <param name="accountId">The account it belongs to.</param>
+    /// <param name="importKey">Its import key, if any.</param>
+    /// <returns>The key, or <see langword="null"/>.</returns>
+    public static string? TransactionKey(Guid accountId, string? importKey) =>
+        string.IsNullOrWhiteSpace(importKey)
+            ? null
+            : string.Create(CultureInfo.InvariantCulture, $"transaction|{accountId:D}|{importKey}");
+
+    /// <summary>The natural key of an attachment from its transaction and its content hash.</summary>
+    /// <param name="transactionId">The transaction it is evidence for.</param>
+    /// <param name="sha256">The hex SHA-256 of its bytes; compared case-insensitively.</param>
+    /// <returns>The key.</returns>
+    public static string AttachmentKey(Guid transactionId, string sha256)
+    {
+        ArgumentNullException.ThrowIfNull(sha256);
+        return string.Create(CultureInfo.InvariantCulture, $"attachment|{transactionId:D}|{sha256.ToUpperInvariant()}");
     }
 
     /// <summary>

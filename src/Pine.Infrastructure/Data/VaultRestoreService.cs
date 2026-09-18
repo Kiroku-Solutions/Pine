@@ -143,6 +143,12 @@ public sealed class VaultRestoreService : IVaultRestoreService
             .CreateBackupAsync(vaultRoot, VaultBackupReason.PreRestore, cancellationToken)
             .ConfigureAwait(false);
 
+        // Step 4b: the clock may not go backwards (post-audit plan item 3.1b, TD-144). The backup's counter is
+        // older than this vault's, so the file about to be discarded holds the highest number this vault has
+        // handed out. It is written down beside the database BEFORE the replacement, and every later increment
+        // starts above it — see PineDbContext.IncrementClockSql for why a file and not a column.
+        await RaiseClockFloorAsync(databasePath, cancellationToken).ConfigureAwait(false);
+
         // Step 5: the point of no return. Cancellation is not honoured past here on purpose — see
         // the interface contract. Every handle on the vault has to be gone first: Microsoft.Data
         // .Sqlite pools connections, and on Windows a pooled handle keeps the file locked even
@@ -172,6 +178,56 @@ public sealed class VaultRestoreService : IVaultRestoreService
             backupCreatedAtUtc,
             safety.Path,
             _timeProvider.GetUtcNow());
+    }
+
+    /// <summary>
+    /// Records this vault's current clock as the floor the restored file's clock may not go below.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Never lowers an existing floor: restoring twice in a row must not let the second restore forget the first.
+    /// A vault from before the clock table has no number to protect and leaves the floor as it is; that is
+    /// asked of the schema, not inferred from a failed query, because a query that fails for any other reason
+    /// (a lock, a damaged page) must stop the restore rather than let it rewind the clock.
+    /// </para>
+    /// <para>
+    /// WRITTEN TO A NEIGHBOUR AND MOVED INTO PLACE, for the reason <see cref="ReplaceDatabase"/> gives: every
+    /// increment reads this file, and a torn write would make every save refuse (see
+    /// <see cref="PineDbContext.ReadClockFloor"/>).
+    /// </para>
+    /// <para>
+    /// PLAINTEXT, AND WHAT THAT GIVES AWAY: one integer, roughly how many saves the vault had taken before its last
+    /// restore. It sits beside an encrypted file whose size already says more.
+    /// </para>
+    /// </remarks>
+    private async Task RaiseClockFloorAsync(string databasePath, CancellationToken cancellationToken)
+    {
+        long current;
+        await _context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var probe = _context.Database.GetDbConnection().CreateCommand();
+            probe.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'SyncClock';";
+            if (Convert.ToInt64(await probe.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture) == 0)
+            {
+                return;
+            }
+
+            await using var command = _context.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "SELECT Value FROM SyncClock WHERE Id = 1;";
+            var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            current = value is null or DBNull ? 0 : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            await _context.Database.CloseConnectionAsync().ConfigureAwait(false);
+        }
+
+        var floor = Math.Max(current, PineDbContext.ReadClockFloor(databasePath));
+        var path = PineDbContext.ClockFloorPath(databasePath);
+        var staging = path + ".tmp";
+        await File.WriteAllTextAsync(staging, floor.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
+        File.Move(staging, path, overwrite: true);
     }
 
     /// <summary>

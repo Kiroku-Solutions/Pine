@@ -76,6 +76,14 @@ public class MappedEntitySurfaceTests
         // is that these are written by every save rather than by nothing.
         nameof(Pine.Infrastructure.Data.SyncClockRow),
         nameof(Pine.Infrastructure.Data.SyncTombstone),
+
+        // THE MERGE'S OWN BOOKKEEPING (post-audit plan item 3.1b, TD-144). Named reader and writer: VaultMerger
+        // writes and reads all three in the transaction that applies a change set — the cursor per peer vault,
+        // the changes left for a person, and the ids a peer uses for rows matched by natural key. None has a
+        // repository because none is the user's; VaultMergerTests holds each of them.
+        nameof(Pine.Infrastructure.Data.SyncPeer),
+        nameof(Pine.Infrastructure.Data.SyncConflict),
+        nameof(Pine.Infrastructure.Data.SyncIdAlias),
     ];
 
     /// <summary>The names that stayed removed, kept explicit so the regression reads clearly.</summary>

@@ -40,6 +40,15 @@ public sealed class PineDbContext : DbContext
     /// <summary>The vault's Lamport counter, one row (TD-144). Store bookkeeping, not user data.</summary>
     public DbSet<SyncClockRow> SyncClock => Set<SyncClockRow>();
 
+    /// <summary>Peer vaults this vault has merged with (post-audit plan item 3.1b). Store bookkeeping.</summary>
+    public DbSet<SyncPeer> SyncPeers => Set<SyncPeer>();
+
+    /// <summary>Remote changes a merge refused to apply, awaiting a person (item 3.1b). Store bookkeeping.</summary>
+    public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
+
+    /// <summary>Rows a peer knows by another id, matched by natural key (item 3.1b). Store bookkeeping.</summary>
+    public DbSet<SyncIdAlias> SyncIdAliases => Set<SyncIdAlias>();
+
     /// <param name="databasePath">Path to the keyed SQLite file.</param>
     /// <param name="encryptionKey">The SQLCipher key.</param>
     /// <param name="timeProvider">
@@ -355,7 +364,32 @@ public sealed class PineDbContext : DbContext
             e.Property(c => c.Id).ValueGeneratedNever();
 
             // Seeded by the migration, so every vault — new or upgraded — has the row the increment updates.
-            e.HasData(new SyncClockRow { Id = SyncClockRow.SingletonId, Value = 0 });
+            e.HasData(new SyncClockRow { Id = SyncClockRow.SingletonId, Value = 0, VaultId = Guid.Empty });
+        });
+
+        modelBuilder.Entity<SyncPeer>(e =>
+        {
+            e.ToTable("SyncPeers");
+            e.HasKey(p => p.PeerVaultId);
+        });
+
+        modelBuilder.Entity<SyncConflict>(e =>
+        {
+            e.ToTable("SyncConflicts");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.EntityTable).IsRequired().HasMaxLength(64);
+            e.Property(c => c.Kind).IsRequired().HasMaxLength(64);
+
+            // What makes merging the same change set twice record a conflict once. The device is part of it because
+            // a clock is unique only within the vault that took it, and a peer relays rows stamped by other vaults.
+            e.HasIndex(c => new { c.PeerVaultId, c.EntityTable, c.EntityId, c.RemoteClock, c.RemoteDeviceId }).IsUnique();
+        });
+
+        modelBuilder.Entity<SyncIdAlias>(e =>
+        {
+            e.ToTable("SyncIdAliases");
+            e.HasKey(a => new { a.PeerVaultId, a.EntityTable, a.RemoteId });
+            e.Property(a => a.EntityTable).IsRequired().HasMaxLength(64);
         });
 
         modelBuilder.Entity<SyncTombstone>(e =>
@@ -365,6 +399,7 @@ public sealed class PineDbContext : DbContext
             e.Property(t => t.EntityType).IsRequired().HasMaxLength(64);
             e.HasIndex(t => new { t.EntityType, t.EntityId });
             e.HasIndex(t => t.Clock);
+            e.HasIndex(t => t.LocalClock);
         });
 
         ConfigureConcurrencyTokens(modelBuilder);
@@ -377,6 +412,18 @@ public sealed class PineDbContext : DbContext
 
     /// <summary>The installation that last wrote the row (TD-144). <see cref="Guid.Empty"/>: not known.</summary>
     public const string DeviceColumnName = "RowDeviceId";
+
+    /// <summary>
+    /// This vault's clock when the row was last written HERE, by a save or by a merge (post-audit plan item 3.1b).
+    /// </summary>
+    /// <remarks>
+    /// A SECOND NUMBER, BECAUSE A MERGE KEEPS THE FIRST. A row a merge applies keeps the <c>(RowClock,
+    /// RowDeviceId)</c> it was written with, so a third vault orders it by when it was really written, not by when
+    /// it arrived. But a change set is cut by a cursor — "everything since the last one" — and a relayed row's
+    /// Lamport stamp can be lower than that cursor: cut by <c>RowClock</c>, it would never travel on. This column
+    /// is what the cut reads. For a local save it equals <see cref="ClockColumnName"/>.
+    /// </remarks>
+    public const string LocalClockColumnName = "RowLocalClock";
 
     /// <summary>
     /// Gives every aggregate root the pair a merge orders changes by: <c>(RowClock, RowDeviceId)</c>.
@@ -406,6 +453,7 @@ public sealed class PineDbContext : DbContext
             {
                 modelBuilder.Entity(entityType.ClrType).Property<long>(ClockColumnName);
                 modelBuilder.Entity(entityType.ClrType).Property<Guid>(DeviceColumnName);
+                modelBuilder.Entity(entityType.ClrType).Property<long>(LocalClockColumnName);
             }
         }
     }
@@ -572,7 +620,102 @@ public sealed class PineDbContext : DbContext
         return written;
     }
 
-    private const string IncrementClockSql = "UPDATE SyncClock SET Value = Value + 1 WHERE Id = 1 RETURNING Value;";
+    /// <summary>
+    /// Takes the next number, never below the vault's floor (post-audit plan item 3.1b).
+    /// </summary>
+    /// <remarks>
+    /// THE FLOOR IS WHAT KEEPS A RESTORE FROM REWINDING THE CLOCK. Restoring an older copy of the vault file put
+    /// the counter back, so the next write could reuse a <c>(clock, device)</c> pair a discarded change had
+    /// already carried — found by the independent review of item 3.1a. The restore now records the clock it is
+    /// about to discard in <see cref="ClockFloorFileName"/> beside the database, and every increment starts
+    /// above it. A file rather than a column because the backup being restored may predate the clock table
+    /// altogether, and the restored file cannot carry a number it never had.
+    /// </remarks>
+    private const string IncrementClockSql = "UPDATE SyncClock SET Value = MAX(Value, $floor) + 1 WHERE Id = 1 RETURNING Value;";
+
+    /// <summary>The file, beside the database, holding the lowest clock the next write may take.</summary>
+    public const string ClockFloorFileName = "sync-clock-floor";
+
+    private const string InMemoryDataSource = ":memory:";
+
+    /// <summary>Where the floor for the database at <paramref name="databasePath"/> is kept: beside it.</summary>
+    /// <remarks>
+    /// One function for the writer (the restore) and the reader (every increment), so the two cannot disagree about
+    /// a relative path.
+    /// </remarks>
+    public static string ClockFloorPath(string databasePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath))!, ClockFloorFileName);
+    }
+
+    /// <summary>The floor from <see cref="ClockFloorFileName"/>, or zero when there is none.</summary>
+    /// <remarks>
+    /// <para>
+    /// READ ON EVERY INCREMENT, NOT CACHED. A restore in this process writes it while contexts on the same vault
+    /// may already exist; a cached zero would let the next of them take a number the discarded file had handed out.
+    /// One small file read beside a SQLCipher write is not where a save's time goes.
+    /// </para>
+    /// <para>
+    /// A DAMAGED FILE IS REFUSED, NOT READ AS ZERO. Zero means "no restore ever happened"; a damaged floor silently
+    /// read as zero is the rewind this file exists to prevent. The restore writes it by moving a complete temporary
+    /// file into place, so a torn write is not the expected way to get here.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The file exists and does not hold a non-negative integer.</exception>
+    public static long ReadClockFloor(string databasePath)
+    {
+        // An in-memory database has no file beside it, and no restore can replace it.
+        if (string.Equals(databasePath, InMemoryDataSource, StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        var path = ClockFloorPath(databasePath);
+        if (!File.Exists(path))
+        {
+            return 0;
+        }
+
+        return long.TryParse(File.ReadAllText(path).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var floor)
+            ? floor
+            : throw new InvalidOperationException(
+                $"The vault's clock floor '{path}' is damaged. It records the highest clock a restore discarded, and writes are refused rather than risk reusing one.");
+    }
+
+    /// <summary>
+    /// Takes the next number from the vault's counter for a merge's writes, inside the merge's transaction (item 3.1b).
+    /// </summary>
+    /// <remarks>The same statement a save uses, so the floor applies to a merge too.</remarks>
+    internal Task<long> TakeClockForMergeAsync(CancellationToken cancellationToken) => NextClockAsync(cancellationToken);
+
+    /// <summary>
+    /// The receive step of the Lamport clock (TD-144, item 3.1b): lifts the counter to at least <paramref name="remoteClock"/>.
+    /// </summary>
+    /// <remarks>
+    /// It takes no number itself; the merge's own writes and every later save take one above it. It never lowers the
+    /// counter, and it runs in the merge's transaction, so a failed merge does not keep the lift.
+    /// </remarks>
+    internal async Task ReceiveClockAsync(long remoteClock, CancellationToken cancellationToken)
+    {
+        await using var command = Database.GetDbConnection().CreateCommand();
+        command.Transaction = Database.CurrentTransaction?.GetDbTransaction();
+        command.CommandText = "UPDATE SyncClock SET Value = MAX(Value, $remote) WHERE Id = 1;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "$remote";
+        parameter.Value = remoteClock;
+        command.Parameters.Add(parameter);
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+        {
+            throw new InvalidOperationException("The vault has no sync clock row. Its schema is older than this build expects; it has not been migrated.");
+        }
+    }
+
+    /// <summary>The database file this context opens.</summary>
+    internal string DatabasePath => _databasePath;
+
+    /// <summary>The clock the audit columns and a merge's timestamps read.</summary>
+    internal TimeProvider Clock => _timeProvider;
 
     /// <summary>Takes the next number from the vault's Lamport counter, inside the save's transaction if there is one.</summary>
     private long NextClock()
@@ -608,6 +751,10 @@ public sealed class PineDbContext : DbContext
         var command = Database.GetDbConnection().CreateCommand();
         command.Transaction = Database.CurrentTransaction?.GetDbTransaction();
         command.CommandText = IncrementClockSql;
+        var floor = command.CreateParameter();
+        floor.ParameterName = "$floor";
+        floor.Value = ReadClockFloor(_databasePath);
+        command.Parameters.Add(floor);
         return command;
     }
 
@@ -641,6 +788,7 @@ public sealed class PineDbContext : DbContext
                     EntityType = entry.Metadata.ClrType.Name,
                     EntityId = (Guid)entry.Property("Id").CurrentValue!,
                     Clock = clock,
+                    LocalClock = clock,
                     DeviceId = _deviceId,
                     DeletedAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
                 });
@@ -649,6 +797,7 @@ public sealed class PineDbContext : DbContext
 
             entry.CurrentValues[ClockColumnName] = clock;
             entry.CurrentValues[DeviceColumnName] = _deviceId;
+            entry.CurrentValues[LocalClockColumnName] = clock;
         }
     }
 

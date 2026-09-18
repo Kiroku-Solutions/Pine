@@ -142,6 +142,9 @@ public class ImportKeyMigrationTests
     /// <summary>The head of the migration list: the sync clock, device column and tombstones (TD-144, TD-145).</summary>
     private const string SyncBookkeepingSchemaVersion = "20260914224324_AddSyncClockDeviceAndTombstones";
 
+    /// <summary>The head of the migration list: the merge's peer, conflict and alias tables (item 3.1b, TD-144).</summary>
+    private const string SyncMergeStateSchemaVersion = "20260918145142_AddSyncMergeState";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -305,7 +308,8 @@ public class ImportKeyMigrationTests
             RowAuditSchemaVersion,
             DropCategoryAggregateSchemaVersion,
             DropCategoriesTableSchemaVersion,
-            SyncBookkeepingSchemaVersion
+            SyncBookkeepingSchemaVersion,
+            SyncMergeStateSchemaVersion
         });
     }
 

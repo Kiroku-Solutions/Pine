@@ -1573,7 +1573,7 @@ Only after Stages 0–2. Each of these is a subsystem, not a fix.
 | # | Work | Depends on | State |
 |---|---|---|---|
 | 3.0 | ✅ **Done** (2026-09-14) — **A budget can be created** (added ahead of 3.1: a screen that could not do what it exists for) | TD-152 (closed), TD-149 (closed) | Found by item 2.5's sender guard. The independent review found the form's default made TD-149's UTC month visible, so it was closed here too. See §6.1 |
-| 3.1 | 🟡 **Preconditions built** (2026-09-14, §6.2 — TD-146 closed, TD-144 and TD-145 narrowed). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
+| 3.1 | 🟡 **Preconditions and local merge built** (2026-09-14, §6.2 — TD-146 closed; 2026-09-18, §6.3 — the change set and the merge between two vault files, TD-144 and TD-145 narrowed further). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
 | 3.2 | Rule engine, second half | TD-142 (retroactive application, with a preview), TD-143 (multi-condition UI) | The engine already evaluates up to eight conditions; the form writes one |
 | 3.3 | Attachments: the manual path | TD-141 | FR-TXN-02 asks for attaching a document to a transaction by hand; only the scanner path exists |
 | 3.4 | Notifications, forecasting, investments | — | Specified, unbuilt, and unblocked by nothing. Schedule deliberately or narrow the documents that promise them |
@@ -1773,6 +1773,105 @@ including those four: eight killed, and one — the review's two-statement count
 tombstones; everything after the preconditions — the envelope, the provider, the offline queue, the conflict
 matrix of §7 — which is the rest of item 3.1.
 
+### 6.3 Item 3.1b, as built (2026-09-18, iteration 51): the change set and the merge, locally, between two vault files
+
+**Still no transport.** Both vaults are open in one process; nothing is sent, received, encrypted or written to
+disk as a change set. `NetworkEgressTests` is untouched and green. What exists now is the part a transport would
+carry things *between*: an export, an apply, and the rules §4, §6 and §7 set for what an apply may do.
+
+| Row | Outcome |
+|---|---|
+| TD-144 | 🟡 **Narrowed further** — the receive step and the restore high-water mark are built; a rewind by any path other than the restore service, and byte copies of a vault, remain |
+| TD-145 | 🟡 **Narrowed further** — tombstones travel and are applied (or refused as a conflict); child tombstones are no longer needed by this merge; retention and `secure_delete` remain |
+
+#### What was built
+
+- **`VaultMerger`** (`src/Pine.Infrastructure/Sync/`): `ExportAsync` cuts a `SyncChangeSet` — the `pine.sync.v1`
+  document, every root row column by column with its owned children, plus tombstones, ordered by `(clock,
+  device)` then table and id so two exports of one state are the same bytes; `ApplyAsync` applies one in **one
+  transaction per vault**; `MergeAsync` does both ways with both write locks held from the first export to the
+  last commit. Rows, not aggregates: the domain types have no public way to be set from outside, and a merge
+  must not invent one, so a change set from a different schema version is refused.
+- **Bookkeeping** (migration `AddSyncMergeState`, with `Down`): a vault id on the `SyncClock` row (a vault, not a
+  device, is what a merge meets — two vault files on one machine share a device id); `SyncPeers` (a cursor per
+  peer vault); `SyncConflicts` (the remote change as it arrived, unique per peer, entity, clock and device, so
+  merging the same change set twice records it once); `SyncIdAliases` (natural-key matches). And a second
+  number on every root and tombstone, **`RowLocalClock`** — this vault's clock when the row was last written
+  *here*. An applied row keeps the `(RowClock, RowDeviceId)` of the vault that wrote it, so a third vault orders
+  it faithfully; but a relayed row's Lamport stamp can sit below a peer's cursor, and cut by `RowClock` it would
+  never travel on. The cut reads `RowLocalClock`. Existing rows are backfilled with their own clock.
+- **"Changed on both sides" is decided by what the peer had seen**, carried in the change set as
+  `SourceKnowsTargetUpTo`, not by when this vault last merged: a row edited here just before a merge that only
+  *pulled* is older than that merge, the peer never saw it, and the tempting rule would let the peer overwrite it.
+- **§7, as an allow-list** (`SyncMergePolicy`, pure and unit-tested). Last-writer-wins by `(clock, device)` —
+  never wall-clock time — only for account name, currency, opening balance and a setting's value; ties broken
+  by vault id, the same way round on both sides. **Every other difference is a conflict**, including a column
+  added later that nobody classified. Consent is never granted by a peer. Balances are **re-derived** from the
+  merged ledger (opening balance plus transactions in force), so spends on both sides both count.
+- **A deliberate departure from §7: splits are not set-unioned.** A transaction's splits must sum to its amount;
+  the union of two valid split sets is in general not one, and a union would also resurrect removed splits.
+  Owned children travel as a whole set with their root, and a both-sides difference in them is a conflict.
+- **Natural keys (TD-146) at work**: a row absent here whose key matches exactly one local row is that row — an
+  alias is recorded and the peer's later edits, deletes and references land on the local id; matching two is
+  `AmbiguousNaturalKey`, never a guess. Nothing is renamed, because a primary key change would cascade through
+  restrictive foreign keys.
+- **The clock's receive step (TD-144)**: before anything is written, the target's counter is lifted to at least
+  the highest clock in the change set, inside the apply's transaction; the merge's own writes and every later
+  save take a number above it.
+- **Restore no longer rewinds the clock (TD-144)**: `VaultRestoreService` records the discarded file's counter in
+  `sync-clock-floor` beside the database before replacing it — written to a neighbour and moved into place,
+  never lowering an earlier floor — and every increment takes `MAX(Value, floor) + 1`. A damaged floor refuses
+  writes rather than reading as zero. It sits beside the database rather than beside the device id, as the 3.1a
+  review suggested, because a vault directory is what a restore replaces and the device id is shared by every
+  vault on the installation.
+- **Refusals, before anything is written**: a change set for another vault, from this vault or from no vault,
+  from another schema version, starting after this vault's cursor (it would skip changes), in another format,
+  naming a table or column this vault does not have — and, as defence in depth, **any table or column name not
+  shaped `^[A-Za-z_][A-Za-z0-9_]*$`**, checked where each name is interpolated into SQL as well as up front; a
+  byte copy of a vault merged with its original (both claim one vault id); a context with unsaved changes or an
+  open transaction.
+
+| Situation | What the merge does |
+|---|---|
+| Row only on one side | Inserted on the other, keeping its writer's stamp |
+| Changed only on the peer since it saw ours | Peer's version taken |
+| Changed on both, LWW columns only (account name, currency, opening balance; setting value) | Later `(clock, device)` wins, on both sides alike |
+| Changed on both, anything else (amount, payee, date, splits, budget, rule, …) | `ConcurrentEdit` conflict; neither side overwritten |
+| Peer deleted, not changed here since | Deleted (children first); tombstone kept so the deletion travels on |
+| Peer deleted, changed here since | `RemoteDeleteOfLocalEdit` |
+| Peer edited, deleted here | `RemoteEditOfLocalDelete` — never resurrected |
+| Peer deleted, rows here still point at it | `DeleteBlockedByDependents` |
+| Row points at something not here | `MissingParent` |
+| Natural key matches one local row / two | Alias recorded / `AmbiguousNaturalKey` |
+| Setting would grant a consent | `ConsentNotImplicitlyGranted` |
+| Same change set applied twice | Nothing the second time; no duplicate conflict |
+| Apply fails midway | Nothing kept — rows, conflicts, lifted clock, cursor |
+
+**Falsified.** Twenty-seven mutations on the first pass, each applied by a script, built, run against the sync
+tests and reverted: twenty-five killed, two survived — an applied row taking this vault's clock instead of its
+writer's (no test compared the two stamps), and removing `MergeAsync`'s byte-copy check (`ApplyAsync`'s own
+"source is this vault" refusal still threw the same exception type). Both were answered with assertions — the
+stamps are compared, and the refusal must name the byte copy — and then killed. Four more on the identifier
+guard (the pattern accepting anything, in the unit and the integration suite; the up-front table check and the
+up-front column check removed): all killed. **Thirty-one run, thirty-one killed in the end; none shown
+equivalent.** Every mutated line was confirmed restored afterwards.
+
+**Measured totals:** unit 1359 → **1406**; integration 270 → **292**; coverage gate green (overall 76.0% →
+77.7%, `Pine.Infrastructure` 84.3% → 85.8% — measured on both commits). **Before one more unit test, the merge
+had dropped `Pine.Infrastructure` to 82.4%, 0.4 above its floor**: the merge's thousand lines were exercised only
+by the integration suite, which the gate does not measure. One round trip through two real vaults in the unit
+suite (`VaultMergerRoundTripTests`) answered it with a test, not a lower floor. Windows, macOS and CLI heads build.
+
+**What this does not close.** §5's envelope — a change set is plaintext and in memory only; the provider, the
+transport and the offline queue (§8, §9); **any screen**: conflicts are recorded in `SyncConflicts` and nothing
+shows or resolves them yet, and nothing in the application calls the merge. TD-144: a rewind by copying an old
+`pine.db` over the vault by hand, or by migrating down past the clock table and up (which now also forgets the
+vault id and the peer cursors); and a byte copy of a vault carries its id, so a third vault that merges with both
+cannot tell them apart. TD-145: tombstone retention (a cursor per peer exists now, but a retention is a claim
+about every peer, including ones never met) and `secure_delete`. Rows from before `AddSyncClockDeviceAndTombstones`
+carry clock 0 and the empty device, so between two upgraded vaults their "both changed" order falls to the vault
+id — deterministic, not meaningful. And the merge has had no independent review yet.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -1840,3 +1939,11 @@ the sync itself — and the first thing it owes, before any transport, is the me
 (receive, and a high-water mark that survives a restore), because the preconditions built here are only as
 trustworthy as that step. **The next item is 3.1b: the change set and the merge, locally, between two vault
 files — still no transport.**
+
+~~The next item is 3.1b: the change set and the merge, locally, between two vault files — still no
+transport.~~ Done 2026-09-18 (§6.3): two vault files merge both ways in one transaction each, §7's
+last-writer-wins only where §7 allows it and a recorded conflict everywhere else, balances re-derived, the
+clock's receive step taken, and a restore no longer able to rewind the clock. Conflicts are recorded and nothing
+shows them, and nothing in the application calls the merge. **The next item is 3.1c: the independent review of
+3.1b, then a screen that lists recorded conflicts and resolves them** — before §5's envelope and any provider,
+because a merge whose conflicts nobody can see is one that silently keeps the local side.
