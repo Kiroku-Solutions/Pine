@@ -194,6 +194,7 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         IsTransactionsActive = page is TransactionsViewModel;
         IsBudgetsActive = page is BudgetsViewModel;
         IsRulesActive = page is RulesViewModel;
+        IsSyncConflictsActive = page is SyncConflictsViewModel;
         IsDiagnosticsActive = page is DiagnosticsViewModel;
         IsScanReceiptActive = page is ScanReceiptViewModel;
         IsLiveScannerActive = page is LiveScannerViewModel or CropReceiptViewModel;
@@ -212,6 +213,10 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     /// <summary>Whether the rules screen is the current page.</summary>
     [ObservableProperty]
     public partial bool IsRulesActive { get; set; }
+
+    /// <summary>Whether the sync conflicts page is the current page (post-audit plan item 3.1c).</summary>
+    [ObservableProperty]
+    public partial bool IsSyncConflictsActive { get; set; }
 
     [ObservableProperty]
     public partial bool IsDiagnosticsActive { get; set; }
@@ -257,6 +262,13 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     private void NavigateToRules()
     {
         NavigateTo(_viewModels.CreateRules());
+    }
+
+    /// <summary>Opens the sync conflicts page (post-audit plan item 3.1c). It loads itself when it becomes current.</summary>
+    [RelayCommand]
+    private void NavigateToSyncConflicts()
+    {
+        NavigateTo(_viewModels.CreateSyncConflicts());
     }
 
     [RelayCommand]

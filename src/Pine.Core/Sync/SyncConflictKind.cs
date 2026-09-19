@@ -1,7 +1,7 @@
-namespace Pine.Infrastructure.Sync;
+namespace Pine.Core.Sync;
 
 /// <summary>
-/// Why a merge left a remote change unapplied and recorded it for a person instead (post-audit plan item 3.1b).
+/// Why a merge left a remote change unapplied and recorded it for a person instead (post-audit plan item 3.1b; moved to Pine.Core in 3.1c so the conflicts screen can name it).
 /// </summary>
 /// <remarks>
 /// Every value is a case where applying the remote change would have discarded something the local vault holds,

@@ -112,7 +112,7 @@ public sealed class SyncConflict : ISyncBookkeeping
     /// <summary>The row's id in THIS vault: the remote id translated through <see cref="SyncIdAlias"/> when there is one.</summary>
     public Guid EntityId { get; set; }
 
-    /// <summary>Why it was not applied; a <see cref="Pine.Infrastructure.Sync.SyncConflictKind"/> name.</summary>
+    /// <summary>Why it was not applied; a <see cref="Pine.Core.Sync.SyncConflictKind"/> name.</summary>
     public string Kind { get; set; } = string.Empty;
 
     public long RemoteClock { get; set; }
@@ -123,6 +123,16 @@ public sealed class SyncConflict : ISyncBookkeeping
     public string RemotePayload { get; set; } = string.Empty;
 
     public DateTime DetectedAtUtc { get; set; }
+
+    /// <summary>When a person resolved it, or a later change from the same peer made it moot; null while open (item 3.1c).</summary>
+    /// <remarks>
+    /// Resolved, not deleted: the row's unique index is what stops merging the same change set again from recording
+    /// the same conflict again, so a deleted row would bring a decided conflict back.
+    /// </remarks>
+    public DateTime? ResolvedAtUtc { get; set; }
+
+    /// <summary>How: a <see cref="Pine.Core.Sync.SyncConflictResolution"/> name, or <c>Superseded</c>.</summary>
+    public string? Resolution { get; set; }
 }
 
 /// <summary>

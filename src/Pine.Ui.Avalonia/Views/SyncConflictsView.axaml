@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.SyncConflictsView"
+             x:DataType="vm:SyncConflictsViewModel"
+             x:Name="Page">
+
+    <!-- Post-audit plan item 3.1c: the changes a merge would not apply on its own, and a decision for each. -->
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="{loc:Tr SyncConflicts.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr SyncConflicts.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Button Grid.Column="1" VerticalAlignment="Center"
+                    Content="{loc:Tr SyncConflicts.Refresh}"
+                    Command="{Binding LoadCommand}"
+                    IsEnabled="{Binding !IsResolving}"
+                    AutomationProperties.Name="{loc:Tr SyncConflicts.Refresh}"/>
+        </Grid>
+
+        <!-- A load failure and a refused decision: both are said, neither is silent. -->
+        <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding ResolveMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
+                       IsVisible="{Binding ResolveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </StackPanel>
+
+        <ProgressBar Grid.Row="2" IsIndeterminate="True" IsVisible="{Binding IsLoading}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+        <TextBlock Grid.Row="2" Text="{loc:Tr SyncConflicts.Empty}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource PineTextMuted}" IsVisible="{Binding IsEmpty}"/>
+
+        <ScrollViewer Grid.Row="2" IsVisible="{Binding !IsLoading}">
+            <ItemsControl ItemsSource="{Binding Conflicts}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SyncConflictRowViewModel">
+                        <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                                BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                                <TextBlock Text="{Binding EntityText}" Foreground="{DynamicResource PineText}"/>
+                                <TextBlock Text="{Binding Explanation}" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}"/>
+                                <TextBlock Text="{Binding MetaText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+
+                                <!-- The two sides, field by field. -->
+                                <Grid ColumnDefinitions="*,*,*" IsVisible="{Binding HasFields}" Margin="0,4,0,0">
+                                    <TextBlock Grid.Column="0" Text="{loc:Tr SyncConflicts.Column.Field}" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}"/>
+                                    <TextBlock Grid.Column="1" Text="{loc:Tr SyncConflicts.Column.ThisDevice}" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}"/>
+                                    <TextBlock Grid.Column="2" Text="{loc:Tr SyncConflicts.Column.OtherDevice}" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}"/>
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding Fields}" IsVisible="{Binding HasFields}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SyncConflictFieldRow">
+                                            <Grid ColumnDefinitions="*,*,*" Margin="0,2">
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding LocalText}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding RemoteText}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Why the other device's side is not offered, where it is not. -->
+                                <TextBlock Text="{Binding TakeRemoteBlockedText}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource PineTextMuted}" FontStyle="Italic"
+                                           IsVisible="{Binding IsTakeRemoteBlocked}"/>
+
+                                <!-- §7: a consent is never granted by one click. -->
+                                <CheckBox IsChecked="{Binding ConsentConfirmed}" IsVisible="{Binding RequiresConsentConfirmation}"
+                                          AutomationProperties.Name="{loc:Tr SyncConflicts.ConfirmConsent}">
+                                    <TextBlock Text="{loc:Tr SyncConflicts.ConfirmConsent}" TextWrapping="Wrap"/>
+                                </CheckBox>
+
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                                    <Button Content="{Binding KeepLocalLabel}"
+                                            AutomationProperties.Name="{Binding KeepLocalLabel}"
+                                            Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).KeepLocalCommand}"
+                                            CommandParameter="{Binding}"
+                                            IsEnabled="{Binding !#Page.((vm:SyncConflictsViewModel)DataContext).IsResolving}"/>
+                                    <Button Content="{Binding TakeRemoteLabel}" Classes="pine-accent"
+                                            AutomationProperties.Name="{Binding TakeRemoteLabel}"
+                                            Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).TakeRemoteCommand}"
+                                            CommandParameter="{Binding}"
+                                            IsVisible="{Binding CanTakeRemote}"
+                                            IsEnabled="{Binding CanPressTakeRemote}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

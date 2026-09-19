@@ -62,6 +62,9 @@
                              "Coming soon" while nothing evaluated a rule: honest, but a promise. -->
                         <Button Content="{loc:Tr Shell.Nav.Rules}" Command="{Binding NavigateToRulesCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsRulesActive}" />
+                        <!-- Post-audit plan item 3.1c: what a merge left for a person to decide. -->
+                        <Button Content="{loc:Tr Shell.Nav.SyncConflicts}" Command="{Binding NavigateToSyncConflictsCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsSyncConflictsActive}" />
 
                         <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
 

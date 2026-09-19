@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Pine.Core.Sync;
 using Pine.Infrastructure.Data;
 
 namespace Pine.Infrastructure.Sync;
@@ -25,6 +26,10 @@ namespace Pine.Infrastructure.Sync;
 /// <param name="ConflictsRecorded">Changes left for a person; not counting ones already recorded by an earlier merge.</param>
 /// <param name="AliasesRecorded">Rows matched by natural key under a different id.</param>
 /// <param name="ClockAfter">The target's counter when the apply committed.</param>
+/// <param name="ConflictsSuperseded">
+/// Open conflicts this apply closed because the same peer has since sent a later change to the same row — its
+/// resolution of the conflict, or an edit after it (post-audit plan item 3.1c).
+/// </param>
 public sealed record SyncApplyResult(
     Guid SourceVaultId,
     Guid TargetVaultId,
@@ -34,7 +39,8 @@ public sealed record SyncApplyResult(
     int Unchanged,
     int ConflictsRecorded,
     int AliasesRecorded,
-    long ClockAfter);
+    long ClockAfter,
+    int ConflictsSuperseded = 0);
 
 /// <summary>What a two-way merge did to each vault.</summary>
 public sealed record SyncMergeResult(Guid LeftVaultId, Guid RightVaultId, SyncApplyResult IntoLeft, SyncApplyResult IntoRight);
@@ -504,13 +510,14 @@ public static partial class VaultMerger
         private int _unchanged;
         private int _conflicts;
         private int _aliases;
+        private int _superseded;
 
         public SyncSchema Schema => schema;
 
         private string Peer => SyncRow.GuidText(changeSet.SourceVaultId);
 
         public SyncApplyResult Result(long clockAfter) =>
-            new(changeSet.SourceVaultId, targetId, _inserted, _updated, _deleted, _unchanged, _conflicts, _aliases, clockAfter);
+            new(changeSet.SourceVaultId, targetId, _inserted, _updated, _deleted, _unchanged, _conflicts, _aliases, clockAfter, _superseded);
 
         /// <summary>
         /// Every table and column name in the change set exists in this vault. They are written into SQL as
@@ -555,6 +562,7 @@ public static partial class VaultMerger
         {
             var remote = await TranslateAsync(table, change.Row!, cancellationToken).ConfigureAwait(false);
             var localId = remote.GuidAt("Id")!.Value;
+            await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
             var local = await ReadRowAsync(table.Name, localId, cancellationToken).ConfigureAwait(false);
 
             if (local is null)
@@ -596,6 +604,7 @@ public static partial class VaultMerger
                         await RecordAliasAsync(table, change.EntityId, matchedId, cancellationToken).ConfigureAwait(false);
                         remote = remote.With([new("Id", SyncRow.GuidText(matchedId))]);
                         localId = matchedId;
+                        await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
                     }
                 }
             }
@@ -652,6 +661,7 @@ public static partial class VaultMerger
             }
 
             var localId = await AliasOfAsync(table.Name, change.EntityId, cancellationToken).ConfigureAwait(false) ?? change.EntityId;
+            await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
             var local = await ReadRowAsync(table.Name, localId, cancellationToken).ConfigureAwait(false);
 
             if (local is null)
@@ -674,6 +684,19 @@ public static partial class VaultMerger
                 return;
             }
 
+            if (await HasDependentsAsync(table, localId, cancellationToken).ConfigureAwait(false))
+            {
+                await ConflictAsync(table, localId, change, SyncConflictKind.DeleteBlockedByDependents, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            await DeleteRowAsync(table, localId, local, change, cancellationToken).ConfigureAwait(false);
+            _deleted++;
+        }
+
+        /// <summary>Whether any row here has a foreign key into <paramref name="localId"/>.</summary>
+        internal async Task<bool> HasDependentsAsync(SyncTable table, Guid localId, CancellationToken cancellationToken)
+        {
             foreach (var (dependent, reference) in schema.DependentsOf(table.Name))
             {
                 var count = (long)(await sql.ScalarAsync(
@@ -682,11 +705,16 @@ public static partial class VaultMerger
                     ("$id", SyncRow.GuidText(localId))).ConfigureAwait(false))!;
                 if (count > 0)
                 {
-                    await ConflictAsync(table, localId, change, SyncConflictKind.DeleteBlockedByDependents, cancellationToken).ConfigureAwait(false);
-                    return;
+                    return true;
                 }
             }
 
+            return false;
+        }
+
+        /// <summary>Deletes the row, children first, and leaves a tombstone stamped by <paramref name="change"/>.</summary>
+        internal async Task DeleteRowAsync(SyncTable table, Guid localId, SyncRow local, SyncChange change, CancellationToken cancellationToken)
+        {
             await TouchLedgerAsync(table, local, cancellationToken).ConfigureAwait(false);
 
             foreach (var (childTable, ownerColumn) in table.ChildOwnerColumns)
@@ -696,7 +724,6 @@ public static partial class VaultMerger
 
             await sql.ExecuteAsync($"DELETE FROM {Ident(table.Name)} WHERE \"Id\" = $id;", cancellationToken, ("$id", SyncRow.GuidText(localId))).ConfigureAwait(false);
             await WriteTombstoneAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
-            _deleted++;
         }
 
         /// <summary>
@@ -753,6 +780,13 @@ public static partial class VaultMerger
                 return;
             }
 
+            await WriteNewRowAsync(table, change, remote, cancellationToken).ConfigureAwait(false);
+            _inserted++;
+        }
+
+        /// <summary>Inserts <paramref name="remote"/> and its children, stamped by <paramref name="change"/>. No checks.</summary>
+        internal async Task WriteNewRowAsync(SyncTable table, SyncChange change, SyncRow remote, CancellationToken cancellationToken)
+        {
             if (table.Name == "Accounts")
             {
                 _accountsInserted.Add(remote.Text("Id")!);
@@ -763,7 +797,6 @@ public static partial class VaultMerger
             var row = remote.With(Stamps(change, created: true));
             await InsertRowAsync(table.Name, row, cancellationToken).ConfigureAwait(false);
             await InsertChildrenAsync(table, row.Text("Id")!, change.Children, cancellationToken).ConfigureAwait(false);
-            _inserted++;
         }
 
         private async Task UpdateAsync(
@@ -786,6 +819,22 @@ public static partial class VaultMerger
                 return;
             }
 
+            await OverwriteRowAsync(table, change, local, remote, remoteChildren, cancellationToken).ConfigureAwait(false);
+            _updated++;
+        }
+
+        /// <summary>
+        /// Replaces <paramref name="local"/>'s content and children with <paramref name="remote"/>'s, stamped by
+        /// <paramref name="change"/>. No checks.
+        /// </summary>
+        internal async Task OverwriteRowAsync(
+            SyncTable table,
+            SyncChange change,
+            SyncRow local,
+            SyncRow remote,
+            IReadOnlyDictionary<string, IReadOnlyList<SyncRow>> remoteChildren,
+            CancellationToken cancellationToken)
+        {
             await TouchLedgerAsync(table, local, cancellationToken).ConfigureAwait(false);
             await TouchLedgerAsync(table, remote, cancellationToken).ConfigureAwait(false);
 
@@ -807,14 +856,13 @@ public static partial class VaultMerger
             }
 
             await InsertChildrenAsync(table, id, remoteChildren, cancellationToken).ConfigureAwait(false);
-            _updated++;
         }
 
         /// <summary>
         /// The peer's stamp, kept; this vault's number, taken once for the whole apply; a fresh row version, so a
         /// context that loaded the row before the merge fails its save instead of overwriting the merge.
         /// </summary>
-        private IEnumerable<KeyValuePair<string, object?>> Stamps(SyncChange change, bool created)
+        internal IEnumerable<KeyValuePair<string, object?>> Stamps(SyncChange change, bool created)
         {
             yield return new(PineDbContext.ClockColumnName, change.Clock);
             yield return new(PineDbContext.DeviceColumnName, SyncRow.GuidText(change.DeviceId));
@@ -854,10 +902,18 @@ public static partial class VaultMerger
         /// The row with its id, and every id it points at, in this vault's terms. The stamps of the write are taken
         /// before the first write, so the clock number exists when <see cref="Stamps"/> reads it.
         /// </summary>
-        private async Task<SyncRow> TranslateAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
+        internal async Task<SyncRow> TranslateAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
         {
             await TakeClockAsync(cancellationToken).ConfigureAwait(false);
+            return await TranslateIdsAsync(table, row, cancellationToken).ConfigureAwait(false);
+        }
 
+        /// <summary>
+        /// <see cref="TranslateAsync"/> without taking the clock: for reading a recorded conflict, which must not move
+        /// the counter (post-audit plan item 3.1c).
+        /// </summary>
+        internal async Task<SyncRow> TranslateIdsAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
+        {
             var replacements = new List<KeyValuePair<string, object?>>();
             if (await AliasOfAsync(table.Name, row.GuidAt("Id")!.Value, cancellationToken).ConfigureAwait(false) is { } id)
             {
@@ -876,8 +932,48 @@ public static partial class VaultMerger
             return replacements.Count == 0 ? row : row.With(replacements);
         }
 
-        private async Task TakeClockAsync(CancellationToken cancellationToken) =>
+        internal async Task TakeClockAsync(CancellationToken cancellationToken) =>
             _clock ??= await sql.Context.TakeClockForMergeAsync(cancellationToken).ConfigureAwait(false);
+
+        /// <summary>This run's number from the vault's clock, taken on first use.</summary>
+        internal async Task<long> ClockAsync(CancellationToken cancellationToken)
+        {
+            await TakeClockAsync(cancellationToken).ConfigureAwait(false);
+            return _clock!.Value;
+        }
+
+        /// <summary>The time this run writes into audit columns, in the store's format.</summary>
+        internal string Now => _now;
+
+        /// <summary>
+        /// Closes this peer's open conflicts on the row that were raised by an EARLIER change of the peer's
+        /// (post-audit plan item 3.1c).
+        /// </summary>
+        /// <remarks>
+        /// A later change from the same peer to the same row is the peer's newer word on it: its person resolved the
+        /// conflict there (keeping its version stamps the row again; taking ours writes ours with its own stamp), or
+        /// edited the row since. Either way the version this conflict holds is no longer what the peer has, and
+        /// offering it — "take the other device's version" — would bring back a version nobody holds any more. If
+        /// the later change conflicts too, it is recorded as a conflict of its own. The same change applied twice
+        /// carries the same stamp, which is not later, so idempotence is untouched.
+        /// </remarks>
+        private async Task SupersedeAsync(SyncTable table, Guid localId, SyncChange change, CancellationToken cancellationToken)
+        {
+            _superseded += await sql.ExecuteAsync(
+                """
+                UPDATE SyncConflicts SET ResolvedAtUtc = $now, Resolution = $superseded
+                WHERE PeerVaultId = $peer AND EntityTable = $table AND EntityId = $entity AND ResolvedAtUtc IS NULL
+                  AND (RemoteClock < $clock OR (RemoteClock = $clock AND RemoteDeviceId < $device));
+                """,
+                cancellationToken,
+                ("$now", _now),
+                ("$superseded", SyncConflictSummary.Superseded),
+                ("$peer", Peer),
+                ("$table", table.Name),
+                ("$entity", SyncRow.GuidText(localId)),
+                ("$clock", change.Clock),
+                ("$device", SyncRow.GuidText(change.DeviceId))).ConfigureAwait(false);
+        }
 
         private async Task<Guid?> AliasOfAsync(string table, Guid remoteId, CancellationToken cancellationToken) =>
             await sql.ScalarAsync(
@@ -920,7 +1016,7 @@ public static partial class VaultMerger
                 ("$now", _now)).ConfigureAwait(false);
         }
 
-        private async Task WriteTombstoneAsync(SyncTable table, Guid localId, SyncChange change, CancellationToken cancellationToken)
+        internal async Task WriteTombstoneAsync(SyncTable table, Guid localId, SyncChange change, CancellationToken cancellationToken)
         {
             await TakeClockAsync(cancellationToken).ConfigureAwait(false);
             await sql.ExecuteAsync(
@@ -935,14 +1031,14 @@ public static partial class VaultMerger
                 ("$now", _now)).ConfigureAwait(false);
         }
 
-        private async Task<bool> IsTombstonedAsync(SyncTable table, Guid id, CancellationToken cancellationToken) =>
+        internal async Task<bool> IsTombstonedAsync(SyncTable table, Guid id, CancellationToken cancellationToken) =>
             (long)(await sql.ScalarAsync(
                 "SELECT COUNT(*) FROM Tombstones WHERE EntityType = $type AND EntityId = $id;",
                 cancellationToken,
                 ("$type", table.EntityTypeName),
                 ("$id", SyncRow.GuidText(id))).ConfigureAwait(false))! > 0;
 
-        private async Task<SyncRow?> ReadRowAsync(string table, Guid id, CancellationToken cancellationToken) =>
+        internal async Task<SyncRow?> ReadRowAsync(string table, Guid id, CancellationToken cancellationToken) =>
             (await sql.RowsAsync($"SELECT * FROM {Ident(table)} WHERE \"Id\" = $id;", cancellationToken, ("$id", SyncRow.GuidText(id))).ConfigureAwait(false))
             .SingleOrDefault();
 
@@ -963,7 +1059,7 @@ public static partial class VaultMerger
             return null;
         }
 
-        private async Task<bool> MissingParentAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
+        internal async Task<bool> MissingParentAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
         {
             foreach (var reference in table.References.Where(reference => reference.IsConstraint))
             {
@@ -1015,7 +1111,7 @@ public static partial class VaultMerger
                 cancellationToken,
                 ("$id", account)).ConfigureAwait(false))!;
 
-        private async Task RequireColumnsAsync(string table, IEnumerable<string> columns, CancellationToken cancellationToken)
+        internal async Task RequireColumnsAsync(string table, IEnumerable<string> columns, CancellationToken cancellationToken)
         {
             if (!_columns.TryGetValue(table, out var known))
             {

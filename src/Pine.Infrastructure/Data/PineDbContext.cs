@@ -379,6 +379,7 @@ public sealed class PineDbContext : DbContext
             e.HasKey(c => c.Id);
             e.Property(c => c.EntityTable).IsRequired().HasMaxLength(64);
             e.Property(c => c.Kind).IsRequired().HasMaxLength(64);
+            e.Property(c => c.Resolution).HasMaxLength(32);
 
             // What makes merging the same change set twice record a conflict once. The device is part of it because
             // a clock is unique only within the vault that took it, and a peer relays rows stamped by other vaults.
@@ -713,6 +714,9 @@ public sealed class PineDbContext : DbContext
 
     /// <summary>The database file this context opens.</summary>
     internal string DatabasePath => _databasePath;
+
+    /// <summary>The installation this context stamps its writes with; a conflict resolution stamps with it too (item 3.1c).</summary>
+    internal Guid DeviceId => _deviceId;
 
     /// <summary>The clock the audit columns and a merge's timestamps read.</summary>
     internal TimeProvider Clock => _timeProvider;

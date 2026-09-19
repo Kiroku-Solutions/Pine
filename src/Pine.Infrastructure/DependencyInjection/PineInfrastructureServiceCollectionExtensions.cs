@@ -140,6 +140,10 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<IAttachmentRepository, SqliteAttachmentRepository>();
         services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
 
+        // The conflicts a merge recorded, and their resolution (post-audit plan item 3.1c). Scoped with the context,
+        // so a resolution runs inside the request's transaction.
+        services.AddScoped<Pine.Core.Sync.ISyncConflictStore, Pine.Infrastructure.Sync.SqliteSyncConflictStore>();
+
         // SINGLETON (TD-28). The factory holds only the container's TimeProvider -- itself a
         // singleton -- and constructs a fresh, stateless importer per call, so it captures nothing
         // scoped and nothing vault-specific; making it scoped would tie the import wizard, a

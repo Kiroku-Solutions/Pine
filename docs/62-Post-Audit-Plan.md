@@ -1573,7 +1573,7 @@ Only after Stages 0–2. Each of these is a subsystem, not a fix.
 | # | Work | Depends on | State |
 |---|---|---|---|
 | 3.0 | ✅ **Done** (2026-09-14) — **A budget can be created** (added ahead of 3.1: a screen that could not do what it exists for) | TD-152 (closed), TD-149 (closed) | Found by item 2.5's sender guard. The independent review found the form's default made TD-149's UTC month visible, so it was closed here too. See §6.1 |
-| 3.1 | 🟡 **Preconditions and local merge built** (2026-09-14, §6.2 — TD-146 closed; 2026-09-18, §6.3 — the change set and the merge between two vault files, TD-144 and TD-145 narrowed further). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
+| 3.1 | 🟡 **Preconditions, local merge and conflicts screen built** (2026-09-14, §6.2 — TD-146 closed; 2026-09-18, §6.3 — the change set and the merge between two vault files, TD-144 and TD-145 narrowed further; 2026-09-18, §6.4 — a screen that lists recorded conflicts and resolves them). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
 | 3.2 | Rule engine, second half | TD-142 (retroactive application, with a preview), TD-143 (multi-condition UI) | The engine already evaluates up to eight conditions; the form writes one |
 | 3.3 | Attachments: the manual path | TD-141 | FR-TXN-02 asks for attaching a document to a transaction by hand; only the scanner path exists |
 | 3.4 | Notifications, forecasting, investments | — | Specified, unbuilt, and unblocked by nothing. Schedule deliberately or narrow the documents that promise them |
@@ -1924,6 +1924,105 @@ were run.
 integration 292 → **300**; coverage gate green (overall 77.7%, `Pine.Infrastructure` 85.8% — unchanged from the
 first commit); Windows, macOS and CLI heads build with no warnings.
 
+### 6.4 Item 3.1c, as built (2026-09-18, iteration 52): a screen that lists recorded conflicts and resolves them
+
+**Still no transport, and still nothing in the application runs a merge.** What 3.1b recorded in `SyncConflicts`
+can now be read and decided: a page lists every open conflict, and each can be settled one way or the other through
+the merge's own write path. On a real vault the page is empty and says what it is for — the only merges are still
+the ones the tests run between two vault files. `NetworkEgressTests` is untouched and green.
+
+| Row | Outcome |
+|---|---|
+| TD-144 | Unchanged — a resolution takes its number from the same clock, floor included |
+| TD-145 | Unchanged — a restore removes this vault's tombstones for the row it brings back; retention and `secure_delete` remain |
+
+#### What was built
+
+- **A port and two requests.** `ISyncConflictStore` (`Pine.Core.Sync`, beside the conflict kind, which moved there
+  from `Pine.Infrastructure` so the application can name it); `GetSyncConflictsQuery` and
+  `ResolveSyncConflictCommand(ConflictId, Resolution, ConfirmConsentGrant)`, transactional, with a validator. Both
+  have a sender (the page), so item 2.5's `EveryRequestHasASenderTests` stays green without an allow-list entry.
+- **The store is the merge.** `SqliteSyncConflictStore` delegates to a new part of `VaultMerger`
+  (`VaultMerger.Conflicts.cs`) that builds the merge's own `ApplyRun`, pointed at the peer the conflict came from:
+  ids translated through the same aliases, every table and column name checked against this vault and against the
+  identifier shape, every value a parameter, one transaction (the request's, or its own), balances re-derived from
+  the ledger. The write halves of the merge's insert, update and delete were extracted into methods both paths
+  call; nothing was copied. Reading a conflict writes nothing — not even a clock number (tested).
+- **A resolution is a change this vault makes, so it is stamped by this vault**: a fresh number from its clock
+  and this installation's device, not the peer's stamp from the payload. That is what makes it travel.
+- **What each decision writes.**
+
+| Kind | Keep this device's side | Take the other device's side |
+|---|---|---|
+| `ConcurrentEdit` | The row stamped again, unchanged; it replaces the peer's on the next merge | The peer's row written here, stamped here |
+| `RemoteDeleteOfLocalEdit` | The row stamped again; the peer, which holds a tombstone, is asked whether to restore it | Deleted here, children first, with this vault's tombstone |
+| `RemoteEditOfLocalDelete` | A fresh tombstone; the peer deletes it on the next merge | Restored: the peer's row inserted, this vault's tombstones for it removed |
+| `DeleteBlockedByDependents` | The row stamped again (as above) | **Not offered**: rows here still point at it |
+| `MissingParent` | Nothing written here; the peer keeps its row | **Offered only once the parent is here** (checked each time the list is read, and again inside the transaction) |
+| `AmbiguousNaturalKey` | Nothing written here; the peer keeps its row | **Never offered**: it would be a guess |
+| `ConsentNotImplicitlyGranted` | **Nothing written**, on either side: withdrawing the peer's consent is not what "keep mine" asked for | Only with `ConfirmConsentGrant`; the page's button stays disabled until a box that says so is ticked |
+
+  Taking the peer's row is also refused when a row with its natural key was created here since (it would be a
+  duplicate, or for a setting a unique-key failure) — `SyncConflictBlock.AlreadyExistsHere`.
+- **Resolved, not deleted** (migration `AddSyncConflictResolution`, generated, with `Down`): `ResolvedAtUtc` and
+  `Resolution` on `SyncConflicts`. The row's unique index is what stops the same change set applied again from
+  recording the same conflict again; deleting a decided conflict would bring it back.
+- **The resolution closes the peer's record of the same conflict** — the one change to 3.1b's apply. When a merge
+  applies a change to a row, it marks resolved (`Superseded`) every open conflict on that row from the same peer
+  whose `(RemoteClock, RemoteDeviceId)` is *earlier* than the change's. A later change from the peer is its newer
+  word on the row — its person's decision, or an edit since — and offering the old version would bring back one
+  nobody holds. The same change applied twice carries the same stamp, which is not later, so idempotence stands
+  (tested, and mutation M1 below is the reason it is tested). `SyncApplyResult.ConflictsSuperseded` counts them.
+- **A restore still needs a person on the vault that deleted.** Keeping a row the peer deleted stamps it; on
+  arrival the peer's merge records `RemoteEditOfLocalDelete` (superseding its earlier record) rather than bring it
+  back. One newer question, on purpose — "a deleted row is not brought back without a person" holds per vault.
+- **The page** (`SyncConflictsViewModel`, `SyncConflictsView`, "Sync conflicts" in the sidebar after Rules): each
+  conflict says what happened, to what ("Transaction · Grocer"), from which device and when, and both sides field
+  by field — money as an amount, dates as dates, flags as yes/no, a reference by the name of what it points at,
+  owned children as a count, a missing or deleted side said in words. Only the safe choices are buttons; where the
+  other side is not offered, a sentence says why. An empty sentence, a load failure and a refused decision are each
+  said, in the user's language (85 keys, English and Spanish); every button carries an accessible name. After a
+  decision the list reloads and the other pages are told the data changed.
+- **Refusals** (`SyncConflictRefusedException`, user-facing, one key per reason, no row data): not found, already
+  resolved (by a person or superseded), consent not confirmed, and each block. The validator refuses the same
+  cases before the transaction opens; the store re-checks all of them inside it.
+
+#### Falsified
+
+**Twenty-two mutations, applied by a script that restores each file's original bytes and asserts it did, each
+built and run against the conflict tests (unit first, then the merge's and the resolution's integration tests).**
+First pass: fourteen killed, three survived, five did not compile (`if (false)` is CS0162, an error here) and were
+re-run with a condition false only at run time — all five killed.
+
+- **Survived, answered with a test: M1**, superseding a conflict on a change with the *same* stamp (`<=` for `<`).
+  Nothing applied a change set a second time while its conflict was open; now the integration and unit suites both
+  do, and assert it stays open with nothing superseded. Killed.
+- **Survived, answered with a test: M10**, removing the store's "already resolved" check. The final
+  `UPDATE … WHERE ResolvedAtUtc IS NULL` still refused and the transaction rolled back, so the only difference was
+  that the resolution's writes ran before being discarded. The unit round trip now asserts the refusal comes from
+  the check ahead of the writes (its message names the earlier decision). Killed.
+- **Survived, answered by deleting the code: M20**, a branch writing a tombstone when a peer's deletion was taken
+  for a row neither here nor tombstoned. A deletion is recorded as a conflict only while the row is here, and every
+  later delete through a save leaves a tombstone, so no path reaches it; it was removed rather than kept untested.
+
+**Twenty-one run to the end, twenty-one killed; none shown equivalent.** Every mutated file was confirmed restored
+byte for byte, and `git status` and a first-bytes comparison against `HEAD` show no stray byte-order mark.
+
+**Measured totals:** unit 1406 → **1453**; integration 300 → **317**; coverage gate green (overall 77.7% → 79.1%, `Pine.Infrastructure` 85.8% → 87.0%, `Pine.Application` → 68.5%, `Pine.Ui.Avalonia` → 53.6%; no floor changed). Windows, macOS
+and CLI heads build individually, with no warnings (`Pine.slnx` is not built locally: the Android and iOS workloads are not installed).
+
+**What this does not close.** §5's envelope, the provider, the transport and the offline queue; and **nothing in
+the application runs a merge**, so on a real vault this page has nothing to show — its first real conflict needs
+the next item. A conflict recorded under an older schema whose payload names a column this vault no longer has
+fails the whole list's load (the check that refuses it is the merge's), rather than being shown read-only. Keeping
+a refused consent writes nothing, so the two devices keep different values until someone changes the setting.
+Restoring a row the peer deleted asks the peer's person again rather than restoring it there. **A 3.1b behaviour
+this item makes visible, and does not change:** once a conflict is recorded both cursors move past it, so if the
+peer then edits the same row again, the next merge takes the peer's edit here as a change only the peer made — this
+vault's side survives only in the peer's own conflict record, which a person there can still take. The superseding
+rule closes this vault's older record at that point rather than leave it offering a version the peer no longer holds.
+There has been no independent review of this item.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2000,3 +2099,11 @@ shows them, and nothing in the application calls the merge. The independent revi
 data-loss defects in the natural-key match found and fixed). **The next item is 3.1c: a screen that lists recorded
 conflicts and resolves them** — before §5's envelope and any provider,
 because a merge whose conflicts nobody can see is one that silently keeps the local side.
+
+~~The next item is 3.1c: a screen that lists recorded conflicts and resolves them.~~ Done 2026-09-18 (§6.4): a
+"Sync conflicts" page lists every conflict a merge recorded, both sides field by field, and offers only the choices
+that are safe; a decision is written through the merge's own path, stamped by this vault so it travels, and closes
+the peer's record of the same conflict on the next merge. Consent is never granted without a ticked box. Nothing in
+the application runs a merge yet, so on a real vault the page is empty. Its independent review is owed. **The next
+item is 3.1d: §5's envelope — the change set encrypted with the user's sync key, still between two vault files and
+still without a transport** — so that the first thing that ever leaves the process is ciphertext.

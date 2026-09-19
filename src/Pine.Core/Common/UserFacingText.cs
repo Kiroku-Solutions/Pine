@@ -85,4 +85,25 @@ public static class UserFacingText
 
     /// <summary>A frame that passed every filter.</summary>
     public static UserFacingMessage ScanCaptured() => new("Scan.Guidance.Captured");
+
+    /// <summary>A sync conflict resolution naming a conflict that is not recorded (post-audit plan item 3.1c).</summary>
+    public static UserFacingMessage SyncConflictNotFound() => new("Failure.SyncConflict.NotFound");
+
+    /// <summary>A sync conflict that was resolved already, here or by a later change from the other device.</summary>
+    public static UserFacingMessage SyncConflictAlreadyResolved() => new("Failure.SyncConflict.AlreadyResolved");
+
+    /// <summary>Taking the other device's setting would grant a consent, and that was not confirmed (§7).</summary>
+    public static UserFacingMessage SyncConflictConsentNotConfirmed() => new("Failure.SyncConflict.ConsentNotConfirmed");
+
+    /// <summary>The other device's version points at something this device does not have.</summary>
+    public static UserFacingMessage SyncConflictParentMissing() => new("Failure.SyncConflict.ParentMissing");
+
+    /// <summary>The other device deleted something items on this device still point at.</summary>
+    public static UserFacingMessage SyncConflictStillPointedAt() => new("Failure.SyncConflict.StillPointedAt");
+
+    /// <summary>The other device's version matches more than one item here.</summary>
+    public static UserFacingMessage SyncConflictAmbiguous() => new("Failure.SyncConflict.Ambiguous");
+
+    /// <summary>An item like the other device's already exists here.</summary>
+    public static UserFacingMessage SyncConflictAlreadyExistsHere() => new("Failure.SyncConflict.AlreadyExistsHere");
 }

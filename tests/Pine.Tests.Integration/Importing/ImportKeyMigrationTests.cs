@@ -145,6 +145,9 @@ public class ImportKeyMigrationTests
     /// <summary>The head of the migration list: the merge's peer, conflict and alias tables (item 3.1b, TD-144).</summary>
     private const string SyncMergeStateSchemaVersion = "20260918145142_AddSyncMergeState";
 
+    /// <summary>The head of the migration list: a sync conflict can be marked resolved (item 3.1c).</summary>
+    private const string SyncConflictResolutionSchemaVersion = "20260919035113_AddSyncConflictResolution";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -309,7 +312,8 @@ public class ImportKeyMigrationTests
             DropCategoryAggregateSchemaVersion,
             DropCategoriesTableSchemaVersion,
             SyncBookkeepingSchemaVersion,
-            SyncMergeStateSchemaVersion
+            SyncMergeStateSchemaVersion,
+            SyncConflictResolutionSchemaVersion
         });
     }
 

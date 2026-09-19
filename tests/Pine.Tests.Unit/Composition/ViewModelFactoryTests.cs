@@ -66,6 +66,7 @@ public class ViewModelFactoryTests
         factory.CreateDashboard(Substitute.For<IShellNavigator>()).Should().BeOfType<DashboardViewModel>();
         factory.CreateTransactions().Should().BeOfType<TransactionsViewModel>();
         factory.CreateBudgets().Should().BeOfType<BudgetsViewModel>();
+        factory.CreateSyncConflicts().Should().BeOfType<SyncConflictsViewModel>();
         factory.CreateSettings().Should().BeOfType<SettingsViewModel>();
         factory.CreateDiagnostics().Should().BeOfType<DiagnosticsViewModel>();
 

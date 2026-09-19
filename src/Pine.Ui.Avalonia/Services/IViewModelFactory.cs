@@ -66,6 +66,9 @@ public interface IViewModelFactory
     /// <summary>The rules screen.</summary>
     RulesViewModel CreateRules();
 
+    /// <summary>The sync conflicts page (post-audit plan item 3.1c). It loads itself when shown.</summary>
+    SyncConflictsViewModel CreateSyncConflicts();
+
     /// <summary>Creates the settings page.</summary>
     SettingsViewModel CreateSettings();
 

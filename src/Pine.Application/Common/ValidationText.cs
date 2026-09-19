@@ -140,4 +140,13 @@ public static class ValidationText
     /// <summary>A budget identical in category, currency and period to one that exists.</summary>
     public static UserFacingMessage BudgetAlreadyExists(string category, string currency)
         => new("Validation.Budget.AlreadyExists", category, currency);
+
+    /// <summary>A sync conflict resolution naming a conflict that is not recorded (post-audit plan item 3.1c).</summary>
+    public static UserFacingMessage SyncConflictNotFound() => new("Validation.SyncConflict.NotFound");
+
+    /// <summary>A sync conflict that was resolved already.</summary>
+    public static UserFacingMessage SyncConflictAlreadyResolved() => new("Validation.SyncConflict.AlreadyResolved");
+
+    /// <summary>Taking the other device's side would grant a consent, and that was not confirmed (§7).</summary>
+    public static UserFacingMessage SyncConflictConsentNotConfirmed() => new("Validation.SyncConflict.ConsentNotConfirmed");
 }
