@@ -1996,6 +1996,7 @@ files — still no transport.**
 transport.~~ Done 2026-09-18 (§6.3): two vault files merge both ways in one transaction each, §7's
 last-writer-wins only where §7 allows it and a recorded conflict everywhere else, balances re-derived, the
 clock's receive step taken, and a restore no longer able to rewind the clock. Conflicts are recorded and nothing
-shows them, and nothing in the application calls the merge. **The next item is 3.1c: the independent review of
-3.1b, then a screen that lists recorded conflicts and resolves them** — before §5's envelope and any provider,
+shows them, and nothing in the application calls the merge. The independent review of 3.1b is done too (§6.3, two
+data-loss defects in the natural-key match found and fixed). **The next item is 3.1c: a screen that lists recorded
+conflicts and resolves them** — before §5's envelope and any provider,
 because a merge whose conflicts nobody can see is one that silently keeps the local side.
