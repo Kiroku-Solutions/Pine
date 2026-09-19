@@ -562,11 +562,14 @@ public static partial class VaultMerger
         {
             var remote = await TranslateAsync(table, change.Row!, cancellationToken).ConfigureAwait(false);
             var localId = remote.GuidAt("Id")!.Value;
-            await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
             var local = await ReadRowAsync(table.Name, localId, cancellationToken).ConfigureAwait(false);
 
             if (local is null)
             {
+                // Nothing of this vault's is at stake on this id, so the peer's newer word closes its older ones here.
+                // A row that IS here goes through HeldByOpenConflictAsync below instead.
+                await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
+
                 if (await IsTombstonedAsync(table, localId, cancellationToken).ConfigureAwait(false))
                 {
                     await ConflictAsync(table, localId, change, SyncConflictKind.RemoteEditOfLocalDelete, cancellationToken).ConfigureAwait(false);
@@ -604,7 +607,6 @@ public static partial class VaultMerger
                         await RecordAliasAsync(table, change.EntityId, matchedId, cancellationToken).ConfigureAwait(false);
                         remote = remote.With([new("Id", SyncRow.GuidText(matchedId))]);
                         localId = matchedId;
-                        await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
                     }
                 }
             }
@@ -622,7 +624,14 @@ public static partial class VaultMerger
 
             if (differing.Count == 0 && !childrenDiffer)
             {
+                // Both sides hold the same now: whatever this peer's older changes asked here is moot.
+                await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
                 _unchanged++;
+                return;
+            }
+
+            if (await HeldByOpenConflictAsync(table, localId, change, remote, cancellationToken).ConfigureAwait(false))
+            {
                 return;
             }
 
@@ -661,11 +670,12 @@ public static partial class VaultMerger
             }
 
             var localId = await AliasOfAsync(table.Name, change.EntityId, cancellationToken).ConfigureAwait(false) ?? change.EntityId;
-            await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
             var local = await ReadRowAsync(table.Name, localId, cancellationToken).ConfigureAwait(false);
 
             if (local is null)
             {
+                await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
+
                 if (await IsTombstonedAsync(table, localId, cancellationToken).ConfigureAwait(false))
                 {
                     _unchanged++;
@@ -675,6 +685,11 @@ public static partial class VaultMerger
                 // Never had it, or it was never here: kept anyway, so the deletion travels on to a vault that has it.
                 await WriteTombstoneAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
                 _unchanged++;
+                return;
+            }
+
+            if (await HeldByOpenConflictAsync(table, localId, change, remote: null, cancellationToken).ConfigureAwait(false))
+            {
                 return;
             }
 
@@ -950,12 +965,20 @@ public static partial class VaultMerger
         /// (post-audit plan item 3.1c).
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A later change from the same peer to the same row is the peer's newer word on it: its person resolved the
         /// conflict there (keeping its version stamps the row again; taking ours writes ours with its own stamp), or
         /// edited the row since. Either way the version this conflict holds is no longer what the peer has, and
         /// offering it — "take the other device's version" — would bring back a version nobody holds any more. If
         /// the later change conflicts too, it is recorded as a conflict of its own. The same change applied twice
         /// carries the same stamp, which is not later, so idempotence is untouched.
+        /// </para>
+        /// <para>
+        /// Called only where no row of this vault's is at stake (none here, or both sides now equal), or by
+        /// <see cref="HeldByOpenConflictAsync"/>, which decides first whether the later change may be applied at all
+        /// (independent review of item 3.1c): an edit is not a decision, and closing the question on it overwrote
+        /// this vault's undecided side.
+        /// </para>
         /// </remarks>
         private async Task SupersedeAsync(SyncTable table, Guid localId, SyncChange change, CancellationToken cancellationToken)
         {
@@ -973,6 +996,109 @@ public static partial class VaultMerger
                 ("$entity", SyncRow.GuidText(localId)),
                 ("$clock", change.Clock),
                 ("$device", SyncRow.GuidText(change.DeviceId))).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Whether a change to a row this vault holds must wait for a person because this peer's earlier change to it
+        /// is still an open question here (independent review of item 3.1c). Closes the older questions it answers.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// THE GAP IT CLOSES. Once a conflict is recorded, both cursors move past it, so the peer's NEXT change to the
+        /// row looks, by the cursors alone, like a change only the peer made — and was taken, overwriting this vault's
+        /// undecided side and closing its record (superseded). Neither person had decided; each further edit in turn
+        /// could do the same on the other side, until a value nobody chose to drop was held nowhere. §7 makes these
+        /// fields a user prompt, so a row with an open question is not overwritten by the peer's next change either.
+        /// </para>
+        /// <para>
+        /// WHAT STILL GOES THROUGH. A peer's DECISION: its person kept its side (the row stamped again, with the very
+        /// content this vault's question offers — or a deletion again, where the question offers a deletion), or took
+        /// ours (the content equal to this vault's, handled before this is asked). Those are applied as before, and the
+        /// question closes. Anything else — an edit since, a deletion of a row whose edit is in question — replaces the
+        /// older question with a newer one about what the peer holds now: this vault's side stays, and "take the other
+        /// device's side" offers the peer's current version, not one it no longer has. A peer that decided and then
+        /// edited again is asked about once more: an extra question, never a lost value.
+        /// </para>
+        /// <para>
+        /// Only the two kinds where this vault's row is one side of a person's choice hold a row: a concurrent edit
+        /// and a deletion of a row edited here. The same change arriving again (the same stamp) is already the open
+        /// question, so it neither applies nor records anything.
+        /// </para>
+        /// </remarks>
+        private async Task<bool> HeldByOpenConflictAsync(SyncTable table, Guid localId, SyncChange change, SyncRow? remote, CancellationToken cancellationToken)
+        {
+            var open = await sql.RowsAsync(
+                """
+                SELECT RemoteClock, RemoteDeviceId, RemotePayload FROM SyncConflicts
+                WHERE PeerVaultId = $peer AND EntityTable = $table AND EntityId = $entity AND ResolvedAtUtc IS NULL
+                  AND Kind IN ($edit, $delete);
+                """,
+                cancellationToken,
+                ("$peer", Peer),
+                ("$table", table.Name),
+                ("$entity", SyncRow.GuidText(localId)),
+                ("$edit", nameof(SyncConflictKind.ConcurrentEdit)),
+                ("$delete", nameof(SyncConflictKind.RemoteDeleteOfLocalEdit))).ConfigureAwait(false);
+
+            SyncRow? latest = null;
+            foreach (var question in open)
+            {
+                var order = SyncMergePolicy.CompareStamps(
+                    question.Number("RemoteClock") ?? 0, question.GuidAt("RemoteDeviceId") ?? Guid.Empty, change.Clock, change.DeviceId);
+                if (order >= 0)
+                {
+                    // This very change, or a later one, is already waiting for a person.
+                    return true;
+                }
+
+                if (latest is null
+                    || SyncMergePolicy.CompareStamps(
+                        question.Number("RemoteClock") ?? 0, question.GuidAt("RemoteDeviceId") ?? Guid.Empty,
+                        latest.Number("RemoteClock") ?? 0, latest.GuidAt("RemoteDeviceId") ?? Guid.Empty) > 0)
+                {
+                    latest = question;
+                }
+            }
+
+            if (latest is null)
+            {
+                await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+
+            SyncChange asked;
+            using (var document = JsonDocument.Parse(latest.Text("RemotePayload")!))
+            {
+                asked = SyncChange.ReadFrom(document.RootElement);
+            }
+
+            var isDecision = (change.IsTombstone, asked.IsTombstone) switch
+            {
+                (true, true) => true,
+                (false, false) => SyncMergePolicy.DifferingColumns(
+                                      table.Name,
+                                      (await TranslateIdsAsync(table, asked.Row!, cancellationToken).ConfigureAwait(false)).With([new("Id", SyncRow.GuidText(localId))]),
+                                      remote!).Count == 0
+                                  && SyncMergePolicy.ChildrenEqual(
+                                      asked.Children ?? new Dictionary<string, IReadOnlyList<SyncRow>>(),
+                                      change.Children ?? new Dictionary<string, IReadOnlyList<SyncRow>>(),
+                                      table.ChildOwnerColumns),
+                _ => false,
+            };
+
+            await SupersedeAsync(table, localId, change, cancellationToken).ConfigureAwait(false);
+            if (isDecision)
+            {
+                return false;
+            }
+
+            await ConflictAsync(
+                table,
+                localId,
+                change,
+                change.IsTombstone ? SyncConflictKind.RemoteDeleteOfLocalEdit : SyncConflictKind.ConcurrentEdit,
+                cancellationToken).ConfigureAwait(false);
+            return true;
         }
 
         private async Task<Guid?> AliasOfAsync(string table, Guid remoteId, CancellationToken cancellationToken) =>
@@ -1081,9 +1207,15 @@ public static partial class VaultMerger
             return false;
         }
 
-        private static bool WouldGrantConsent(SyncTable table, SyncRow? local, SyncRow remote) =>
+        /// <summary>Whether writing <paramref name="remote"/> over <paramref name="local"/> would grant a consent (§7).</summary>
+        /// <remarks>
+        /// Either row's key counts (independent review of item 3.1c): an update writes only the columns the peer
+        /// sent, so a row sent without its key would keep this vault's — a consent's — and still set its value.
+        /// </remarks>
+        internal static bool WouldGrantConsent(SyncTable table, SyncRow? local, SyncRow remote) =>
             table.Name == "Settings"
-            && SyncMergePolicy.WouldGrantConsent(remote.Text("Key") ?? string.Empty, local?.Text("Value"), remote.Text("Value"));
+            && new[] { remote.Text("Key"), local?.Text("Key") }.Any(key =>
+                SyncMergePolicy.WouldGrantConsent(key ?? string.Empty, local?.Text("Value"), remote.Text("Value")));
 
         /// <summary>Records the ledger of every account a write to <paramref name="row"/> is about to move, once.</summary>
         private async Task TouchLedgerAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
@@ -1132,6 +1264,24 @@ public static partial class VaultMerger
             if (unknown.Count > 0)
             {
                 throw new SyncMergeRefusedException($"The change set names columns {table} does not have: {string.Join(", ", unknown)}.");
+            }
+        }
+
+        /// <summary>
+        /// Whether every one of <paramref name="columns"/> is a column of <paramref name="table"/> here, and a plain
+        /// identifier: <see cref="RequireColumnsAsync"/> as a question, for reading a recorded conflict, which must be
+        /// shown even when a migration since has dropped a column its payload names (independent review of item 3.1c).
+        /// </summary>
+        internal async Task<bool> HasColumnsAsync(string table, IEnumerable<string> columns, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await RequireColumnsAsync(table, columns, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            catch (SyncMergeRefusedException)
+            {
+                return false;
             }
         }
 

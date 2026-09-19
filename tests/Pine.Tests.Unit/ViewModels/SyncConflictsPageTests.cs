@@ -83,6 +83,8 @@ public class SyncConflictsPageTests
         row.MetaText.Should().StartWith("From device 22222222, recorded ");
         row.KeepLocalLabel.Should().Be("Keep this device's version");
         row.TakeRemoteLabel.Should().Be("Use the other device's version");
+        row.KeepLocalAutomationName.Should().Be("Keep this device's version · Transaction · Grocer", "a screen reader hears which item the button decides");
+        row.TakeRemoteAutomationName.Should().Be("Use the other device's version · Transaction · Grocer");
         row.HasFields.Should().BeTrue();
         row.Fields.Should().Equal(
             new SyncConflictFieldRow("Reason for voiding", "left", "right"),

@@ -2013,15 +2013,72 @@ and CLI heads build individually, with no warnings (`Pine.slnx` is not built loc
 
 **What this does not close.** §5's envelope, the provider, the transport and the offline queue; and **nothing in
 the application runs a merge**, so on a real vault this page has nothing to show — its first real conflict needs
-the next item. A conflict recorded under an older schema whose payload names a column this vault no longer has
-fails the whole list's load (the check that refuses it is the merge's), rather than being shown read-only. Keeping
-a refused consent writes nothing, so the two devices keep different values until someone changes the setting.
-Restoring a row the peer deleted asks the peer's person again rather than restoring it there. **A 3.1b behaviour
-this item makes visible, and does not change:** once a conflict is recorded both cursors move past it, so if the
-peer then edits the same row again, the next merge takes the peer's edit here as a change only the peer made — this
-vault's side survives only in the peer's own conflict record, which a person there can still take. The superseding
-rule closes this vault's older record at that point rather than leave it offering a version the peer no longer holds.
-There has been no independent review of this item.
+the next item. ~~A conflict recorded under an older schema whose payload names a column this vault no longer has
+fails the whole list's load~~ (fixed by the review below). Keeping a refused consent writes nothing, so the two
+devices keep different values until someone changes the setting. Restoring a row the peer deleted asks the peer's
+person again rather than restoring it there. ~~A 3.1b behaviour this item makes visible, and does not change: if
+the peer edits a row again while its conflict is open, the next merge takes the peer's edit here~~ — the review
+below found this was data loss under §7, and fixed it.
+
+#### The independent review
+
+**It found one major problem — the gap the first write-up recorded, which is data loss — and three minor ones,
+and three of its mutations survived.** Every finding was reproduced with a probe test that failed on the reviewed
+commit before it was reported; each probe is now a regression test that passes.
+
+- **MAJOR, fixed — a row with an open conflict was overwritten by the peer's next change, and the question closed
+  with it.** Both cursors move past a recorded conflict, so the peer's next edit to the row looked like a change only
+  the peer made: it was taken here, and the superseding rule closed this vault's record. Nobody had decided. Probes:
+  a budget limit in question (310 here, 320 there) became 330 here when the peer edited again (310 expected); when
+  each side edited in turn, 320 — a value nobody chose to drop — was overwritten on its own vault and survived only
+  in a record the next edit would close too; and the peer *deleting* a row whose edit was in question deleted it here
+  unasked. A §7 user-prompt field is not last-writer-wins because the conflict is a merge old. The apply now asks
+  first (`HeldByOpenConflictAsync`) whether this peer has an open `ConcurrentEdit` or `RemoteDeleteOfLocalEdit` on
+  the row. If it does, the change goes through only when it is the peer's **decision**: the very content the open
+  question offers, stamped again (its person kept its side), or a deletion again where the question is a deletion
+  — and taking ours arrives equal to this row, which was already moot. Anything else supersedes the old question
+  with a newer one about what the peer holds now; this vault's side stays, and "use the other device's version"
+  offers the peer's current version rather than one it no longer has. A peer that decided and then edited again is
+  asked about once more: an extra question, never a lost value. The superseding rule now runs only where no row of
+  this vault's is at stake (none here, or both sides equal) or through that check.
+- **MINOR, fixed — one old-schema conflict failed the whole list** (the gap the first write-up recorded; probe: the
+  merge's `SyncMergeRefusedException` out of `GetOpenAsync`). The column check is now a question when a conflict is
+  read (`HasColumnsAsync`): such a conflict is listed with both sides, its other side is not offered
+  (`SyncConflictBlock.SchemaChanged`, a sentence in English and Spanish), and keeping this device's side — which
+  writes only stamps — still works. A conflict whose *table* a migration dropped would still fail the load; no
+  migration drops a synced table, and one that does must deal with its conflicts.
+- **MINOR, fixed — a setting row sent without its key could grant a consent** (a malformed change set; 3.1b's apply
+  and this item's reading shared the check). The consent test read the key from the peer's row only; an update writes
+  only the columns sent, so a keyless row kept this vault's `TelemetryConsent` key and set its value to `true`
+  (probe: `"true"` where `"false"` was expected, no conflict). Either row's key now counts, in the merge and in the
+  conflict's "grants a consent" flag alike.
+- **MINOR, fixed — every row's buttons had the same accessible name.** "Keep this device's version" on every conflict
+  told a screen reader nothing about which one it decides; the names now carry the item ("… · Transaction · Grocer").
+
+**Read and found sound, without a finding:** resolving by the conflict's *local* id, with the payload's ids and
+references translated through the same peer's aliases; the restore removing tombstones only for the row it brings
+back; balances re-derived after a take-remote through the merge's ledger bookkeeping; `ConfirmConsentGrant` required
+by the validator, the store (inside the transaction) and the page's button alike, and no merge after a resolution
+granting one; the store's refusal ahead of any write and the final `UPDATE … WHERE ResolvedAtUtc IS NULL` behind it;
+every identifier through `Ident`, every value a parameter; the migration's `Up` and `Down`; the new keys in both
+languages. **Recorded, not reproduced:** a conflict recorded under a peer's raw id before an alias for that id
+existed is not found by a later change that the alias translates, so that change does not supersede it.
+
+**Falsified.** Thirteen mutations of the review's own on the fixes, each applied by a script that restores the
+file's original bytes and asserts it did, built and run against the resolution and merge integration tests (the
+accessible name against the unit tests): ten killed first time. **Three survived**, and each was answered with a
+test and killed after: R1, not holding a change with the *same* stamp as the open question (the conflict's own
+change re-sent by a peer that has since seen this side matched the question's payload, read as a decision, and
+overwrote this side); R5, ignoring the owned children when deciding whether a change is the peer's decision (a
+further change to a transaction's splits alone); and R7, not closing a peer's older non-contested questions when its
+later change goes through (a consent question kept offering a consent the peer had withdrawn). The script's first
+run stopped at R2 on its own error handling (restoring the file first); it was re-run from R1. None shown equivalent. `git
+status` and a first-bytes comparison against `HEAD` show no mutation left and no byte-order mark.
+
+**Measured totals (after the review):** unit 1453 → **1455**; integration 317 → **325**; coverage gate green (unit
+suite: overall 79.0%, `Pine.Infrastructure` 86.8% — the new code is exercised by the integration suite, which the
+gate does not measure — `Pine.Application` 68.5%, `Pine.Ui.Avalonia` 53.6%; no floor changed). Windows, macOS and
+CLI heads build individually with no warnings.
 
 ## 7. Stage 4 — The documents
 
@@ -2104,6 +2161,8 @@ because a merge whose conflicts nobody can see is one that silently keeps the lo
 "Sync conflicts" page lists every conflict a merge recorded, both sides field by field, and offers only the choices
 that are safe; a decision is written through the merge's own path, stamped by this vault so it travels, and closes
 the peer's record of the same conflict on the next merge. Consent is never granted without a ticked box. Nothing in
-the application runs a merge yet, so on a real vault the page is empty. Its independent review is owed. **The next
+the application runs a merge yet, so on a real vault the page is empty. Its independent review is done too (§6.4:
+a row with an open conflict was overwritten by the peer's next change — data loss, fixed — and three minor
+findings, fixed). **The next
 item is 3.1d: §5's envelope — the change set encrypted with the user's sync key, still between two vault files and
 still without a transport** — so that the first thing that ever leaves the process is ciphertext.

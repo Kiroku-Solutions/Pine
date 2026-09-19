@@ -120,6 +120,7 @@
   "Failure.SyncConflict.ConsentNotConfirmed": "Accepting the other device's setting would grant a consent. Confirm that you mean to, then try again. Nothing was changed.",
   "Failure.SyncConflict.NotFound": "That conflict is no longer recorded, so nothing was changed. Refresh the list.",
   "Failure.SyncConflict.ParentMissing": "The other device's version points at something this device does not have, so it cannot be applied yet.",
+  "Failure.SyncConflict.SchemaChanged": "The other device's version was recorded before this version of Pine changed how it stores this item, so it cannot be applied as it is. Keeping this device's version is still possible.",
   "Failure.SyncConflict.StillPointedAt": "Other items on this device still point at it, so it cannot be deleted here.",
   "Failure.VaultLocked": "Your vault is locked, so this could not be completed and nothing was changed. Unlock the vault and try again.",
   "ImageLightbox.Close.Content": "Close",

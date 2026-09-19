@@ -120,6 +120,7 @@
   "Failure.SyncConflict.ConsentNotConfirmed": "Aceptar el ajuste del otro dispositivo concedería un consentimiento. Confirma que es tu intención e inténtalo de nuevo. No se cambió nada.",
   "Failure.SyncConflict.NotFound": "Ese conflicto ya no está registrado, así que no se cambió nada. Actualiza la lista.",
   "Failure.SyncConflict.ParentMissing": "La versión del otro dispositivo apunta a algo que este dispositivo no tiene, así que todavía no se puede aplicar.",
+  "Failure.SyncConflict.SchemaChanged": "La versión del otro dispositivo se registró antes de que esta versión de Pine cambiara cómo guarda este elemento, así que no puede aplicarse tal cual. Aún puedes conservar la versión de este dispositivo.",
   "Failure.SyncConflict.StillPointedAt": "Otros elementos de este dispositivo todavía apuntan a él, así que no se puede eliminar aquí.",
   "Failure.VaultLocked": "Tu bóveda está bloqueada, así que esto no se pudo completar y no se cambió nada. Desbloquea la bóveda e inténtalo de nuevo.",
   "ImageLightbox.Close.Content": "Cerrar",

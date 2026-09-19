@@ -83,12 +83,12 @@
 
                                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
                                     <Button Content="{Binding KeepLocalLabel}"
-                                            AutomationProperties.Name="{Binding KeepLocalLabel}"
+                                            AutomationProperties.Name="{Binding KeepLocalAutomationName}"
                                             Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).KeepLocalCommand}"
                                             CommandParameter="{Binding}"
                                             IsEnabled="{Binding !#Page.((vm:SyncConflictsViewModel)DataContext).IsResolving}"/>
                                     <Button Content="{Binding TakeRemoteLabel}" Classes="pine-accent"
-                                            AutomationProperties.Name="{Binding TakeRemoteLabel}"
+                                            AutomationProperties.Name="{Binding TakeRemoteAutomationName}"
                                             Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).TakeRemoteCommand}"
                                             CommandParameter="{Binding}"
                                             IsVisible="{Binding CanTakeRemote}"

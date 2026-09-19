@@ -103,7 +103,9 @@ public class SyncConflictsViewRenderingTests
 
             var take = VisibleButton(view, "Use the other device's version");
             take.Should().NotBeNull();
-            AutomationProperties.GetName(take!).Should().Be("Use the other device's version", "every button has an accessible name");
+            AutomationProperties.GetName(take!).Should().Be("Use the other device's version · Transaction · Grocer",
+                "every button has an accessible name, and it names the item: every row's buttons share their labels (independent review)");
+            AutomationProperties.GetName(VisibleButton(view, "Keep this device's version")!).Should().Be("Keep this device's version · Transaction · Grocer");
             view.GetLogicalDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && Equals(b.Content, "Use the other device's version"))
                 .Should().Be(1, "the orphan's unsafe choice is not a button at all");
 

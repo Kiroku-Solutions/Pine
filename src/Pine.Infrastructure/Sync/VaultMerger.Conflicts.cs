@@ -277,19 +277,25 @@ public static partial class VaultMerger
             new SyncChangeSet(SyncChangeSet.FormatName, string.Empty, peer, targetId, SyncChangeSet.Never, 0, SyncChangeSet.Never, []),
             targetId);
 
+        // Recorded before a migration that dropped a column (or a child table) the payload names (independent review of
+        // item 3.1c): the merge's check would refuse it, and refusing here failed the whole list. It is shown instead,
+        // and its other side is not offered — writing it would need the column. Keeping this device's side writes only
+        // stamps, so it stays offered.
+        var schemaChanged = false;
         if (change.Row is { } payload)
         {
-            await run.RequireColumnsAsync(table.Name, payload.Keys, cancellationToken).ConfigureAwait(false);
+            schemaChanged = !await run.HasColumnsAsync(table.Name, payload.Keys, cancellationToken).ConfigureAwait(false);
             foreach (var (childTable, childRows) in change.Children ?? new Dictionary<string, IReadOnlyList<SyncRow>>())
             {
                 if (!table.ChildOwnerColumns.ContainsKey(childTable))
                 {
-                    throw new SyncMergeRefusedException($"The conflict's row names a child table {table.Name} does not own: '{childTable}'.");
+                    schemaChanged = true;
+                    continue;
                 }
 
                 foreach (var child in childRows)
                 {
-                    await run.RequireColumnsAsync(childTable, child.Keys, cancellationToken).ConfigureAwait(false);
+                    schemaChanged |= !await run.HasColumnsAsync(childTable, child.Keys, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -311,7 +317,11 @@ public static partial class VaultMerger
             remote = (await run.TranslateIdsAsync(table, change.Row!, cancellationToken).ConfigureAwait(false))
                 .With([new("Id", SyncRow.GuidText(id))]);
 
-            if (kind == SyncConflictKind.AmbiguousNaturalKey)
+            if (schemaChanged)
+            {
+                block = SyncConflictBlock.SchemaChanged;
+            }
+            else if (kind == SyncConflictKind.AmbiguousNaturalKey)
             {
                 block = SyncConflictBlock.AmbiguousNaturalKey;
             }
@@ -327,8 +337,7 @@ public static partial class VaultMerger
                 block = SyncConflictBlock.AlreadyExistsHere;
             }
 
-            grantsConsent = table.Name == "Settings"
-                            && SyncMergePolicy.WouldGrantConsent(remote.Text("Key") ?? string.Empty, local?.Text("Value"), remote.Text("Value"));
+            grantsConsent = ApplyRun.WouldGrantConsent(table, local, remote);
         }
 
         var fields = await FieldsAsync(sql, run, table, local, remote, change, cancellationToken).ConfigureAwait(false);

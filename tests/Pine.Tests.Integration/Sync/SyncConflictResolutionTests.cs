@@ -619,6 +619,275 @@ public class SyncConflictResolutionTests
         OpenCount(left).Should().Be(1);
     }
 
+    // ---------------------------------------------------------------- the independent review of item 3.1c
+
+    /// <summary>A budget whose limit both sides changed, merged: an open conflict on each side.</summary>
+    private static async Task<(TempVault Left, TempVault Right, Guid Budget)> ConcurrentLimitAsync()
+    {
+        var left = await MigratedVaultAsync();
+        var right = await MigratedVaultAsync();
+        var budget = Budget.Create("Food", new Money(300m, Usd), BudgetPeriod.Monthly);
+        await WriteAsync(left, LeftDevice, c => { c.Budgets.Add(budget); return Task.CompletedTask; });
+        await MergeAsync(left, right);
+        await SetLimitAsync(left, LeftDevice, budget.Id, 310m);
+        await SetLimitAsync(right, RightDevice, budget.Id, 320m);
+        await MergeAsync(left, right);
+        return (left, right, budget.Id);
+    }
+
+    private static Task SetLimitAsync(TempVault vault, Guid device, Guid budget, decimal limit) =>
+        WriteAsync(vault, device, async c => (await c.Budgets.SingleAsync(b => b.Id == budget)).UpdateLimit(new Money(limit, Usd)));
+
+    /// <summary>
+    /// Review finding: the peer edits a row again while its conflict is still open. Before the fix the next merge took
+    /// the peer's edit here as a change only the peer made — this vault's value was overwritten and its conflict
+    /// closed, with no person on either side having decided (§7: a budget's threshold is a user prompt).
+    /// </summary>
+    [Fact]
+    public async Task AFurtherPeerEdit_ToARowWithAnOpenConflict_IsAskedAbout_NotTakenSilently()
+    {
+        var (left, right, budget) = await ConcurrentLimitAsync();
+        using var l = left;
+        using var r = right;
+        var first = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+
+        await SetLimitAsync(right, RightDevice, budget, 330m);
+        var merged = await MergeAsync(left, right);
+
+        Limit(left, budget).Should().Be(310_0000, "this vault's side of an undecided conflict is not overwritten by the peer's next edit");
+        ResolutionOf(left, first.Id).Should().Be(SyncConflictSummary.Superseded, "the older question gives way to the newer one");
+        var newer = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+        newer.Fields.Should().ContainEquivalentOf(new SyncConflictField("LimitAmount", 310m, 330m), "the person decides against what the peer holds now");
+        merged.IntoLeft.Updated.Should().Be(0);
+        OpenCount(right).Should().Be(1, "the peer's own question is untouched");
+
+        // Decided here, it travels and both sides agree.
+        await ResolveAsync(left, LeftDevice, newer.Id, SyncConflictResolution.TakeRemote);
+        await MergeAsync(left, right);
+        Limit(left, budget).Should().Be(330_0000);
+        Limit(right, budget).Should().Be(330_0000);
+        OpenCount(left).Should().Be(0);
+        OpenCount(right).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Review finding, the chain: each side edits again in turn while both conflicts are open. Before the fix each
+    /// merge overwrote a side and closed its record, so a value nobody chose to discard (320) could vanish from both.
+    /// </summary>
+    [Fact]
+    public async Task FurtherEditsOnBothSides_WhileConflictsAreOpen_NeverDiscardAValueWithoutAPerson()
+    {
+        var (left, right, budget) = await ConcurrentLimitAsync();
+        using var l = left;
+        using var r = right;
+
+        await SetLimitAsync(left, LeftDevice, budget, 340m);
+        await MergeAsync(left, right);
+
+        Limit(right, budget).Should().Be(320_0000, "the right's undecided side stands");
+        (await SingleOpenAsync(right, RightDevice, SyncConflictKind.ConcurrentEdit)).Fields
+            .Should().ContainEquivalentOf(new SyncConflictField("LimitAmount", 320m, 340m));
+        (await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit)).Fields
+            .Should().ContainEquivalentOf(new SyncConflictField("LimitAmount", 340m, 320m), "320 is still offered on the left");
+
+        // Kept here: the right's decision travels, and the left takes it — a person chose.
+        var rightConflict = await SingleOpenAsync(right, RightDevice, SyncConflictKind.ConcurrentEdit);
+        await ResolveAsync(right, RightDevice, rightConflict.Id, SyncConflictResolution.KeepLocal);
+        await MergeAsync(left, right);
+        Limit(left, budget).Should().Be(320_0000, "a peer's decision is applied, not asked about again");
+        Limit(right, budget).Should().Be(320_0000);
+        OpenCount(left).Should().Be(0);
+        OpenCount(right).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Found by the review's mutation R1: the very change a conflict holds, sent again by a peer that has since seen
+    /// this vault's side, is the open question itself — not a decision to apply. Without the same-stamp hold it
+    /// matched the question's own payload, read as "the peer decided", and overwrote this vault's side.
+    /// </summary>
+    [Fact]
+    public async Task TheSameChangeSentAgain_ByAPeerThatHasSinceSeenThisSide_DoesNotOverwriteIt()
+    {
+        var (left, right, budget) = await ConcurrentLimitAsync();
+        using var l = left;
+        using var r = right;
+        var conflict = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+
+        SyncChangeSet again;
+        await using (var rc = On(right, RightDevice))
+        await using (var lc = On(left, LeftDevice))
+        {
+            var leftId = await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None);
+            again = await VaultMerger.ExportAsync(rc, leftId, SyncChangeSet.Never, CancellationToken.None);
+        }
+
+        again.Changes.Should().Contain(c => c.Table == "Budgets" && c.Clock == conflict.RemoteClock, "the change the conflict holds is sent again");
+        await using (var lc = On(left, LeftDevice))
+        {
+            var applied = await VaultMerger.ApplyAsync(lc, again with { SourceKnowsTargetUpTo = long.MaxValue }, CancellationToken.None);
+            applied.Updated.Should().Be(0);
+            applied.ConflictsSuperseded.Should().Be(0);
+        }
+
+        Limit(left, budget).Should().Be(310_0000);
+        ResolutionOf(left, conflict.Id).Should().BeNull("the question is still open");
+    }
+
+    /// <summary>
+    /// Found by the review's mutation R5: a further change to the SPLITS alone of a transaction whose splits are in
+    /// question is not the peer's decision either, even though its row is what the question already offers.
+    /// </summary>
+    [Fact]
+    public async Task AFurtherPeerChangeToSplitsAlone_WhileTheirConflictIsOpen_IsAskedAbout_NotTaken()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var account = NewAccount("Current");
+        await WriteAsync(left, LeftDevice, c => { c.Accounts.Add(account); return Task.CompletedTask; });
+        var spend = Guid.NewGuid();
+        await SpendAsync(left, LeftDevice, account.Id, 20m, "Grocer", spend);
+        await MergeAsync(left, right);
+        await ResplitAsync(left, LeftDevice, spend, "Food");
+        await ResplitAsync(right, RightDevice, spend, "Household");
+        await MergeAsync(left, right);
+        var first = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+
+        await ResplitAsync(right, RightDevice, spend, "Rent");
+        await MergeAsync(left, right);
+
+        Scalar(left, "SELECT Category FROM TransactionSplits WHERE TransactionId = $id;", ("$id", Id(spend))).Should().Be("Food");
+        ResolutionOf(left, first.Id).Should().Be(SyncConflictSummary.Superseded);
+        (await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit)).Id.Should().NotBe(first.Id, "a newer question, about the split the peer holds now");
+    }
+
+    private static Task ResplitAsync(TempVault vault, Guid device, Guid transactionId, string category) =>
+        WriteAsync(vault, device, async c =>
+        {
+            var repository = new SqliteTransactionRepository(c);
+            var transaction = (await repository.GetByIdAsync(transactionId, CancellationToken.None))!;
+            transaction.ReplaceSplits([new SplitDefinition(transaction.TotalAmount, category)]);
+            await repository.SaveAsync(transaction, CancellationToken.None);
+        });
+
+    /// <summary>
+    /// Found by the review's mutation R7: a later change from the peer that is not in question still closes the
+    /// peer's older questions on the row. Left open, a consent question would go on offering a consent the peer
+    /// itself has since withdrawn.
+    /// </summary>
+    [Fact]
+    public async Task APeersLaterSetting_ClosesItsOlderConsentQuestion_SoAWithdrawnConsentIsNotStillOffered()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var setting = Setting.Create("TelemetryConsent", "false");
+        await WriteAsync(left, LeftDevice, c => { c.Settings.Add(setting); return Task.CompletedTask; });
+        await MergeAsync(left, right);
+        await WriteAsync(left, LeftDevice, async c => (await c.Settings.SingleAsync(s => s.Id == setting.Id)).UpdateValue("true"));
+        await MergeAsync(left, right);
+        var consent = await SingleOpenAsync(right, RightDevice, SyncConflictKind.ConsentNotImplicitlyGranted);
+
+        await WriteAsync(left, LeftDevice, async c => (await c.Settings.SingleAsync(s => s.Id == setting.Id)).UpdateValue("no"));
+        await MergeAsync(left, right);
+
+        ResolutionOf(right, consent.Id).Should().Be(SyncConflictSummary.Superseded);
+        OpenCount(right).Should().Be(0);
+        Scalar(right, "SELECT Value FROM Settings WHERE Key = 'TelemetryConsent';").Should().Be("no");
+    }
+
+    /// <summary>Review finding: the peer deletes a row whose conflict is still open. Before the fix it was deleted here unasked.</summary>
+    [Fact]
+    public async Task APeerDeletion_OfARowWithAnOpenConflict_IsAskedAbout_NotAppliedSilently()
+    {
+        var (left, right, budget) = await ConcurrentLimitAsync();
+        using var l = left;
+        using var r = right;
+        var first = await SingleOpenAsync(right, RightDevice, SyncConflictKind.ConcurrentEdit);
+
+        await WriteAsync(left, LeftDevice, async c => c.Budgets.Remove(await c.Budgets.SingleAsync(b => b.Id == budget)));
+        await MergeAsync(left, right);
+
+        Has(right, "Budgets", budget).Should().BeTrue("the right's undecided side is not deleted by the peer's next change");
+        Limit(right, budget).Should().Be(320_0000);
+        ResolutionOf(right, first.Id).Should().Be(SyncConflictSummary.Superseded);
+        var asked = await SingleOpenAsync(right, RightDevice, SyncConflictKind.RemoteDeleteOfLocalEdit);
+
+        await ResolveAsync(right, RightDevice, asked.Id, SyncConflictResolution.TakeRemote);
+        Has(right, "Budgets", budget).Should().BeFalse();
+        await MergeAsync(left, right);
+        OpenCount(right).Should().Be(0);
+        Has(left, "Budgets", budget).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Review finding: a conflict recorded before a migration dropped a column its payload names. Before the fix the
+    /// merge's column check refused it and the whole list failed to load; now that one conflict is shown, its other
+    /// side is not offered, and keeping this device's side still works.
+    /// </summary>
+    [Fact]
+    public async Task AConflictWhosePayloadNamesAColumnThisVaultNoLongerHas_IsListed_ButItsOtherSideIsNotOffered()
+    {
+        var (left, right, budget) = await ConcurrentLimitAsync();
+        using var l = left;
+        using var r = right;
+        var conflict = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+        using (var connection = left.OpenRaw(left.DatabasePath, left.Key))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE SyncConflicts SET RemotePayload = json_set(RemotePayload, '$.row.DroppedLastYear', 'x') WHERE Id = $id;";
+            command.Parameters.AddWithValue("$id", Id(conflict.Id));
+            command.ExecuteNonQuery().Should().Be(1);
+        }
+
+        var listed = await SingleOpenAsync(left, LeftDevice, SyncConflictKind.ConcurrentEdit);
+        listed.TakeRemoteBlockedBy.Should().Be(SyncConflictBlock.SchemaChanged);
+        listed.Fields.Should().ContainEquivalentOf(new SyncConflictField("LimitAmount", 310m, 320m), "both sides are still shown");
+
+        var take = () => ResolveAsync(left, LeftDevice, conflict.Id, SyncConflictResolution.TakeRemote);
+        (await take.Should().ThrowAsync<SyncConflictRefusedException>()).Which.Block.Should().Be(SyncConflictBlock.SchemaChanged);
+        Limit(left, budget).Should().Be(310_0000);
+
+        await ResolveAsync(left, LeftDevice, conflict.Id, SyncConflictResolution.KeepLocal);
+        OpenCount(left).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Review finding (defence in depth, a malformed change set): a setting row sent without its key was not seen as
+    /// a consent, because the consent check read the key from the peer's row only; the update then wrote the value
+    /// over this vault's consent row, whose key it kept.
+    /// </summary>
+    [Fact]
+    public async Task ASettingSentWithoutItsKey_StillCannotGrantAConsent()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var setting = Setting.Create("TelemetryConsent", "false");
+        await WriteAsync(left, LeftDevice, c => { c.Settings.Add(setting); return Task.CompletedTask; });
+        await MergeAsync(left, right);
+        await WriteAsync(left, LeftDevice, async c => (await c.Settings.SingleAsync(s => s.Id == setting.Id)).UpdateValue("true"));
+
+        SyncChangeSet changeSet;
+        await using (var lc = On(left, LeftDevice))
+        await using (var rc = On(right, RightDevice))
+        {
+            var rightId = await VaultMerger.GetOrCreateVaultIdAsync(rc, CancellationToken.None);
+            changeSet = await VaultMerger.ExportAsync(lc, rightId, await VaultMerger.ReadCursorAsync(rc, await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None), CancellationToken.None), CancellationToken.None);
+        }
+
+        var change = changeSet.Changes.Should().ContainSingle(c => c.Table == "Settings").Subject;
+        var keyless = change with { Row = new SyncRow(change.Row!.Where(pair => pair.Key != "Key")) };
+        changeSet = changeSet with { Changes = [.. changeSet.Changes.Select(c => ReferenceEquals(c, change) ? keyless : c)] };
+
+        SyncApplyResult applied;
+        await using (var rc = On(right, RightDevice))
+        {
+            applied = await VaultMerger.ApplyAsync(rc, changeSet, CancellationToken.None);
+        }
+
+        Scalar(right, "SELECT Value FROM Settings WHERE Key = 'TelemetryConsent';").Should().Be("false", "a consent is never granted by a merge");
+        applied.ConflictsRecorded.Should().Be(1);
+        (await SingleOpenAsync(right, RightDevice, SyncConflictKind.ConsentNotImplicitlyGranted)).TakeRemoteGrantsConsent.Should().BeTrue();
+    }
+
     private static ServiceProvider Pipeline(TempVault vault)
     {
         var services = new ServiceCollection();

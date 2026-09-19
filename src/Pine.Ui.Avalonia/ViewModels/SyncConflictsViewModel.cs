@@ -60,6 +60,16 @@ public partial class SyncConflictRowViewModel : ObservableObject
     /// <summary>The button that takes the other device's side.</summary>
     public string TakeRemoteLabel { get; private init; } = string.Empty;
 
+    /// <summary>
+    /// The keep button's accessible name: its label and the item it is about. Every row's buttons carry the same
+    /// labels, so a screen reader moving between them needs the item to know which conflict each one decides
+    /// (independent review of item 3.1c).
+    /// </summary>
+    public string KeepLocalAutomationName => $"{KeepLocalLabel} · {EntityText}";
+
+    /// <summary>The take button's accessible name: its label and the item it is about.</summary>
+    public string TakeRemoteAutomationName => $"{TakeRemoteLabel} · {EntityText}";
+
     /// <summary>Whether taking the other device's side is offered.</summary>
     public bool CanTakeRemote { get; private init; }
 

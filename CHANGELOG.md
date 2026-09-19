@@ -24,8 +24,10 @@ signed artefact and no update mechanism, so "unreleased" is literal.
   does not have, would delete something other items still use, matches more than one item here, or would
   duplicate one created since) is not offered, and the page says why. Accepting another device's setting
   that would grant a consent needs a box ticked first; it is never one click. Your choice is itself a change,
-  so it reaches the other copy the next time they are merged and settles the same conflict there. Nothing in
-  Pine merges vaults on its own yet, so on your vault this page says there is nothing to decide.
+  so it reaches the other copy the next time they are merged and settles the same conflict there. While a
+  conflict is waiting for you, a further change to the same item from the other device does not replace your
+  version either: the conflict is updated to show what the other device holds now. Nothing in Pine merges
+  vaults on its own yet, so on your vault this page says there is nothing to decide.
 - **Groundwork for multi-device sync: two vault files can now be merged, inside Pine, with nothing sent
   anywhere.** There is no button for it yet and no network involved. Changes on either side are copied to the
   other; where both sides changed the same thing, only an account's name or a setting is settled

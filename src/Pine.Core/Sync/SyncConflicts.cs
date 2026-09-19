@@ -43,6 +43,13 @@ public enum SyncConflictBlock
     /// so writing the peer's would duplicate it (or, for a setting, break its unique key).
     /// </summary>
     AlreadyExistsHere,
+
+    /// <summary>
+    /// The peer's side was recorded before this vault's schema changed, and names data this version no longer
+    /// holds, so it cannot be written as it is. It is shown; keeping this device's side is still offered
+    /// (independent review of item 3.1c).
+    /// </summary>
+    SchemaChanged,
 }
 
 /// <summary>One field of a conflicting row, as each side holds it.</summary>
@@ -178,6 +185,7 @@ public sealed class SyncConflictRefusedException : Exception, IUserFacingFailure
         SyncConflictBlock.StillPointedAt => UserFacingText.SyncConflictStillPointedAt(),
         SyncConflictBlock.AmbiguousNaturalKey => UserFacingText.SyncConflictAmbiguous(),
         SyncConflictBlock.AlreadyExistsHere => UserFacingText.SyncConflictAlreadyExistsHere(),
+        SyncConflictBlock.SchemaChanged => UserFacingText.SyncConflictSchemaChanged(),
         _ => throw new ArgumentOutOfRangeException(nameof(block), block, "Nothing blocks it, so there is nothing to say."),
     };
 

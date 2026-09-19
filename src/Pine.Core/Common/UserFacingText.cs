@@ -106,4 +106,7 @@ public static class UserFacingText
 
     /// <summary>An item like the other device's already exists here.</summary>
     public static UserFacingMessage SyncConflictAlreadyExistsHere() => new("Failure.SyncConflict.AlreadyExistsHere");
+
+    /// <summary>The other device's version was recorded before this version of Pine changed how it stores that item.</summary>
+    public static UserFacingMessage SyncConflictSchemaChanged() => new("Failure.SyncConflict.SchemaChanged");
 }
