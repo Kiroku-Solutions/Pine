@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-15-SECURITY`                                                               |
 | Status           | Partially implemented — see the clause-by-clause table already in §4                 |
-| Reconciled       | 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). **AMENDED 2026-09-09 (ADR-0021):** §10 Plugin Security Boundaries is **withdrawn, and it is the section that decided the question** — its "a plugin has no access to the data key" is unsatisfiable in-process, because an `AssemblyLoadContext` isolates type identity rather than access and `VaultSession.Key` returns the live key array. The section was right; the specification it constrained could not satisfy it. Kept unedited as the record of the constraint. See `60-Production-Readiness-Audit` §12.74. |
+| Reconciled       | 2026-09-19 · §7 amended for post-audit plan item 3.1d: the sync key is generated and kept sealed under each vault's data key, not derived from one (TD-154 for pairing). Earlier: 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). **AMENDED 2026-09-09 (ADR-0021):** §10 Plugin Security Boundaries is **withdrawn, and it is the section that decided the question** — its "a plugin has no access to the data key" is unsatisfiable in-process, because an `AssemblyLoadContext` isolates type identity rather than access and `VaultSession.Key` returns the live key array. The section was right; the specification it constrained could not satisfy it. Kept unedited as the record of the constraint. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-08-29                                                                           |
@@ -171,6 +171,15 @@ sequenceDiagram
   authenticated channel.
 - **Cloud-only mode.** Same as local + cloud; the local cache is
   encrypted with the data key.
+
+> **Amended 2026-09-19 (post-audit plan item 3.1d) — the sync key is generated, not derived.** "Derived from the
+> data key" cannot work between two vaults: each vault's data key is its own random 32 bytes, so a key derived from
+> one is a key the other can never compute, and it would change on a real data-key rotation (TD-86). The sync key is
+> therefore 32 bytes from the CSPRNG, made once by the first vault and held by every vault of the user — each holding
+> it **only sealed under its own data key** (`sync.key`, through `IVaultFileCipher`, purpose `sync.key`), which keeps
+> what this clause protects: reaching the sync key requires unlocking a vault. It is never logged, never in an
+> exception message, and its buffers are zeroed. How a second vault is given it (pairing) is not built — TD-154. See
+> `14-Synchronization` §5.
 
 ## 8. Encryption in Transit
 

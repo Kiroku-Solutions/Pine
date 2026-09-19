@@ -73,4 +73,10 @@ public static class VaultFilePurposes
 {
     /// <summary>The serialised ML.NET transaction-categorisation model (TD-16).</summary>
     public const string CategorizerModel = "ai.categorizer.model";
+
+    /// <summary>
+    /// The user's sync key (post-audit plan item 3.1d; `14-Synchronization` §5): the 32 bytes every envelope is
+    /// sealed under, kept beside the vault only as this purpose's ciphertext.
+    /// </summary>
+    public const string SyncKey = "sync.key";
 }

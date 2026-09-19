@@ -21,9 +21,9 @@ namespace Pine.Infrastructure.Sync;
 /// </para>
 /// <para>
 /// PLAINTEXT, IN MEMORY ONLY. §5 requires the document to be encrypted with the user's sync key before it leaves
-/// the device; that envelope is not built here, because nothing here sends it anywhere — the only path is
-/// between two vault files the same process has open. No production code writes this document to disk. It
-/// holds the user's rows, so it is exactly as sensitive as the vault it was read from.
+/// the device; <see cref="SyncEnvelope"/> does that (item 3.1d), and <see cref="VaultMerger.ExportSealedAsync"/> is
+/// the export that hands out only ciphertext. No production code writes this document to disk. It holds the
+/// user's rows, so it is exactly as sensitive as the vault it was read from.
 /// </para>
 /// <para>
 /// NO SECRETS (§6). The vault holds no credential or key in any table a change set reads: the data key lives in
@@ -63,7 +63,37 @@ public sealed record SyncChangeSet(
     /// <summary>Serialises the document to JSON, deterministically.</summary>
     public string ToJson()
     {
+        var utf8 = ToUtf8Json();
+        try
+        {
+            return Encoding.UTF8.GetString(utf8);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(utf8);
+        }
+    }
+
+    /// <summary>
+    /// The same document as UTF-8 bytes, for the envelope (item 3.1d): sealed without passing through an immutable
+    /// string, and the writer's working buffer cleared before it is abandoned.
+    /// </summary>
+    internal byte[] ToUtf8Json()
+    {
         using var buffer = new MemoryStream();
+        try
+        {
+            WriteDocument(buffer);
+            return buffer.ToArray();
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(buffer.GetBuffer());
+        }
+    }
+
+    private void WriteDocument(Stream buffer)
+    {
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
@@ -83,8 +113,6 @@ public sealed record SyncChangeSet(
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
-
-        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     /// <summary>Reads a document written by <see cref="ToJson"/>.</summary>
@@ -92,10 +120,18 @@ public sealed record SyncChangeSet(
     public static SyncChangeSet FromJson(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
+        return Read(() => JsonDocument.Parse(json));
+    }
 
+    /// <summary>Reads a document from UTF-8 bytes — what the envelope opens to (item 3.1d).</summary>
+    /// <exception cref="SyncMergeRefusedException">It is not a <see cref="FormatName"/> document.</exception>
+    internal static SyncChangeSet FromUtf8Json(ReadOnlyMemory<byte> utf8) => Read(() => JsonDocument.Parse(utf8));
+
+    private static SyncChangeSet Read(Func<JsonDocument> parse)
+    {
         try
         {
-            using var document = JsonDocument.Parse(json);
+            using var document = parse();
             var root = document.RootElement;
             var format = root.GetProperty("format").GetString();
             if (!string.Equals(format, FormatName, StringComparison.Ordinal))

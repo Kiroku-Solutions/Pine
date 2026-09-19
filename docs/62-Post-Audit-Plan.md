@@ -1573,7 +1573,7 @@ Only after Stages 0–2. Each of these is a subsystem, not a fix.
 | # | Work | Depends on | State |
 |---|---|---|---|
 | 3.0 | ✅ **Done** (2026-09-14) — **A budget can be created** (added ahead of 3.1: a screen that could not do what it exists for) | TD-152 (closed), TD-149 (closed) | Found by item 2.5's sender guard. The independent review found the form's default made TD-149's UTC month visible, so it was closed here too. See §6.1 |
-| 3.1 | 🟡 **Preconditions, local merge and conflicts screen built** (2026-09-14, §6.2 — TD-146 closed; 2026-09-18, §6.3 — the change set and the merge between two vault files, TD-144 and TD-145 narrowed further; 2026-09-18, §6.4 — a screen that lists recorded conflicts and resolves them). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
+| 3.1 | 🟡 **Preconditions, local merge and conflicts screen built** (2026-09-14, §6.2 — TD-146 closed; 2026-09-18, §6.3 — the change set and the merge between two vault files, TD-144 and TD-145 narrowed further; 2026-09-18, §6.4 — a screen that lists recorded conflicts and resolves them; 2026-09-19, §6.5 — §5's envelope and the sync key, TD-154 registered). **Sync** | TD-144 (logical clock), TD-145 (tombstones), TD-146 (natural keys) | Its persistence preconditions were built in iteration 35 and its delivery mechanism was un-blocked in 36, when ADR-0021 moved `ISyncProvider` out of the withdrawn plugin SDK. The three rows above are what remain between this schema and a merge. **Do not start with the transport** |
 | 3.2 | Rule engine, second half | TD-142 (retroactive application, with a preview), TD-143 (multi-condition UI) | The engine already evaluates up to eight conditions; the form writes one |
 | 3.3 | Attachments: the manual path | TD-141 | FR-TXN-02 asks for attaching a document to a transaction by hand; only the scanner path exists |
 | 3.4 | Notifications, forecasting, investments | — | Specified, unbuilt, and unblocked by nothing. Schedule deliberately or narrow the documents that promise them |
@@ -2080,6 +2080,106 @@ suite: overall 79.0%, `Pine.Infrastructure` 86.8% — the new code is exercised 
 gate does not measure — `Pine.Application` 68.5%, `Pine.Ui.Avalonia` 53.6%; no floor changed). Windows, macOS and
 CLI heads build individually with no warnings.
 
+### 6.5 Item 3.1d, as built (2026-09-19, iteration 53): §5's envelope, still between two vault files
+
+**Still no transport.** What two vaults exchange can now be sealed, and a vault now accepts only something sealed:
+`VaultMerger.ExportSealedAsync` returns an envelope and nothing else, `ApplySealedAsync` takes one and nothing else,
+and the plaintext change set is never written to disk. Both vaults are still open in one process. `NetworkEgressTests`
+is untouched and green.
+
+| Row | Outcome |
+|---|---|
+| TD-144, TD-145 | Unchanged — the envelope carries the cursor; it does not change what a cursor means |
+| TD-154 | 🔴 **Registered** — nothing gives a second vault the sync key (pairing), and the tag authenticates a key, not a device |
+
+#### What was built
+
+- **The user's sync key** (`SyncKey`, `src/Pine.Infrastructure/Sync/`): 32 bytes from the CSPRNG; a public 16-byte id,
+  `HKDF-SHA256(key, info "pine:sync-key-id:v1")`; its buffer zeroed on dispose and every use afterwards refused;
+  `ToString` names the id, never the material. All-zero material is refused as a cleared buffer.
+- **Where a vault keeps it** (`VaultSyncKeyStore`): `sync.key` beside `pine.db`, **only as what `IVaultFileCipher`
+  seals** under the new purpose `sync.key` — AES-256-GCM under `HKDF-SHA256(data key, "pine:file-cipher:v1:sync.key")`,
+  the boundary the categoriser's model already crosses. Written to a temporary file, flushed, moved into place without
+  overwriting; never replaced by a different key (`SyncKeyConflictException`); a damaged file, one sealed by another
+  vault, or an authentic file that is not a key is refused rather than read as absent. Not in the container — nothing
+  in the application runs a merge.
+- **The envelope** (`SyncEnvelope`, `pine.sync-envelope.v1`): a fixed 126-byte header — magic `PINESYNC`, version,
+  source and target vault ids, since clock and source clock, creation time (ms), key id, a 32-byte salt, a 12-byte
+  nonce — then the 16-byte tag and the ciphertext of the `pine.sync.v1` JSON. Each envelope is sealed under
+  `HKDF-SHA256(sync key, salt, "pine:sync-envelope:v1")`, so no two share an AES-GCM key; **the whole header is the
+  associated data**. No compression. The layout and every decision are in `14-Synchronization` §5.
+- **Refusals, typed, before any write** (`SyncEnvelopeRefusedException.Reason`): `Malformed` (short, not ours, a header
+  no sealer writes — equal or empty vault ids, a cursor running backwards, a time that is not one), `UnsupportedVersion`,
+  `WrongKey` (key id), `NotAuthentic` (any tag failure — one reason, no inner exception), `WrongTarget`,
+  `PayloadMismatch` (an authentic payload that is not a change set, or disagrees with its header), and in the apply
+  `Replayed` (source clock not beyond this vault's cursor for its source: a replay, or an older envelope) and `Gap`
+  (starts after that cursor). A newer envelope that overlaps is accepted, as a change set is. The envelope is opened
+  **before the apply's transaction exists**, reading the vault id without creating one; the cursor rules run inside it.
+- **The change set's plaintext** is serialised to and parsed from UTF-8 bytes for the envelope (`ToUtf8Json`,
+  `FromUtf8Json`), and the byte buffers — the serialiser's working buffer, the plaintext and each envelope key — are
+  zeroed. `ToJson` keeps its old output exactly.
+
+#### Decisions, and why
+
+- **The sync key is generated, not derived from the data key** — a departure from `15-Security` §7, amended there.
+  Every vault's data key is its own random 32 bytes, so a key derived from one is a key no other vault can compute,
+  and it would change on a real data-key rotation (TD-86). What §7 protects is kept: reaching the sync key needs a vault
+  unlocked, because each vault holds it only sealed under its own data key.
+- **§5's "signature over the ciphertext" is the GCM tag.** It authenticates ciphertext and header; it proves a holder
+  of the sync key sealed it, not which device. A per-device signature would need device key pairs and a trust list —
+  new cryptography this item does not invent. TD-154.
+- **A per-envelope key (HKDF with a random salt) on top of a random nonce**, not a random nonce alone under the sync
+  key: the salt costs 32 bytes and removes the question of how many envelopes one key may seal.
+- **Replay is refused, not tolerated.** An in-process merge re-applies an overlap idempotently; an envelope that brings
+  nothing new has come from somewhere else and could only raise stale conflicts.
+
+#### Tests
+
+Unit: `SyncEnvelopeTests` (round trip; no plaintext in the envelope; 500 seals, 500 distinct salts, nonces and
+ciphertexts; **every byte flipped with two masks, each refused for the reason its region gives**; truncation at every
+length; a byte appended; the wrong key, and a forged key id that the tag still catches; a header spliced onto a sibling's
+body and a rewritten cursor; another target and a vault with no id; payloads disagreeing with their header; versions
+0 and 99; every malformed header shape; the seal's own refusals; the documented construction reproduced with .NET's
+HKDF and AES-GCM without the class; and **a known-answer vector computed independently** — Python's HMAC for HKDF,
+OpenSSL's AES blocks, GCM's counter and GHASH by hand — which agreed with the implementation byte for byte). `SyncKeyTests`
+(key id, lengths, copy-in and zeroing on dispose, the store's sealing, sameness, conflict, damage, another vault's file,
+another purpose). `SealedMergeRoundTripTests` (two real vaults through envelopes, a wrong key and a replay).
+Integration: `SealedMergeTests` — two SQLCipher vaults merge both ways through envelopes only and converge; the
+export writes no file; every refusal (wrong key both ways, wrong target, flipped bits in every region and across the
+ciphertext, truncation, extension, a spliced header, replay, an older envelope, a gap) leaves the target's **every
+table, every row** as it was; a vault with no id is not given one; an authentic envelope the merge itself refuses (a
+schema from another build, a busy context) writes nothing either.
+
+#### Falsified
+
+**Twenty-one mutations, applied by a script that restores each file's original bytes and asserts it did, each built
+and run against the sync unit tests and `SealedMergeTests`.** First pass: nineteen killed, two survived.
+
+- **M12, `Dispose` not zeroing the key** — the tests checked only that a disposed key refuses to be used. Answered with
+  an assertion that the key's own buffer is all zeros afterwards. Killed.
+- **M15, the apply creating the vault id instead of reading it** — survived because the refusal rolled the id back
+  inside the transaction: equivalent as written. Answered in the code, not only the tests: the envelope is now opened
+  before any transaction exists, so a write there would persist, and the no-id test catches it. Killed.
+
+Killed on the first pass: skipping the key-id check; no associated data; associated data covering only the vault ids;
+skipping the target check; not comparing the payload's since clock, or its source; accepting equal vault ids or a
+backwards cursor in the header; a fixed salt; a fixed nonce; an envelope key that ignores the salt; accepting an exact
+replay (`<=` to `<`); removing the gap check; the store replacing a different key; an authentic non-key read as absent;
+version 0 accepted; the key id derived with the envelope's info; an all-zero key accepted; a tag failure escaping as a
+raw `CryptographicException`. **After the restructure all twenty-one were run again against the final code: all twenty-one killed, none shown equivalent.**
+`git status` and a first-bytes check show no mutation left and no byte-order mark.
+
+**Measured totals:** unit 1455 → **1481**; integration 325 → **330**; coverage gate green (unit suite: overall 79%, `Pine.Core` 91%, `Pine.Infrastructure` 86%, `Pine.Application` 68%, `Pine.Ui.Avalonia` 53% — the new code is exercised mostly by the integration suite, which the gate does not measure; no floor changed). Windows, macOS
+and CLI heads build individually with no warnings (`Pine.slnx` is not built locally: the Android and iOS workloads are
+not installed).
+
+**What this does not close.** **Pairing** — no path gives a second vault the key; the tests use
+`VaultSyncKeyStore.Save` in its place (TD-154). **Device authentication** — the tag proves the key, not the device
+(TD-154). The provider, the transport and the offline queue (§8, §9), and **nothing in the application runs a merge**.
+The plaintext still exists in memory as the `SyncChangeSet` object's strings, which cannot be zeroed; only the byte
+buffers are. A real data-key rotation (TD-86) will have to re-seal `sync.key`. The creation time in the header is
+informative and is not checked.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2166,3 +2266,13 @@ a row with an open conflict was overwritten by the peer's next change — data l
 findings, fixed). **The next
 item is 3.1d: §5's envelope — the change set encrypted with the user's sync key, still between two vault files and
 still without a transport** — so that the first thing that ever leaves the process is ciphertext.
+
+~~The next item is 3.1d: §5's envelope — the change set encrypted with the user's sync key, still between two vault
+files and still without a transport.~~ Done 2026-09-19 (§6.5): what one vault has for another is sealed with AES-256-GCM
+under a per-envelope key derived from the user's sync key, with the whole header bound, and an envelope that is
+damaged, under another key, for another vault, a replay, older, or out of order is refused before anything is written.
+The sync key is generated and kept beside each vault sealed under that vault's data key — a recorded departure from
+`15-Security` §7's "derived from the data key", which cannot work between two vaults. Nothing gives a second vault the
+key yet. **The next item is 3.1e: pairing — giving a second vault the user's sync key over a channel the user confirms
+(TD-154)** — because without it no two real vaults can open each other's envelopes, and a provider would have nothing
+it could carry.
