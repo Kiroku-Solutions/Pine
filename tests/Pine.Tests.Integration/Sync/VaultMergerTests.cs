@@ -137,6 +137,16 @@ public class VaultMergerTests
         });
     }
 
+    /// <summary>Replaces a transaction's splits the way the application does: through the repository, which inserts new children.</summary>
+    private static Task ResplitAsync(TempVault vault, Guid device, Guid transactionId, string category) =>
+        WriteAsync(vault, device, async c =>
+        {
+            var repository = new SqliteTransactionRepository(c);
+            var transaction = (await repository.GetByIdAsync(transactionId, CancellationToken.None))!;
+            transaction.ReplaceSplits([new SplitDefinition(transaction.TotalAmount, category)]);
+            await repository.SaveAsync(transaction, CancellationToken.None);
+        });
+
     /// <summary>Two vaults that have merged once and share one account with opening balance 100.</summary>
     private static async Task<(TempVault Left, TempVault Right, Account Account)> TwoMergedVaultsAsync()
     {
@@ -477,6 +487,227 @@ public class VaultMergerTests
         ConflictKinds(left).Should().Equal(nameof(SyncConflictKind.AmbiguousNaturalKey));
     }
 
+    // ---------------------------------------------------------------- natural keys: the independent review (item 3.1b)
+
+    /// <summary>
+    /// A budget deleted and created again with the same key on one side is ONE change set holding the new row and the
+    /// old row's tombstone. Matched by key, the new row was folded into the old one — and then deleted with it: the
+    /// other vault ended with no budget at all (independent review of item 3.1b).
+    /// </summary>
+    [Fact]
+    public async Task ARowDeletedAndCreatedAgainWithTheSameKey_ArrivesAsTheNewRow_NotFoldedIntoTheDeletedOne()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var first = Budget.Create("Food", new Money(300m, Usd), BudgetPeriod.Monthly);
+        await WriteAsync(left, LeftDevice, c => { c.Budgets.Add(first); return Task.CompletedTask; });
+        await MergeAsync(left, right);
+
+        var second = Budget.Create("Food", new Money(300m, Usd), BudgetPeriod.Monthly);
+        await WriteAsync(left, LeftDevice, async c =>
+        {
+            c.Budgets.Remove(await c.Budgets.SingleAsync(b => b.Id == first.Id));
+            c.Budgets.Add(second);
+        });
+
+        var result = await MergeAsync(left, right);
+
+        Has(right, "Budgets", second.Id).Should().BeTrue("the new budget is a new row");
+        Has(right, "Budgets", first.Id).Should().BeFalse("and the deleted one is deleted");
+        result.IntoRight.Inserted.Should().Be(1);
+        result.IntoRight.Deleted.Should().Be(1, "the tombstone applied early is applied, and counted, once");
+        result.IntoRight.Unchanged.Should().Be(0, "and not counted again as already gone when its own turn comes");
+        result.IntoRight.AliasesRecorded.Should().Be(0);
+        ConflictKinds(right).Should().BeEmpty();
+        (await MergeAsync(left, right)).IntoRight.Should().Match<SyncApplyResult>(r => r.Inserted == 0 && r.Deleted == 0 && r.Updated == 0);
+    }
+
+    /// <summary>
+    /// The same, for a key the schema holds unique: the deletion has to land before the insert, or the insert fails
+    /// the unique index and the whole merge with it. And when the deletion is refused — the row was changed here —
+    /// the old row stays and the new one is matched to it, never inserted beside it.
+    /// </summary>
+    [Fact]
+    public async Task ASettingDeletedAndCreatedAgain_Replaces_OrWhenTheDeletionIsRefused_IsMatchedToTheSurvivor()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var first = Setting.Create("Theme", "Dark");
+        await WriteAsync(left, LeftDevice, c => { c.Settings.Add(first); c.Settings.Add(Setting.Create("Language", "es")); return Task.CompletedTask; });
+        await MergeAsync(left, right);
+
+        var second = Setting.Create("Theme", "Dark");
+        await WriteAsync(left, LeftDevice, async c =>
+        {
+            c.Settings.Remove(await c.Settings.SingleAsync(x => x.Id == first.Id));
+            c.Settings.Add(second);
+        });
+        await MergeAsync(left, right);
+
+        Has(right, "Settings", second.Id).Should().BeTrue();
+        SettingValue(right, "Theme").Should().Be("Dark");
+
+        // Now the deletion is refused on the right, because the right changed the row the left deleted.
+        var third = Setting.Create("Language", "fr");
+        await WriteAsync(left, LeftDevice, async c =>
+        {
+            c.Settings.Remove(await c.Settings.SingleAsync(x => x.Key == "Language"));
+            c.Settings.Add(third);
+        });
+        await WriteAsync(right, RightDevice, async c => (await c.Settings.SingleAsync(x => x.Key == "Language")).UpdateValue("de"));
+
+        var act = () => MergeAsync(left, right);
+        await act.Should().NotThrowAsync("a refused deletion must not leave the new row to collide with the unique key");
+        Count(right, "SELECT COUNT(*) FROM Settings WHERE Key = 'Language';").Should().Be(1);
+        ConflictKinds(right).Should().Contain(nameof(SyncConflictKind.RemoteDeleteOfLocalEdit));
+    }
+
+    /// <summary>
+    /// The receipt flow lets a person save the same receipt twice — two identical coffees are two purchases — so one
+    /// vault can hold two transactions with one natural key. Matched by it, the second was folded into the first on
+    /// the other side: one transaction, and a balance out by the second (independent review of item 3.1b).
+    /// </summary>
+    [Fact]
+    public async Task TwoTransactionsSharingAKeyOnOneSide_ArriveAsTwo_InOneMerge()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        await SpendAsync(right, RightDevice, account.Id, 4m, "Cafe", importKey: "receipt:cafe:4");
+        await SpendAsync(right, RightDevice, account.Id, 4m, "Cafe", importKey: "receipt:cafe:4");
+
+        var result = await MergeAsync(left, right);
+
+        Count(left, "SELECT COUNT(*) FROM Transactions;").Should().Be(2);
+        Balance(left, account.Id).Should().Be(92_0000).And.Be(Balance(right, account.Id));
+        result.IntoLeft.AliasesRecorded.Should().Be(0);
+        result.IntoLeft.ConflictsRecorded.Should().Be(0);
+    }
+
+    /// <summary>The same when the first was merged long before the second was saved: it must not become the second's match.</summary>
+    [Fact]
+    public async Task ASecondTransactionWithTheKeyOfOneAlreadyMerged_IsNotFoldedIntoIt()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        await SpendAsync(right, RightDevice, account.Id, 4m, "Cafe", importKey: "receipt:cafe:4");
+        await MergeAsync(left, right);
+        await SpendAsync(right, RightDevice, account.Id, 4m, "Cafe", importKey: "receipt:cafe:4");
+
+        var result = await MergeAsync(left, right);
+
+        Count(left, "SELECT COUNT(*) FROM Transactions;").Should().Be(2);
+        Balance(left, account.Id).Should().Be(92_0000).And.Be(Balance(right, account.Id));
+        result.IntoLeft.Inserted.Should().Be(1);
+        result.IntoLeft.AliasesRecorded.Should().Be(0);
+    }
+
+    /// <summary>The key still does its job when it is unique on the sending side: an import made on both devices is one transaction.</summary>
+    [Fact]
+    public async Task TheSameImportOnBothSides_IsStillMatchedByItsKey()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        await SpendAsync(left, LeftDevice, account.Id, 7m, "Bakery", importKey: "csv:bank:row-17");
+        await SpendAsync(right, RightDevice, account.Id, 7m, "Bakery", importKey: "csv:bank:row-17");
+
+        var result = await MergeAsync(left, right);
+
+        Count(left, "SELECT COUNT(*) FROM Transactions;").Should().Be(1);
+        Count(right, "SELECT COUNT(*) FROM Transactions;").Should().Be(1);
+        (result.IntoLeft.AliasesRecorded + result.IntoRight.AliasesRecorded).Should().Be(2);
+    }
+
+    // ---------------------------------------------------------------- the independent review (item 3.1b): survivors
+
+    /// <summary>
+    /// A change to a transaction's splits alone is a change to the transaction: it arrives when only one side made it,
+    /// and is a conflict when both did. No test changed children without the root, so treating children as never
+    /// different survived every test (independent review of item 3.1b).
+    /// </summary>
+    [Fact]
+    public async Task ASplitChangedOnOneSide_Arrives_AndSplitsChangedOnBothSides_AreAConflict()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        var spendId = Guid.NewGuid();
+        await SpendAsync(left, LeftDevice, account.Id, 20m, "Grocer", spendId);
+        await MergeAsync(left, right);
+
+        await ResplitAsync(left, LeftDevice, spendId, "Groceries");
+        var first = await MergeAsync(left, right);
+
+        first.IntoRight.Updated.Should().Be(1);
+        Scalar(right, "SELECT Category FROM TransactionSplits WHERE TransactionId = $id;", ("$id", Id(spendId))).Should().Be("Groceries");
+
+        await ResplitAsync(left, LeftDevice, spendId, "Food");
+        await ResplitAsync(right, RightDevice, spendId, "Household");
+        await MergeAsync(left, right);
+
+        Scalar(left, "SELECT Category FROM TransactionSplits WHERE TransactionId = $id;", ("$id", Id(spendId))).Should().Be("Food");
+        Scalar(right, "SELECT Category FROM TransactionSplits WHERE TransactionId = $id;", ("$id", Id(spendId))).Should().Be("Household");
+        ConflictKinds(left).Should().Equal(nameof(SyncConflictKind.ConcurrentEdit));
+        ConflictKinds(right).Should().Equal(nameof(SyncConflictKind.ConcurrentEdit));
+    }
+
+    /// <summary>
+    /// An account from before opening balances (TD-02) has none to derive from; its balance moves by exactly the change
+    /// in its ledger. Leaving it unmoved survived every test (independent review of item 3.1b).
+    /// </summary>
+    [Fact]
+    public async Task AnAccountWithNoOpeningBalance_IsMovedByTheChangeInItsLedger()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        left.ExecuteSql("UPDATE Accounts SET OpeningBalanceAmount = NULL;");
+        right.ExecuteSql("UPDATE Accounts SET OpeningBalanceAmount = NULL;");
+
+        await SpendAsync(left, LeftDevice, account.Id, 20m, "Grocer");
+        await MergeAsync(left, right);
+
+        Balance(right, account.Id).Should().Be(80_0000, "100 less the 20 the ledger gained; there is no opening figure to rebuild it from");
+        Count(right, "SELECT COUNT(*) FROM Accounts WHERE OpeningBalanceAmount IS NULL;").Should().Be(1, "and none is invented");
+    }
+
+    /// <summary>
+    /// A deletion of a row a vault never had is still kept there, so it reaches a vault that has the row — and so the
+    /// row, coming back from that vault, is not brought back to life. Dropping it survived every test (independent
+    /// review of item 3.1b); without it the middle vault inserted the deleted budget.
+    /// </summary>
+    [Fact]
+    public async Task ADeletionOfARowAVaultNeverHad_IsKept_SoTheRowIsNotResurrectedThroughIt()
+    {
+        using var a = await MigratedVaultAsync();
+        using var b = await MigratedVaultAsync();
+        using var c = await MigratedVaultAsync();
+        var budget = Budget.Create("Food", new Money(300m, Usd), BudgetPeriod.Monthly);
+        await WriteAsync(a, LeftDevice, ctx => { ctx.Budgets.Add(budget); return Task.CompletedTask; });
+
+        await using (var ac = On(a, LeftDevice))
+        await using (var cc = On(c, ThirdDevice))
+        {
+            await VaultMerger.MergeAsync(ac, cc, CancellationToken.None);
+        }
+
+        await WriteAsync(a, LeftDevice, async ctx => ctx.Budgets.Remove(await ctx.Budgets.SingleAsync(x => x.Id == budget.Id)));
+        await MergeAsync(a, b);
+        Count(b, "SELECT COUNT(*) FROM Tombstones WHERE EntityId = $id;", ("$id", Id(budget.Id))).Should().Be(1);
+
+        await using (var bc = On(b, RightDevice))
+        await using (var cc = On(c, ThirdDevice))
+        {
+            await VaultMerger.MergeAsync(bc, cc, CancellationToken.None);
+        }
+
+        Has(b, "Budgets", budget.Id).Should().BeFalse("a row deleted before it ever arrived is not brought back by a vault that still has it");
+        ConflictKinds(b).Should().Equal(nameof(SyncConflictKind.RemoteEditOfLocalDelete));
+        ConflictKinds(c).Should().Equal([nameof(SyncConflictKind.RemoteDeleteOfLocalEdit)], "the deletion reaches the vault that has the row");
+    }
+
     // ---------------------------------------------------------------- consent
 
     [Fact]
@@ -683,6 +914,13 @@ public class VaultMergerTests
 
         var act = () => VaultMerger.MergeAsync(l, r, CancellationToken.None);
         await act.Should().ThrowAsync<SyncMergeRefusedException>();
+
+        // And the right, on its own (independent review of item 3.1b: only the left was ever tried).
+        await using var l2 = On(left, LeftDevice);
+        await using var r2 = On(right, RightDevice);
+        r2.Accounts.Add(NewAccount("Unsaved on the right"));
+        var right2 = () => VaultMerger.MergeAsync(l2, r2, CancellationToken.None);
+        (await right2.Should().ThrowAsync<SyncMergeRefusedException>()).WithMessage("*unsaved changes*");
     }
 
     // ---------------------------------------------------------------- restore (TD-144's other half)

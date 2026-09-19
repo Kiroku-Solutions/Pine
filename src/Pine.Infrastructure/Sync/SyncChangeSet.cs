@@ -127,7 +127,11 @@ public sealed record SyncChangeSet(
 /// <param name="Clock">The Lamport clock it was written (or deleted) with — the original writer's.</param>
 /// <param name="DeviceId">The installation that wrote (or deleted) it.</param>
 /// <param name="IsTombstone">A deletion: <paramref name="Row"/> and <paramref name="Children"/> are then null.</param>
-/// <param name="NaturalKey">Its natural key in the source's id space (TD-146), or null.</param>
+/// <param name="NaturalKey">
+/// Its natural key in the source's id space (TD-146), or null: for a row with none, and for a row whose key another
+/// row in the source shares — a key two rows share identifies neither, and a merge matches by a key only when one is
+/// sent (independent review of item 3.1b).
+/// </param>
 /// <param name="Row">Every column of the row, bookkeeping included, as the source stores it.</param>
 /// <param name="Children">Every owned child row, by child table, ordered by id.</param>
 public sealed record SyncChange(

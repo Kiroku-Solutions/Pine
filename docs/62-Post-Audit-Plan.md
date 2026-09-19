@@ -1870,7 +1870,59 @@ vault id and the peer cursors); and a byte copy of a vault carries its id, so a 
 cannot tell them apart. TD-145: tombstone retention (a cursor per peer exists now, but a retention is a claim
 about every peer, including ones never met) and `secure_delete`. Rows from before `AddSyncClockDeviceAndTombstones`
 carry clock 0 and the empty device, so between two upgraded vaults their "both changed" order falls to the vault
-id — deterministic, not meaningful. And the merge has had no independent review yet.
+id — deterministic, not meaningful.
+
+#### The independent review
+
+**It found two major problems, both data loss through the natural key, and five mutations survived the suite.**
+Every finding was reproduced with a probe test that failed on the reviewed commit before it was reported, and each
+probe is now a regression test that passes.
+
+- **MAJOR, fixed — a row deleted and created again with the same key vanished from the other vault.** Deleting a
+  budget (or a setting) and creating the same one again puts the new row *and* the old row's tombstone in one change
+  set. Rows are applied before tombstones, so the new row found the old one by natural key, was folded into it
+  under an alias, and the tombstone then deleted it: the other vault ended with **no budget at all** (probe: 0 rows
+  where 1 was expected; the setting variant likewise lacked the new row). The apply now asks whether the one match is a
+  row this same change set deletes; if so it applies that deletion first, and the new row is inserted as itself. If
+  the deletion is refused (changed here, or still pointed at), the old row stays and is matched as before, so a
+  setting's unique key is never inserted twice. A tombstone applied early is not applied, or counted, again.
+- **MAJOR, fixed — two rows sharing a key on the sending side were collapsed into one.** The receipt flow lets a
+  person save the same receipt twice on purpose (`CheckReceiptDuplicateQuery` warns and lets them go on), and the
+  `(AccountId, ImportKey)` index is deliberately not unique, so one vault can hold two transactions with one natural
+  key. The second was matched to the first on the other side: **one transaction instead of two** (probe: 1 row where
+  2 were expected; the tests now also hold the two vaults' balances equal). This happened whether both came in one merge or
+  the second came a merge later. A key two rows in the source share now identifies neither: the export sends no key
+  for such a row (`SyncChange.NaturalKey` is null), and the apply matches by a key only when one is sent. The key
+  still does its job when it is unique on the sending side — the same import made on both devices is one
+  transaction, and a test holds that too.
+- **Five tests that were not there, found by mutation.** Refusing a busy *right* context was never tried (only the
+  left); a change to a transaction's splits alone — the children, not the root — was never merged, so treating
+  children as never different passed everything; the balance of an account with no opening balance (TD-02) being
+  moved by the change in its ledger was never checked, so leaving it unmoved passed; a tombstone kept for a row this
+  vault never had — the thing that stops a third vault resurrecting it — could be dropped without a failure; and the
+  early-tombstone guard added above survived until the counts were asserted. Each has a test now, and each mutation
+  was re-run and killed.
+- **Recorded, not reproduced — the early deletion can still be blocked.** A transaction deleted and re-imported
+  with its attachments deleted too would have its early deletion refused (the attachments' tombstones come later in
+  the tombstone pass), fall back to the match, and record `DeleteBlockedByDependents`: a conflict for a person, not
+  a loss. No command deletes a transaction today, so this is by reading only.
+
+**Read and found sound, without a finding:** "changed on both sides" against `SourceKnowsTargetUpTo` (including after
+a restore, which the floor protects, and after a left-side failure in `MergeAsync`); the receive step; the cursor
+arithmetic in `MergeAsync`; ledger sums as scaled integers with voided transactions excluded; every identifier
+interpolated into SQL passing `Ident`, and every value a parameter; the migration's `Up`, backfill and `Down`.
+
+**Falsified.** Twenty mutations, each applied by a script, built, run against the merge's integration tests and
+reverted: fifteen killed first time (among them removing the receive step, ignoring the floor, counting voided
+transactions, cutting the export by `RowClock`, resurrecting a remote edit of a local delete, guessing an ambiguous
+key, and both fixes above removed or weakened), five survived — the five tests above — and all five were killed
+after. None shown equivalent. The script's own first run wrote a byte-order mark into two untouched files on
+restore (no content change); it was caught by `git status` and the files reverted to `HEAD` before the suites below
+were run.
+
+**Measured totals (after the review):** unit **1406** (unchanged: the review's tests are integration tests);
+integration 292 → **300**; coverage gate green (overall 77.7%, `Pine.Infrastructure` 85.8% — unchanged from the
+first commit); Windows, macOS and CLI heads build with no warnings.
 
 ## 7. Stage 4 — The documents
 

@@ -330,13 +330,23 @@ public static partial class VaultMerger
             {
                 var id = row.GuidAt("Id")!.Value;
                 present.Add((table.Name, id));
+
+                // A key two rows here share identifies neither of them (independent review of item 3.1b): the same
+                // receipt saved twice on purpose is two purchases, and matching either by the key would collapse
+                // them into one row on the peer. Such a row travels without a key, and is never matched by one.
+                var key = SyncSchema.NaturalKeyOf(table.Name, row);
+                if (key is not null && (await FindByNaturalKeyAsync(sql, table.Name, row, key, cancellationToken).ConfigureAwait(false)).Count > 1)
+                {
+                    key = null;
+                }
+
                 changes.Add(new SyncChange(
                     table.Name,
                     id,
                     row.Number(PineDbContext.ClockColumnName) ?? 0,
                     row.GuidAt(PineDbContext.DeviceColumnName) ?? Guid.Empty,
                     IsTombstone: false,
-                    SyncSchema.NaturalKeyOf(table.Name, row),
+                    key,
                     row,
                     await ReadChildrenAsync(sql, table, id, cancellationToken).ConfigureAwait(false)));
             }
@@ -374,6 +384,18 @@ public static partial class VaultMerger
             sourceClock,
             knows,
             changes);
+    }
+
+    /// <summary>The rows of <paramref name="table"/> whose natural key is <paramref name="key"/>.</summary>
+    private static async Task<IReadOnlyList<SyncRow>> FindByNaturalKeyAsync(Sql sql, string table, SyncRow row, string key, CancellationToken cancellationToken)
+    {
+        var narrowing = SyncSchema.NaturalKeyNarrowingColumn(table)!;
+        var candidates = await sql.RowsAsync(
+            $"SELECT * FROM {Ident(table)} WHERE {Ident(narrowing)} = $value;",
+            cancellationToken,
+            ("$value", row[narrowing])).ConfigureAwait(false);
+
+        return candidates.Where(candidate => SyncSchema.NaturalKeyOf(table, candidate) == key).ToList();
     }
 
     private static async Task<IReadOnlyDictionary<string, IReadOnlyList<SyncRow>>> ReadChildrenAsync(
@@ -473,6 +495,7 @@ public static partial class VaultMerger
         private readonly Dictionary<string, HashSet<string>> _columns = new(StringComparer.Ordinal);
         private readonly Dictionary<string, long?> _ledgerBefore = new(StringComparer.Ordinal);
         private readonly HashSet<string> _accountsInserted = new(StringComparer.Ordinal);
+        private readonly HashSet<SyncChange> _tombstonesApplied = new(ReferenceEqualityComparer.Instance);
         private readonly string _now = sql.Context.Clock.GetUtcNow().UtcDateTime.ToString(DateTimeStoreFormat, CultureInfo.InvariantCulture);
         private long? _clock;
         private int _inserted;
@@ -542,10 +565,24 @@ public static partial class VaultMerger
                     return;
                 }
 
-                var key = SyncSchema.NaturalKeyOf(table.Name, remote);
+                // Only a key the source vouches for: it sends none when two of its own rows share one (see the export).
+                var key = change.NaturalKey is null ? null : SyncSchema.NaturalKeyOf(table.Name, remote);
                 if (key is not null)
                 {
-                    var matches = await FindByNaturalKeyAsync(table, remote, key, cancellationToken).ConfigureAwait(false);
+                    var matches = await FindByNaturalKeyAsync(sql, table.Name, remote, key, cancellationToken).ConfigureAwait(false);
+
+                    // Deleted and re-created with the same key on the peer (independent review of item 3.1b): the one
+                    // match is the row this SAME change set deletes. Matched, the new row would be folded into the old
+                    // one and then deleted with it. So the deletion is applied first: if it stands, the new row is
+                    // simply new; if it is refused (changed here, or still pointed at), the old row stays and is
+                    // matched as before — which is also why a unique key, a setting's, is never inserted twice.
+                    if (matches.Count == 1
+                        && await DeletedByThisChangeSetAsync(table, matches[0].GuidAt("Id")!.Value, cancellationToken).ConfigureAwait(false) is { } deletion)
+                    {
+                        await ApplyTombstoneAsync(table, deletion, cancellationToken).ConfigureAwait(false);
+                        matches = await FindByNaturalKeyAsync(sql, table.Name, remote, key, cancellationToken).ConfigureAwait(false);
+                    }
+
                     if (matches.Count > 1)
                     {
                         await ConflictAsync(table, localId, change, SyncConflictKind.AmbiguousNaturalKey, cancellationToken).ConfigureAwait(false);
@@ -608,6 +645,12 @@ public static partial class VaultMerger
 
         public async Task ApplyTombstoneAsync(SyncTable table, SyncChange change, CancellationToken cancellationToken)
         {
+            // One a natural-key match applied early is not applied, or counted, a second time.
+            if (!_tombstonesApplied.Add(change))
+            {
+                return;
+            }
+
             var localId = await AliasOfAsync(table.Name, change.EntityId, cancellationToken).ConfigureAwait(false) ?? change.EntityId;
             var local = await ReadRowAsync(table.Name, localId, cancellationToken).ConfigureAwait(false);
 
@@ -903,15 +946,21 @@ public static partial class VaultMerger
             (await sql.RowsAsync($"SELECT * FROM {Ident(table)} WHERE \"Id\" = $id;", cancellationToken, ("$id", SyncRow.GuidText(id))).ConfigureAwait(false))
             .SingleOrDefault();
 
-        private async Task<IReadOnlyList<SyncRow>> FindByNaturalKeyAsync(SyncTable table, SyncRow remote, string key, CancellationToken cancellationToken)
+        /// <summary>
+        /// The tombstone in this change set that deletes the local row <paramref name="localId"/>, its id translated
+        /// through the aliases; null when the change set does not delete it.
+        /// </summary>
+        private async Task<SyncChange?> DeletedByThisChangeSetAsync(SyncTable table, Guid localId, CancellationToken cancellationToken)
         {
-            var narrowing = SyncSchema.NaturalKeyNarrowingColumn(table.Name)!;
-            var candidates = await sql.RowsAsync(
-                $"SELECT * FROM {Ident(table.Name)} WHERE {Ident(narrowing)} = $value;",
-                cancellationToken,
-                ("$value", remote[narrowing])).ConfigureAwait(false);
+            foreach (var tombstone in changeSet.Changes.Where(change => change.IsTombstone && change.Table == table.Name))
+            {
+                if ((await AliasOfAsync(table.Name, tombstone.EntityId, cancellationToken).ConfigureAwait(false) ?? tombstone.EntityId) == localId)
+                {
+                    return tombstone;
+                }
+            }
 
-            return candidates.Where(candidate => SyncSchema.NaturalKeyOf(table.Name, candidate) == key).ToList();
+            return null;
         }
 
         private async Task<bool> MissingParentAsync(SyncTable table, SyncRow row, CancellationToken cancellationToken)
