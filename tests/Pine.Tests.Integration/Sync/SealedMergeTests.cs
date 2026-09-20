@@ -356,5 +356,40 @@ public class SealedMergeTests
         }
 
         Snapshot(right).Should().Be(before);
+
+        // AND A FAILED APPLY LEAVES THE ENVELOPE APPLICABLE (independent review of item 3.1d). The cursor moves inside
+        // the transaction the refusal rolls back, so the good envelope is not turned into a replay by a bad one.
+        (await OpenAsync(right, RightDevice, SyncEnvelope.Seal(changeSet, key, DateTimeOffset.UtcNow), key)).Inserted.Should().Be(1);
+    }
+
+    /// <summary>
+    /// WHAT THE REPLAY REFUSAL IS, AND WHAT IT IS NOT (independent review of item 3.1d). It is a fact about this
+    /// vault's database — the cursor in `SyncPeers` — and not a record of envelopes ever seen. A restore brings back
+    /// an older `pine.db`, and with it an older cursor, so an envelope this vault had already applied applies again.
+    /// That is the right answer rather than a hole: the restored vault genuinely no longer holds those rows, and the
+    /// apply is the same idempotent merge. It is written down here because "a replay is refused" on its own would
+    /// suggest a guarantee that survives a restore, and nothing in this item gives one.
+    /// </summary>
+    [Fact]
+    public async Task ARestoreThatRewindsTheCursor_MakesAnAppliedEnvelopeApplyAgain()
+    {
+        var (left, right, key) = await PairedVaultsAsync();
+        using var disposeLeft = left;
+        using var disposeRight = right;
+        using var disposeKey = key;
+
+        await WriteAsync(left, LeftDevice, c => { c.Accounts.Add(NewAccount("Current")); return Task.CompletedTask; });
+        var envelope = await SealAsync(left, LeftDevice, right, RightDevice, key);
+
+        (await OpenAsync(right, RightDevice, envelope, key)).Inserted.Should().Be(1);
+        (await RefusedAsync(right, RightDevice, envelope, key)).Should().Be(SyncEnvelopeRefusal.Replayed);
+
+        // A restore of an older pine.db, reduced to the one row that decides this: the peer cursor, and the account
+        // that came with the envelope, both gone again.
+        right.ExecuteSql("DELETE FROM SyncPeers; DELETE FROM Accounts;");
+
+        (await OpenAsync(right, RightDevice, envelope, key)).Inserted.Should().Be(1, "the restored vault does not have these rows, and the envelope brings them back");
+        Count(right, "SELECT COUNT(*) FROM Accounts;").Should().Be(1);
+        (await RefusedAsync(right, RightDevice, envelope, key)).Should().Be(SyncEnvelopeRefusal.Replayed, "and the refusal stands again from the cursor the apply wrote");
     }
 }

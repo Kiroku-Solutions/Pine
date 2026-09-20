@@ -55,6 +55,20 @@ public class SyncEnvelopeTests
             ]);
     }
 
+    /// <summary>The longest run of hexadecimal digits in <paramref name="text"/>: how key material would show up.</summary>
+    private static int LongestHexRun(string text)
+    {
+        var longest = 0;
+        var run = 0;
+        foreach (var c in text)
+        {
+            run = Uri.IsHexDigit(c) ? run + 1 : 0;
+            longest = Math.Max(longest, run);
+        }
+
+        return longest;
+    }
+
     private static SyncEnvelopeRefusal RefusalOf(Action open)
     {
         var refusal = open.Should().Throw<SyncEnvelopeRefusedException>().Which;
@@ -284,6 +298,94 @@ public class SyncEnvelopeTests
         FluentActions.Invoking(() => SyncEnvelope.Seal(ChangeSet(since: 43, sourceClock: 42), key, Sealed)).Should().Throw<ArgumentException>();
         FluentActions.Invoking(() => SyncEnvelope.Seal(ChangeSet(since: -2), key, Sealed)).Should().Throw<ArgumentException>();
         FluentActions.Invoking(() => SyncEnvelope.Seal(ChangeSet(since: -1, sourceClock: -1), key, Sealed)).Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// NO REFUSAL SAYS ANYTHING ABOUT THE KEY OR THE ROWS (independent review of item 3.1d). The reasons are typed so
+    /// that callers do not have to read the sentences; the sentences must therefore carry nothing an attacker who can
+    /// feed this method envelopes and read its errors would want — not the sync key, not the per-envelope key, not the
+    /// payload, and not a long run of hexadecimal from anywhere. The review's mutation that appended the derived key
+    /// to the "not authentic" message survived the suite as it stood.
+    /// </summary>
+    [Fact]
+    public void NoRefusalMessage_QuotesThePayload_OrAnyKeyMaterial()
+    {
+        var material = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        using var key = SyncKey.FromBytes(material);
+        using var other = KeyB();
+        var envelope = SyncEnvelope.Seal(ChangeSet(payee: "Grocer Secretive"), key, Sealed);
+        var envelopeKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, material, 32, envelope.AsSpan(SaltOffset, 32).ToArray(), Encoding.ASCII.GetBytes("pine:sync-envelope:v1"));
+
+        var damaged = (byte[])envelope.Clone();
+        damaged[^1] ^= 0x01;
+
+        var header = new SyncEnvelopeHeader(1, Source, Target, SyncChangeSet.Never, 42, Sealed, key.KeyId);
+        var disagreeing = SyncEnvelope.SealCore(header, SyncChangeSet.FormatName, ChangeSet(target: Other, payee: "Grocer Secretive").ToUtf8Json(), key, new byte[32], new byte[12]);
+        var notAChangeSet = SyncEnvelope.SealCore(header, SyncChangeSet.FormatName, """{"format":"Grocer Secretive"}"""u8, key, new byte[32], new byte[12]);
+        var forAnother = SyncEnvelope.Seal(ChangeSet(target: Other, payee: "Grocer Secretive"), key, Sealed);
+        var wrongVersion = (byte[])envelope.Clone();
+        BinaryPrimitives.WriteUInt16LittleEndian(wrongVersion.AsSpan(8), 99);
+
+        var candidates = new (byte[] Envelope, SyncKey Key)[]
+        {
+            (envelope, other),
+            (damaged, key),
+            (disagreeing, key),
+            (notAChangeSet, key),
+            (forAnother, key),
+            (wrongVersion, key),
+            (envelope[..100], key),
+            ([.. "NOTPINE!"u8, .. envelope.AsSpan(8)], key),
+        };
+
+        var messages = candidates
+            .Select(candidate => FluentActions.Invoking(() => SyncEnvelope.Open(candidate.Envelope, candidate.Key, Target))
+                .Should().Throw<SyncEnvelopeRefusedException>().Which.Message)
+            .ToList();
+
+        messages.Should().HaveCount(candidates.Length).And.OnlyContain(message => message.Length > 0);
+        foreach (var message in messages)
+        {
+            message.Should().NotContain("Secretive", "a refusal never quotes the payload")
+                .And.NotContain("Grocer")
+                .And.NotContain(Convert.ToHexString(material), "never the sync key")
+                .And.NotContain(Convert.ToHexString(envelopeKey), "never the envelope's own key")
+                .And.NotContain(Convert.ToHexString(key.KeyId), "not even the public key id");
+            LongestHexRun(message).Should().BeLessThan(24, $"no long run of hexadecimal belongs in a refusal: '{message}'");
+        }
+    }
+
+    /// <summary>
+    /// SEALING WITH A HEADER THAT NAMES ANOTHER KEY IS REFUSED, NOT QUIETLY CORRECTED (independent review of item
+    /// 3.1d). The envelope always carries the id of the key that sealed it, so this parameter used to be ignored —
+    /// which means a test that set it to another key's id, believing it had forged a key id, was exercising the
+    /// ordinary path and asserting nothing.
+    /// </summary>
+    [Fact]
+    public void SealCore_RefusesAHeaderThatNamesAnotherKey()
+    {
+        using var key = KeyA();
+        using var other = KeyB();
+        var salt = new byte[32];
+        var nonce = new byte[12];
+
+        FluentActions.Invoking(() => SyncEnvelope.SealCore(
+                new SyncEnvelopeHeader(1, Source, Target, SyncChangeSet.Never, 42, Sealed, other.KeyId),
+                SyncChangeSet.FormatName,
+                ChangeSet().ToUtf8Json(),
+                key,
+                salt,
+                nonce))
+            .Should().Throw<ArgumentException>();
+
+        var sealedWell = SyncEnvelope.SealCore(
+            new SyncEnvelopeHeader(1, Source, Target, SyncChangeSet.Never, 42, Sealed, key.KeyId),
+            SyncChangeSet.FormatName,
+            ChangeSet().ToUtf8Json(),
+            key,
+            salt,
+            nonce);
+        sealedWell.AsSpan(KeyIdOffset, 16).ToArray().Should().Equal(key.KeyId);
     }
 
     /// <summary>

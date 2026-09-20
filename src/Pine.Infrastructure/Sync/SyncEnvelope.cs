@@ -272,6 +272,15 @@ public static class SyncEnvelope
             throw new ArgumentException("Wrong salt or nonce length.", nameof(salt));
         }
 
+        // The header's key id is CHECKED, not merely overwritten with the sealing key's (independent review of item
+        // 3.1d). What goes into the envelope below is always the key that seals it, so a header naming another key
+        // used to be silently corrected — and a test that built one believing it had forged a key id would have been
+        // testing the ordinary path and asserting nothing.
+        if (!key.HasId(header.KeyId))
+        {
+            throw new ArgumentException("The header names a different sync key from the one sealing the envelope.", nameof(header));
+        }
+
         if (!AesGcm.IsSupported)
         {
             throw new VaultKeyWrapUnavailableException(VaultKeyWrapAlgorithms.Aes256Gcm);

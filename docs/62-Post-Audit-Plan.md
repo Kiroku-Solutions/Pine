@@ -2173,6 +2173,84 @@ raw `CryptographicException`. **After the restructure all twenty-one were run ag
 and CLI heads build individually with no warnings (`Pine.slnx` is not built locally: the Android and iOS workloads are
 not installed).
 
+#### The independent review
+
+**It found no defect in the cryptography, and three minor problems, all in what the tests prove rather than in what
+the code does — and five of its mutations survived, four of them shown equivalent or unobservable.** Every finding was
+reproduced with a mutation or a probe the reviewed commit did not answer before it was reported; each is now a
+regression test that passes. **The known-answer vector was re-derived a second time, independently of both this
+implementation and the first derivation** — AES-256, GCM's counter mode and GHASH, and HKDF-SHA256 written from
+scratch in Python against the layout in `SyncEnvelope`'s remarks — and it reproduced the pinned key id and the pinned
+174-byte envelope byte for byte.
+
+- **MINOR, fixed — a refusal message could have quoted the key or the rows, and no test would have noticed.** The
+  suite checked every refusal's *reason*, and that it carried no inner exception, and never its sentence. A mutation
+  that appended the per-envelope key to the "not authentic" message, and a second that appended the decrypted
+  plaintext to `PayloadMismatch`, both survived the suite as it stood.
+  `NoRefusalMessage_QuotesThePayload_OrAnyKeyMaterial` now drives eight refusals — the wrong key, a flipped tag byte,
+  a payload disagreeing with its header, a payload that is not a change set, another target, another version, a
+  truncation and a broken magic — and asserts that no message holds the payee, the sync key, the envelope key, the
+  key id, or any run of twenty-four hexadecimal digits from anywhere.
+- **MINOR, fixed — `SealCore` ignored the key id in the header it was handed.** It always wrote the sealing key's own
+  id, so a header naming another key was silently corrected rather than refused: a test that built one believing it
+  had forged a key id would have been exercising the ordinary path and asserting nothing, which is the failure this
+  whole section is arranged against. The check is now `key.HasId(header.KeyId)` before anything is written, with
+  `SealCore_RefusesAHeaderThatNamesAnotherKey` on it. (The suite's real forged-key-id test edits the sealed bytes and
+  was never affected.)
+- **MINOR, fixed — what the replay refusal is, and what it is not, was neither written down nor tested.** It is a
+  fact about this vault's `SyncPeers` cursor, not a record of envelopes ever seen, so a restore that brings back an
+  older `pine.db` brings back an older cursor and an already-applied envelope applies again — which is the right
+  answer, because the restored vault genuinely no longer holds those rows, and the local Lamport counter is still
+  protected by the restore clock floor (item 3.1b).
+  `ARestoreThatRewindsTheCursor_MakesAnAppliedEnvelopeApplyAgain` states it. The neighbouring question was untested
+  too and is now asserted in place: after an apply the merge itself refuses, the cursor has not moved inside the
+  rolled-back transaction, so the same envelope still applies.
+
+**Read and found sound, without a finding:** the key generation (32 bytes straight from `RandomNumberGenerator`,
+all-zero material refused, the key id `HKDF-SHA256(key, no salt, "pine:sync-key-id:v1")` truncated to 16 bytes and
+revealing nothing a guess of the key would not); the two HKDF uses separated by `info` rather than by salt, and
+neither using the sync key as a cipher key; the departure from `15-Security` §7 — a key derived from one vault's data
+key is unreachable by a second vault and dies on TD-86's rotation, so generating it is the only construction that can
+work, and §7's protection is kept by sealing it under each vault's data key through the same `IVaultFileCipher`
+purpose boundary the categoriser's model crosses; the whole 126-byte header as associated data (narrowing it to the
+vault ids, or to nothing, is caught, and the two narrowings that are *not* caught remove only fields GCM binds
+anyway — below); a fresh 32-byte salt and 12-byte nonce per envelope from the CSPRNG, so no GCM key seals twice and
+the random-nonce bound is unreachable; `FixedTimeEquals` on the key id; the refusal order — shape and version, then
+the key id, then the tag, and only then the target and the payload's agreement with its header, with the byte-by-byte
+flip test proving the target is never the reason before the tag has spoken; `ApplySealedAsync` opening the envelope
+before any transaction exists and reading the vault id without creating one, so a refusal cannot leave a vault id, a
+lifted clock or a cursor behind; the gap rule; the merge path through the envelope still refusing everything 3.1b and
+3.1c refuse, checked against a snapshot of every table and every row; and `JsonDocument.Parse(ReadOnlyMemory<byte>)`
+materialising every value, so nothing survives into the change set pointing at the plaintext buffer the caller zeroes.
+**Recorded, not reproduced:** two processes calling `VaultSyncKeyStore.GetOrCreate` on one vault at the same moment —
+the loser's `File.Move` race handler refuses with `SyncKeyConflictException` instead of returning the winner's key;
+the race is not injectable through any seam this class has, so it is written down rather than claimed fixed.
+
+**Falsified.** Thirty-six mutations of the review's own, applied by a script that restores each file's original bytes
+and asserts it did, each built and run against the sync unit tests and `SealedMergeTests`. Thirty-one killed; **five
+survived**, and each is answered rather than left open:
+
+- **M11 (a refusal quoting the envelope key) and M27 (a refusal quoting the plaintext)** survived and are killed by
+  the message test above. **M25 (`SealCore` ignoring the header's key id)** and **M26 (a seeded generator)** likewise
+  survived the suite as it stood and are killed by the two new tests.
+- **M7, the key id compared with `SequenceEqual` instead of `FixedTimeEquals`** — behaviourally identical, and the key
+  id is a public routing value that travels in the clear in every header, so the timing it leaks is timing about
+  something an observer already has. Shown equivalent; the constant-time call stays, because it costs nothing.
+- **M8, `Generate` drawing from `Random.Shared`** — no black-box test distinguishes a decent non-cryptographic
+  generator from the CSPRNG, and none in this suite ever will. It is answered as far as a test can answer it:
+  `GeneratedKeys_NeverRepeat_AndSpanTheWholeByteRange` kills the narrow or seeded generator (M26, `new Random(42)`,
+  dies on it), and that the source is the CSPRNG is held by reading one line. Said plainly rather than covered over.
+- **M9, M10 and M12, the zeroing of the plaintext, of the per-envelope key and of the serialiser's working buffer** —
+  all three are method-local buffers with no observation point through any public or internal API, so no test in this
+  repository can distinguish them. Unobservable rather than equivalent: the zeroing is defence in depth, and is kept.
+
+`git status` and a byte comparison against `HEAD` show no mutation left in `src`, no byte-order mark and no line
+ending changed.
+
+**Measured totals (after the review):** unit 1481 → **1484**; integration 330 → **331**; coverage gate green (unit
+suite: overall 79%, `Pine.Core` 91%, `Pine.Infrastructure` 86%, `Pine.Application` 68%, `Pine.Ui.Avalonia` 53%; no
+floor changed). Windows, macOS and CLI heads build individually with no warnings.
+
 **What this does not close.** **Pairing** — no path gives a second vault the key; the tests use
 `VaultSyncKeyStore.Save` in its place (TD-154). **Device authentication** — the tag proves the key, not the device
 (TD-154). The provider, the transport and the offline queue (§8, §9), and **nothing in the application runs a merge**.
@@ -2273,6 +2351,10 @@ under a per-envelope key derived from the user's sync key, with the whole header
 damaged, under another key, for another vault, a replay, older, or out of order is refused before anything is written.
 The sync key is generated and kept beside each vault sealed under that vault's data key — a recorded departure from
 `15-Security` §7's "derived from the data key", which cannot work between two vaults. Nothing gives a second vault the
-key yet. **The next item is 3.1e: pairing — giving a second vault the user's sync key over a channel the user confirms
+key yet. Its independent review is done too (§6.5: no defect found in the cryptography, and three minor
+findings — a refusal message that could have quoted the key or the rows with no test to notice, `SealCore`
+silently ignoring the key id in the header it was given, and the replay refusal's dependence on a cursor a
+restore rewinds — all fixed, and the known-answer vector re-derived independently a second time). **The next
+item is 3.1e: pairing — giving a second vault the user's sync key over a channel the user confirms
 (TD-154)** — because without it no two real vaults can open each other's envelopes, and a provider would have nothing
 it could carry.

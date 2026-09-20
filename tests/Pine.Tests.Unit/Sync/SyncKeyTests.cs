@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -100,6 +101,34 @@ public sealed class SyncKeyTests : IDisposable
         FluentActions.Invoking(() => key.DeriveEnvelopeKey(new byte[32])).Should().Throw<ObjectDisposedException>();
         FluentActions.Invoking(() => SyncEnvelope.Open(envelope, key, target)).Should().Throw<ObjectDisposedException>();
         FluentActions.Invoking(() => SyncEnvelope.Seal(changeSet, key, DateTimeOffset.UnixEpoch)).Should().Throw<ObjectDisposedException>();
+    }
+
+    /// <summary>
+    /// WHAT A TEST CAN AND CANNOT SAY ABOUT A GENERATOR (independent review of item 3.1d). No black-box test
+    /// distinguishes <see cref="RandomNumberGenerator"/> from a decent non-cryptographic one — the review's mutation
+    /// that swapped in <c>Random.Shared</c> survives this and would survive any statistical test this suite could
+    /// afford. What this one does catch is the generator that is narrow or seeded: a source that repeats, or that
+    /// never produces some byte values. That the source is the CSPRNG is held by reading the code, and stated as such.
+    /// </summary>
+    [Fact]
+    public void GeneratedKeys_NeverRepeat_AndSpanTheWholeByteRange()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var values = new bool[256];
+
+        for (var i = 0; i < 512; i++)
+        {
+            using var key = SyncKey.Generate();
+            var material = new byte[SyncKey.LengthBytes];
+            key.CopyMaterialTo(material);
+            seen.Add(Convert.ToHexString(material)).Should().BeTrue("two generated keys are never the same");
+            foreach (var b in material)
+            {
+                values[b] = true;
+            }
+        }
+
+        values.Should().OnlyContain(value => value, "16 384 bytes from a full-range source show every value");
     }
 
     [Fact]
