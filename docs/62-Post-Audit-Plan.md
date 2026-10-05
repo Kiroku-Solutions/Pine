@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-05 — Stage 3 item 3.1f (§6.7, folder provider/transport/runner: first merge run from the application). Earlier: 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 3 item 3.1g (§6.8, §12's sync audit log). Earlier: 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2364,6 +2364,47 @@ written there for every plaintext secret in both UTF-8 and UTF-16; and localisat
 validator/sender convention both hold (confirmed independently: 27 `SyncRun`-prefixed keys in each of
 `en.json`/`es.json`). No defect found; no fix needed.
 
+### 6.8 Item 3.1g, as built (2026-10-05): §12's audit log
+
+**Still no telemetry, still no network.** `14-Synchronization` §12 asks that every sync attempt be logged locally —
+timestamp, provider, envelopes up and down, conflicts detected and resolved — and that a person can read that log
+from Settings. Neither existed; `VaultSyncRunner`'s report (3.1f) died with the caller that read it.
+
+| Row | Outcome |
+|---|---|
+| `14-Synchronization` §12 | Closed, narrowly: a persisted, read-only log of every run, inspectable from Settings |
+
+#### What was built
+
+- **`SyncRunAuditLogRow`**, an ordinary table inside `pine.db` (migration `AddSyncRunAuditLog`, indexed on
+  `RanAtUtc`) — "encrypted at rest" is SQLCipher's, already true of every table here, so no second encryption layer
+  was built. **`ISyncAuditLog`/`SqliteSyncAuditLog`** write one row per attempt and read them back newest-first.
+- **`RunSyncCommandHandler` logs every path**, not only success: a refusal by its typed reason's name, an
+  unexpected failure by its **exception type name, never its message** (TD-24 — a message can quote a path or a
+  key), and the counts from `SyncRunReport` on success. A cancelled run is not logged, deliberately — cancellation
+  is the user stopping something, not an attempt that happened.
+- **`GetSyncAuditLogQuery`** and a read-only list in Settings, newest-first, with the empty state and every string
+  keyed in both languages (647 keys, parity confirmed by diffing both files key by key, not by a line count).
+- `ConflictsResolved` is always 0 and said so in the code: a sync run records conflicts, it does not resolve them
+  (3.1c's screen does that), so the column is honest about measuring nothing yet.
+
+**What this does not close.** §11's User Controls — pause/resume, enable or disable per provider, force a full
+re-sync, change provider, delete all envelopes — are untouched; this item is §12 only. Telemetry transmission is
+not addressed because none exists to address: ADR-0012 and `NetworkEgressTests` already forbid any network call,
+so "opt-in only" is satisfied by there being nothing to opt into.
+
+**Verified.** Built clean across all four desktop-buildable projects. Unit **1668 → 1679**, integration
+**340 → 344**, both green (one cross-test flake in `SyncConflictsPageTests`, pre-existing and tied to a shared
+messenger singleton, reproduced as a pass in isolation and on a full rerun — not this item's). Eight mutations
+against the logging path and the read order, eight caught: skipping the log on a refusal, skipping it on success,
+swapping the up/down counts, inventing a non-zero `ConflictsResolved`, logging `null` instead of the exception
+type, logging a cancelled run, reading oldest-first, and removing the folder-path validator guard. A second pass —
+not the author — read every file, independently re-confirmed localisation parity (647/647 keys, zero diff either
+direction) and the exception-type-not-message rule by grepping the handler directly, filled in a missing migration
+round-trip test and a few maintenance updates the new migration/entity forced in five other tests' own tripwire
+lists (a new migration or mapped entity is expected to move those, by design), and found no defect in the feature
+itself.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2479,7 +2520,15 @@ lacks, each its own transaction, with no separate offline-queue table because a 
 the queue. Verified: unit 1585 → 1668, integration 335 → 340, both green; ten mutations, ten killed; an independent
 pass re-ran all of it and answered five scrutiny questions (interrupted runs, double-apply, partial reads, plaintext
 leakage, localisation/CQRS convention) with no defect found. No real network transport exists — a folder is the
-whole of it, by design (ADR-0012) — and the folder path is not yet a saved setting. **The next item is giving this
-runner a way to run on its own** (a scheduled or background sync, rather than only "Sync now" pressed by hand) **or,
-if the design doc scopes network transport next, that** — check `14-Synchronization`'s own roadmap before choosing,
-the way every item in this stage has narrowed one named gap rather than guessed at the next one.
+whole of it, by design (ADR-0012) — and the folder path is not yet a saved setting. ~~The next item is giving this
+runner a way to run on its own, or network transport if the design doc scopes that next.~~
+
+`14-Synchronization` has no roadmap section to check — it is a normative spec, not a punch list — so the next item
+was read off its own unmet normative clauses rather than guessed: §12 (an audit log) was still unmet and small
+enough to be one slice. Done 2026-10-05 (§6.8): every sync attempt, successful or not, is now logged inside the
+vault's own encrypted storage and readable from Settings, newest-first. Verified: unit 1668 → 1679, integration
+340 → 344, both green; eight mutations, eight caught; an independent pass found no defect, only tests to add.
+**The next item is `14-Synchronization` §11, User Controls** — pause/resume, enable or disable sync per provider,
+force a full re-sync, change provider, delete all envelopes (right to erasure) — the last normative section of
+this document with nothing built against it, now that §5, §6 (via §7's merge), §8, §9 and §12 each have at least a
+narrow, honest slice.
