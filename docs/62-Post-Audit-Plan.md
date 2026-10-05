@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-09-14 — Stage 3 item 3.1a (§6.2, sync preconditions: TD-146 closed, TD-144 and TD-145 narrowed); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-04 — Stage 3 item 3.1e (§6.6, pairing: TD-154 narrowed). Earlier: 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2258,6 +2258,61 @@ The plaintext still exists in memory as the `SyncChangeSet` object's strings, wh
 buffers are. A real data-key rotation (TD-86) will have to re-seal `sync.key`. The creation time in the header is
 informative and is not checked.
 
+### 6.6 Item 3.1e, as built (2026-10-04): pairing — giving a second vault the sync key
+
+**Still no transport.** Pairing moves `sync.key` from one vault to another through a file the user carries between
+them (a USB stick, a shared folder — the channel is the user's, not this item's); `NetworkEgressTests` is untouched
+and green.
+
+| Row | Outcome |
+|---|---|
+| TD-154 | 🟡 **Narrowed** — a second vault can now be given the key over a channel the user confirms (a short-lived code, verified afterward by a fingerprint shown on both screens); the tag still authenticates a key, not a device |
+
+#### What was built
+
+- **`SyncPairingCode`** (`src/Pine.Core/Sync/`): 25 characters, Crockford base32, drawn one character at a time from
+  `RandomNumberGenerator.GetInt32` rather than by encoding random bytes — 125 bits, not padded or biased. Not a PAKE:
+  the code is the whole of the authentication, and its entropy is the argument for why that is enough for a code read
+  aloud between two devices in front of one person.
+- **`SyncPairingOffer`** (`src/Pine.Infrastructure/Sync/`): a 166-byte sealed file — a 118-byte header, all of it
+  associated data, a 16-byte GCM tag, and the 32-byte ciphertext of the sync key. The wrap key is
+  `HKDF-SHA256(the code's 25 ASCII characters, a per-offer random 32-byte salt, info "pine:sync-pairing:v1")`. Refusals
+  are ordered the way `SyncEnvelope`'s are: shape and version, then the code, then the tag, then expiry, then same-vault,
+  then payload.
+- **`SyncKey.Fingerprint`**: an 80-bit value, HKDF-derived with its own `info` string (not `KeyId`'s), shown in four
+  groups of four characters on both devices after a pairing succeeds — the check that the two people, not just the two
+  files, agree on which key just moved.
+- **`VaultSyncPairing`** (`ISyncPairing`): the vault-side port. `CreateOfferAsync` gets-or-creates this vault's key and
+  writes the sealed offer; `AcceptOfferAsync` opens it, refuses a vault that already holds a *different* key
+  (`SyncPairingRefusal.DifferentKey`, including the race caught as `SyncKeyConflictException` from `VaultSyncKeyStore`),
+  saves the key, and only then deletes the offer file — a refusal writes nothing, and a save that fails leaves the
+  offer live. A copy of an already-used offer is refused as `Replayed` because the accepting vault now holds that
+  key id.
+- **Application layer**: `CreateSyncPairingOfferCommand`, `AcceptSyncPairingOfferCommand`, `GetSyncPairingStatusQuery`,
+  each validated, each with a sender. **UI**: `SyncPairingViewModel`/`SyncPairingView`, "Pair a device" in the sidebar,
+  following 3.1c's `SyncConflicts` page shape — a code and an expiry shown on the offering side, a code box and the
+  fingerprint shown on the accepting side, every string a key in both `en.json` and `es.json`.
+
+**What this does not close, said the way the offer's own remarks say it.** The same offer file, copied *before* it is
+used, can pair a third vault inside its lifetime window — there is no state shared between vault files to record a
+single use against, so only the (short, user-set) expiry bounds it; the user is told to keep the code to the two
+devices in front of them. And the second half of TD-154 is untouched: the envelope's tag proves a holder of the sync
+key sealed it, not which device — pairing hands over a key, not a device identity, and that remains a different
+cryptographic problem this item does not invent. The provider, the transport and the offline queue (§8, §9), and
+**nothing in the application runs a merge**, are all still ahead.
+
+**Verified.** Built clean across `Pine.Core`, `Pine.Infrastructure`, `Pine.Application`, `Pine.Ui.Avalonia`, 0
+warnings. Unit **1484 → 1585**, integration **331 → 335**, both green — the integration suite's new test pairs two
+real encrypted vault files and then seals an envelope on one and opens it on the other, which is the test 3.1d could
+not write because nothing gave the second vault the key yet. An independent audit (not the author) read every new and
+changed file, re-ran both suites, and separately verified localisation-key parity (38 `SyncPairing` keys in each of
+`en.json`/`es.json`) and the refusal/delete ordering in `VaultSyncPairing` above; it found no defect and made no
+change. It checked five adversarial scenarios by hand rather than by argument alone: code brute force (bounded by the
+125-bit entropy, pinned by a test), a copied offer replayed against the same vault (refused, pinned by both unit and
+integration tests), an offer that never expires (bounded in both `Create` and `ReadHeader`, with a rewritten expiry
+caught as `NotAuthentic` rather than honoured), the accept-race above, and the copied-offer-pairs-a-third-vault gap —
+confirmed as a real, documented limit rather than an oversight.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2354,7 +2409,16 @@ The sync key is generated and kept beside each vault sealed under that vault's d
 key yet. Its independent review is done too (§6.5: no defect found in the cryptography, and three minor
 findings — a refusal message that could have quoted the key or the rows with no test to notice, `SealCore`
 silently ignoring the key id in the header it was given, and the replay refusal's dependence on a cursor a
-restore rewinds — all fixed, and the known-answer vector re-derived independently a second time). **The next
+restore rewinds — all fixed, and the known-answer vector re-derived independently a second time). ~~The next
 item is 3.1e: pairing — giving a second vault the user's sync key over a channel the user confirms
-(TD-154)** — because without it no two real vaults can open each other's envelopes, and a provider would have nothing
-it could carry.
+(TD-154).~~
+
+Done 2026-10-04 (§6.6): a short-lived, high-entropy code seals the sync key into an offer file one vault writes and
+the other opens, with a fingerprint shown on both screens afterward so the two people confirm the same key moved, not
+just the two files. An independent audit (not the author) re-ran both suites (unit 1484 → 1585, integration 331 →
+335, both green), checked five adversarial scenarios by hand — brute force, replay, a non-expiring offer, an
+accept-race, a copied offer pairing a third vault — and found no defect. TD-154 is narrowed, not closed: the envelope
+still authenticates a key, not a device, and the same offer copied before use can still pair a third vault inside its
+expiry window (bounded, not prevented). **The next item is the provider, the transport and the offline queue (§8,
+§9)** — nothing in the application runs a merge yet, and now that two real vaults can exchange a key, that is the
+only thing still standing between a sealed envelope and an actual sync.

@@ -52,6 +52,9 @@
         <DataTemplate DataType="{x:Type vm:SyncConflictsViewModel}">
             <views:SyncConflictsView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncPairingViewModel}">
+            <views:SyncPairingView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScanReceiptViewModel}">
             <views:ScanReceiptView />
         </DataTemplate>

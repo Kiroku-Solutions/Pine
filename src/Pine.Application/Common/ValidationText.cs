@@ -149,4 +149,13 @@ public static class ValidationText
 
     /// <summary>Taking the other device's side would grant a consent, and that was not confirmed (§7).</summary>
     public static UserFacingMessage SyncConflictConsentNotConfirmed() => new("Validation.SyncConflict.ConsentNotConfirmed");
+
+    /// <summary>A pairing with no offer file named (post-audit plan item 3.1e).</summary>
+    public static UserFacingMessage SyncPairingOfferPathRequired() => new("Validation.SyncPairing.OfferPathRequired");
+
+    /// <summary>A pairing offer asked to live for longer than an offer may.</summary>
+    public static UserFacingMessage SyncPairingLifetimeOutOfRange() => new("Validation.SyncPairing.LifetimeOutOfRange");
+
+    /// <summary>What was typed is not a pairing code: wrong length, or characters the alphabet has not got.</summary>
+    public static UserFacingMessage SyncPairingCodeFormat() => new("Validation.SyncPairing.CodeFormat");
 }

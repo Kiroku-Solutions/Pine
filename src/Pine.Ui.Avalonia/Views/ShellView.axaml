@@ -65,6 +65,9 @@
                         <!-- Post-audit plan item 3.1c: what a merge left for a person to decide. -->
                         <Button Content="{loc:Tr Shell.Nav.SyncConflicts}" Command="{Binding NavigateToSyncConflictsCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsSyncConflictsActive}" />
+                        <!-- Post-audit plan item 3.1e: giving a second vault the sync key, by hand. -->
+                        <Button Content="{loc:Tr Shell.Nav.SyncPairing}" Command="{Binding NavigateToSyncPairingCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsSyncPairingActive}" />
 
                         <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
 

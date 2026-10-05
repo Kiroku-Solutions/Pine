@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
+using Pine.Core.Sync;
 
 namespace Pine.Infrastructure.Sync;
 
@@ -46,8 +47,12 @@ public sealed class SyncKey : IDisposable
     /// <summary>Length of the public key id in bytes.</summary>
     public const int KeyIdLengthBytes = 16;
 
+    /// <summary>Length of the verification fingerprint in bytes: 80 bits, shown as 16 characters.</summary>
+    public const int FingerprintLengthBytes = 10;
+
     private static readonly byte[] KeyIdInfo = Encoding.ASCII.GetBytes("pine:sync-key-id:v1");
     private static readonly byte[] EnvelopeKeyInfo = Encoding.ASCII.GetBytes("pine:sync-envelope:v1");
+    private static readonly byte[] FingerprintInfo = Encoding.ASCII.GetBytes("pine:sync-key-fingerprint:v1");
 
     private readonly byte[] _material;
     private readonly byte[] _keyId;
@@ -58,7 +63,38 @@ public sealed class SyncKey : IDisposable
         _material = material;
         _keyId = new byte[KeyIdLengthBytes];
         HKDF.DeriveKey(HashAlgorithmName.SHA256, _material, _keyId, salt: ReadOnlySpan<byte>.Empty, KeyIdInfo);
+
+        // Computed once, here, so it survives Dispose: a fingerprint is shown to compare two devices, and the
+        // comparison outlives the key object the screen was given.
+        var fingerprint = new byte[FingerprintLengthBytes];
+        try
+        {
+            HKDF.DeriveKey(HashAlgorithmName.SHA256, _material, fingerprint, salt: ReadOnlySpan<byte>.Empty, FingerprintInfo);
+            Fingerprint = FormatFingerprint(fingerprint);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(fingerprint);
+        }
     }
+
+    /// <summary>
+    /// The key's verification fingerprint, grouped for reading aloud: <c>XXXX-XXXX-XXXX-XXXX</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT IT IS FOR. Both devices show it after pairing, so that two vaults that ended up with DIFFERENT keys —
+    /// a pairing that appeared to work, a vault restored from an older backup, an offer accepted from the wrong
+    /// machine — are visibly different rather than silently unable to open each other's envelopes.
+    /// </para>
+    /// <para>
+    /// A SEPARATE DERIVATION FROM <see cref="KeyId"/>, and 80 bits of it, because these two are read by different
+    /// readers: the key id is machine routing inside every envelope header, the fingerprint is sixteen characters a
+    /// person compares by eye. Sharing one value would mean a change to what people read is a change to the wire
+    /// format. Like the key id it is an HKDF output and reveals nothing a guess of the key would not.
+    /// </para>
+    /// </remarks>
+    public string Fingerprint { get; }
 
     /// <summary>A new key from the CSPRNG.</summary>
     public static SyncKey Generate() => new(RandomNumberGenerator.GetBytes(LengthBytes));
@@ -102,6 +138,32 @@ public sealed class SyncKey : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _material.CopyTo(destination);
+    }
+
+    /// <summary>Sixteen characters of <see cref="SyncPairingCode.Alphabet"/> in four groups, from 80 bits.</summary>
+    private static string FormatFingerprint(ReadOnlySpan<byte> bytes)
+    {
+        var characters = new char[19];
+        var written = 0;
+        var bitBuffer = 0;
+        var bitCount = 0;
+        foreach (var b in bytes)
+        {
+            bitBuffer = (bitBuffer << 8) | b;
+            bitCount += 8;
+            while (bitCount >= 5)
+            {
+                bitCount -= 5;
+                if (written is 4 or 9 or 14)
+                {
+                    characters[written++] = '-';
+                }
+
+                characters[written++] = SyncPairingCode.Alphabet[(bitBuffer >> bitCount) & 31];
+            }
+        }
+
+        return new string(characters);
     }
 
     /// <summary>One envelope's AES-256-GCM key. The caller zeroes it.</summary>

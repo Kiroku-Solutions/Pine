@@ -144,6 +144,13 @@ public static class PineInfrastructureServiceCollectionExtensions
         // so a resolution runs inside the request's transaction.
         services.AddScoped<Pine.Core.Sync.ISyncConflictStore, Pine.Infrastructure.Sync.SqliteSyncConflictStore>();
 
+        // Pairing: giving a second vault the user's sync key over a channel the user confirms (post-audit plan item
+        // 3.1e, TD-154). Scoped for the same reason as the conflict store -- it reads this vault's id through the
+        // request's context. The file cipher is TryAdd'd because AddPineCategorisation registers the same
+        // implementation for the categoriser's model, and the two must be one registration, not two.
+        services.TryAddSingleton<IVaultFileCipher, AesGcmVaultFileCipher>();
+        services.AddScoped<Pine.Core.Sync.ISyncPairing, Pine.Infrastructure.Sync.VaultSyncPairing>();
+
         // SINGLETON (TD-28). The factory holds only the container's TimeProvider -- itself a
         // singleton -- and constructs a fresh, stateless importer per call, so it captures nothing
         // scoped and nothing vault-specific; making it scoped would tie the import wizard, a

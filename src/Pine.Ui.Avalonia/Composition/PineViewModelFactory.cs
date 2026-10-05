@@ -84,6 +84,9 @@ public sealed class PineViewModelFactory : IViewModelFactory
     public SyncConflictsViewModel CreateSyncConflicts() => _provider.GetRequiredService<SyncConflictsViewModel>();
 
     /// <inheritdoc />
+    public SyncPairingViewModel CreateSyncPairing() => _provider.GetRequiredService<SyncPairingViewModel>();
+
+    /// <inheritdoc />
     public SettingsViewModel CreateSettings() => _provider.GetRequiredService<SettingsViewModel>();
 
     /// <inheritdoc />

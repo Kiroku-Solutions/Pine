@@ -92,6 +92,24 @@ public static partial class VaultMerger
         return result;
     }
 
+    /// <summary>
+    /// This vault's id, or <see cref="Guid.Empty"/> when it has none yet, WITHOUT creating one (post-audit plan
+    /// item 3.1e). Reading a vault's id is not a reason to give it one.
+    /// </summary>
+    public static async Task<Guid> ReadVaultIdAsync(PineDbContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ReadVaultIdAsync(new Sql(context), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync().ConfigureAwait(false);
+        }
+    }
+
     /// <summary>This vault's id, or <see cref="Guid.Empty"/> when it has none yet. Writes nothing.</summary>
     private static async Task<Guid> ReadVaultIdAsync(Sql sql, CancellationToken cancellationToken) =>
         await sql.ScalarAsync("SELECT VaultId FROM SyncClock WHERE Id = 1;", cancellationToken).ConfigureAwait(false) is string stored

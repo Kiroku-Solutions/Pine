@@ -109,4 +109,34 @@ public static class UserFacingText
 
     /// <summary>The other device's version was recorded before this version of Pine changed how it stores that item.</summary>
     public static UserFacingMessage SyncConflictSchemaChanged() => new("Failure.SyncConflict.SchemaChanged");
+
+    /// <summary>No pairing offer where the user said there was one (post-audit plan item 3.1e).</summary>
+    public static UserFacingMessage SyncPairingOfferNotFound() => new("Failure.SyncPairing.OfferNotFound");
+
+    /// <summary>The file chosen is not a pairing offer.</summary>
+    public static UserFacingMessage SyncPairingMalformed() => new("Failure.SyncPairing.Malformed");
+
+    /// <summary>A pairing offer written by a version of Pine this one does not read.</summary>
+    public static UserFacingMessage SyncPairingUnsupportedVersion() => new("Failure.SyncPairing.UnsupportedVersion");
+
+    /// <summary>What was typed is not a pairing code at all.</summary>
+    public static UserFacingMessage SyncPairingCodeFormat() => new("Failure.SyncPairing.CodeFormat");
+
+    /// <summary>The code is wrong, or the offer was altered — one sentence for both, on purpose.</summary>
+    public static UserFacingMessage SyncPairingNotAuthentic() => new("Failure.SyncPairing.NotAuthentic");
+
+    /// <summary>The pairing offer's short life is over.</summary>
+    public static UserFacingMessage SyncPairingExpired() => new("Failure.SyncPairing.Expired");
+
+    /// <summary>The pairing offer was made by this vault, and pairing is between two.</summary>
+    public static UserFacingMessage SyncPairingSameVault() => new("Failure.SyncPairing.SameVault");
+
+    /// <summary>The offer opened but does not hold the key it says it does.</summary>
+    public static UserFacingMessage SyncPairingPayloadMismatch() => new("Failure.SyncPairing.PayloadMismatch");
+
+    /// <summary>This vault has already been paired with that offer.</summary>
+    public static UserFacingMessage SyncPairingReplayed() => new("Failure.SyncPairing.Replayed");
+
+    /// <summary>This vault already holds a different sync key, which is never replaced silently.</summary>
+    public static UserFacingMessage SyncPairingDifferentKey() => new("Failure.SyncPairing.DifferentKey");
 }

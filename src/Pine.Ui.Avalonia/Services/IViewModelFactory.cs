@@ -69,6 +69,9 @@ public interface IViewModelFactory
     /// <summary>The sync conflicts page (post-audit plan item 3.1c). It loads itself when shown.</summary>
     SyncConflictsViewModel CreateSyncConflicts();
 
+    /// <summary>The device pairing page (post-audit plan item 3.1e). It loads itself when shown.</summary>
+    SyncPairingViewModel CreateSyncPairing();
+
     /// <summary>Creates the settings page.</summary>
     SettingsViewModel CreateSettings();
 
