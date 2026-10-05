@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-04 — Stage 3 item 3.1e (§6.6, pairing: TD-154 narrowed). Earlier: 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 3 item 3.1f (§6.7, folder provider/transport/runner: first merge run from the application). Earlier: 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2313,6 +2313,57 @@ integration tests), an offer that never expires (bounded in both `Create` and `R
 caught as `NotAuthentic` rather than honoured), the accept-race above, and the copied-offer-pairs-a-third-vault gap —
 confirmed as a real, documented limit rather than an oversight.
 
+### 6.7 Item 3.1f, as built (2026-10-05): the provider, the transport and the offline queue — the first thing that runs a merge
+
+**The gap every item since 3.1b named is closed: something in the application now runs a merge.** A shared folder
+carries sealed envelopes and vault announcements between two paired vaults; nothing is network-connected,
+`NetworkEgressTests` is untouched and green.
+
+| Row | Outcome |
+|---|---|
+| §6's recurring "the provider, the transport and the offline queue (§8, §9)" / "nothing in the application runs a merge" | Narrowed to one honest slice: a folder, not a network |
+
+#### What was built
+
+- **`ISyncProvider`** (`Pine.Core.Sync`): health, announce, list peers, upload/download/delete one envelope by
+  address. Deliberately smaller than `14-Synchronization` §8's full table — no `Auth`/`Capabilities`, because no
+  honest implementation of either exists for a folder; the sync cursor lives in the envelope header, not in the
+  provider (decided "unified" per the design doc's SY-D-1).
+- **`FolderSyncProvider`**: one directory holds two file kinds, both named only by hex GUIDs so no stray file is
+  ever mistaken for a peer's — `{vault}.pine-vault` announcements and `{source}.{target}.pine-envelope` envelopes.
+  Every write is temp-file-then-flush-then-atomic-`File.Move`, so a reader only ever sees a prior complete file or
+  a new one, never a partial write. A 64 MiB cap is enforced before the write and, on download, before any byte is
+  read.
+- **`VaultSyncRunner`**, the first caller of `VaultMerger`'s merge machinery from inside the application: applies
+  every peer's waiting envelope first, each in its own transaction, then exports and uploads what a peer still
+  lacks. **No separate offline-queue table** — a peer's own acknowledged cursor, read back out of that peer's own
+  authenticated envelope header, is the queue; re-deriving it each run is what made a dedicated structure
+  unnecessary. Idempotent by construction: the apply and the cursor advance share one transaction, so a crash
+  between them cannot happen, and a re-sent envelope is refused as `Replayed` and treated as a no-op, not an error.
+- **`RunSyncCommand`**, validated (refuses an empty or non-rooted path before touching disk) and sent from
+  `SyncRunViewModel`'s "Sync now" page, wired into the shell and both localizations the same way every prior sync
+  screen was.
+
+**What this does not close.** No real network transport — a folder is the whole of it, and that is ADR-0012's
+decision rather than a shortfall of this item. The folder path is asked for on every run and never saved as a
+setting. And pairing's own open gaps (§6.6: a copied offer can still pair a third vault inside its expiry window;
+the envelope authenticates a key, not a device) are unchanged by this item.
+
+**Verified.** Built clean across all four desktop-buildable projects. Unit **1585 → 1668**, integration
+**335 → 340**, both green. Ten mutations against the new provider/runner/validator code, ten killed, no survivors —
+among them the replay guard, the gap guard, the idempotency comparison in `IsAlreadyLeft`, the peer-identity filter,
+both size checks, the source/target refusal, the path validator, and the check that stops a stranger's envelope
+header from being read as a peer's acknowledgement. An independent verification pass (not the author) re-read every
+file, rebuilt, re-ran both suites with the same counts, re-ran all ten mutations independently with the same result,
+and answered five scrutiny questions directly against the code and its tests: an interrupted run leaves no partial
+state (each apply its own transaction, each folder write temp-then-atomic-rename, demonstrated by a test that closes
+and reopens contexts mid-scenario); double-apply cannot happen because there is no separate mark-applied step to
+race, apply and cursor-advance being one transaction; the folder transport cannot read a partial write, by
+construction; no plaintext key or vault data is ever written to the folder, checked by a test that greps every byte
+written there for every plaintext secret in both UTF-8 and UTF-16; and localisation key parity and the
+validator/sender convention both hold (confirmed independently: 27 `SyncRun`-prefixed keys in each of
+`en.json`/`es.json`). No defect found; no fix needed.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2419,6 +2470,16 @@ just the two files. An independent audit (not the author) re-ran both suites (un
 335, both green), checked five adversarial scenarios by hand — brute force, replay, a non-expiring offer, an
 accept-race, a copied offer pairing a third vault — and found no defect. TD-154 is narrowed, not closed: the envelope
 still authenticates a key, not a device, and the same offer copied before use can still pair a third vault inside its
-expiry window (bounded, not prevented). **The next item is the provider, the transport and the offline queue (§8,
-§9)** — nothing in the application runs a merge yet, and now that two real vaults can exchange a key, that is the
-only thing still standing between a sealed envelope and an actual sync.
+expiry window (bounded, not prevented). ~~The next item is the provider, the transport and the offline queue (§8,
+§9).~~
+
+Done 2026-10-05 (§6.7): a shared folder carries sealed envelopes and vault announcements, and `VaultSyncRunner` is
+the first thing in the application that actually runs a merge — applying what a peer left, then sending what a peer
+lacks, each its own transaction, with no separate offline-queue table because a peer's own acknowledged cursor is
+the queue. Verified: unit 1585 → 1668, integration 335 → 340, both green; ten mutations, ten killed; an independent
+pass re-ran all of it and answered five scrutiny questions (interrupted runs, double-apply, partial reads, plaintext
+leakage, localisation/CQRS convention) with no defect found. No real network transport exists — a folder is the
+whole of it, by design (ADR-0012) — and the folder path is not yet a saved setting. **The next item is giving this
+runner a way to run on its own** (a scheduled or background sync, rather than only "Sync now" pressed by hand) **or,
+if the design doc scopes network transport next, that** — check `14-Synchronization`'s own roadmap before choosing,
+the way every item in this stage has narrowed one named gap rather than guessed at the next one.
