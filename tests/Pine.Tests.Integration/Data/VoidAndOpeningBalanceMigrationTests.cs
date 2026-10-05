@@ -147,6 +147,9 @@ public class VoidAndOpeningBalanceMigrationTests
     /// <summary>The head of the migration list: a sync conflict can be marked resolved (item 3.1c).</summary>
     private const string SyncConflictResolutionSchemaVersion = "20260919035113_AddSyncConflictResolution";
 
+    /// <summary>The head of the migration list: the local sync audit log (`14-Synchronization` §12).</summary>
+    private const string SyncRunAuditLogSchemaVersion = "20261005153926_AddSyncRunAuditLog";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
     [
@@ -164,6 +167,7 @@ public class VoidAndOpeningBalanceMigrationTests
         SyncBookkeepingSchemaVersion,
         SyncMergeStateSchemaVersion,
         SyncConflictResolutionSchemaVersion,
+        SyncRunAuditLogSchemaVersion,
     ];
 
     private const decimal LegacyBalance = 1000.00m;

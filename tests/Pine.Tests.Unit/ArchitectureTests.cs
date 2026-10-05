@@ -881,13 +881,26 @@ public class ArchitectureTests
     /// whole value is that widening it is hard and visible.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>PineApplicationServiceCollectionExtensions</c> scans this assembly for
     /// <c>IRequestValidator&lt;&gt;</c> implementations and registers each one. That is assembly
     /// scanning at composition time — the one use of reflection here that is about WIRING rather
     /// than about reaching past an access modifier — and
     /// <c>EveryRequestValidator_ShouldBeRegistered</c> already pins what it is supposed to produce.
+    /// </para>
+    /// <para>
+    /// <c>RunSyncCommandHandler</c> calls <c>ex.GetType().Name</c> to log an unexpected failure's
+    /// type name to the local sync audit log (`14-Synchronization` §12, TD-24) — never its
+    /// <c>Message</c>, which could quote a path. <c>System.Type</c> derives from
+    /// <c>System.Reflection.MemberInfo</c>, so Mono.Cecil's reference walk counts this as a
+    /// dependency on <c>System.Reflection</c>, but nothing is WRITTEN through it: no aggregate, no
+    /// private member, nothing TD-26 is about. It is listed here rather than exempted silently,
+    /// for the same reason the type above is — so the next reflective write still has to earn its
+    /// own line in this diff.
+    /// </para>
     /// </remarks>
-    private static readonly string[] TypesAllowedToUseReflection = ["PineApplicationServiceCollectionExtensions"];
+    private static readonly string[] TypesAllowedToUseReflection =
+        ["PineApplicationServiceCollectionExtensions", "RunSyncCommandHandler"];
 
     /// <summary>
     /// TD-26, the durable half: the set of types in <c>Pine.Application</c> that use reflection at

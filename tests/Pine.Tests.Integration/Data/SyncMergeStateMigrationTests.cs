@@ -75,7 +75,9 @@ public class SyncMergeStateMigrationTests
         Long(vault, "SELECT LocalClock FROM Tombstones;").Should().Be(6);
         Long(vault, "SELECT COUNT(*) FROM SyncClock WHERE VaultId = '00000000-0000-0000-0000-000000000000';")
             .Should().Be(1, "a vault has no sync identity until the first merge asks for one");
-        Tables(vault).Should().Equal("SyncClock", "SyncConflicts", "SyncIdAliases", "SyncPeers");
+        // Includes SyncRunAuditLog: this vault is migrated all the way to HEAD below, which by now
+        // also includes AddSyncRunAuditLog (`14-Synchronization` §12), added after this migration.
+        Tables(vault).Should().Equal("SyncClock", "SyncConflicts", "SyncIdAliases", "SyncPeers", "SyncRunAuditLog");
 
         await using (var context = vault.CreateContext())
         {

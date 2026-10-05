@@ -361,6 +361,43 @@
                 </StackPanel>
             </Border>
 
+            <!-- Sync Audit Log (14-Synchronization §12). Read-only, newest first, no editing: the
+                 user can inspect every attempt, not act on one. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{loc:Tr Settings.SyncAuditLog.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                        <Button Grid.Column="1" Content="{loc:Tr Settings.SyncAuditLog.Refresh}" Command="{Binding LoadSyncAuditLogCommand}"
+                                Classes="pine-outline" Width="120" HorizontalContentAlignment="Center"
+                                AutomationProperties.Name="{loc:Tr Settings.SyncAuditLog.Refresh}" />
+                    </Grid>
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock Text="{loc:Tr Settings.SyncAuditLog.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+
+                    <TextBlock Text="{loc:Tr Settings.SyncAuditLog.Empty}" TextWrapping="Wrap" FontSize="13"
+                               Foreground="{DynamicResource PineTextMuted}"
+                               IsVisible="{Binding !HasSyncAuditLog}" />
+
+                    <ItemsControl ItemsSource="{Binding SyncAuditLog}" IsVisible="{Binding HasSyncAuditLog}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SettingsViewModel+SyncAuditLogRowOption">
+                                <Grid ColumnDefinitions="*, Auto" Margin="0,6">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding When}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                        <TextBlock Text="{Binding Counts}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding Outcome}" FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="260"
+                                               Classes.pine-strength-danger="{Binding !Succeeded}"
+                                               Classes.pine-strength-success="{Binding Succeeded}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
         <!-- Restore confirmation (plan item 1.1). Same scrim-and-panel shape as the void dialog,

@@ -553,6 +553,48 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.ToTable("SyncPeers", (string)null);
                 });
 
+            modelBuilder.Entity("Pine.Infrastructure.Data.SyncRunAuditLogRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ConflictsDetected")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConflictsResolved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EnvelopesDown")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EnvelopesUp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RanAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RanAtUtc");
+
+                    b.ToTable("SyncRunAuditLog", (string)null);
+                });
+
             modelBuilder.Entity("Pine.Infrastructure.Data.SyncTombstone", b =>
                 {
                     b.Property<Guid>("Id")

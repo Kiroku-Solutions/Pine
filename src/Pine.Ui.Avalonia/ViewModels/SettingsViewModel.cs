@@ -17,9 +17,11 @@ using Pine.Application.Security.Commands;
 using Pine.Application.Security.Queries;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
+using Pine.Application.Sync.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common;
 using Pine.Core.Security;
+using Pine.Core.Sync;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
@@ -250,6 +252,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         SelectedLanguage = CurrentOption();
 
         await LoadAccountsAsync();
+        await LoadSyncAuditLogAsync();
     }
 
     /// <summary>
@@ -271,6 +274,112 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             // The rest of this page must keep working when the account list cannot be read; a
             // maintenance tool that takes the settings screen down with it is worse than absent.
         }
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Sync audit log (`14-Synchronization` §12).
+    //
+    // READ-ONLY, NEWEST FIRST, NO EDITING. §12 asks only that the user can "inspect" the log; it
+    // never says resolve, delete or export from here, so none of those is offered. The rows
+    // themselves are written by RunSyncCommandHandler on every attempt, success or refusal, and
+    // this page only ever reads them back through GetSyncAuditLogQuery.
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>Every logged sync attempt, newest first.</summary>
+    public ObservableCollection<SyncAuditLogRowOption> SyncAuditLog { get; } = [];
+
+    /// <summary>Whether there is anything to show, for the empty-state sentence.</summary>
+    public bool HasSyncAuditLog => SyncAuditLog.Count > 0;
+
+    /// <summary>
+    /// Reloads the sync audit log.
+    /// </summary>
+    /// <remarks>
+    /// EMPTY ON FAILURE, SILENTLY, LIKE <see cref="LoadBackupsAsync"/>. A locked vault or a read that fails for
+    /// any other reason is not worth a red sentence on a page that is mostly about something else; the honest
+    /// result when nothing can be read is an empty list and the sentence that already covers that case.
+    /// </remarks>
+    [RelayCommand]
+    private async Task LoadSyncAuditLogAsync()
+    {
+        try
+        {
+            var entries = await _sender.Send(new GetSyncAuditLogQuery());
+
+            SyncAuditLog.Clear();
+            foreach (var entry in entries)
+            {
+                SyncAuditLog.Add(new SyncAuditLogRowOption(entry, _localizer));
+            }
+        }
+        catch (Exception)
+        {
+            SyncAuditLog.Clear();
+        }
+
+        OnPropertyChanged(nameof(HasSyncAuditLog));
+    }
+
+    /// <summary>
+    /// One logged sync attempt, as the list shows it (`14-Synchronization` §12).
+    /// </summary>
+    public sealed class SyncAuditLogRowOption
+    {
+        public SyncAuditLogRowOption(SyncRunAuditEntry entry, ILocalizer localizer)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+            ArgumentNullException.ThrowIfNull(localizer);
+
+            Source = entry;
+
+            // The localizer's own culture, not the process's (TD-21): this is the language a later
+            // switch re-renders every row into, through OnLanguageChanged below.
+            When = entry.RanAtUtc.ToLocalTime().ToString("f", localizer.CurrentCulture);
+            Provider = entry.Provider;
+            Counts = localizer.Format(
+                "Settings.SyncAuditLog.Counts",
+                entry.EnvelopesDown.ToString(localizer.CurrentCulture),
+                entry.EnvelopesUp.ToString(localizer.CurrentCulture),
+                entry.ConflictsDetected.ToString(localizer.CurrentCulture));
+
+            Succeeded = entry.Outcome == SyncRunAuditOutcome.Completed;
+
+            Outcome = entry.Outcome switch
+            {
+                SyncRunAuditOutcome.Completed => localizer["Settings.SyncAuditLog.Outcome.Completed"],
+                SyncRunAuditOutcome.Refused => localizer.Format(
+                    "Settings.SyncAuditLog.Outcome.Refused", ReasonText(localizer, entry.FailureReason)),
+                SyncRunAuditOutcome.Failed => localizer["Settings.SyncAuditLog.Outcome.Failed"],
+                _ => localizer["Settings.SyncAuditLog.Outcome.Failed"],
+            };
+        }
+
+        /// <summary>What this option was built from, so a language change can build it again.</summary>
+        public SyncRunAuditEntry Source { get; }
+
+        /// <summary>When the attempt was made, in the user's culture.</summary>
+        public string When { get; }
+
+        /// <summary>The provider used.</summary>
+        public string Provider { get; }
+
+        /// <summary>Envelopes down, up and conflicts detected, as one sentence.</summary>
+        public string Counts { get; }
+
+        /// <summary>What happened, in the user's language.</summary>
+        public string Outcome { get; }
+
+        /// <summary>Whether the attempt completed, for styling only — <see cref="Outcome"/> already says which in words.</summary>
+        public bool Succeeded { get; }
+
+        /// <summary>
+        /// A refusal reason in the user's language, falling back to the raw <see cref="SyncRunRefusal"/> name
+        /// for a value this build does not recognise — an older log row read by a newer build, say.
+        /// </summary>
+        private static string ReasonText(ILocalizer localizer, string? reason) =>
+            Enum.TryParse<SyncRunRefusal>(reason, out var refusal)
+                ? localizer[SyncRunRefusedException.Describe(refusal).Key]
+                : reason ?? string.Empty;
     }
 
     /// <summary>
@@ -458,6 +567,13 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         if (selectedPath is not null)
         {
             SelectedBackup = Backups.FirstOrDefault(option => string.Equals(option.Path, selectedPath, StringComparison.Ordinal));
+        }
+
+        var auditRows = SyncAuditLog.Select(row => row.Source).ToList();
+        SyncAuditLog.Clear();
+        foreach (var row in auditRows)
+        {
+            SyncAuditLog.Add(new SyncAuditLogRowOption(row, _localizer));
         }
     }
 

@@ -166,6 +166,38 @@ public sealed class SyncIdAlias : ISyncBookkeeping
 }
 
 /// <summary>
+/// One row of the local sync audit log: one attempt, whatever it did (`14-Synchronization` §12).
+/// </summary>
+/// <remarks>
+/// Written once per call to <see cref="Pine.Core.Sync.ISyncRunner"/>, success or failure, by
+/// <c>RunSyncCommandHandler</c> — never by the runner itself, so the two stay testable apart. Never deleted
+/// or updated: an audit log a person could edit after the fact would not be one.
+/// </remarks>
+public sealed class SyncRunAuditLogRow : ISyncBookkeeping
+{
+    public Guid Id { get; set; }
+
+    public DateTime RanAtUtc { get; set; }
+
+    /// <summary>The provider used; <c>"Folder"</c> today, the only one Pine has.</summary>
+    public string Provider { get; set; } = string.Empty;
+
+    public int EnvelopesUp { get; set; }
+
+    public int EnvelopesDown { get; set; }
+
+    public int ConflictsDetected { get; set; }
+
+    public int ConflictsResolved { get; set; }
+
+    /// <summary>A <see cref="Pine.Core.Sync.SyncRunAuditOutcome"/> name.</summary>
+    public string Outcome { get; set; } = string.Empty;
+
+    /// <summary>Why it did not complete; null for a completed run. Never a message that could carry a path (TD-24).</summary>
+    public string? FailureReason { get; set; }
+}
+
+/// <summary>
 /// That a root was deleted, when, and by whom — and nothing about what it was (TD-145).
 /// </summary>
 /// <remarks>

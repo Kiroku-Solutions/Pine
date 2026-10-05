@@ -49,6 +49,9 @@ public sealed class PineDbContext : DbContext
     /// <summary>Rows a peer knows by another id, matched by natural key (item 3.1b). Store bookkeeping.</summary>
     public DbSet<SyncIdAlias> SyncIdAliases => Set<SyncIdAlias>();
 
+    /// <summary>Every sync attempt, local and encrypted with the rest of the vault (`14-Synchronization` §12). Store bookkeeping.</summary>
+    public DbSet<SyncRunAuditLogRow> SyncRunAuditLog => Set<SyncRunAuditLogRow>();
+
     /// <param name="databasePath">Path to the keyed SQLite file.</param>
     /// <param name="encryptionKey">The SQLCipher key.</param>
     /// <param name="timeProvider">
@@ -391,6 +394,18 @@ public sealed class PineDbContext : DbContext
             e.ToTable("SyncIdAliases");
             e.HasKey(a => new { a.PeerVaultId, a.EntityTable, a.RemoteId });
             e.Property(a => a.EntityTable).IsRequired().HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<SyncRunAuditLogRow>(e =>
+        {
+            e.ToTable("SyncRunAuditLog");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Provider).IsRequired().HasMaxLength(32);
+            e.Property(r => r.Outcome).IsRequired().HasMaxLength(32);
+            e.Property(r => r.FailureReason).HasMaxLength(64);
+
+            // Newest first is how the Settings screen reads it (§12).
+            e.HasIndex(r => r.RanAtUtc);
         });
 
         modelBuilder.Entity<SyncTombstone>(e =>

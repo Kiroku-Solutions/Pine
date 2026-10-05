@@ -156,6 +156,11 @@ public static class PineInfrastructureServiceCollectionExtensions
         // named per run, so the provider is made by the runner rather than registered.
         services.AddScoped<Pine.Core.Sync.ISyncRunner, Pine.Infrastructure.Sync.VaultSyncRunner>();
 
+        // The local audit log of every sync attempt (`14-Synchronization` §12). Scoped with the context, like
+        // the conflict store: it is written by RunSyncCommandHandler right after the runner above returns or
+        // throws, in the same request scope, and read back by the Settings screen.
+        services.AddScoped<Pine.Core.Sync.ISyncAuditLog, Pine.Infrastructure.Sync.SqliteSyncAuditLog>();
+
         // SINGLETON (TD-28). The factory holds only the container's TimeProvider -- itself a
         // singleton -- and constructs a fresh, stateless importer per call, so it captures nothing
         // scoped and nothing vault-specific; making it scoped would tie the import wizard, a

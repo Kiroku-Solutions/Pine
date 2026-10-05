@@ -84,9 +84,10 @@ public class VaultBackupServiceTests : IDisposable
         // for DropAttachmentRuleAndTagTables (TD-37), and again here for AddCategoryParentForeignKey
         // (TD-32), and again here for AddTransactionAttachments, which is now the head -- and this
         // line going red is the evidence that the newest migration really runs against a real
-        // (retargeted for AddSyncConflictResolution, post-audit plan item 3.1c)
+        // (retargeted for AddSyncConflictResolution, post-audit plan item 3.1c, and again here for
+        // AddSyncRunAuditLog, `14-Synchronization` §12)
         // SQLCipher vault.
-        backup.SchemaVersionBefore.Should().Be("20260919035113_AddSyncConflictResolution");
+        backup.SchemaVersionBefore.Should().Be("20261005153926_AddSyncRunAuditLog");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

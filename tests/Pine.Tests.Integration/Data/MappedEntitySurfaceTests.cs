@@ -84,6 +84,12 @@ public class MappedEntitySurfaceTests
         nameof(Pine.Infrastructure.Data.SyncPeer),
         nameof(Pine.Infrastructure.Data.SyncConflict),
         nameof(Pine.Infrastructure.Data.SyncIdAlias),
+
+        // THE LOCAL SYNC AUDIT LOG (`14-Synchronization` §12). Named reader and writer: RunSyncCommandHandler
+        // writes one row per attempt, success or failure, through SqliteSyncAuditLog, and the Settings screen
+        // reads it back through GetSyncAuditLogQuery. No repository because it is not the user's data; it is
+        // never updated or deleted once written.
+        nameof(Pine.Infrastructure.Data.SyncRunAuditLogRow),
     ];
 
     /// <summary>The names that stayed removed, kept explicit so the regression reads clearly.</summary>

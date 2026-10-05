@@ -22,8 +22,9 @@ public class RunSyncRequestTests
         var runner = Substitute.For<ISyncRunner>();
         var report = new SyncRunReport(1, 1, 1, 3, 0, []);
         runner.RunThroughFolderAsync(Folder, Arg.Any<CancellationToken>()).Returns(report);
+        var auditLog = Substitute.For<ISyncAuditLog>();
 
-        var result = await new RunSyncCommandHandler(runner).Handle(new RunSyncCommand(Folder), CancellationToken.None);
+        var result = await new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None);
 
         result.Should().BeSameAs(report);
     }

@@ -148,6 +148,9 @@ public class ImportKeyMigrationTests
     /// <summary>The head of the migration list: a sync conflict can be marked resolved (item 3.1c).</summary>
     private const string SyncConflictResolutionSchemaVersion = "20260919035113_AddSyncConflictResolution";
 
+    /// <summary>The head of the migration list: the local sync audit log (`14-Synchronization` §12).</summary>
+    private const string SyncRunAuditLogSchemaVersion = "20261005153926_AddSyncRunAuditLog";
+
     private const decimal LegacyBalance = 1650.00m;
 
     private static readonly DateTimeOffset LegacyDate = new(2025, 11, 2, 9, 30, 0, TimeSpan.Zero);
@@ -313,7 +316,8 @@ public class ImportKeyMigrationTests
             DropCategoriesTableSchemaVersion,
             SyncBookkeepingSchemaVersion,
             SyncMergeStateSchemaVersion,
-            SyncConflictResolutionSchemaVersion
+            SyncConflictResolutionSchemaVersion,
+            SyncRunAuditLogSchemaVersion
         });
     }
 
