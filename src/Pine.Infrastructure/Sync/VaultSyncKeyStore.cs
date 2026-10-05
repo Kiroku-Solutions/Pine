@@ -30,8 +30,9 @@ namespace Pine.Infrastructure.Sync;
 /// than read as absent. Written to a temporary file, flushed, and moved into place without overwriting.
 /// </para>
 /// <para>
-/// NOT IN THE CONTAINER. Nothing in the application runs a merge yet, so nothing asks for this store; it is
-/// constructed by whatever will (and by the tests).
+/// NOT IN THE CONTAINER. It is bound to one vault directory, which is known only once a vault is open, so the
+/// services that need it — <see cref="VaultSyncPairing"/> and, since item 3.1f, <see cref="VaultSyncRunner"/> —
+/// construct it over the open vault (and so do the tests).
 /// </para>
 /// </remarks>
 public sealed class VaultSyncKeyStore

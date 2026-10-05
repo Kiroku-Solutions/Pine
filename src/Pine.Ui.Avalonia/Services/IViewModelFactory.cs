@@ -72,6 +72,9 @@ public interface IViewModelFactory
     /// <summary>The device pairing page (post-audit plan item 3.1e). It loads itself when shown.</summary>
     SyncPairingViewModel CreateSyncPairing();
 
+    /// <summary>The "Sync now" page (post-audit plan item 3.1f). It has nothing to load until a run.</summary>
+    SyncRunViewModel CreateSyncRun();
+
     /// <summary>Creates the settings page.</summary>
     SettingsViewModel CreateSettings();
 

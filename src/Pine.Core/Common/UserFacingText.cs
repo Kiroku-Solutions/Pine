@@ -139,4 +139,10 @@ public static class UserFacingText
 
     /// <summary>This vault already holds a different sync key, which is never replaced silently.</summary>
     public static UserFacingMessage SyncPairingDifferentKey() => new("Failure.SyncPairing.DifferentKey");
+
+    /// <summary>A sync run on a vault that holds no sync key (post-audit plan item 3.1f).</summary>
+    public static UserFacingMessage SyncRunNoKey() => new("Failure.SyncRun.NoKey");
+
+    /// <summary>A sync run against a folder that is not there or cannot be used — §9's offline state.</summary>
+    public static UserFacingMessage SyncRunFolderUnavailable() => new("Failure.SyncRun.FolderUnavailable");
 }

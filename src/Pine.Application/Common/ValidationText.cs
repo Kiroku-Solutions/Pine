@@ -158,4 +158,10 @@ public static class ValidationText
 
     /// <summary>What was typed is not a pairing code: wrong length, or characters the alphabet has not got.</summary>
     public static UserFacingMessage SyncPairingCodeFormat() => new("Validation.SyncPairing.CodeFormat");
+
+    /// <summary>A sync run with no folder named (post-audit plan item 3.1f).</summary>
+    public static UserFacingMessage SyncRunFolderRequired() => new("Validation.SyncRun.FolderRequired");
+
+    /// <summary>A sync folder given as a relative path, which would mean wherever Pine happened to be started.</summary>
+    public static UserFacingMessage SyncRunFolderNotAbsolute() => new("Validation.SyncRun.FolderNotAbsolute");
 }

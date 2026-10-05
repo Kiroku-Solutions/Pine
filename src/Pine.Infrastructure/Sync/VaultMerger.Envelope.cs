@@ -110,6 +110,24 @@ public static partial class VaultMerger
         }
     }
 
+    /// <summary>
+    /// This vault's Lamport counter as it stands: the source clock an envelope cut now would carry (post-audit plan
+    /// item 3.1f). Writes nothing.
+    /// </summary>
+    public static async Task<long> ReadClockAsync(PineDbContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ReadCounterAsync(new Sql(context), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync().ConfigureAwait(false);
+        }
+    }
+
     /// <summary>This vault's id, or <see cref="Guid.Empty"/> when it has none yet. Writes nothing.</summary>
     private static async Task<Guid> ReadVaultIdAsync(Sql sql, CancellationToken cancellationToken) =>
         await sql.ScalarAsync("SELECT VaultId FROM SyncClock WHERE Id = 1;", cancellationToken).ConfigureAwait(false) is string stored

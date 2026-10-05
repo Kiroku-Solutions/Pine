@@ -68,6 +68,9 @@
                         <!-- Post-audit plan item 3.1e: giving a second vault the sync key, by hand. -->
                         <Button Content="{loc:Tr Shell.Nav.SyncPairing}" Command="{Binding NavigateToSyncPairingCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsSyncPairingActive}" />
+                        <!-- Post-audit plan item 3.1f: one exchange with every paired copy, through a shared folder. -->
+                        <Button Content="{loc:Tr Shell.Nav.SyncRun}" Command="{Binding NavigateToSyncRunCommand}"
+                                Classes="pine-nav" Classes.active="{Binding IsSyncRunActive}" />
 
                         <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
 

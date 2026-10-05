@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.SyncRunView"
+             x:DataType="vm:SyncRunViewModel">
+
+    <!-- Post-audit plan item 3.1f: one exchange with every paired copy, through a folder they share. -->
+    <ScrollViewer>
+        <StackPanel Spacing="16">
+
+            <StackPanel>
+                <TextBlock Text="{loc:Tr SyncRun.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr SyncRun.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncRun.Folder.Label}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding FolderPath}"
+                             PlaceholderText="{loc:Tr SyncRun.Folder.Label}"
+                             AutomationProperties.Name="{loc:Tr SyncRun.Folder.Label}"
+                             IsEnabled="{Binding !IsRunning}"/>
+                    <TextBlock Text="{loc:Tr SyncRun.Folder.Help}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource PineTextMuted}"/>
+
+                    <Button Content="{loc:Tr SyncRun.Run}" Classes="pine-accent"
+                            HorizontalAlignment="Left"
+                            Command="{Binding RunCommand}"
+                            IsEnabled="{Binding CanRun}"
+                            AutomationProperties.Name="{loc:Tr SyncRun.Run}"/>
+
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsRunning}" HorizontalAlignment="Left"/>
+
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- What the last run did. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16"
+                    IsVisible="{Binding HasReport}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncRun.Result.Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                    <ItemsControl ItemsSource="{Binding Summary}" AutomationProperties.LiveSetting="Polite">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{loc:Tr SyncRun.Result.NoPeers}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource PineTextMuted}" IsVisible="{Binding FoundNoPeers}"/>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding HasProblems}">
+                        <TextBlock Text="{loc:Tr SyncRun.Problems.Title}" FontWeight="SemiBold" Foreground="{DynamicResource PineDanger}"/>
+                        <ItemsControl ItemsSource="{Binding Problems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

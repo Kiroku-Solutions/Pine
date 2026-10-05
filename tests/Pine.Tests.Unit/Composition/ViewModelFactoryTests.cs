@@ -67,6 +67,7 @@ public class ViewModelFactoryTests
         factory.CreateTransactions().Should().BeOfType<TransactionsViewModel>();
         factory.CreateBudgets().Should().BeOfType<BudgetsViewModel>();
         factory.CreateSyncConflicts().Should().BeOfType<SyncConflictsViewModel>();
+        factory.CreateSyncRun().Should().BeOfType<SyncRunViewModel>();
         factory.CreateSettings().Should().BeOfType<SettingsViewModel>();
         factory.CreateDiagnostics().Should().BeOfType<DiagnosticsViewModel>();
 

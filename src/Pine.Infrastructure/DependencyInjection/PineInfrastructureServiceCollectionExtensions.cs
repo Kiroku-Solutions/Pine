@@ -151,6 +151,11 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.TryAddSingleton<IVaultFileCipher, AesGcmVaultFileCipher>();
         services.AddScoped<Pine.Core.Sync.ISyncPairing, Pine.Infrastructure.Sync.VaultSyncPairing>();
 
+        // A sync run through a folder the user chose (post-audit plan item 3.1f): the first thing in the application
+        // that runs a merge. Scoped with the context, through which it reads and writes this vault; the folder is
+        // named per run, so the provider is made by the runner rather than registered.
+        services.AddScoped<Pine.Core.Sync.ISyncRunner, Pine.Infrastructure.Sync.VaultSyncRunner>();
+
         // SINGLETON (TD-28). The factory holds only the container's TimeProvider -- itself a
         // singleton -- and constructs a fresh, stateless importer per call, so it captures nothing
         // scoped and nothing vault-specific; making it scoped would tie the import wizard, a

@@ -196,6 +196,7 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         IsRulesActive = page is RulesViewModel;
         IsSyncConflictsActive = page is SyncConflictsViewModel;
         IsSyncPairingActive = page is SyncPairingViewModel;
+        IsSyncRunActive = page is SyncRunViewModel;
         IsDiagnosticsActive = page is DiagnosticsViewModel;
         IsScanReceiptActive = page is ScanReceiptViewModel;
         IsLiveScannerActive = page is LiveScannerViewModel or CropReceiptViewModel;
@@ -222,6 +223,10 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     /// <summary>Whether the device pairing page is the current page (post-audit plan item 3.1e).</summary>
     [ObservableProperty]
     public partial bool IsSyncPairingActive { get; set; }
+
+    /// <summary>Whether the "Sync now" page is the current page (post-audit plan item 3.1f).</summary>
+    [ObservableProperty]
+    public partial bool IsSyncRunActive { get; set; }
 
     [ObservableProperty]
     public partial bool IsDiagnosticsActive { get; set; }
@@ -281,6 +286,13 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     private void NavigateToSyncPairing()
     {
         NavigateTo(_viewModels.CreateSyncPairing());
+    }
+
+    /// <summary>Opens the "Sync now" page (post-audit plan item 3.1f).</summary>
+    [RelayCommand]
+    private void NavigateToSyncRun()
+    {
+        NavigateTo(_viewModels.CreateSyncRun());
     }
 
     [RelayCommand]

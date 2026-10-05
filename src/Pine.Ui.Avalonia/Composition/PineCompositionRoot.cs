@@ -293,6 +293,7 @@ public static class PineCompositionRoot
         targets.Add(typeof(RulesViewModel));
         targets.Add(typeof(SyncConflictsViewModel));
         targets.Add(typeof(SyncPairingViewModel));
+        targets.Add(typeof(SyncRunViewModel));
         targets.Add(typeof(SettingsViewModel));
         targets.Add(typeof(DiagnosticsViewModel));
 
@@ -364,6 +365,7 @@ public static class PineCompositionRoot
         services.AddTransient<RulesViewModel>();
         services.AddTransient<SyncConflictsViewModel>();
         services.AddTransient<SyncPairingViewModel>();
+        services.AddTransient<SyncRunViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DiagnosticsViewModel>();
 
