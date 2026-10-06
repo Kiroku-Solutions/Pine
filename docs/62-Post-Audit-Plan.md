@@ -2714,3 +2714,12 @@ a static converter with no localizer; the diagnostics panel's empty-log text, pi
 actually a reference-equality problem as the row's wording suggested) are now keyed in both languages, and
 `NoSentenceLiteralsInUiCodeTests`'s allow-list is empty. The row's other, non-sentence findings — the unlock
 screen's title, diagnostics status words, enum lists — stay open, untouched.
+
+**Post-closure, 2026-10-06: TD-97's thirteen-observation flake, narrowed.** Every vault-backed integration class
+shares one parent temp directory, and xUnit's default per-class parallelism (44 classes, 82% of the integration
+suite, measured not guessed) races `Directory.CreateDirectory` against it — the diagnosis unchanged since
+iteration 15. Serialising all 44 into one collection was rejected on a measured cost: that trades a roughly
+1-in-4 race for a fully single-threaded suite. `TempVault`'s directory creation now retries, bounded, 20
+attempts. **Honestly reported as a mechanism fix, not a caught-then-fixed one**: five consecutive full runs on
+each side of the fix were all green, so the original flake was never reproduced here either way. Narrowed, not
+closed.
