@@ -311,6 +311,11 @@ public sealed class VaultRestoreService : IVaultRestoreService
             Mode = SqliteOpenMode.ReadOnly,
         }.ToString();
 
+        // Deliberately not given SecureDeletePragmaInterceptor. secure_delete governs what happens
+        // to a page SQLite frees on a DELETE; this connection is Mode=ReadOnly above and never
+        // issues one, so the pragma would have nothing to act on. It is also a raw
+        // Microsoft.Data.Sqlite.SqliteConnection rather than a PineDbContext, which is the only
+        // reason it does not pick the interceptor up for free.
         await using var connection = new SqliteConnection(connectionString);
 
         try

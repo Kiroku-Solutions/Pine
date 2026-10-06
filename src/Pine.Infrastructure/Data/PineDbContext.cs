@@ -87,6 +87,12 @@ public sealed class PineDbContext : DbContext
         }.ToString();
 
         optionsBuilder.UseSqlite(connectionString);
+
+        // TD-145's secure_delete half. Not conditional on anything -- every connection this
+        // context ever opens gets it. See SecureDeletePragmaInterceptor's remarks for why an
+        // interceptor rather than a connection-string keyword, why ON rather than FAST, and why
+        // it has to run on every open rather than once.
+        optionsBuilder.AddInterceptors(SecureDeletePragmaInterceptor.Instance);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
