@@ -7,7 +7,7 @@ This document tracks the real-time implementation progress based on the master p
 | | |
 |---|---|
 | **Status** | Non-normative — working status record |
-| **Reconciled** | 2026-09-19 · Last-remediation row extended for post-audit plan item 3.1d (unit 1481, integration 330). Earlier: 2026-09-18 · extended for item 3.1c (unit 1453, integration 317), and before it item 3.1b and its independent review (unit 1406, integration 300), and before it items 3.1a, 3.0 and 2.5; the test-suite row below still records iteration 30's counts and is not rewritten here. Earlier: 2026-09-08 · Test counts, coverage and the remediation row brought to iteration 30; Phase 2 recorded as closed. Rewritten from the audit's remediation log at iteration 21. Both `STATUS.md` rows in the audit's §6.12 contradiction table — the Diagnostics claim, and "Phase 1 and Phase 2 ✅ 100% Completed" — are corrected here rather than left standing (TD-39) |
+| **Reconciled** | 2026-10-05 · The Phase 5 line below named "plugins, marketplace"; ADR-0021 withdrew both (TD-147), struck through in place. 2026-09-19 · Last-remediation row extended for post-audit plan item 3.1d (unit 1481, integration 330). Earlier: 2026-09-18 · extended for item 3.1c (unit 1453, integration 317), and before it item 3.1b and its independent review (unit 1406, integration 300), and before it items 3.1a, 3.0 and 2.5; the test-suite row below still records iteration 30's counts and is not rewritten here. Earlier: 2026-09-08 · Test counts, coverage and the remediation row brought to iteration 30; Phase 2 recorded as closed. Rewritten from the audit's remediation log at iteration 21. Both `STATUS.md` rows in the audit's §6.12 contradiction table — the Diagnostics claim, and "Phase 1 and Phase 2 ✅ 100% Completed" — are corrected here rather than left standing (TD-39) |
 
 The phase percentages below track **feature delivery against `docs/56-IMPLEMENTATION-PLAN.md`**, and
 nothing else. They do not track whether the software is safe to put real money in. A phase can be
@@ -58,7 +58,7 @@ result to be less than the tick implies, the row says so and names the debt.
   - **Pillar 2 (Savings Goals):** 🔴 Not Started
   - **Pillar 3 (Recurring):** 🔴 Not Started
 - **Phase 4 (v0.4 beta - Investments):** 🔴 Pending
-- **Phase 5 (v0.5 beta - Sync, plugins, marketplace):** 🔴 Pending
+- **Phase 5 (v0.5 beta - Sync, ~~plugins, marketplace~~ withdrawn, ADR-0021):** 🔴 Pending
 - **Phases 6-10 (Beta to GA):** 🔴 Pending
 
 ---

@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-55-FUTURE-VISION`                                                           |
 | Status           | Non-normative — long-horizon sketch, self-declared aspirational                      |
-| Reconciled       | 2026-08-31 · The document already labels its own content aspirational (:21, :29, :178). No change of substance; the header now says what §11 always did. |
+| Reconciled       | 2026-08-31 · The document already labels its own content aspirational (:21, :29, :178). No change of substance; the header now says what §11 always did. **2026-10-05 · ADR-0021 forecloses the plugin sketches in §5.1, §6.2, §7.2, §11 and §13 (FV-D-3) — not merely "not yet built" but decided against, so they are struck through rather than left as live aspiration (TD-147).** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -64,7 +64,7 @@ Out of scope: current roadmap → `23-Roadmap`; current vision →
   platforms.
 - Pine's AI is *mostly on-device*, with optional cloud for
   consented workloads.
-- Pine's plugins are a *first-class* extension surface.
+- ~~Pine's plugins are a *first-class* extension surface.~~ **Withdrawn, ADR-0021 (TD-147):** there are no plugins; compiled-in extension seams are the surface instead.
 - Pine's sync is *pluggable* and *zero-knowledge* by default.
 - Pine's community is *bilingual* (English + Spanish at minimum)
   with a *locale-lead* per locale.
@@ -108,8 +108,8 @@ Out of scope: current roadmap → `23-Roadmap`; current vision →
 
 - A *spouse-mode* and *family-mode* that respects the
   per-user-encryption posture while enabling shared visibility.
-- A *plugin market* that is *self-sustaining* (revenue to plugin
-  authors, not just recognition).
+- ~~A *plugin market* that is *self-sustaining* (revenue to plugin
+  authors, not just recognition).~~ **Withdrawn, ADR-0021 (TD-147):** no plugin market will exist.
 - A *data export* that is *fully portable* (no lock-in to a
   vendor format).
 - A *cross-vendor* sync, where the user picks a sync provider
@@ -136,8 +136,9 @@ Out of scope: current roadmap → `23-Roadmap`; current vision →
 
 - A *personal-finance* experience that is *invisible* — the user
   is in flow, the system is a quiet helper.
-- A *community* that has produced a *generation* of plugin
-  authors, model authors, and locale leads.
+- A *community* that has produced a *generation* of ~~plugin
+  authors,~~ model authors, and locale leads. **(ADR-0021, TD-147:
+  there is no plugin authorship to produce a generation of.)**
 - A *regulation* that recognises the *local-first* posture as
   best-in-class for privacy.
 
@@ -186,12 +187,12 @@ committed.
 |----------------------------------------------|-----------|-------------------------------------------------------------------------|
 | Spouse / family mode                          | 3–5 years | Per-user encryption, shared visibility; opt-in.                        |
 | AI assistant for financial decisions          | 3–5 years | On-device; explanation layer; never replaces a professional adviser.   |
-| Public plugin marketplace                     | 1–3 years | Per `33-Plugin-SDK`; reviewed; auditable.                              |
+| ~~Public plugin marketplace~~ (withdrawn, ADR-0021; TD-147) | — | ~~Per `33-Plugin-SDK`; reviewed; auditable.~~ `33-Plugin-SDK` is itself Withdrawn. |
 | Cross-vendor sync                              | 3–5 years | Pluggable sync provider; documented trust posture per provider.         |
 | Decision-support scenarios                    | 3–5 years | Sandboxed; user-confirmed; never automatic.                             |
 | Anonymised aggregate market signal            | 3–5 years | Differential privacy; opt-in.                                          |
 | Multi-profile per user                        | 3–5 years | E.g. personal + small business.                                        |
-| Plugin revenue share (if marketplace exists)  | 3–5 years | Transparent; not a subscription model.                                  |
+| ~~Plugin revenue share (if marketplace exists)~~ (withdrawn, ADR-0021; TD-147) | — | No marketplace will exist. |
 
 ## 12. What Pine Will Not Do
 
@@ -213,7 +214,7 @@ in the long horizon:
 |-----------|-------------------------------------------------------------------------------------------|----------------------------|
 | FV-D-1    | Election mechanism for the Maintainer Council.                                            | `24-Contributing`          |
 | FV-D-2    | Spouse / family mode encryption posture.                                                    | `15-Security` (next rev.)  |
-| FV-D-3    | Plugin revenue share (when marketplace exists).                                              | `33-Plugin-SDK` (next rev.) |
+| FV-D-3    | ~~Plugin revenue share (when marketplace exists).~~ **Closed, not deferred — ADR-0021 (TD-147): no marketplace will exist.** | ~~`33-Plugin-SDK` (next rev.)~~ (Withdrawn) |
 | FV-D-4    | Anonymised market signal default opt-in posture.                                            | `32-AI-Training`           |
 
 ## 14. Quality Checklist

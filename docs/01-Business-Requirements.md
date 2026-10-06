@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-01-BUSINESS-REQUIREMENTS`                                                 |
 | Status           | Non-normative — business context and objectives                                      |
-| Reconciled       | 2026-08-31 · Business objectives and success measures. Nothing here can be implemented or unimplemented by code. |
+| Reconciled       | 2026-08-31 · Business objectives and success measures. Nothing here can be implemented or unimplemented by code. **2026-10-05 · ADR-0021 withdrew the plugin host and `33-Plugin-SDK`; Pine will not load third-party code. KR-01-2, KR-01-3, KR-05-1, BD-03, BC-06, BR-A-4, BP-06 and the stakeholder/metric rows naming plugins are struck through below rather than deleted (TD-147).** |
 | Owner            | Engineering Review Board (acting on behalf of Project Lead)                          |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -77,7 +77,10 @@ products:
    automation and AI).
 
 Pine is positioned as a **fourth category**: a privacy-respecting,
-offline-first, AI-assisted, plugin-based open-source platform.
+offline-first, AI-assisted, ~~plugin-based~~ open-source platform.
+**Amended by ADR-0021 (TD-147):** "plugin-based" described loading
+third-party code, which Pine will not do; the extension seams are
+compiled in.
 
 **Rationale.** Positioning Pine as a *new* category (rather than a
 competitor inside an existing one) is consistent with principles P-01
@@ -94,7 +97,7 @@ business-level summary is:
 |-----------------------|------------------------------------------------------------------------------|
 | End users             | Reliable, private, multi-platform finance management.                       |
 | Community             | Healthy, transparent, merit-based governance.                              |
-| Plugin authors        | Sustainable marketplace, predictable SDK evolution.                        |
+| ~~Plugin authors~~ (no longer served, ADR-0021; TD-147) | ~~Sustainable marketplace, predictable SDK evolution.~~ |
 | Translators / localisers | Clear i18n pipeline and locale ownership.                                |
 | Security researchers  | Public threat model and responsible disclosure.                            |
 | Donors / sponsors     | Visible accountability for funds and outcomes.                             |
@@ -107,7 +110,7 @@ business-level summary is:
 |-------|------------------------------------------------------------------------------------------|
 | BD-01 | Users want a tool that does not monetise their data.                                    |
 | BD-02 | Users want a tool that works without an internet connection.                             |
-| BD-03 | Plugin ecosystems create long-tail value that a single vendor cannot build alone.       |
+| BD-03 | ~~Plugin ecosystems create long-tail value that a single vendor cannot build alone.~~ **Withdrawn, ADR-0021 (TD-147):** Pine will not have a plugin ecosystem; this driver no longer applies. |
 | BD-04 | Local AI capability is becoming table-stakes for personal data.                         |
 | BD-05 | Cross-platform parity is a hard requirement, not a marketing claim.                     |
 | BD-06 | Sustainable funding for an open-source project requires a transparent donation model.   |
@@ -132,8 +135,8 @@ violating P-01.
 | Key Result | Target                                                   | Measurement source                          |
 |------------|----------------------------------------------------------|---------------------------------------------|
 | KR-01-1    | ≥ 100,000 active installs within 12 months of v1.0 GA.   | Optional, opt-in telemetry (default off).   |
-| KR-01-2    | ≥ 5 distinct sync provider plugins published by the community within 18 months of v1.0 GA. | Public plugin registry. |
-| KR-01-3    | ≥ 10 distinct AI model plugins published by the community within 18 months of v1.0 GA.     | Public plugin registry. |
+| KR-01-2    | ~~≥ 5 distinct sync provider plugins published by the community within 18 months of v1.0 GA.~~ **Withdrawn, ADR-0021 (TD-147): no plugin registry will exist.** | ~~Public plugin registry.~~ |
+| KR-01-3    | ~~≥ 10 distinct AI model plugins published by the community within 18 months of v1.0 GA.~~ **Withdrawn, ADR-0021 (TD-147): no plugin registry will exist.** | ~~Public plugin registry.~~ |
 | KR-01-4    | ≥ 20 locales with ≥ 80 % translation coverage within 24 months of v1.0 GA.                 | Crowdin / Weblate export.                   |
 
 ### 5.2 Objective O-02 — Trust
@@ -176,7 +179,7 @@ violating P-01.
 
 | Key Result | Target                                                                              | Measurement source                          |
 |------------|-------------------------------------------------------------------------------------|---------------------------------------------|
-| KR-05-1    | Plugin SDK is stable (semver) and used by ≥ 3 third-party plugins before v1.0.       | Plugin registry.                            |
+| KR-05-1    | ~~Plugin SDK is stable (semver) and used by ≥ 3 third-party plugins before v1.0.~~ **Withdrawn, ADR-0021 (TD-147): there is no plugin SDK and no third-party plugins.** | ~~Plugin registry.~~ |
 | KR-05-2    | Public architecture tests in CI assert dependency direction rules.                  | `18-Test-Strategy`, CI report.              |
 | KR-05-3    | At least one AI model swap demonstrated end-to-end (on-device) before v1.0 GA.      | Demo recording + test report.               |
 
@@ -197,7 +200,7 @@ change. Any exception requires an ADR and a Vision revision.
 | BP-03   | Pine does not sell or share user data with any third party, ever.                        | P-01, P-12           |
 | BP-04   | All AI runs locally; paid third-party AI APIs are prohibited.                            | P-01, P-09, P-12     |
 | BP-05   | Telemetry is **opt-in** with a clear, reversible consent flow.                           | P-01, P-11           |
-| BP-06   | Source code is released under GPL v3. Plugin baseline licence is defined in `33-Plugin-SDK`. | P-03              |
+| BP-06   | Source code is released under GPL v3. ~~Plugin baseline licence is defined in `33-Plugin-SDK`.~~ **Withdrawn, ADR-0021 (TD-147): `33-Plugin-SDK` is itself Withdrawn; no plugin licence baseline will be produced.** | P-03              |
 | BP-07   | The Pine name and logo are protected by trademark. Forks must not mislead users.         | P-11                 |
 | BP-08   | Security vulnerabilities are handled through a public, responsible-disclosure process.   | P-01, P-11           |
 | BP-09   | Accessibility is a release-blocking quality gate, not an enhancement.                    | P-06, P-08           |
@@ -223,7 +226,7 @@ Vision principles. They make the principles testable in CI and review.
 |---------|------------------------------------------------------------------------------------------|
 | BC-04   | Pine has **no paid product** to subsidise misuse of user data. The only sustainable model is voluntary community support. |
 | BC-05   | All donations, sponsorships and grants are recorded and reported annually.              |
-| BC-06   | No exclusive commercial partnership is allowed if it would bias plugin neutrality, AI model selection or storage backends. |
+| BC-06   | No exclusive commercial partnership is allowed if it would bias ~~plugin neutrality~~ (no longer applicable, ADR-0021), AI model selection or storage backends. |
 
 ### 7.3 Organisational Constraints
 
@@ -252,7 +255,7 @@ strategy (`18-Test-Strategy`) and the release checklist
 |-------------------------------------------------|------------------------------------------|-------------|
 | Active installs                                 | Opt-in telemetry (default off)           | Monthly     |
 | Crash-free session rate                          | Opt-in diagnostics (default off)         | Per release |
-| Plugin count (categories from `12`)             | Plugin registry                         | Monthly     |
+| ~~Plugin count (categories from `12`)~~ (withdrawn, ADR-0021) | ~~Plugin registry~~ | — |
 | Locale coverage                                  | Translation platform                    | Per release |
 | Mean time to recover (P1)                       | Incident log                            | Quarterly   |
 | Security advisories open at release time        | Security tracker                        | Per release |
@@ -311,7 +314,7 @@ It also makes principle drift auditable.
 | BR-A-1      | `03-Glossary` is authoritative for terminology; working definitions in §3 will be reconciled.          |
 | BR-A-2      | The donation + sponsorship model is sufficient to fund long-term maintenance, infra, security audits and one staff maintainer. |
 | BR-A-3      | Telemetry is acceptable to users *only* if it is off-by-default, opt-in, anonymous and reversible.    |
-| BR-A-4      | A community-maintained plugin ecosystem can be bootstrapped within 18 months of v1.0 GA.             |
+| BR-A-4      | ~~A community-maintained plugin ecosystem can be bootstrapped within 18 months of v1.0 GA.~~ **Withdrawn, ADR-0021 (TD-147): the assumption is moot — there will be no plugin ecosystem to bootstrap, and this is a decision, not a deferral.** |
 | BR-A-5      | The trademark policy can be defined and applied without contradicting the GPL v3 licence of the code. |
 
 ## 12. Deferred Business Decisions

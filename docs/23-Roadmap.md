@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-23-ROADMAP`                                                                |
 | Status           | Non-normative — roadmap                                                              |
-| Reconciled       | 2026-08-31 · A statement of intended order of work. `60-Production-Readiness-Audit` §10 is the roadmap actually being executed. |
+| Reconciled       | 2026-08-31 · A statement of intended order of work. `60-Production-Readiness-Audit` §10 is the roadmap actually being executed. **2026-10-05 · ADR-0021 withdrew the plugin host and `33-Plugin-SDK`; the v0.4, v0.5, v1.0, v1.1 and v1.2 rows in §5 that scheduled a plugin SDK and marketplace are struck through rather than deleted (TD-147).** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -65,15 +65,15 @@ project website. Windows are expressed as `v0.Y` minor lines per
 | v0.1 (alpha) | Core engine.                                                                               | Local SQLite store, encryption, accounts, transactions, categories, basic dashboard, basic settings. |
 | v0.2 (beta)  | Imports and the local AI baseline.                                                        | CSV/Excel/OFX/QFX/PDF/bank statement import, OCR model (default), categorisation model (default). |
 | v0.3 (beta)  | Budgets, goals, recurring.                                                                | Budgets, savings goals, recurring detection, rule engine baseline.                                 |
-| v0.4 (beta)  | Investments.                                                                               | Investment accounts, holdings, cost basis, P/L, plugin price sources.                               |
-| v0.5 (beta)  | Sync, plugins, marketplace.                                                               | Encrypted sync (plugin), plugin SDK stable, marketplace, public Plugin SDK v1.0.                   |
+| v0.4 (beta)  | Investments.                                                                               | Investment accounts, holdings, cost basis, P/L, ~~plugin~~ compiled-in price sources (ADR-0021).    |
+| v0.5 (beta)  | ~~Sync, plugins, marketplace.~~ Sync. **Withdrawn, ADR-0021 (TD-147): no plugin SDK, no marketplace.** | ~~Encrypted sync (plugin), plugin SDK stable, marketplace, public Plugin SDK v1.0.~~ Encrypted sync, with compiled-in providers (`14-Synchronization` §8). |
 | v0.6 (beta)  | Reports, analytics, forecasting.                                                          | Built-in reports, cohort/distribution analytics, forecasting (on-device).                          |
 | v0.7 (beta)  | AI assistant, recommendation, anomaly.                                                   | Assistant, recommendation engine, anomaly detection, explanation layer.                            |
 | v0.8 (beta)  | Internationalisation and accessibility.                                                  | Full i18n baseline, RTL, regional formatting, WCAG 2.2 AA in built-in UI.                         |
 | v0.9 (rc)    | Hardening.                                                                                | Performance budgets, mutation suite, security audit, threat model published, accessibility audit.  |
-| v1.0 (GA)    | Public release on all five platforms.                                                   | All SCOPE-* items shipped; sync stable; AI stable; plugin SDK stable.                               |
-| v1.1         | Quality of life.                                                                          | Undo, keyboard shortcuts, plugin update UX, mobile polish.                                          |
-| v1.2         | Ecosystem.                                                                                | Theme marketplace, chart plugins, notification plugins.                                            |
+| v1.0 (GA)    | Public release on all five platforms.                                                   | All SCOPE-* items shipped; sync stable; AI stable; ~~plugin SDK stable~~ (withdrawn, ADR-0021).      |
+| v1.1         | Quality of life.                                                                          | Undo, keyboard shortcuts, ~~plugin~~ compiled-in provider update UX, mobile polish.                 |
+| v1.2         | ~~Ecosystem.~~ **Withdrawn, ADR-0021 (TD-147): no theme/chart/notification plugin marketplace.** | ~~Theme marketplace, chart plugins, notification plugins.~~ |
 | v1.3         | Forecasting maturity.                                                                     | Scenario editor, confidence band UX, model swap UX.                                                |
 | v1.4         | Security and privacy maturity.                                                            | Independent audit follow-up, key rotation UX, recovery UX.                                         |
 | v2.0         | Architectural maturation.                                                                 | Major version with documented breaking changes; previewed in v1.9.                                 |
