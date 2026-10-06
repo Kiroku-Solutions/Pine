@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-05 — Stage 3 item 3.1h (§6.9, §11's User Controls: enable/disable, forced resync, erasure). Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 4 item 4.1 (§7.1, TD-147 closed: six non-normative documents corrected). Stage 3 (sync) is closed, items 3.0 and 3.1a–3.1h (§6.1–§6.9), with `14-Synchronization` §10 marked out of scope. Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2451,7 +2451,7 @@ diff either direction) rather than by line count, independently by the verifying
 
 | # | Work | Closes |
 |---|---|---|
-| 4.1 | Revise the non-normative documents that still promise a plugin ecosystem | TD-147 |
+| 4.1 | ✅ **Done** (2026-10-05) — Revise the non-normative documents that still promise a plugin ecosystem, see §7.1 | TD-147 (closed) |
 | 4.2 | Re-scope `TD-84` (the Diagnostic Information Bundle), whose Fix column waits on a plugin host that will now never exist | TD-84 |
 | 4.3 | Sweep the register for rows whose *mitigation* has been overtaken, as TD-67's was | — |
 
@@ -2461,6 +2461,39 @@ fixing something else. Nobody re-read the row. **That is a class, not an inciden
 severity rests on a mitigation rather than on the defect can be silently promoted by unrelated work.
 Search the register for Impact columns that argue "this is not reachable / not used / not exposed"
 and re-verify each one against the current code.
+
+### 7.1 Item 4.1, as built (2026-10-05): the non-normative documents, corrected rather than swept
+
+**TD-147's own Impact column had already explained why these six were left alone the first time**: none of
+`00-Vision`, `01-Business-Requirements`, `23-Roadmap`, `17-Risk-Analysis`, `55-Future-Vision` or
+`05-Personas`/`04-Stakeholders` specifies software behaviour, so none could mislead a reader about what the code
+does — unlike `02-Product-Scope` and `07-Functional-Requirements`, which were amended with ADR-0021 immediately
+because they do. **A product's stated direction still deserves a deliberate correction, not silence**, which is
+the distinction this item acts on.
+
+**What was done.** Every sentence promising a plugin ecosystem in the six documents was struck through in place —
+nothing deleted — with a dated correction beside it citing ADR-0021, following the exact pattern
+`14-Synchronization` §8 already used for its own amendment. The Fix column's two specific instructions were both
+taken literally rather than paraphrased: **`17-Risk-Analysis` R-10 is marked Answered, not Mitigated** — the
+ecosystem will not form because there will not be one, which is a different claim than "the risk is managed" —
+and **PERS-07 (the plugin-author persona) and `SH-PLUGIN-AUTHOR` are retired**, not re-aimed: no compiled-in
+extension seam serves her original goal, so inventing one to redirect her at would have been the inventive move
+this item was not asked to make. `STATUS.md`'s Phase 5 line was corrected too, found by the same sweep rather than
+named in the row.
+
+**What was checked and left alone.** `12-Plugin-Architecture` and `33-Plugin-SDK` were already `Withdrawn` and
+cite ADR-0021 correctly; `02-Product-Scope` and `07-Functional-Requirements` were already amended, as the row
+itself says. `56-IMPLEMENTATION-PLAN.md` still names plugins throughout and was left untouched **by design** — its
+own header already states it is a historical plan, and editing it to match the outcome would destroy the record
+of what was intended. About a dozen other documents reference `33-Plugin-SDK` only as a cross-reference, not as a
+standalone promise, and TD-147's row did not name them.
+
+**Verified.** All sixteen `Documentation`-filtered unit tests pass (`EveryDocumentDeclaresAStatus`,
+`EveryWithdrawnDocumentCitesAnAdrThatExists`, `TheDocumentSetHasNotShrunk`, and the rest), re-run directly rather
+than taken on the word of the pass that made the edits. The full unit suite is unaffected (still 1727 green); this
+item touched no source file, so no build or integration run was needed. TD-147's own register row is marked
+Closed, citing this section, with its correction summarized inline rather than left for a reader to reconstruct
+from the diff.
 
 ## 8. What is deliberately NOT in this plan
 
@@ -2585,7 +2618,12 @@ envelope, 3.1d), §6 (change-set semantics, 3.1a/3.1b), §7 (the conflict table,
 honest slice built against them, and **§10, Cloud Only Mode, is marked out of scope rather than built** — it
 assumes a cloud provider, which ADR-0012's no-network rule rules out the same way ADR-0021 ruled out a plugin
 host, and `14-Synchronization` §10 now says so in place rather than being silently skipped. Sync, as a document, is
-done the way a decision can close a section: nothing in it is still merely unaddressed. **The next item is
-whatever Stage 4 (§7 of this plan) or the open TD rows ahead of it name** — the documents sweep (TD-147, TD-84, and
-the TD-67-shaped search for a mitigation overtaken by later work), or any TD row Stage 3's own work has since
-registered or narrowed, checked against the register rather than guessed.
+done the way a decision can close a section: nothing in it is still merely unaddressed. ~~The next item is
+whatever Stage 4 (§7 of this plan) or the open TD rows ahead of it name.~~
+
+Done 2026-10-05, item 4.1 (§7.1): the six non-normative documents still promising a plugin ecosystem are corrected
+in place — struck through, not deleted — with `17-Risk-Analysis` R-10 marked Answered and PERS-07/`SH-PLUGIN-AUTHOR`
+retired, the Fix column's two instructions taken literally rather than paraphrased. TD-147 is closed. **The next
+item is 4.2: re-scope TD-84** (the Diagnostic Information Bundle, whose Fix column waits on a plugin host that
+will now never exist) **, or 4.3's sweep for a mitigation overtaken by later work — whichever the register shows
+is still live**, checked against `60-Production-Readiness-Audit` rather than guessed.
