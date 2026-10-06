@@ -2732,3 +2732,11 @@ sentences in C# couldn't see short labels or raw enum names, so `NoSentenceLiter
 patterns (title-case literals, exclaimed words) rather than leaving this class of gap able to recur silently. One
 real bug found mid-fix and corrected: an adjustment's description still read the raw enum member name after
 everything around it had been converted.
+
+**Post-closure, 2026-10-06: TD-153 attempted and abandoned, flagged for review.** A Media Foundation/DirectShow
+camera enumerator was drafted but two agents working the same files concurrently (a resumed background agent and
+a second one dispatched without knowing the first was still alive) forced the attempt to be killed before the
+real risk was ever checked: whether Media Foundation's enumeration order reliably corresponds to OpenCV's
+`VideoCapture(index)` ordering. A wrong mapping there is a silent wrong-camera bug, not a missing feature, so
+nothing was kept rather than ship it unverified. The register row is flagged for a dedicated review before any
+retry, not left to look like ordinary open work.
