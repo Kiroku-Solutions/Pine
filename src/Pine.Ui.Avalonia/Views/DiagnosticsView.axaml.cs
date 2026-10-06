@@ -6,6 +6,7 @@ using System.Linq;
 using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.Views;
 
@@ -57,8 +58,13 @@ public partial class DiagnosticsView : UserControl
                 
                 if (sender is Button btn)
                 {
+                    // Localizer.Instance, not an injected ILocalizer: this code-behind is
+                    // constructed by the XAML loader with no container reach, the same
+                    // constraint TrExtension's and Converters.ConfidenceHintText's remarks
+                    // document, and Localizer.Instance is the same static singleton both of
+                    // those already resolve through (TD-150).
                     var oldContent = btn.Content;
-                    btn.Content = "Copied!";
+                    btn.Content = Localizer.Instance["Diagnostics.Log.CopiedLabel"];
                     await System.Threading.Tasks.Task.Delay(1500);
                     btn.Content = oldContent;
                 }

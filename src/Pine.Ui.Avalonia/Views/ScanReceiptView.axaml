@@ -181,7 +181,16 @@
                                     <!-- Read-only: a row changes kind through the reconciliation
                                          panel below, which also fixes the amount, so editing the
                                          label alone could only ever make the two disagree. -->
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnKind}" Binding="{Binding Kind}" Width="72" IsReadOnly="True" />
+                                    <!-- TD-150: a bare Binding over Kind rendered the enum's raw
+                                         member name ("Tax", "Product", ...) instead of a word. -->
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnKind}" Width="72" IsReadOnly="True">
+                                        <DataGridTextColumn.Binding>
+                                            <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
+                                                <Binding Path="Kind" />
+                                                <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                            </MultiBinding>
+                                        </DataGridTextColumn.Binding>
+                                    </DataGridTextColumn>
                                     <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnTotal}" Binding="{Binding TotalPrice}" Width="70" IsReadOnly="True" />
                                     <DataGridTemplateColumn Width="40">
                                         <DataGridTemplateColumn.CellTemplate>
@@ -231,11 +240,26 @@
                                                        TextWrapping="Wrap" FontSize="12"
                                                        Foreground="{DynamicResource PineError}" />
                                             <Grid ColumnDefinitions="*, 8, Auto">
+                                                <!-- TD-150: a bare ItemsSource over this enum
+                                                     rendered its raw member name. -->
                                                 <ComboBox Grid.Column="0" ItemsSource="{Binding AdjustmentKinds}"
                                                           SelectedItem="{Binding SelectedAdjustmentKind}"
                                                           HorizontalAlignment="Stretch"
                                                           AutomationProperties.Name="{loc:Tr ScanReceipt.Reconciliation.AdjustmentKindAutomationName}"
-                                                          IsEnabled="{Binding !IsBusy}" />
+                                                          IsEnabled="{Binding !IsBusy}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock>
+                                                                <TextBlock.Text>
+                                                                    <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
+                                                                        <Binding />
+                                                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                                                    </MultiBinding>
+                                                                </TextBlock.Text>
+                                                            </TextBlock>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
                                                 <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Reconciliation.RecordDifference}"
                                                         Command="{Binding RecordDifferenceAsAdjustmentCommand}"
                                                         Padding="10,4" FontSize="12"

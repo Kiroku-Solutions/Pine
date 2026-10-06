@@ -95,10 +95,10 @@ public class DiagnosticsViewModelTests
 
         // Assert
         vm.LogEntries.Should().BeEmpty("the seven fabricated constructor log lines are the whole of TD-15");
-        vm.AppVersion.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.OsDescription.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.DatabaseStatus.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.ManagedMemory.Should().Be(DiagnosticsViewModel.NotMeasuredText);
+        vm.AppVersion.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.OsDescription.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.DatabaseStatus.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.ManagedMemory.Should().Be(_localizer["Diagnostics.NotMeasured"]);
 
         // Not "no records yet" either: the panel has not looked, and saying the log is empty would
         // be an invention of exactly the same kind as saying it is full.
@@ -230,7 +230,7 @@ public class DiagnosticsViewModelTests
         // through to an empty string would render as a blank card, which a user reads as "fine" --
         // the same failure as the literal "Connected (Healthy)" it replaced.
         vm.DatabaseStatus.Should().NotBeNullOrWhiteSpace();
-        vm.DatabaseStatus.Should().NotBe(DiagnosticsViewModel.NotMeasuredText);
+        vm.DatabaseStatus.Should().NotBe(_localizer["Diagnostics.NotMeasured"]);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class DiagnosticsViewModelTests
         await vm.RefreshAsync();
 
         // Assert
-        vm.DatabaseStatus.Should().Be(DiagnosticsViewModel.DatabaseUnavailableText);
+        vm.DatabaseStatus.Should().Be(_localizer["Diagnostics.Database.Unavailable"]);
         vm.DatabaseStatus.Should().NotContain("Exception");
         vm.DatabaseStatus.Should().NotContain("SQLite");
         vm.DatabaseStatus.Should().NotContain("\\");

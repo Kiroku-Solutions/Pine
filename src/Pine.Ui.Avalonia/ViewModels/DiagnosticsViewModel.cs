@@ -154,6 +154,15 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     private readonly LocalizedMessageSlot _emptyLog;
 
     /// <summary>
+    /// Renders <see cref="DatabaseStatus"/> through the same mechanism <see cref="_emptyLog"/> uses
+    /// for <see cref="EmptyLogMessage"/>, so the database card's wording also re-words itself on a
+    /// language change instead of freezing at whatever status string <see cref="DescribeHealth"/>
+    /// returned the last time <see cref="RefreshAsync"/> ran (TD-150: "Connected"/"Vault locked"
+    /// were literal English returned from that switch).
+    /// </summary>
+    private readonly LocalizedMessageSlot _databaseStatus;
+
+    /// <summary>
     /// How many of the newest log records the terminal reads.
     /// </summary>
     /// <remarks>
@@ -173,27 +182,32 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     private readonly int _maxLogEntries;
 
     /// <summary>
-    /// What every measured field reads before <see cref="RefreshAsync"/> has run.
+    /// The key for what every measured field reads before <see cref="RefreshAsync"/> has run
+    /// (TD-150: was the public constant <c>NotMeasuredText</c>, compared by reference like
+    /// <c>NoRecordsText</c>/<c>ViewClearedText</c> were before this same row's earlier pass).
     /// </summary>
     /// <remarks>
     /// Not "Healthy", not a version number, not an empty string that would render as a blank card
     /// the user reads as "fine". The screen states plainly that it has not looked yet, which is the
     /// honest description of a view model whose constructor does no I/O.
     /// </remarks>
-    public const string NotMeasuredText = "Not read yet";
+    private const string NotMeasuredKey = "Diagnostics.NotMeasured";
 
-    /// <summary>The database card's text for a locked vault -- a normal state, not a failure.</summary>
-    public const string DatabaseLockedText = "Vault locked";
+    /// <summary>The database card's key for a locked vault -- a normal state, not a failure (TD-150).</summary>
+    private const string DatabaseLockedKey = "Diagnostics.Database.Locked";
 
-    /// <summary>The database card's text for an open database at the current schema.</summary>
-    public const string DatabaseHealthyText = "Connected";
+    /// <summary>The database card's key for an open database at the current schema (TD-150).</summary>
+    private const string DatabaseHealthyKey = "Diagnostics.Database.Healthy";
 
-    /// <summary>The database card's text for an open vault whose database will not answer.</summary>
-    public const string DatabaseUnreachableText = "Unreachable";
+    /// <summary>The database card's key for an open vault whose database will not answer (TD-150).</summary>
+    private const string DatabaseUnreachableKey = "Diagnostics.Database.Unreachable";
+
+    /// <summary>The database card's key for the pending-migrations count, carrying one argument (TD-150).</summary>
+    private const string DatabasePendingMigrationsKey = "Diagnostics.Database.PendingMigrations";
 
     /// <summary>
-    /// The database card's text for a probe that failed, and for any status this build does not
-    /// recognise.
+    /// The database card's key for a probe that failed, and for any status this build does not
+    /// recognise (TD-150).
     /// </summary>
     /// <remarks>
     /// FIXED AND NEUTRAL ON PURPOSE (TD-23). It names the log rather than the fault, because the
@@ -201,7 +215,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     /// "unavailable" rather than crashing a diagnostics screen, which is the one screen that must
     /// survive things being broken.
     /// </remarks>
-    public const string DatabaseUnavailableText = "Unavailable — see log";
+    private const string DatabaseUnavailableKey = "Diagnostics.Database.Unavailable";
 
     /// <summary>The empty-state line's key, shown when the log genuinely holds nothing (TD-150).</summary>
     /// <remarks>
@@ -224,18 +238,23 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
 
     /// <summary>The application's informational version, as reported by the runtime info provider.</summary>
     [ObservableProperty]
-    public partial string AppVersion { get; set; } = NotMeasuredText;
+    public partial string AppVersion { get; set; } = string.Empty;
 
     /// <summary>The operating system and architecture description, as reported by the provider.</summary>
     [ObservableProperty]
-    public partial string OsDescription { get; set; } = NotMeasuredText;
+    public partial string OsDescription { get; set; } = string.Empty;
 
     /// <summary>
     /// The vault database's health, in this view model's own wording.
     /// </summary>
-    /// <remarks>Derived by <see cref="DescribeHealth"/> from a status; never an exception message.</remarks>
+    /// <remarks>
+    /// Starts empty, not pre-filled: <see cref="_databaseStatus"/> assigns the real value from the
+    /// constructor, through the localizer, the same way <see cref="_emptyLog"/> assigns
+    /// <see cref="EmptyLogMessage"/>. Derived by <see cref="DescribeHealthKey"/> from a status;
+    /// never an exception message.
+    /// </remarks>
     [ObservableProperty]
-    public partial string DatabaseStatus { get; set; } = NotMeasuredText;
+    public partial string DatabaseStatus { get; set; } = string.Empty;
 
     /// <summary>
     /// Bytes on the managed heap, formatted for display.
@@ -246,7 +265,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     /// comparing against Task Manager would expect; the number was real and the label was the lie.
     /// </remarks>
     [ObservableProperty]
-    public partial string ManagedMemory { get; set; } = NotMeasuredText;
+    public partial string ManagedMemory { get; set; } = string.Empty;
 
     /// <summary>Whether a read is in flight, so the view can disable Refresh.</summary>
     [ObservableProperty]
@@ -319,6 +338,12 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
         _error = new LocalizedMessageSlot(effectiveLocalizer, text => ErrorMessage = text);
         _emptyLog = new LocalizedMessageSlot(effectiveLocalizer, text => EmptyLogMessage = text ?? string.Empty);
         _emptyLog.Set(NoRecordsKey);
+        _databaseStatus = new LocalizedMessageSlot(effectiveLocalizer, text => DatabaseStatus = text ?? string.Empty);
+        _databaseStatus.Set(NotMeasuredKey);
+
+        AppVersion = effectiveLocalizer[NotMeasuredKey];
+        OsDescription = effectiveLocalizer[NotMeasuredKey];
+        ManagedMemory = effectiveLocalizer[NotMeasuredKey];
     }
 
     /// <summary>
@@ -337,6 +362,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     {
         _error.Dispose();
         _emptyLog.Dispose();
+        _databaseStatus.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -399,7 +425,8 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
             ManagedMemory = FormatBytes(_runtimeInfoProvider.ManagedMemoryBytes);
 
             var health = await _databaseHealthProbe.CheckAsync(CancellationToken.None).ConfigureAwait(true);
-            DatabaseStatus = DescribeHealth(health);
+            var (key, args) = DescribeHealthKey(health);
+            _databaseStatus.Set(key, args);
 
             var tail = await _logTailReader.ReadTailAsync(_maxLogEntries, CancellationToken.None).ConfigureAwait(true);
 
@@ -449,28 +476,30 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     /// message along (TD-23).
     /// </remarks>
     /// <param name="health">The reading from <see cref="IDatabaseHealthProbe"/>.</param>
-    /// <returns>A short, non-empty phrase that carries no exception detail.</returns>
-    private static string DescribeHealth(DatabaseHealth health)
+    /// <returns>
+    /// A key into the string tables, plus the arguments it needs, carrying no exception detail
+    /// (TD-150: was a hard-coded English phrase; the switch now names a key, the way
+    /// <c>SyncConflictRowViewModel.KindKeys</c> maps a kind onto its own string-table keys).
+    /// </returns>
+    private static (string Key, object?[] Args) DescribeHealthKey(DatabaseHealth health)
     {
         if (health is null)
         {
-            return DatabaseUnavailableText;
+            return (DatabaseUnavailableKey, []);
         }
 
         return health.Status switch
         {
-            DatabaseHealthStatus.Locked => DatabaseLockedText,
-            DatabaseHealthStatus.Healthy => DatabaseHealthyText,
+            DatabaseHealthStatus.Locked => (DatabaseLockedKey, []),
+            DatabaseHealthStatus.Healthy => (DatabaseHealthyKey, []),
 
             // The COUNT is the whole point of this status: "pending migrations" alone does not tell
             // a user whether they are one release behind or looking at a vault from a future build.
-            DatabaseHealthStatus.PendingMigrations => string.Create(
-                CultureInfo.CurrentCulture,
-                $"{health.PendingMigrationCount} migration(s) pending"),
+            DatabaseHealthStatus.PendingMigrations => (DatabasePendingMigrationsKey, [health.PendingMigrationCount]),
 
-            DatabaseHealthStatus.Unreachable => DatabaseUnreachableText,
-            DatabaseHealthStatus.Faulted => DatabaseUnavailableText,
-            _ => DatabaseUnavailableText,
+            DatabaseHealthStatus.Unreachable => (DatabaseUnreachableKey, []),
+            DatabaseHealthStatus.Faulted => (DatabaseUnavailableKey, []),
+            _ => (DatabaseUnavailableKey, []),
         };
     }
 

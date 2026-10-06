@@ -3,8 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using Avalonia.Data.Converters;
+using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
+using Pine.Core.Rules;
+using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.Utils;
@@ -184,5 +187,73 @@ public static class Converters
 
             return false;
         }
+    }
+
+    /// <summary>
+    /// The word for an <see cref="AccountType"/>, by string-table key -- not the raw enum name a
+    /// bare <c>ComboBox</c> binding renders by calling <see cref="object.ToString"/> on the member
+    /// (TD-150).
+    /// </summary>
+    /// <remarks>
+    /// A MULTI-VALUE CONVERTER FOR THE SAME REASON AS <see cref="ConfidenceHintText"/>: this type is
+    /// constructed statically by the XAML loader, so it resolves through <see cref="Localizer.Instance"/>,
+    /// and a single-value converter would never re-run on a language switch since the bound
+    /// <see cref="AccountType"/> itself never changes. The view supplies <see cref="Localizer.CurrentCulture"/>
+    /// as the second binding so the combo box's items re-word themselves when
+    /// <see cref="Localizer.SetLanguage"/> fires.
+    /// </remarks>
+    public static readonly IMultiValueConverter AccountTypeDisplay = new AccountTypeDisplayConverter();
+
+    private sealed class AccountTypeDisplayConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+            values.Count > 0 && values[0] is AccountType type
+                ? Localizer.Instance[$"AccountType.{type}"]
+                : string.Empty;
+    }
+
+    /// <summary>
+    /// The word for a <see cref="RuleField"/>, by the same <c>Rules.Field.*</c> keys
+    /// <see cref="Pine.Ui.Avalonia.ViewModels.RulesViewModel"/>'s condition summary already builds
+    /// with (TD-150): the field picker's own list rendered the bare enum name because nothing in
+    /// the view bound it through those keys.
+    /// </summary>
+    public static readonly IMultiValueConverter RuleFieldDisplay = new RuleFieldDisplayConverter();
+
+    private sealed class RuleFieldDisplayConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+            values.Count > 0 && values[0] is RuleField field
+                ? Localizer.Instance[$"Rules.Field.{field}"]
+                : string.Empty;
+    }
+
+    /// <summary>
+    /// The word for a <see cref="RuleOperator"/>, by the same <c>Rules.Operator.*</c> keys the
+    /// condition summary already uses (TD-150).
+    /// </summary>
+    public static readonly IMultiValueConverter RuleOperatorDisplay = new RuleOperatorDisplayConverter();
+
+    private sealed class RuleOperatorDisplayConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+            values.Count > 0 && values[0] is RuleOperator op
+                ? Localizer.Instance[$"Rules.Operator.{op}"]
+                : string.Empty;
+    }
+
+    /// <summary>
+    /// The word for a <see cref="LineItemKind"/>, by string-table key (TD-150). Used by the receipt
+    /// screen's adjustment-kind picker and its line-item list, both of which rendered the bare enum
+    /// name -- <c>Product</c>, <c>Tax</c> -- before this.
+    /// </summary>
+    public static readonly IMultiValueConverter LineItemKindDisplay = new LineItemKindDisplayConverter();
+
+    private sealed class LineItemKindDisplayConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+            values.Count > 0 && values[0] is LineItemKind kind
+                ? Localizer.Instance[$"LineItemKind.{kind}"]
+                : string.Empty;
     }
 }

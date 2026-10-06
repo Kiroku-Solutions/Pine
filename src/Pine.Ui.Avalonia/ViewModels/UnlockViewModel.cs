@@ -25,6 +25,13 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     private readonly ISender _sender;
     private readonly LocalizedMessageSlot _message;
 
+    /// <summary>
+    /// Renders <see cref="VaultName"/> through the same mechanism <see cref="_message"/> uses for
+    /// <see cref="StatusMessage"/>, so the card's title re-words itself on a language change instead
+    /// of being frozen at whichever language was active when <see cref="Initialize"/> ran (TD-150).
+    /// </summary>
+    private readonly LocalizedMessageSlot _title;
+
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
 
@@ -56,7 +63,7 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     public partial string MasterPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string VaultName { get; set; } = "Unlock Vault";
+    public partial string VaultName { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = string.Empty;
@@ -76,6 +83,8 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(localizer);
         _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _title = new LocalizedMessageSlot(localizer, text => VaultName = text ?? string.Empty);
+        _title.Set("Unlock.Title.Generic");
         _sender = sender;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
@@ -88,7 +97,7 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     public void Initialize(VaultProfile profile)
     {
         _profile = profile;
-        VaultName = $"Unlock {profile.Name}";
+        _title.Set("Unlock.Title.Named", profile.Name);
     }
 
     [RelayCommand]
@@ -254,6 +263,7 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _message.Dispose();
+        _title.Dispose();
         GC.SuppressFinalize(this);
     }
 

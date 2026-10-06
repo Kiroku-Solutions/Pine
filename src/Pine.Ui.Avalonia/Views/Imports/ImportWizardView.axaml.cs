@@ -5,6 +5,7 @@ using Pine.Core.Common;
 using Pine.Ui.Avalonia.Diagnostics;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels.Importing;
 
 namespace Pine.Ui.Avalonia.Views.Importing;
@@ -69,17 +70,20 @@ public partial class ImportWizardView : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel == null) return;
 
+        // Localizer.Instance, not an injected ILocalizer: this code-behind is built by the XAML
+        // loader with no container reach, the same constraint TrExtension's remarks document
+        // (TD-150).
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select Data File",
+            Title = Localizer.Instance["ImportWizard.FilePicker.Title"],
             AllowMultiple = false,
             FileTypeFilter =
             [
-                new FilePickerFileType("All Supported")
+                new FilePickerFileType(Localizer.Instance["ImportWizard.FilePicker.AllSupported"])
                 {
                     Patterns = AllSupportedPatterns
                 },
-                new FilePickerFileType("Spreadsheets")
+                new FilePickerFileType(Localizer.Instance["ImportWizard.FilePicker.Spreadsheets"])
                 {
                     Patterns = SpreadsheetPatterns
                 }

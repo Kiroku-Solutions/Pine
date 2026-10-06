@@ -131,6 +131,37 @@ public class ScanReceiptReconciliationTests
         viewModel.IsReconciled.Should().BeTrue();
     }
 
+    /// <summary>
+    /// Was <c>SelectedAdjustmentKind.ToString()</c>, the raw enum member name written straight into
+    /// the row the user then saves (TD-150): a Spanish user saving a tax adjustment would have read
+    /// "Tax" on an otherwise translated screen. Now it goes through the string tables, in whichever
+    /// language is active when the row is recorded.
+    /// </summary>
+    [Theory]
+    [InlineData("en", "Tax")]
+    [InlineData("es", "Impuesto")]
+    public void RecordingTheDifference_DescribesTheKindInWords_NotTheRawEnumName(string language, string expected)
+    {
+        var localizer = new Localizer();
+        localizer.SetLanguage(language);
+
+        var account = UsdAccount();
+        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), localizer)
+        {
+            SelectedAccount = account,
+            Amount = 121m,
+        };
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Description = "Bread", Quantity = 1m, UnitPrice = 100m });
+
+        viewModel.SelectedAdjustmentKind = LineItemKind.Tax;
+        viewModel.RecordDifferenceAsAdjustmentCommand.Execute(null);
+
+        var adjustment = viewModel.LineItems.Last();
+        adjustment.Description.Should().Be(expected);
+    }
+
     [Fact]
     public void AnAdjustmentLine_IsNotRecomputedFromQuantityTimesUnitPrice()
     {

@@ -742,7 +742,11 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         LineItems.Add(new ReceiptLineItemViewModel
         {
             Kind = SelectedAdjustmentKind,
-            Description = SelectedAdjustmentKind.ToString(),
+            // Was SelectedAdjustmentKind.ToString(), the raw enum member name ("Tax", "Rounding",
+            // ...) written straight into the row the user then saves (TD-150). Now the same
+            // LineItemKind.* keys Converters.LineItemKindDisplay uses for the picker, so the saved
+            // row reads in the active language instead of always in English.
+            Description = _localizer[$"LineItemKind.{SelectedAdjustmentKind}"],
             Quantity = 1m,
             UnitPrice = difference,
             TotalPrice = difference,

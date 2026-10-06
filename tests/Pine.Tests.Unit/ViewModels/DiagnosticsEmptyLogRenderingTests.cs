@@ -125,6 +125,35 @@ public class DiagnosticsEmptyLogRenderingTests
         }
     });
 
+    /// <summary>
+    /// The database card's wording is also live now (TD-150): it used to be a hard-coded English
+    /// literal ("Connected") returned from <c>DescribeHealth</c> and assigned straight to
+    /// <c>DatabaseStatus</c>; it now goes through a <c>LocalizedMessageSlot</c>, the same mechanism
+    /// this class already proves for <see cref="DiagnosticsViewModel.EmptyLogMessage"/>.
+    /// </summary>
+    [Fact]
+    public Task TheDatabaseCard_ShowsItsWordInTheActiveLanguage_AndRewordsLiveOnASwitch() => InEnglish(() =>
+    {
+        var viewModel = EmptyPanel();
+        var view = Mount(viewModel);
+
+        try
+        {
+            VisibleText(view).Should().Contain("Connected");
+
+            Localizer.Instance.SetLanguage("es");
+
+            var afterSwitch = VisibleText(view);
+            afterSwitch.Should().Contain("Conectado");
+            afterSwitch.Should().NotContain("Connected",
+                "the database card must not be frozen in whatever language was active when it last refreshed");
+        }
+        finally
+        {
+            viewModel.Dispose();
+        }
+    });
+
     [Fact]
     public Task ClearingTheView_ShowsTheClearedHint_AndRewordsLiveOnALanguageSwitch() => InEnglish(() =>
     {

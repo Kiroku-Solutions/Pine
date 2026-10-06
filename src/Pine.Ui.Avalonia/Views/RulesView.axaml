@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
@@ -48,12 +49,41 @@
                     </Grid>
 
                     <Grid ColumnDefinitions="Auto, 12, Auto, 12, *, 12, Auto">
+                        <!-- TD-150: a bare ItemsSource over these enums rendered the raw member
+                             name ("Payee", "GreaterThan", ...) instead of the same Rules.Field.*/
+                             Rules.Operator.* words the condition summary already renders through. -->
                         <ComboBox Grid.Column="0" ItemsSource="{Binding Fields}"
                                   SelectedItem="{Binding SelectedField}" MinWidth="130"
-                                  AutomationProperties.Name="{loc:Tr Rules.New.FieldLabel}" />
+                                  AutomationProperties.Name="{loc:Tr Rules.New.FieldLabel}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{x:Static conv:Converters.RuleFieldDisplay}">
+                                                <Binding />
+                                                <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <ComboBox Grid.Column="2" ItemsSource="{Binding Operators}"
                                   SelectedItem="{Binding SelectedOperator}" MinWidth="140"
-                                  AutomationProperties.Name="{loc:Tr Rules.New.OperatorLabel}" />
+                                  AutomationProperties.Name="{loc:Tr Rules.New.OperatorLabel}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{x:Static conv:Converters.RuleOperatorDisplay}">
+                                                <Binding />
+                                                <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <TextBox Grid.Column="4" Text="{Binding NewValue}"
                                  PlaceholderText="{loc:Tr Rules.New.ValuePlaceholder}"
                                  AutomationProperties.Name="{loc:Tr Rules.New.ValueLabel}" />

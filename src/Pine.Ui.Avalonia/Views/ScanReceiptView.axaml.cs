@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 using System.IO;
 using System.Linq;
 
@@ -42,9 +43,12 @@ public partial class ScanReceiptView : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel == null) return;
 
+        // Localizer.Instance, not an injected ILocalizer: FilePickerOpenOptions is built by a
+        // code-behind method with no container reach, the same constraint TrExtension's and
+        // DiagnosticsView's Copy-label fix document (TD-150).
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select Receipt Image",
+            Title = Localizer.Instance["ScanReceipt.FilePicker.Title"],
             AllowMultiple = false,
             FileTypeFilter = new[] { FilePickerFileTypes.ImageAll }
         });

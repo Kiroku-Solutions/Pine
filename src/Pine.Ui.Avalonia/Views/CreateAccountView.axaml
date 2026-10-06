@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="500"
              x:Class="Pine.Ui.Avalonia.Views.CreateAccountView"
              x:DataType="vm:CreateAccountViewModel">
@@ -31,7 +32,22 @@
 
             <StackPanel Spacing="5">
                 <TextBlock Text="{loc:Tr CreateAccount.Type.Label}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                <ComboBox ItemsSource="{Binding AccountTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
+                <ComboBox ItemsSource="{Binding AccountTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
+                    <!-- TD-150: a bare ItemsSource over the enum rendered its raw member name
+                         ("Cash", "Bank", and so on): correct English, never translated. -->
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock>
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.AccountTypeDisplay}">
+                                        <Binding />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </StackPanel>
 
             <Grid ColumnDefinitions="*, 10, *">
