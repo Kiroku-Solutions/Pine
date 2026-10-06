@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-05 — Stage 4 item 4.1 (§7.1, TD-147 closed: six non-normative documents corrected). Stage 3 (sync) is closed, items 3.0 and 3.1a–3.1h (§6.1–§6.9), with `14-Synchronization` §10 marked out of scope. Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 4 item 4.2 (§7.2, TD-84 narrowed: plugin inventory struck). Earlier: 4.1 (§7.1, TD-147 closed: six non-normative documents corrected). Stage 3 (sync) is closed, items 3.0 and 3.1a–3.1h (§6.1–§6.9), with `14-Synchronization` §10 marked out of scope. Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2452,7 +2452,7 @@ diff either direction) rather than by line count, independently by the verifying
 | # | Work | Closes |
 |---|---|---|
 | 4.1 | ✅ **Done** (2026-10-05) — Revise the non-normative documents that still promise a plugin ecosystem, see §7.1 | TD-147 (closed) |
-| 4.2 | Re-scope `TD-84` (the Diagnostic Information Bundle), whose Fix column waits on a plugin host that will now never exist | TD-84 |
+| 4.2 | ✅ **Done** (2026-10-05) — Re-scope `TD-84` (the Diagnostic Information Bundle), whose Fix column waits on a plugin host that will now never exist, see §7.2 | TD-84 (narrowed, not closed) |
 | 4.3 | Sweep the register for rows whose *mitigation* has been overtaken, as TD-67's was | — |
 
 **4.3 is the most valuable item in this section and the least obvious.** TD-67 sat at 🟡 P2 because
@@ -2494,6 +2494,35 @@ than taken on the word of the pass that made the edits. The full unit suite is u
 item touched no source file, so no build or integration run was needed. TD-147's own register row is marked
 Closed, citing this section, with its correction summarized inline rather than left for a reader to reconstruct
 from the diff.
+
+### 7.2 Item 4.2, as built (2026-10-05): TD-84 narrowed, not closed
+
+**TD-84's own Fix column already named the move: "build the DIB once metrics, SLOs and a plugin host exist, or
+narrow §9 to what a local-first app can honestly produce."** A third of the "build" branch — the plugin host — is
+now permanently foreclosed by ADR-0021, not merely unbuilt, so that third is removed from the condition rather than
+left waiting on something that will never happen. The other two, metrics and SLOs, still genuinely do not exist
+and are not this item's to build.
+
+**What the Diagnostic Information Bundle is** (`30-Observability` §3, §9.2): a redacted, signed artefact a user
+could send to maintainers, carrying app version, OS/runtime versions, a log tail, sync and import summaries, an
+SLO budget summary, **a plugin inventory (id, version, source, permissions, risk score)**, and reproduction hints.
+Nothing in it has ever shipped — only two of the eight contents are on the Diagnostics panel today, outside any
+bundle — and §8/§9 were already annotated `Status: Aspirational`.
+
+**What was done.** The plugin-inventory content is struck from `30-Observability` §8 and §9.2, and from TD-84's
+own Impact and Fix columns in the register, each correction citing ADR-0021 and dated. **The row stays open,
+narrowed rather than closed**: the DIB is still not honestly buildable, because metrics and SLOs are still
+missing, and the register says so in the same breath rather than implying ADR-0021 finished the job. No code
+changed — this is a documentation-only re-scoping, the same shape as item 4.1.
+
+**What was deliberately left alone.** `30-Observability` §5.1/§7/§9.3/§9.4 (the telemetry switch, uploading to an
+endpoint, signing, EU retention) are a separate, already-flagged contradiction with ADR-0012 and are not this
+item's — touching them would have been a different TD's scope. Every dated narrative mention of TD-84 elsewhere in
+the register was left as a historical record, per this project's own rule against editing the past to match the
+present; only the live register row and the normative document were corrected.
+
+**Verified.** All sixteen `Documentation`-filtered unit tests pass, re-run directly rather than taken on trust. No
+source file was touched, so no build or integration run applied.
 
 ## 8. What is deliberately NOT in this plan
 
@@ -2623,7 +2652,12 @@ whatever Stage 4 (§7 of this plan) or the open TD rows ahead of it name.~~
 
 Done 2026-10-05, item 4.1 (§7.1): the six non-normative documents still promising a plugin ecosystem are corrected
 in place — struck through, not deleted — with `17-Risk-Analysis` R-10 marked Answered and PERS-07/`SH-PLUGIN-AUTHOR`
-retired, the Fix column's two instructions taken literally rather than paraphrased. TD-147 is closed. **The next
-item is 4.2: re-scope TD-84** (the Diagnostic Information Bundle, whose Fix column waits on a plugin host that
-will now never exist) **, or 4.3's sweep for a mitigation overtaken by later work — whichever the register shows
-is still live**, checked against `60-Production-Readiness-Audit` rather than guessed.
+retired, the Fix column's two instructions taken literally rather than paraphrased. TD-147 is closed. ~~The next
+item is 4.2: re-scope TD-84, or 4.3's sweep for a mitigation overtaken by later work — whichever the register
+shows is still live.~~
+
+Done 2026-10-05, item 4.2 (§7.2): TD-84's plugin-inventory third is struck from both the register and
+`30-Observability`, citing ADR-0021; the row stays open and narrowed, not closed, because metrics and SLOs — the
+other two preconditions — still don't exist. No code changed. **The next item is 4.3: sweep the register for a
+row whose severity rests on a mitigation that later work has overtaken, the way TD-67's was** — the last item in
+Stage 4, and the last item this plan currently names at all.
