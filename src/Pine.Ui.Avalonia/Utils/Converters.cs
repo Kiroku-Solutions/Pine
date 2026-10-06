@@ -5,6 +5,7 @@ using System.Globalization;
 using Avalonia.Data.Converters;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.Utils;
 
@@ -115,15 +116,41 @@ public static class Converters
 
     /// <summary>
     /// The hint text for a weak field's <see cref="ConfidenceBand"/>: empty for a strong reading,
-    /// otherwise a sentence distinguishing a misread value from one the OCR never produced at all.
+    /// otherwise a sentence distinguishing a misread value from one the OCR never produced at all
+    /// (TD-150).
     /// </summary>
-    public static readonly IValueConverter ConfidenceHintText =
-        new FuncValueConverter<ConfidenceBand, string>(band => band switch
+    /// <remarks>
+    /// <para>
+    /// A MULTI-VALUE CONVERTER, LIKE <see cref="IsInIdSet"/>, BECAUSE A SECOND INPUT IS THE ONLY WAY
+    /// TO MAKE A CONVERTER RE-RUN ON A LANGUAGE CHANGE. This type is constructed statically by the
+    /// XAML loader -- the same constraint <c>TrExtension</c>'s remarks document -- so it resolves
+    /// through <see cref="Localizer.Instance"/>, the same static singleton <c>TrExtension</c> binds
+    /// to and the one the DI container also registers as <c>ILocalizer</c> (nothing diverges). But
+    /// <see cref="Avalonia.Data.Converters.FuncValueConverter{TIn,TOut}"/>'s single-value form only
+    /// re-evaluates when its own source (the <see cref="ConfidenceBand"/>) changes, and a language
+    /// switch does not touch that -- exactly the gap <c>LocalizedMessageSlot</c>'s remarks name for
+    /// a string that is "just assigned": right once, frozen forever. The view binds a second input to
+    /// <see cref="Localizer.CurrentCulture"/>, which <see cref="Localizer.SetLanguage"/> raises a
+    /// change notification for, so the MultiBinding re-runs on every language switch even though the
+    /// band itself has not moved.
+    /// </para>
+    /// </remarks>
+    public static readonly IMultiValueConverter ConfidenceHintText = new ConfidenceHintTextConverter();
+
+    private sealed class ConfidenceHintTextConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
         {
-            ConfidenceBand.NotFound => "Not found — please fill this in.",
-            ConfidenceBand.Low => "Low confidence — please check this.",
-            _ => string.Empty,
-        });
+            var band = values.Count > 0 && values[0] is ConfidenceBand value ? value : (ConfidenceBand?)null;
+
+            return band switch
+            {
+                ConfidenceBand.NotFound => Localizer.Instance["ScanReceipt.Confidence.NotFound"],
+                ConfidenceBand.Low => Localizer.Instance["ScanReceipt.Confidence.Low"],
+                _ => string.Empty,
+            };
+        }
+    }
 
     /// <summary>
     /// Whether the first value (a transaction id) appears in the second (the set of ids that have

@@ -146,6 +146,14 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     private readonly LocalizedMessageSlot _error;
 
     /// <summary>
+    /// Renders <see cref="EmptyLogMessage"/> through the same mechanism <see cref="_error"/> uses
+    /// for <see cref="ErrorMessage"/>, so the empty-log line also re-words itself on a language
+    /// change instead of being frozen at whichever state was active when it was last assigned
+    /// (TD-150).
+    /// </summary>
+    private readonly LocalizedMessageSlot _emptyLog;
+
+    /// <summary>
     /// How many of the newest log records the terminal reads.
     /// </summary>
     /// <remarks>
@@ -195,16 +203,19 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     /// </remarks>
     public const string DatabaseUnavailableText = "Unavailable — see log";
 
-    /// <summary>The empty-state line shown when the log genuinely holds nothing.</summary>
+    /// <summary>The empty-state line's key, shown when the log genuinely holds nothing (TD-150).</summary>
     /// <remarks>
     /// AN EMPTY LOG IS A REAL STATE and is rendered as one. Padding it with a synthesised
     /// "initialised" record is the exact sin TD-15 removed, so the panel says nothing is there and
-    /// lets the user draw the correct conclusion.
+    /// lets the user draw the correct conclusion. Moved from a public English constant to a key
+    /// (TD-150): the old constant was compared against by reference, which pinned this panel's
+    /// empty state to English and was the very reason the string could not move to the string
+    /// tables earlier.
     /// </remarks>
-    public const string NoRecordsText = "No log records yet.";
+    private const string NoRecordsKey = "Diagnostics.Log.Empty";
 
-    /// <summary>The empty-state line shown after the user clears the view.</summary>
-    public const string ViewClearedText = "View cleared. Refresh to read the log again.";
+    /// <summary>The empty-state line's key, shown after the user clears the view (TD-150).</summary>
+    private const string ViewClearedKey = "Diagnostics.Log.ViewCleared";
 
     private readonly ILogTailReader _logTailReader;
     private readonly ILogger<DiagnosticsViewModel>? _logger;
@@ -252,8 +263,13 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     public partial bool HasNoLogRecords { get; set; }
 
     /// <summary>Which empty state applies -- nothing in the log, or a view the user cleared.</summary>
+    /// <remarks>
+    /// Starts empty, not pre-filled: <see cref="_emptyLog"/> assigns the real value from the
+    /// constructor, through the localizer, exactly as every other rendered value here is produced
+    /// rather than literal-initialised.
+    /// </remarks>
     [ObservableProperty]
-    public partial string EmptyLogMessage { get; set; } = NoRecordsText;
+    public partial string EmptyLogMessage { get; set; } = string.Empty;
 
     /// <summary>
     /// The tail of the Pine log, oldest first.
@@ -298,7 +314,11 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
         _logger = logger;
         _databaseHealthProbe = databaseHealthProbe;
         _runtimeInfoProvider = runtimeInfoProvider;
-        _error = new LocalizedMessageSlot(localizer ?? new Localizer(), text => ErrorMessage = text);
+
+        var effectiveLocalizer = localizer ?? new Localizer();
+        _error = new LocalizedMessageSlot(effectiveLocalizer, text => ErrorMessage = text);
+        _emptyLog = new LocalizedMessageSlot(effectiveLocalizer, text => EmptyLogMessage = text ?? string.Empty);
+        _emptyLog.Set(NoRecordsKey);
     }
 
     /// <summary>
@@ -316,6 +336,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     public void Dispose()
     {
         _error.Dispose();
+        _emptyLog.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -388,7 +409,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
                 LogEntries.Add(new DiagnosticsLogEntryViewModel(entry));
             }
 
-            EmptyLogMessage = NoRecordsText;
+            _emptyLog.Set(NoRecordsKey);
             HasNoLogRecords = LogEntries.Count == 0;
         }
         finally
@@ -415,7 +436,7 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     private void ClearView()
     {
         LogEntries.Clear();
-        EmptyLogMessage = ViewClearedText;
+        _emptyLog.Set(ViewClearedKey);
         HasNoLogRecords = true;
     }
 

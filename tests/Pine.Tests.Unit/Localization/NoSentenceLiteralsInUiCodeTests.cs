@@ -29,18 +29,19 @@ namespace Pine.Tests.Unit.Localization;
 /// </remarks>
 public partial class NoSentenceLiteralsInUiCodeTests
 {
-    /// <summary>On-screen sentences still written in C#, each with why it has not moved yet (TD-150).</summary>
-    private static readonly Dictionary<string, string> KnownEnglish = new(StringComparer.Ordinal)
-    {
-        ["Not found — please fill this in."] =
-            "Converters.ConfidenceHintText: a XAML converter, constructed statically, with no localizer to inject",
-        ["Low confidence — please check this."] =
-            "Converters.ConfidenceHintText: as above",
-        ["No log records yet."] =
-            "DiagnosticsViewModel.NoRecordsText: a public constant tests compare against by reference",
-        ["View cleared. Refresh to read the log again."] =
-            "DiagnosticsViewModel.ViewClearedText: as above",
-    };
+    /// <summary>
+    /// On-screen sentences still written in C#, each with why it has not moved yet (TD-150).
+    /// </summary>
+    /// <remarks>
+    /// Empty as of TD-150's closure: the scan screen's two confidence hints
+    /// (<c>Converters.ConfidenceHintText</c>, now an <c>IMultiValueConverter</c> resolving through
+    /// <c>Localizer.Instance</c>) and the diagnostics panel's two empty-log texts
+    /// (<c>DiagnosticsViewModel</c>'s <c>EmptyLogMessage</c>, now rendered through a
+    /// <c>LocalizedMessageSlot</c>) all moved to the string tables. The receipt screen's two
+    /// culture-bearing warnings closed earlier, under TD-21. Left empty rather than removed: the
+    /// ratchet this dictionary is needs to still exist for the next sentence someone cannot move yet.
+    /// </remarks>
+    private static readonly Dictionary<string, string> KnownEnglish = new(StringComparer.Ordinal);
 
     [Fact]
     public void NoUiCode_WritesAnEnglishSentence_ExceptTheRegisteredOnes()

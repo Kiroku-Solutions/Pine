@@ -97,9 +97,15 @@
                             <!-- Weak-read hint (TD-22): shown for Low and NotFound alike, but worded
                                  differently by ConfidenceHintText, one asks the user to check a
                                  value, the other to supply one. -->
-                            <TextBlock Text="{Binding MerchantConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding MerchantConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding MerchantConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="MerchantConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
 
                         <!-- Stacked vertically: the Fluent DatePicker has a 296px MinWidth
@@ -107,9 +113,15 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="{loc:Tr ScanReceipt.Field.Date}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
-                            <TextBlock Text="{Binding DateConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding DateConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding DateConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="DateConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
 
                             <!-- Date ambiguity (TD-21). A locale-ambiguous date like 05/03/2026 is
                                  never resolved on the user's behalf: both readings are shown, and
@@ -134,9 +146,15 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="{loc:Tr ScanReceipt.Field.Amount}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
-                            <TextBlock Text="{Binding TotalConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding TotalConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding TotalConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="TotalConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
 
                         <StackPanel Spacing="5">
