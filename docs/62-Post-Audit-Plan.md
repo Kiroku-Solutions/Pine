@@ -2723,3 +2723,12 @@ iteration 15. Serialising all 44 into one collection was rejected on a measured 
 attempts. **Honestly reported as a mechanism fix, not a caught-then-fixed one**: five consecutive full runs on
 each side of the fix were all green, so the original flake was never reproduced here either way. Narrowed, not
 closed.
+
+**Post-closure, 2026-10-06: TD-150 fully closed.** Its five remaining non-sentence findings — the unlock title,
+diagnostics status words, "Copied!", three file-picker titles, and four enum lists showing raw `.ToString()`
+output (account type, rule field, rule operator, adjustment kind) — all speak the user's language now, through
+the same slot/converter patterns the sentence-level pass already established. The guard that catches English
+sentences in C# couldn't see short labels or raw enum names, so `NoSentenceLiteralsInUiCodeTests` gained two more
+patterns (title-case literals, exclaimed words) rather than leaving this class of gap able to recur silently. One
+real bug found mid-fix and corrected: an adjustment's description still read the raw enum member name after
+everything around it had been converted.
