@@ -2579,10 +2579,13 @@ gone, behind a confirmation naming the real consequence. One provider, so "chang
 narrowed to "on or off"; no plugin host was built (ADR-0021 still holds). Verified: unit 1679 → 1727, integration
 344 → 349, both green; ten mutations, nine killed, one shown equivalent rather than papered over.
 
-**Every normative clause in `14-Synchronization` now has at least a narrow, honest slice built against it** — §4
-(the merge policy, 3.1b), §5 (the envelope, 3.1d), §6 (change-set semantics, 3.1a/3.1b), §7 (the conflict table,
-3.1b/3.1c), §8 (the provider, 3.1f), §9 (the offline behaviour, 3.1f), §11 (user controls, 3.1h) and §12 (the audit
-log, 3.1g). §10, Cloud Only Mode, is the one section nothing has touched — and it names a different kind of
-provider (a cloud, not a folder) that §8's "one compiled-in provider" decision does not obviously extend to; that
-is either the next item or a candidate to mark out of scope the way a plugin host already was, and deciding which
-needs a reading of §10 against ADR-0012's no-network rule, not a guess.
+**Every normative clause in `14-Synchronization` now has a resolution** — §4 (the merge policy, 3.1b), §5 (the
+envelope, 3.1d), §6 (change-set semantics, 3.1a/3.1b), §7 (the conflict table, 3.1b/3.1c), §8 (the provider, 3.1f),
+§9 (the offline behaviour, 3.1f), §11 (user controls, 3.1h) and §12 (the audit log, 3.1g) each have a narrow,
+honest slice built against them, and **§10, Cloud Only Mode, is marked out of scope rather than built** — it
+assumes a cloud provider, which ADR-0012's no-network rule rules out the same way ADR-0021 ruled out a plugin
+host, and `14-Synchronization` §10 now says so in place rather than being silently skipped. Sync, as a document, is
+done the way a decision can close a section: nothing in it is still merely unaddressed. **The next item is
+whatever Stage 4 (§7 of this plan) or the open TD rows ahead of it name** — the documents sweep (TD-147, TD-84, and
+the TD-67-shaped search for a mitigation overtaken by later work), or any TD row Stage 3's own work has since
+registered or narrowed, checked against the register rather than guessed.

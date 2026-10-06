@@ -191,6 +191,14 @@ stateDiagram-v2
 
 ## 10. Cloud Only Mode
 
+> **Out of scope, decided rather than deferred (post-audit plan item 3.1h, 2026-10-05).** This section assumes a
+> cloud provider — "the source of truth is the provider" is only meaningful when the provider is a remote service
+> a device can be offline from. ADR-0012 forbids Pine from making any network connection, and §8's one compiled-in
+> provider is a shared folder, which has no "Cloud Only" state to be in: a folder is either reachable or it is not,
+> and §9 already covers that. Building a Cloud Only mode would mean building a cloud provider first, which ADR-0012
+> rules out the same way ADR-0021 ruled out a plugin host. This section is kept for the record and is not acted on,
+> the way §8's withdrawn plugin ownership is kept rather than deleted.
+
 Per `00-Vision` §10 and the user-approved rule: **Cloud Only
 requires an encrypted local cache** so the app stays usable
 offline.
