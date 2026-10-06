@@ -2705,3 +2705,12 @@ on every connection, sync and async, not configurable; verified on a plain conne
 defaults it ON on a keyed one, which the work states plainly rather than claiming credit for a vendor default.
 Retention stays open. This correction lives in TD-145's own row, not a new numbered item here — the register, not
 this plan, is where it belongs now.
+
+**Post-closure, 2026-10-06: TD-154's pairing half corrected, and TD-150's four remaining sentences closed.**
+Re-reading TD-154's row found it still said pairing did not exist, three weeks after item 3.1e shipped it — the
+same staleness class as item 4.3, just not phrased as "not reachable", so that sweep's own pattern match missed
+it; corrected in place. TD-150's four allow-listed English sentences (the scan screen's confidence hints, stuck on
+a static converter with no localizer; the diagnostics panel's empty-log text, pinned to literal constants, not
+actually a reference-equality problem as the row's wording suggested) are now keyed in both languages, and
+`NoSentenceLiteralsInUiCodeTests`'s allow-list is empty. The row's other, non-sentence findings — the unlock
+screen's title, diagnostics status words, enum lists — stay open, untouched.
