@@ -9,6 +9,7 @@ using Pine.Application.Sync.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
+using Pine.Core.Settings;
 using Pine.Core.Sync;
 using Pine.Infrastructure.Data;
 using Pine.Infrastructure.Security;
@@ -68,7 +69,7 @@ public class SyncRunAuditLogTests
         var accessor = new Accessor(vault);
         var runner = new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor));
         var auditLog = new SqliteSyncAuditLog(context);
-        var handler = new RunSyncCommandHandler(runner, auditLog);
+        var handler = new RunSyncCommandHandler(runner, auditLog, new SqliteSettingRepository(context));
 
         var folder = NewFolder();
         try
@@ -124,7 +125,7 @@ public class SyncRunAuditLogTests
         var accessor = new Accessor(left);
         var runner = new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor));
         var auditLog = new SqliteSyncAuditLog(context);
-        var handler = new RunSyncCommandHandler(runner, auditLog);
+        var handler = new RunSyncCommandHandler(runner, auditLog, new SqliteSettingRepository(context));
 
         var folder = NewFolder();
         try
@@ -174,5 +175,39 @@ public class SyncRunAuditLogTests
         rows.Should().HaveCount(2);
         rows[0].Outcome.Should().Be(SyncRunAuditOutcome.Completed, "the later attempt must be read back first");
         rows[1].Outcome.Should().Be(SyncRunAuditOutcome.Refused);
+    }
+
+    /// <summary>§11's "enable or disable sync", through a real setting row (post-audit plan item 3.1h).</summary>
+    [Fact]
+    public async Task ADisabledVault_NeverReachesTheFolder_AndTheRefusalIsLoggedLikeAnyOther()
+    {
+        using var vault = await MigratedVaultAsync();
+        await using (var setup = On(vault, LeftDevice))
+        {
+            setup.Settings.Add(Setting.Create(SyncSettingKeys.Enabled, "false"));
+            await setup.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var context = On(vault, LeftDevice);
+        var accessor = new Accessor(vault);
+        var runner = new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor));
+        var auditLog = new SqliteSyncAuditLog(context);
+        var handler = new RunSyncCommandHandler(runner, auditLog, new SqliteSettingRepository(context));
+
+        // A folder that does not even exist: if the handler reached the runner at all this would refuse as
+        // FolderUnavailable instead, so the assertion below also proves the folder was never touched.
+        var folder = Path.Combine(Path.GetTempPath(), "pine-tests-audit-log", "never-created-" + Guid.NewGuid().ToString("N"));
+
+        await FluentActions
+            .Awaiting(() => handler.Handle(new RunSyncCommand(folder), CancellationToken.None))
+            .Should().ThrowAsync<SyncRunRefusedException>()
+            .Where(ex => ex.Refusal == SyncRunRefusal.Disabled);
+
+        Directory.Exists(folder).Should().BeFalse();
+
+        var rows = await auditLog.GetRecentAsync(10, CancellationToken.None);
+        rows.Should().ContainSingle();
+        rows[0].Outcome.Should().Be(SyncRunAuditOutcome.Refused);
+        rows[0].FailureReason.Should().Be(nameof(SyncRunRefusal.Disabled));
     }
 }

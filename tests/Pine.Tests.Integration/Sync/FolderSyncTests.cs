@@ -116,6 +116,23 @@ public class FolderSyncTests
         return await new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor)).RunThroughFolderAsync(folder, CancellationToken.None);
     }
 
+    /// <summary>One launch of Pine pressing "Force full resync" (post-audit plan item 3.1h).</summary>
+    private static async Task<SyncRunReport> ForceResyncAsync(Side side, string folder)
+    {
+        await using var context = On(side);
+        var accessor = new Accessor(side.Vault);
+        return await new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor))
+            .RunThroughFolderAsync(folder, forceFullResync: true, CancellationToken.None);
+    }
+
+    /// <summary>One launch of Pine pressing "Erase from this folder" (post-audit plan item 3.1h).</summary>
+    private static async Task<SyncEraseReport> EraseAsync(Side side, string folder)
+    {
+        await using var context = On(side);
+        var accessor = new Accessor(side.Vault);
+        return await new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor)).EraseFromFolderAsync(folder, CancellationToken.None);
+    }
+
     /// <summary>Syncs every side in turn until a whole round changes nothing; returns every report it saw.</summary>
     private static async Task<List<SyncRunReport>> SettleAsync(SharedFolder folder, params Side[] sides)
     {
@@ -338,6 +355,118 @@ public class FolderSyncTests
         await AddAccountAsync(right, Account.Create("Another", AccountType.Bank, new Money(1m, Usd), TimeProvider.System));
         await SettleAsync(folder, left, right);
         (await LedgerAsync(left)).Should().Be("Another=1;Savings=9|");
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // §11's "force a full re-sync" and "delete all envelopes from a provider" (post-audit plan item 3.1h).
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AForcedResync_ResendsEverythingAlreadyAcknowledged_WithNoDuplicationAndNoLoss()
+    {
+        using var folder = new SharedFolder();
+        var left = await NewSideAsync(LeftDevice);
+        var right = await NewSideAsync(RightDevice);
+        using var l = left.Vault;
+        using var r = right.Vault;
+        await PairAsync(left, right);
+
+        await AddAccountAsync(left, Account.Create("Current account", AccountType.Bank, new Money(1000m, Usd), TimeProvider.System));
+        await SettleAsync(folder, left, right);
+
+        // Fully settled: an ordinary run from the left would have nothing new to send.
+        (await SyncAsync(left, folder.Path)).EnvelopesLeft.Should().Be(0, "nothing changed since the last settle");
+
+        var ledgerBefore = await LedgerAsync(right);
+        var report = await ForceResyncAsync(left, folder.Path);
+
+        report.EnvelopesLeft.Should().Be(1, "a forced resync re-sends even though the peer has acknowledged everything");
+        report.Problems.Should().BeEmpty();
+
+        // The peer re-applies a full export of a row it already has: matched by id, compared by content, and
+        // left exactly as it was — not duplicated, not reverted.
+        await using (var context = On(right))
+        {
+            (await context.Accounts.AsNoTracking().CountAsync()).Should().Be(1);
+        }
+
+        (await LedgerAsync(right)).Should().Be(ledgerBefore);
+
+        // The exchange still settles afterwards; forcing it once does not leave the two sides out of step.
+        await SettleAsync(folder, left, right);
+        (await LedgerAsync(left)).Should().Be(await LedgerAsync(right));
+    }
+
+    [Fact]
+    public async Task AForcedResync_StillCarriesAGenuinelyNewChange_ToAPeerWhoseCursorLooksStale()
+    {
+        using var folder = new SharedFolder();
+        var left = await NewSideAsync(LeftDevice);
+        var right = await NewSideAsync(RightDevice);
+        using var l = left.Vault;
+        using var r = right.Vault;
+        await PairAsync(left, right);
+        await SettleAsync(folder, left, right);
+
+        // Simulates a peer "restored from an old backup": the right's own waiting envelope to the left is torn
+        // up, as if it had never been written, while the left still believes the right has everything.
+        await AddAccountAsync(left, Account.Create("New since the restore", AccountType.Bank, new Money(7m, Usd), TimeProvider.System));
+
+        await ForceResyncAsync(left, folder.Path);
+        await SyncAsync(right, folder.Path);
+
+        (await LedgerAsync(right)).Should().Be("New since the restore=7|");
+    }
+
+    [Fact]
+    public async Task AnErasure_RemovesOnlyWhatThisVaultLeft_AndNeverWhatItHasAlreadyMergedOrWhatThePeerOwns()
+    {
+        using var folder = new SharedFolder();
+        var left = await NewSideAsync(LeftDevice);
+        var right = await NewSideAsync(RightDevice);
+        using var l = left.Vault;
+        using var r = right.Vault;
+        await PairAsync(left, right);
+        await AddAccountAsync(left, Account.Create("Shared", AccountType.Bank, new Money(1m, Usd), TimeProvider.System));
+        await SettleAsync(folder, left, right);
+
+        var leftId = await IdAsync(left);
+        var rightId = await IdAsync(right);
+        var leftLedgerBefore = await LedgerAsync(left);
+        var rightLedgerBefore = await LedgerAsync(right);
+
+        var report = await EraseAsync(left, folder.Path);
+
+        report.EnvelopesDeleted.Should().Be(1, "the left had left exactly one envelope, for the right");
+        report.AnnouncementRemoved.Should().BeTrue();
+
+        var filesLeft = Directory.GetFiles(folder.Path).Select(Path.GetFileName).ToList();
+        filesLeft.Should().NotContain(FolderSyncProvider.EnvelopeFileName(new SyncEnvelopeAddress(leftId, rightId)), "the left's own export is gone");
+        filesLeft.Should().NotContain(FolderSyncProvider.AnnouncementFileName(leftId), "the left no longer announces itself there");
+        filesLeft.Should().Contain(FolderSyncProvider.EnvelopeFileName(new SyncEnvelopeAddress(rightId, leftId)), "the right's own envelope is not the left's to erase");
+        filesLeft.Should().Contain(FolderSyncProvider.AnnouncementFileName(rightId), "the right's announcement is untouched");
+
+        // Erasure reaches the folder, never either vault's own rows: what was already merged stays merged.
+        (await LedgerAsync(left)).Should().Be(leftLedgerBefore);
+        (await LedgerAsync(right)).Should().Be(rightLedgerBefore);
+
+        // Erasing again finds nothing left to erase.
+        var again = await EraseAsync(left, folder.Path);
+        again.EnvelopesDeleted.Should().Be(0);
+        again.AnnouncementRemoved.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AnErasure_OnAVaultThatNeverSynced_FindsNothingToErase()
+    {
+        using var folder = new SharedFolder();
+        var left = await NewSideAsync(LeftDevice);
+        using var l = left.Vault;
+
+        var report = await EraseAsync(left, folder.Path);
+
+        report.EnvelopesDeleted.Should().Be(0);
+        report.AnnouncementRemoved.Should().BeFalse();
     }
 
     private static async Task<Guid> IdAsync(Side side)

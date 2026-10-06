@@ -6,6 +6,7 @@ using FluentAssertions;
 using NSubstitute;
 using Pine.Application.Common;
 using Pine.Application.Sync.Commands;
+using Pine.Core.Configuration;
 using Pine.Core.Sync;
 using Xunit;
 
@@ -16,6 +17,9 @@ public class RunSyncRequestTests
 {
     private static readonly string Folder = Path.Combine(Path.GetTempPath(), "shared");
 
+    /// <summary>A setting store that has never been told sync is off — the common case these tests are not about.</summary>
+    private static ISettingRepository EnabledSettings() => Substitute.For<ISettingRepository>();
+
     [Fact]
     public async Task TheCommand_RunsThroughTheFolderItNames_AndHandsBackTheReport()
     {
@@ -24,7 +28,7 @@ public class RunSyncRequestTests
         runner.RunThroughFolderAsync(Folder, Arg.Any<CancellationToken>()).Returns(report);
         var auditLog = Substitute.For<ISyncAuditLog>();
 
-        var result = await new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None);
+        var result = await new RunSyncCommandHandler(runner, auditLog, EnabledSettings()).Handle(new RunSyncCommand(Folder), CancellationToken.None);
 
         result.Should().BeSameAs(report);
     }

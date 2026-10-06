@@ -256,4 +256,59 @@ public sealed class FolderSyncProviderTests : IDisposable
         bytes[index] ^= 0x01;
         return bytes;
     }
+
+    // ------------------------------------------------------------------------------------------
+    // §11, §13's right to erasure (post-audit plan item 3.1h).
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ListEnvelopesFrom_FindsOnlyWhatThatVaultLeft_NeverWhatWasLeftForIt()
+    {
+        var provider = Provider();
+        var third = Guid.Parse("cccccccc-3333-4333-8333-333333333333");
+        await provider.UploadAsync(new SyncEnvelopeAddress(Left, Right), new byte[] { 1 }, _ct);
+        await provider.UploadAsync(new SyncEnvelopeAddress(Left, third), new byte[] { 2 }, _ct);
+        await provider.UploadAsync(new SyncEnvelopeAddress(Right, Left), new byte[] { 3 }, _ct); // left FOR Left, not BY it
+
+        var found = await provider.ListEnvelopesFromAsync(Left, _ct);
+
+        found.Should().Equal(new SyncEnvelopeAddress(Left, Right), new SyncEnvelopeAddress(Left, third));
+    }
+
+    [Fact]
+    public async Task ListEnvelopesFrom_IgnoresAFileThatDoesNotParseAsOneOfItsOwn()
+    {
+        var provider = Provider();
+        await provider.UploadAsync(LeftToRight, new byte[] { 1 }, _ct);
+        File.WriteAllBytes(Path.Combine(_folder, Guid.NewGuid().ToString("N") + " (conflicted copy).pine-envelope"), new byte[] { 9 });
+
+        var found = await provider.ListEnvelopesFromAsync(Left, _ct);
+
+        found.Should().Equal(LeftToRight);
+    }
+
+    [Fact]
+    public async Task ListEnvelopesFrom_WithNoVaultId_IsRefused()
+    {
+        await FluentActions.Awaiting(() => Provider().ListEnvelopesFromAsync(Guid.Empty, _ct)).Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task RetractAnnouncement_RemovesOnlyThatVaultsAnnouncement_AndSaysWhetherTherWasOne()
+    {
+        var provider = Provider();
+        await provider.AnnounceAsync(new SyncPeerAnnouncement(Left, KeyId), _ct);
+        await provider.AnnounceAsync(new SyncPeerAnnouncement(Right, KeyId), _ct);
+
+        (await provider.RetractAnnouncementAsync(Left, _ct)).Should().BeTrue();
+        (await provider.RetractAnnouncementAsync(Left, _ct)).Should().BeFalse("it was already gone");
+
+        (await provider.ListPeersAsync(_ct)).Should().Equal(new SyncPeerAnnouncement(Right, KeyId));
+    }
+
+    [Fact]
+    public async Task RetractAnnouncement_WithNoVaultId_IsRefused()
+    {
+        await FluentActions.Awaiting(() => Provider().RetractAnnouncementAsync(Guid.Empty, _ct)).Should().ThrowAsync<ArgumentException>();
+    }
 }

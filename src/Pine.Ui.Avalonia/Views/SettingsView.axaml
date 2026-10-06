@@ -398,6 +398,39 @@
                 </StackPanel>
             </Border>
 
+            <!-- §11, §13's right to erasure (post-audit plan item 3.1h): removes only what THIS copy left in a
+                 shared folder — its own outgoing envelopes and its announcement — never a peer's own files, and
+                 never anything already merged into either vault. See EraseSyncDataCommand's remarks. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Settings.SyncErase.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock Text="{loc:Tr Settings.SyncErase.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{loc:Tr Settings.SyncErase.FolderLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                        <TextBox Text="{Binding EraseFolderPath}"
+                                 PlaceholderText="{loc:Tr Settings.SyncErase.FolderLabel}"
+                                 AutomationProperties.Name="{loc:Tr Settings.SyncErase.FolderLabel}"
+                                 IsEnabled="{Binding !IsErasing}" />
+                        <TextBlock Text="{loc:Tr Settings.SyncErase.FolderHelp}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+
+                        <Button Content="{loc:Tr Settings.SyncErase.Button}" Classes="pine-outline"
+                                HorizontalAlignment="Left"
+                                Command="{Binding BeginEraseCommand}"
+                                IsEnabled="{Binding CanErase}"
+                                AutomationProperties.Name="{loc:Tr Settings.SyncErase.Button}" />
+
+                        <TextBlock Text="{Binding EraseMessage}" TextWrapping="Wrap" FontSize="13"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Classes.pine-strength-danger="{Binding EraseFailed}"
+                                   IsVisible="{Binding EraseMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
         <!-- Restore confirmation (plan item 1.1). Same scrim-and-panel shape as the void dialog,
@@ -431,6 +464,34 @@
                                 Command="{Binding CancelRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
                         <Button Content="{loc:Tr Settings.Security.RestoreVault.Dialog.Confirm}" Classes="pine-danger" Padding="16,9"
                                 Command="{Binding ConfirmRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Sync erasure confirmation (post-audit plan item 3.1h). Same scrim-and-panel shape as the restore
+             and void dialogs, and names the actual consequence: the files this copy would lose by leaving them
+             unsent, never a generic "are you sure?". -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsEraseDialogVisible}">
+            <Border Width="460" Padding="28" CornerRadius="14"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 32 0 #30000000">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{loc:Tr Settings.SyncErase.Dialog.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+
+                    <TextBlock Text="{Binding EraseFolderPath}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr Settings.SyncErase.Dialog.Explanation}" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                        <Button Content="{loc:Tr Settings.SyncErase.Dialog.Cancel}" Classes="pine-outline" Padding="16,9"
+                                Command="{Binding CancelEraseCommand}" IsEnabled="{Binding !IsErasing}" />
+                        <Button Content="{loc:Tr Settings.SyncErase.Dialog.Confirm}" Classes="pine-danger" Padding="16,9"
+                                Command="{Binding ConfirmEraseCommand}" IsEnabled="{Binding !IsErasing}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

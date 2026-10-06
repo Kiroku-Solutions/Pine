@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Pine.Application.Common;
+using Pine.Core.Configuration;
 using Pine.Core.Sync;
 
 namespace Pine.Application.Sync.Commands;
@@ -14,6 +15,11 @@ namespace Pine.Application.Sync.Commands;
 /// them what they have not got (post-audit plan item 3.1f; `14-Synchronization` §8, §9).
 /// </summary>
 /// <param name="FolderPath">The shared folder, fully qualified. It must already exist.</param>
+/// <param name="ForceFullResync">
+/// When true, every peer is sent everything this vault holds, not only what it has not acknowledged (§11; post-audit
+/// plan item 3.1h). See <see cref="ISyncRunner"/>'s remarks on why this is safe: it never changes what this vault
+/// accepts from a peer, only what it exports.
+/// </param>
 /// <remarks>
 /// <para>
 /// NOT <c>ITransactionalRequest</c>, AND IT MUST NOT BE. The merge refuses a context with a transaction already open
@@ -25,7 +31,7 @@ namespace Pine.Application.Sync.Commands;
 /// no path.
 /// </para>
 /// </remarks>
-public sealed record RunSyncCommand(string FolderPath) : IRequest<SyncRunReport>;
+public sealed record RunSyncCommand(string FolderPath, bool ForceFullResync = false) : IRequest<SyncRunReport>;
 
 /// <summary>
 /// Runs one exchange through the folder, and logs the attempt either way (`14-Synchronization` §12).
@@ -51,6 +57,7 @@ public sealed class RunSyncCommandHandler : IRequestHandler<RunSyncCommand, Sync
 {
     private readonly ISyncRunner _runner;
     private readonly ISyncAuditLog _auditLog;
+    private readonly ISettingRepository _settings;
 
     /// <summary>The only provider Pine has today (post-audit plan item 3.1f; §8, §9).</summary>
     private const string FolderProviderName = "Folder";
@@ -58,12 +65,15 @@ public sealed class RunSyncCommandHandler : IRequestHandler<RunSyncCommand, Sync
     /// <summary>Creates the handler.</summary>
     /// <param name="runner">The vault's sync runner.</param>
     /// <param name="auditLog">Where every attempt is recorded, for the Settings screen.</param>
-    public RunSyncCommandHandler(ISyncRunner runner, ISyncAuditLog auditLog)
+    /// <param name="settings">Where §11's "enable or disable sync" setting is read (post-audit plan item 3.1h).</param>
+    public RunSyncCommandHandler(ISyncRunner runner, ISyncAuditLog auditLog, ISettingRepository settings)
     {
         ArgumentNullException.ThrowIfNull(runner);
         ArgumentNullException.ThrowIfNull(auditLog);
+        ArgumentNullException.ThrowIfNull(settings);
         _runner = runner;
         _auditLog = auditLog;
+        _settings = settings;
     }
 
     /// <inheritdoc />
@@ -74,7 +84,17 @@ public sealed class RunSyncCommandHandler : IRequestHandler<RunSyncCommand, Sync
         SyncRunReport report;
         try
         {
-            report = await _runner.RunThroughFolderAsync(request.FolderPath, cancellationToken).ConfigureAwait(false);
+            // Checked first, inside the try: a vault that declined to sync never touches the folder, and the
+            // refusal still goes through the same catch below so it is logged exactly like every other refusal
+            // (§12 — "every sync attempt", and this is one).
+            if (!await IsEnabledAsync(cancellationToken).ConfigureAwait(false))
+            {
+                throw new SyncRunRefusedException(SyncRunRefusal.Disabled);
+            }
+
+            report = request.ForceFullResync
+                ? await _runner.RunThroughFolderAsync(request.FolderPath, forceFullResync: true, cancellationToken).ConfigureAwait(false)
+                : await _runner.RunThroughFolderAsync(request.FolderPath, cancellationToken).ConfigureAwait(false);
         }
         catch (SyncRunRefusedException ex)
         {
@@ -109,6 +129,16 @@ public sealed class RunSyncCommandHandler : IRequestHandler<RunSyncCommand, Sync
             .ConfigureAwait(false);
 
         return report;
+    }
+
+    /// <summary>
+    /// Whether this vault is willing to sync at all (§11; post-audit plan item 3.1h). Enabled when the setting has
+    /// never been written — a vault that has never touched the control has never been told sync is off.
+    /// </summary>
+    private async Task<bool> IsEnabledAsync(CancellationToken cancellationToken)
+    {
+        var setting = await _settings.GetAsync(SyncSettingKeys.Enabled, cancellationToken).ConfigureAwait(false);
+        return !string.Equals(setting?.Value, bool.FalseString, StringComparison.OrdinalIgnoreCase);
     }
 }
 

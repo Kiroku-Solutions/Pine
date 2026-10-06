@@ -17,6 +17,7 @@ using Pine.Application.Security.Commands;
 using Pine.Application.Security.Queries;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
+using Pine.Application.Sync.Commands;
 using Pine.Application.Sync.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common;
@@ -119,6 +120,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     private readonly LocalizedMessageSlot _passwordChangeMessage;
     private readonly LocalizedMessageSlot _newPasswordStatus;
     private readonly LocalizedMessageSlot _newPasswordAdvice;
+    private readonly LocalizedMessageSlot _eraseMessage;
 
     private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
     {
@@ -154,6 +156,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _passwordChangeMessage = new LocalizedMessageSlot(localizer, text => PasswordChangeMessage = text);
         _newPasswordStatus = new LocalizedMessageSlot(localizer, text => NewPasswordStrengthStatusText = text ?? string.Empty);
         _newPasswordAdvice = new LocalizedMessageSlot(localizer, text => NewPasswordAdviceText = text ?? string.Empty);
+        _eraseMessage = new LocalizedMessageSlot(localizer, text => EraseMessage = text);
         _localizer.LanguageChanged += OnLanguageChanged;
 
         // Default values
@@ -1224,6 +1227,110 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _vaultSession?.Lock(VaultLockReason.UserRequested);
     }
 
+    // ----------------------------------------------------------------------------------------
+    // §11's "delete all envelopes from a provider" — the right to erasure (post-audit plan item 3.1h).
+    //
+    // NOT GATED ON THE "ENABLE OR DISABLE SYNC" TOGGLE ON THE SYNC NOW PAGE. The right to erasure is
+    // not conditional on sync being currently turned on; see EraseSyncDataCommand's remarks.
+    //
+    // WHY A CONFIRMATION, AND THE SAME SHAPE AS THE RESTORE DIALOG ABOVE. This deletes files a paired
+    // copy may not have taken yet, permanently, from a folder this page does not own. The confirmation
+    // names the folder and exactly what will be removed, rather than a generic "are you sure?".
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>The shared folder to erase this copy's data from, as the user typed it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanErase))]
+    public partial string EraseFolderPath { get; set; } = string.Empty;
+
+    /// <summary>Whether an erasure is running. Every control on the card is disabled while it is.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanErase))]
+    public partial bool IsErasing { get; set; }
+
+    /// <summary>Whether the confirmation panel is up.</summary>
+    [ObservableProperty]
+    public partial bool IsEraseDialogVisible { get; set; }
+
+    /// <summary>What the last erasure did, or why one did not happen.</summary>
+    [ObservableProperty]
+    public partial string? EraseMessage { get; set; }
+
+    /// <summary>Whether <see cref="EraseMessage"/> reports a failure. Styling only.</summary>
+    [ObservableProperty]
+    public partial bool EraseFailed { get; set; }
+
+    /// <summary>Whether the button is enabled: a folder typed, and nothing in flight. The validator checks again.</summary>
+    public bool CanErase => !IsErasing && !string.IsNullOrWhiteSpace(EraseFolderPath);
+
+    /// <summary>Puts the confirmation panel up.</summary>
+    [RelayCommand]
+    private void BeginErase()
+    {
+        if (!CanErase)
+        {
+            return;
+        }
+
+        _eraseMessage.Clear();
+        EraseFailed = false;
+        IsEraseDialogVisible = true;
+    }
+
+    /// <summary>Closes the confirmation without erasing anything.</summary>
+    [RelayCommand]
+    private void CancelErase() => IsEraseDialogVisible = false;
+
+    /// <summary>
+    /// Erases this copy's envelopes and announcement from the folder, and reports what was actually there.
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfirmEraseAsync()
+    {
+        if (!CanErase)
+        {
+            return;
+        }
+
+        IsEraseDialogVisible = false;
+        IsErasing = true;
+        EraseFailed = false;
+        _eraseMessage.Clear();
+
+        try
+        {
+            var result = await _sender.Send(new EraseSyncDataCommand(EraseFolderPath.Trim()));
+
+            var countKey = result.EnvelopesDeleted switch
+            {
+                0 => "Settings.SyncErase.Success.CountZero",
+                1 => "Settings.SyncErase.Success.CountOne",
+                _ => "Settings.SyncErase.Success.CountMany",
+            };
+            var countMessage = result.EnvelopesDeleted <= 1
+                ? new UserFacingMessage(countKey)
+                : new UserFacingMessage(countKey, result.EnvelopesDeleted);
+            var announcementMessage = new UserFacingMessage(
+                result.AnnouncementRemoved ? "Settings.SyncErase.Success.AnnouncementRemoved" : "Settings.SyncErase.Success.NoAnnouncement");
+
+            EraseFailed = false;
+            _eraseMessage.Set("Settings.SyncErase.Success", countMessage, announcementMessage);
+        }
+        catch (Exception ex)
+        {
+            EraseFailed = true;
+            _eraseMessage.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "erase-sync-data",
+                new UserFacingMessage("Settings.SyncErase.Failed")));
+        }
+        finally
+        {
+            IsErasing = false;
+        }
+    }
+
     /// <summary>
     /// Releases the localized message slot.
     /// </summary>
@@ -1243,6 +1350,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _passwordChangeMessage.Dispose();
         _newPasswordStatus.Dispose();
         _newPasswordAdvice.Dispose();
+        _eraseMessage.Dispose();
         GC.SuppressFinalize(this);
     }
 }

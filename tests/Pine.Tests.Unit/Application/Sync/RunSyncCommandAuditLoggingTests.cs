@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using NSubstitute;
 using Pine.Application.Sync.Commands;
+using Pine.Core.Configuration;
+using Pine.Core.Settings;
 using Pine.Core.Sync;
 using Xunit;
 
@@ -18,6 +20,9 @@ public class RunSyncCommandAuditLoggingTests
 {
     private static readonly string Folder = Path.Combine(Path.GetTempPath(), "shared");
 
+    /// <summary>A setting store that has never been told sync is off — the common case these tests are not about.</summary>
+    private static ISettingRepository EnabledSettings() => Substitute.For<ISettingRepository>();
+
     [Fact]
     public async Task ASuccessfulRun_IsLoggedAsCompleted_WithTheReportsCounts()
     {
@@ -26,7 +31,7 @@ public class RunSyncCommandAuditLoggingTests
         runner.RunThroughFolderAsync(Folder, Arg.Any<CancellationToken>()).Returns(report);
         var auditLog = Substitute.For<ISyncAuditLog>();
 
-        await new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None);
+        await new RunSyncCommandHandler(runner, auditLog, EnabledSettings()).Handle(new RunSyncCommand(Folder), CancellationToken.None);
 
         await auditLog.Received(1).RecordAsync(
             "Folder",
@@ -48,7 +53,7 @@ public class RunSyncCommandAuditLoggingTests
         var auditLog = Substitute.For<ISyncAuditLog>();
 
         await FluentActions
-            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None))
+            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog, EnabledSettings()).Handle(new RunSyncCommand(Folder), CancellationToken.None))
             .Should().ThrowAsync<SyncRunRefusedException>();
 
         await auditLog.Received(1).RecordAsync(
@@ -64,7 +69,7 @@ public class RunSyncCommandAuditLoggingTests
         var auditLog = Substitute.For<ISyncAuditLog>();
 
         await FluentActions
-            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None))
+            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog, EnabledSettings()).Handle(new RunSyncCommand(Folder), CancellationToken.None))
             .Should().ThrowAsync<InvalidOperationException>();
 
         await auditLog.Received(1).RecordAsync(
@@ -87,10 +92,30 @@ public class RunSyncCommandAuditLoggingTests
         var auditLog = Substitute.For<ISyncAuditLog>();
 
         await FluentActions
-            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog).Handle(new RunSyncCommand(Folder), CancellationToken.None))
+            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog, EnabledSettings()).Handle(new RunSyncCommand(Folder), CancellationToken.None))
             .Should().ThrowAsync<OperationCanceledException>();
 
         await auditLog.DidNotReceiveWithAnyArgs().RecordAsync(
             default!, default, default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task ADisabledVault_NeverTouchesTheRunner_ButTheRefusalIsStillLogged()
+    {
+        var runner = Substitute.For<ISyncRunner>();
+        var auditLog = Substitute.For<ISyncAuditLog>();
+        var settings = Substitute.For<ISettingRepository>();
+        settings.GetAsync(SyncSettingKeys.Enabled, Arg.Any<CancellationToken>())
+            .Returns(Setting.Create(SyncSettingKeys.Enabled, "false"));
+
+        await FluentActions
+            .Awaiting(() => new RunSyncCommandHandler(runner, auditLog, settings).Handle(new RunSyncCommand(Folder), CancellationToken.None))
+            .Should().ThrowAsync<SyncRunRefusedException>()
+            .Where(ex => ex.Refusal == SyncRunRefusal.Disabled);
+
+        await runner.DidNotReceive().RunThroughFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await runner.DidNotReceive().RunThroughFolderAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await auditLog.Received(1).RecordAsync(
+            "Folder", 0, 0, 0, 0, SyncRunAuditOutcome.Refused, nameof(SyncRunRefusal.Disabled), Arg.Any<CancellationToken>());
     }
 }

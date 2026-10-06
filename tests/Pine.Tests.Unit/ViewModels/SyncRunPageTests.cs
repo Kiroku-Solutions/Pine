@@ -8,6 +8,8 @@ using FluentAssertions;
 using MediatR;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Pine.Application.Settings.Commands;
+using Pine.Application.Settings.Queries;
 using Pine.Application.Sync.Commands;
 using Pine.Core.Sync;
 using Pine.Ui.Avalonia.Localization;
@@ -226,5 +228,125 @@ public class SyncRunPageTests
         {
             WeakReferenceMessenger.Default.UnregisterAll(recipient);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // §11's "enable or disable sync" (post-audit plan item 3.1h).
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void BeforeTheSettingLoads_SyncIsAssumedEnabled()
+    {
+        using var page = Page();
+
+        page.IsSyncEnabled.Should().BeTrue("a vault that has never touched the control has never been told sync is off");
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ReadsTheSavedSetting()
+    {
+        _mediator.Send(Arg.Is<GetSettingQuery>(q => q.Key == SyncSettingKeys.Enabled), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>("false"));
+        using var page = Page();
+
+        await page.InitializeAsync(CancellationToken.None);
+
+        page.IsSyncEnabled.Should().BeFalse();
+        page.CanRun.Should().BeFalse("sync is off, whatever the folder box holds");
+    }
+
+    [Fact]
+    public async Task TurningTheToggleOff_PersistsTheSetting_ButOnlyAfterLoading()
+    {
+        _mediator.Send(Arg.Is<GetSettingQuery>(q => q.Key == SyncSettingKeys.Enabled), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
+        using var page = Page();
+        await page.InitializeAsync(CancellationToken.None);
+
+        page.IsSyncEnabled = false;
+
+        await _mediator.Received(1).Send(
+            Arg.Is<SaveSettingCommand>(c => c.Key == SyncSettingKeys.Enabled && c.Value == bool.FalseString),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ARunWithSyncDisabled_NeverReachesTheMediator()
+    {
+        using var page = Page();
+        page.FolderPath = @"E:\Pine";
+        page.IsSyncEnabled = false; // before InitializeAsync, so this is the un-persisted UI state directly
+
+        await page.RunCommand.ExecuteAsync(null);
+
+        await _mediator.DidNotReceive().Send(Arg.Any<RunSyncCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // §11's "force a full re-sync" (post-audit plan item 3.1h).
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void BeginForceResync_OpensTheConfirmation_WithoutSendingAnything()
+    {
+        using var page = Page();
+        page.FolderPath = @"E:\Pine";
+
+        page.BeginForceResyncCommand.Execute(null);
+
+        page.IsForceResyncDialogVisible.Should().BeTrue();
+        _mediator.DidNotReceiveWithAnyArgs().Send(Arg.Any<RunSyncCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void BeginForceResync_WithNoFolder_DoesNothing()
+    {
+        using var page = Page();
+
+        page.BeginForceResyncCommand.Execute(null);
+
+        page.IsForceResyncDialogVisible.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CancelForceResync_ClosesTheConfirmation_WithoutSendingAnything()
+    {
+        using var page = Page();
+        page.FolderPath = @"E:\Pine";
+        page.BeginForceResyncCommand.Execute(null);
+
+        page.CancelForceResyncCommand.Execute(null);
+
+        page.IsForceResyncDialogVisible.Should().BeFalse();
+        _mediator.DidNotReceiveWithAnyArgs().Send(Arg.Any<RunSyncCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ConfirmForceResync_ClosesTheConfirmation_AndSendsTheCommandWithForceSet()
+    {
+        Reports(new SyncRunReport(1, 1, 1, 1, 0, []));
+        using var page = Page();
+        page.FolderPath = @"E:\Pine";
+        page.BeginForceResyncCommand.Execute(null);
+
+        await page.ConfirmForceResyncCommand.ExecuteAsync(null);
+
+        page.IsForceResyncDialogVisible.Should().BeFalse();
+        await _mediator.Received(1).Send(
+            Arg.Is<RunSyncCommand>(c => c.FolderPath == @"E:\Pine" && c.ForceFullResync),
+            Arg.Any<CancellationToken>());
+        page.HasReport.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AnOrdinaryRun_NeverSetsForceFullResync()
+    {
+        Reports(new SyncRunReport(0, 0, 0, 0, 0, []));
+        using var page = Page();
+        page.FolderPath = @"E:\Pine";
+
+        await page.RunCommand.ExecuteAsync(null);
+
+        await _mediator.Received(1).Send(Arg.Is<RunSyncCommand>(c => !c.ForceFullResync), Arg.Any<CancellationToken>());
     }
 }

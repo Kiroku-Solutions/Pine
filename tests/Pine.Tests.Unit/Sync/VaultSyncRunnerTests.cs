@@ -121,14 +121,23 @@ public sealed class VaultSyncRunnerTests : IDisposable
         return key;
     }
 
-    private async Task<SyncRunReport> RunAsync(Vault vault, ISyncProvider? provider = null)
+    private async Task<SyncRunReport> RunAsync(Vault vault, ISyncProvider? provider = null, bool forceFullResync = false)
     {
         await using var context = Open(vault);
         var accessor = new Accessor(vault);
         var runner = new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor));
         return provider is null
-            ? await runner.RunThroughFolderAsync(Folder, _ct)
-            : await runner.RunAsync(provider, _ct);
+            ? await runner.RunThroughFolderAsync(Folder, forceFullResync, _ct)
+            : await runner.RunAsync(provider, forceFullResync, _ct);
+    }
+
+    /// <summary>§11's "delete all envelopes from a provider" (post-audit plan item 3.1h).</summary>
+    private async Task<SyncEraseReport> EraseAsync(Vault vault, string? folder = null)
+    {
+        await using var context = Open(vault);
+        var accessor = new Accessor(vault);
+        return await new VaultSyncRunner(context, accessor, new AesGcmVaultFileCipher(accessor))
+            .EraseFromFolderAsync(folder ?? Folder, _ct);
     }
 
     private static async Task<Guid> IdAsync(Vault vault)
@@ -643,6 +652,94 @@ public sealed class VaultSyncRunnerTests : IDisposable
         FluentActions.Invoking(() => SyncRunRefusedException.Describe((SyncRunRefusal)99)).Should().Throw<ArgumentOutOfRangeException>();
     }
 
+    // ------------------------------------------------------------------------------------------
+    // §11's "force a full re-sync" and "delete all envelopes from a provider" (post-audit plan item 3.1h).
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AForcedResync_SendsEverything_EvenThoughThePeerAlreadyAcknowledgedIt()
+    {
+        using var key = await PairedAsync(LeftVault, RightVault);
+        await AddAccountAsync(LeftVault, "Current");
+        await SettleAsync(LeftVault, RightVault);
+
+        // Fully settled: an ordinary run has nothing left to send.
+        (await RunAsync(LeftVault)).EnvelopesLeft.Should().Be(0);
+
+        var forced = await RunAsync(LeftVault, forceFullResync: true);
+
+        forced.EnvelopesLeft.Should().Be(1, "forcing ignores what the peer has already acknowledged");
+        forced.Problems.Should().BeEmpty();
+
+        // The peer applies a full re-export of a row it already has and ends up with exactly the same thing.
+        (await RunAsync(RightVault)).RowsChanged.Should().Be(0, "nothing about the account actually changed");
+        (await AccountsAsync(RightVault)).Should().Be(1, "re-applying the same row never duplicates it");
+    }
+
+    [Fact]
+    public async Task AForcedResync_DoesNotChangeWhatThisVaultAcceptsFromAPeer()
+    {
+        using var key = await PairedAsync(LeftVault, RightVault);
+        await AddAccountAsync(RightVault, "Savings");
+        await SettleAsync(LeftVault, RightVault);
+
+        await AddAccountAsync(RightVault, "Second");
+        await RunAsync(RightVault); // leaves the new account waiting for the left in the folder
+
+        // The left forces its OWN export; incoming envelopes are still applied by the ordinary rules.
+        var forced = await RunAsync(LeftVault, forceFullResync: true);
+
+        forced.EnvelopesApplied.Should().Be(1, "forcing is about what this vault sends, not what it takes in");
+        (await AccountsAsync(LeftVault)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AnErasure_OnAFolderThatCannotBeUsed_IsRefused()
+    {
+        await MigrateAsync(LeftVault);
+
+        (await FluentActions.Awaiting(() => EraseAsync(LeftVault, Path.Combine(_root, "unplugged"))).Should().ThrowAsync<SyncRunRefusedException>())
+            .Which.Refusal.Should().Be(SyncRunRefusal.FolderUnavailable);
+    }
+
+    [Fact]
+    public async Task AnErasure_OnAVaultThatNeverSynced_FindsNothingToErase_WithoutInventingAVaultId()
+    {
+        await MigrateAsync(LeftVault);
+
+        var report = await EraseAsync(LeftVault);
+
+        report.EnvelopesDeleted.Should().Be(0);
+        report.AnnouncementRemoved.Should().BeFalse();
+        (await IdAsync(LeftVault)).Should().NotBe(Guid.Empty, "IdAsync itself creates one; this only proves erasure alone never did");
+    }
+
+    [Fact]
+    public async Task AnErasure_RemovesWhatWasLeftForAPeer_AndThisVaultsAnnouncement_ButNotThePeersOwnFiles()
+    {
+        using var key = await PairedAsync(LeftVault, RightVault);
+        await AddAccountAsync(LeftVault, "Current");
+        await SettleAsync(LeftVault, RightVault);
+
+        var leftId = await IdAsync(LeftVault);
+        var rightId = await IdAsync(RightVault);
+
+        var report = await EraseAsync(LeftVault);
+
+        report.EnvelopesDeleted.Should().Be(1);
+        report.AnnouncementRemoved.Should().BeTrue();
+
+        var remaining = FolderState().Keys.ToList();
+        remaining.Should().NotContain(FolderSyncProvider.EnvelopeFileName(new SyncEnvelopeAddress(leftId, rightId)));
+        remaining.Should().NotContain(FolderSyncProvider.AnnouncementFileName(leftId));
+        remaining.Should().Contain(FolderSyncProvider.EnvelopeFileName(new SyncEnvelopeAddress(rightId, leftId)));
+        remaining.Should().Contain(FolderSyncProvider.AnnouncementFileName(rightId));
+
+        // Nothing in either vault's own rows was touched; erasure is a folder operation.
+        (await AccountsAsync(LeftVault)).Should().Be(1);
+        (await AccountsAsync(RightVault)).Should().Be(1);
+    }
+
     /// <summary>A real folder provider with failures put where a test needs them.</summary>
     private sealed class ScriptedProvider(ISyncProvider inner) : ISyncProvider
     {
@@ -684,5 +781,11 @@ public sealed class VaultSyncRunnerTests : IDisposable
             OnDownload is null ? inner.DownloadAsync(address, cancellationToken) : Task.FromResult(OnDownload(address));
 
         public Task<bool> DeleteAsync(SyncEnvelopeAddress address, CancellationToken cancellationToken) => inner.DeleteAsync(address, cancellationToken);
+
+        public Task<IReadOnlyList<SyncEnvelopeAddress>> ListEnvelopesFromAsync(Guid sourceVaultId, CancellationToken cancellationToken) =>
+            inner.ListEnvelopesFromAsync(sourceVaultId, cancellationToken);
+
+        public Task<bool> RetractAnnouncementAsync(Guid vaultId, CancellationToken cancellationToken) =>
+            inner.RetractAnnouncementAsync(vaultId, cancellationToken);
     }
 }

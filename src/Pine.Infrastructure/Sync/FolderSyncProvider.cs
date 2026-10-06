@@ -34,6 +34,12 @@ namespace Pine.Infrastructure.Sync;
 /// is not anybody's envelope.
 /// </para>
 /// <para>
+/// ERASURE (post-audit plan item 3.1h; §11, §13) NEEDS NO THIRD FILE KIND. <see cref="ListEnvelopesFromAsync"/>
+/// finds every <c>{source}.*.pine-envelope</c> this vault left by parsing the same file names
+/// <see cref="EnvelopeFileName"/> writes, and <see cref="RetractAnnouncementAsync"/> deletes the one announcement
+/// a vault id ever has — the layout above is already everything an erasure needs to find.
+/// </para>
+/// <para>
 /// WRITES ARE WHOLE OR ABSENT. Each file is written beside its final name, flushed, and moved over it, so a reader
 /// on another machine sees the old envelope or the new one, never half of one. A write interrupted before the move
 /// leaves a <c>.pine-tmp</c> file that nothing reads.
@@ -199,6 +205,57 @@ public sealed class FolderSyncProvider : ISyncProvider
         cancellationToken.ThrowIfCancellationRequested();
 
         var path = Path.Combine(FolderPath, EnvelopeFileName(address));
+        if (!File.Exists(path))
+        {
+            return Task.FromResult(false);
+        }
+
+        File.Delete(path);
+        return Task.FromResult(true);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<SyncEnvelopeAddress>> ListEnvelopesFromAsync(Guid sourceVaultId, CancellationToken cancellationToken)
+    {
+        if (sourceVaultId == Guid.Empty)
+        {
+            throw new ArgumentException("A source vault id is not empty.", nameof(sourceVaultId));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var prefix = Id(sourceVaultId) + ".";
+        var addresses = new List<SyncEnvelopeAddress>();
+
+        foreach (var path in Directory.EnumerateFiles(FolderPath, "*" + EnvelopeExtension, SearchOption.TopDirectoryOnly))
+        {
+            var name = Path.GetFileName(path);
+            if (!name.StartsWith(prefix, StringComparison.Ordinal) || !name.EndsWith(EnvelopeExtension, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var middle = name[prefix.Length..^EnvelopeExtension.Length];
+            if (Guid.TryParseExact(middle, "N", out var target) && target != Guid.Empty)
+            {
+                addresses.Add(new SyncEnvelopeAddress(sourceVaultId, target));
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<SyncEnvelopeAddress>>(addresses.OrderBy(a => a.TargetVaultId).ToList());
+    }
+
+    /// <inheritdoc />
+    public Task<bool> RetractAnnouncementAsync(Guid vaultId, CancellationToken cancellationToken)
+    {
+        if (vaultId == Guid.Empty)
+        {
+            throw new ArgumentException("A vault id is not empty.", nameof(vaultId));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var path = Path.Combine(FolderPath, AnnouncementFileName(vaultId));
         if (!File.Exists(path))
         {
             return Task.FromResult(false);

@@ -72,25 +72,72 @@ public sealed class VaultSyncRunner : ISyncRunner
     }
 
     /// <inheritdoc />
-    public Task<SyncRunReport> RunThroughFolderAsync(string folderPath, CancellationToken cancellationToken)
+    public Task<SyncRunReport> RunThroughFolderAsync(string folderPath, CancellationToken cancellationToken) =>
+        RunThroughFolderAsync(folderPath, forceFullResync: false, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SyncRunReport> RunThroughFolderAsync(string folderPath, bool forceFullResync, CancellationToken cancellationToken) =>
+        RunAsync(Provider(folderPath), forceFullResync, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<SyncEraseReport> EraseFromFolderAsync(string folderPath, CancellationToken cancellationToken)
     {
-        FolderSyncProvider provider;
+        var provider = Provider(folderPath);
+
+        if (await provider.HealthAsync(cancellationToken).ConfigureAwait(false) != SyncProviderHealth.Reachable)
+        {
+            throw new SyncRunRefusedException(SyncRunRefusal.FolderUnavailable);
+        }
+
+        // Read, never created (3.1e): a vault that never took part has nothing of its own in the folder to erase,
+        // and asking "what should be erased" is not a reason to hand it a vault id it never had.
+        var self = await VaultMerger.ReadVaultIdAsync(_context, cancellationToken).ConfigureAwait(false);
+        if (self == Guid.Empty)
+        {
+            return new SyncEraseReport(0, false);
+        }
+
+        var addresses = await provider.ListEnvelopesFromAsync(self, cancellationToken).ConfigureAwait(false);
+        var deleted = 0;
+        foreach (var address in addresses)
+        {
+            if (await provider.DeleteAsync(address, cancellationToken).ConfigureAwait(false))
+            {
+                deleted++;
+            }
+        }
+
+        var retracted = await provider.RetractAnnouncementAsync(self, cancellationToken).ConfigureAwait(false);
+        return new SyncEraseReport(deleted, retracted);
+    }
+
+    private static FolderSyncProvider Provider(string folderPath)
+    {
         try
         {
-            provider = new FolderSyncProvider(folderPath);
+            return new FolderSyncProvider(folderPath);
         }
         catch (ArgumentException)
         {
             // Not a folder anyone could mean. The validator says why first; this is the layer's own guard.
             throw new SyncRunRefusedException(SyncRunRefusal.FolderUnavailable);
         }
-
-        return RunAsync(provider, cancellationToken);
     }
 
     /// <summary>Runs one exchange through <paramref name="provider"/>.</summary>
     /// <exception cref="SyncRunRefusedException">No key, or the provider cannot be reached. Nothing was sent or applied.</exception>
-    public async Task<SyncRunReport> RunAsync(ISyncProvider provider, CancellationToken cancellationToken)
+    public Task<SyncRunReport> RunAsync(ISyncProvider provider, CancellationToken cancellationToken) =>
+        RunAsync(provider, forceFullResync: false, cancellationToken);
+
+    /// <summary>
+    /// Runs one exchange through <paramref name="provider"/>. When <paramref name="forceFullResync"/> is set, every
+    /// peer is sent everything this vault holds, regardless of what that peer's own acknowledgement says it has
+    /// already taken (`14-Synchronization` §11; post-audit plan item 3.1h). See <see cref="ISyncRunner"/>'s remarks
+    /// on why this cannot lose data: it changes only where this vault's export starts from, never what the peer's
+    /// own idempotent merge does with it.
+    /// </summary>
+    /// <exception cref="SyncRunRefusedException">No key, or the provider cannot be reached. Nothing was sent or applied.</exception>
+    public async Task<SyncRunReport> RunAsync(ISyncProvider provider, bool forceFullResync, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(provider);
 
@@ -168,7 +215,9 @@ public sealed class VaultSyncRunner : ISyncRunner
 
         foreach (var peer in peers)
         {
-            var since = acknowledged.GetValueOrDefault(peer, SyncChangeSet.Never);
+            // Forced, this is Never regardless of what the peer acknowledged: the export is re-derived from
+            // scratch, and the peer's own idempotent merge decides what of it is new (see this method's remarks).
+            var since = forceFullResync ? SyncChangeSet.Never : acknowledged.GetValueOrDefault(peer, SyncChangeSet.Never);
             if (clock <= since)
             {
                 continue;
@@ -177,7 +226,7 @@ public sealed class VaultSyncRunner : ISyncRunner
             var address = new SyncEnvelopeAddress(self, peer);
             try
             {
-                if (IsAlreadyLeft(await ExistingAsync(provider, address, cancellationToken).ConfigureAwait(false), key, self, peer, clock, since))
+                if (!forceFullResync && IsAlreadyLeft(await ExistingAsync(provider, address, cancellationToken).ConfigureAwait(false), key, self, peer, clock, since))
                 {
                     continue;
                 }

@@ -35,6 +35,76 @@ public interface ISyncRunner
     /// <returns>What the run did, peer by peer where it matters.</returns>
     /// <exception cref="SyncRunRefusedException">The run could not start: no key, or no folder. Nothing was written.</exception>
     Task<SyncRunReport> RunThroughFolderAsync(string folderPath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs one exchange through the folder at <paramref name="folderPath"/>, exactly as the two-argument overload
+    /// does for every peer taken in, but, when <paramref name="forceFullResync"/> is set, re-derives and re-sends
+    /// EVERY row and tombstone this vault holds to each peer, regardless of what that peer's own acknowledgement
+    /// says it already has (`14-Synchronization` §11 — post-audit plan item 3.1h).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHAT THIS IS FOR. A peer's cursor can lie: restored from an old backup, or a vault whose state looks
+    /// inconsistent after some other repair. The ordinary run only ever sends what that peer has not yet
+    /// acknowledged, which is exactly wrong when the acknowledgement itself cannot be trusted.
+    /// </para>
+    /// <para>
+    /// WHY THIS CANNOT LOSE DATA. Forcing resync changes only where the export STARTS from — §6's clock, not
+    /// what is written. The peer applies the full export through the same idempotent merge every ordinary
+    /// envelope goes through (3.1b, 3.1d): a row the peer already has, byte for byte, is matched by content and
+    /// counted unchanged; a row it has under a different id is matched by natural key; nothing is duplicated, and
+    /// nothing already newer on the peer's side is overwritten, because the merge's own last-writer rules decide
+    /// that exactly as they would for a normal envelope. The cost is one-sided redundancy — bandwidth and a larger
+    /// envelope — never a second copy of a row or a lost edit.
+    /// </para>
+    /// <para>
+    /// WHAT IT DOES NOT DO. It does not touch what this vault accepts FROM a peer: incoming envelopes are applied
+    /// exactly as an ordinary run applies them, cursor and gap and replay rules included. "Force" describes only
+    /// this vault's export.
+    /// </para>
+    /// </remarks>
+    /// <param name="folderPath">The folder the vaults share. It must already exist; it is never created.</param>
+    /// <param name="forceFullResync">When true, every peer is sent everything this vault holds, not only what it has not acknowledged.</param>
+    /// <param name="cancellationToken">Cancels the run between steps; each apply is all or nothing.</param>
+    /// <returns>What the run did, peer by peer where it matters.</returns>
+    /// <exception cref="SyncRunRefusedException">The run could not start: no key, or no folder. Nothing was written.</exception>
+    Task<SyncRunReport> RunThroughFolderAsync(string folderPath, bool forceFullResync, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes every envelope this vault has left for a peer in the folder at <paramref name="folderPath"/>, and
+    /// this vault's own announcement (`14-Synchronization` §11, §13: the right to erasure; post-audit plan item 3.1h).
+    /// </summary>
+    /// <remarks>
+    /// REACHES ONLY WHAT THIS VAULT PUT THERE. An envelope a peer left FOR this vault is the peer's own export of
+    /// its own data; erasing it would delete someone else's data without their say, so it is left alone. What a
+    /// peer has already taken and merged into its own vault is also untouched — this is erasure from the shared
+    /// folder, not a recall of rows that already crossed into another vault's database, which no provider could do.
+    /// </remarks>
+    /// <param name="folderPath">The folder the vaults share. It must already exist; it is never created.</param>
+    /// <param name="cancellationToken">Cancels between deletions; each one is independent, so a cancellation after some have gone leaves the rest.</param>
+    /// <returns>How many envelopes were removed, and whether this vault's announcement was one of them.</returns>
+    /// <exception cref="SyncRunRefusedException">The folder cannot be used. Nothing was deleted.</exception>
+    Task<SyncEraseReport> EraseFromFolderAsync(string folderPath, CancellationToken cancellationToken);
+}
+
+/// <summary>What one erasure did (post-audit plan item 3.1h; `14-Synchronization` §11's right to erasure).</summary>
+/// <param name="EnvelopesDeleted">Envelopes this vault had left for a peer, removed from the folder.</param>
+/// <param name="AnnouncementRemoved">Whether this vault's own announcement was there to remove.</param>
+public sealed record SyncEraseReport(int EnvelopesDeleted, bool AnnouncementRemoved);
+
+/// <summary>
+/// Keys into the generic vault-scoped setting store (<c>GetSettingQuery</c>/<c>SaveSettingCommand</c>) that sync's
+/// user controls use (`14-Synchronization` §11; post-audit plan item 3.1h). No dedicated table: a boolean flag is
+/// exactly what that store already exists for, and the generic mechanism is reused rather than a new one invented.
+/// </summary>
+public static class SyncSettingKeys
+{
+    /// <summary>
+    /// Whether this vault is willing to sync at all. The value is the literal string <c>"false"</c> to disable;
+    /// anything else, including the key being absent, means enabled — a vault that has never touched this setting
+    /// has never been told sync is off.
+    /// </summary>
+    public const string Enabled = "Sync.Enabled";
 }
 
 /// <summary>What one sync run did (post-audit plan item 3.1f; the counts `14-Synchronization` §12 asks for).</summary>
@@ -96,6 +166,12 @@ public enum SyncRunRefusal
 
     /// <summary>The folder is not there or cannot be used: a drive unplugged, a share offline. §9's offline state.</summary>
     FolderUnavailable,
+
+    /// <summary>
+    /// The user has turned sync off for this vault (§11's "enable or disable sync" — post-audit plan item 3.1h).
+    /// Checked before anything else: a vault that declined to sync has no business touching the folder at all.
+    /// </summary>
+    Disabled,
 }
 
 /// <summary>
@@ -146,6 +222,7 @@ public sealed class SyncRunRefusedException : Exception, IUserFacingFailure
     {
         SyncRunRefusal.NoKey => UserFacingText.SyncRunNoKey(),
         SyncRunRefusal.FolderUnavailable => UserFacingText.SyncRunFolderUnavailable(),
+        SyncRunRefusal.Disabled => UserFacingText.SyncRunDisabled(),
         _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "A sync refusal with no sentence."),
     };
 
@@ -153,6 +230,7 @@ public sealed class SyncRunRefusedException : Exception, IUserFacingFailure
     {
         SyncRunRefusal.NoKey => "This vault holds no sync key, so it can neither seal nor open an envelope.",
         SyncRunRefusal.FolderUnavailable => "The sync folder is not there or cannot be used.",
+        SyncRunRefusal.Disabled => "The user has turned sync off for this vault.",
         _ => "The sync run was refused.",
     };
 }

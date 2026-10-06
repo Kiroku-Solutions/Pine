@@ -145,4 +145,7 @@ public static class UserFacingText
 
     /// <summary>A sync run against a folder that is not there or cannot be used — §9's offline state.</summary>
     public static UserFacingMessage SyncRunFolderUnavailable() => new("Failure.SyncRun.FolderUnavailable");
+
+    /// <summary>A sync run on a vault where the user has turned sync off (§11 — post-audit plan item 3.1h).</summary>
+    public static UserFacingMessage SyncRunDisabled() => new("Failure.SyncRun.Disabled");
 }

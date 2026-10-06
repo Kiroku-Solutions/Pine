@@ -117,14 +117,51 @@ public class SyncRunViewRenderingTests
         var view = new SyncRunView { DataContext = page };
         Show(view);
 
+        // Button also matches the force-resync button and ToggleSwitch (which Avalonia builds on ToggleButton,
+        // itself a Button) — the sync-enabled toggle added by post-audit plan item 3.1h.
         var named = view.GetLogicalDescendants().OfType<Control>()
             .Where(c => c is Button or TextBox && c.IsEffectivelyVisible)
             .ToList();
 
-        named.Should().HaveCount(2);
+        named.Should().HaveCount(4);
         foreach (var control in named)
         {
             AutomationProperties.GetName(control).Should().NotBeNullOrWhiteSpace();
         }
+    });
+
+    [Fact]
+    public Task WhenSyncIsDisabled_TheOffSentenceShows_AndTheButtonsAreDisabled() => InEnglish(localizer =>
+    {
+        using var page = new SyncRunViewModel(Substitute.For<IMediator>(), localizer) { FolderPath = @"E:\Pine", IsSyncEnabled = false };
+        var view = new SyncRunView { DataContext = page };
+        Show(view);
+
+        VisibleText(view).Should().Contain(localizer["SyncRun.Enabled.Off"]);
+
+        var run = view.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, localizer["SyncRun.Run"]));
+        var force = view.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, localizer["SyncRun.ForceResync.Button"]));
+        run.IsEffectivelyEnabled.Should().BeFalse();
+        force.IsEffectivelyEnabled.Should().BeFalse();
+    });
+
+    [Fact]
+    public Task TheForceResyncConfirmation_NamesTheRealConsequence_AndIsHiddenUntilAsked() => InEnglish(localizer =>
+    {
+        using var page = new SyncRunViewModel(Substitute.For<IMediator>(), localizer) { FolderPath = @"E:\Pine" };
+        var view = new SyncRunView { DataContext = page };
+        Show(view);
+
+        VisibleText(view).Should().NotContain(localizer["SyncRun.ForceResync.Dialog.Title"], "hidden until asked for");
+
+        page.BeginForceResyncCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        var text = VisibleText(view);
+        text.Should().Contain(localizer["SyncRun.ForceResync.Dialog.Title"]);
+        text.Should().Contain(localizer["SyncRun.ForceResync.Dialog.Explanation"]);
+
+        var confirm = view.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, localizer["SyncRun.ForceResync.Dialog.Confirm"]));
+        ReferenceEquals(confirm.Command, page.ConfirmForceResyncCommand).Should().BeTrue("the confirm button reaches only the forced path, never the plain Run");
     });
 }

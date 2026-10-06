@@ -30,6 +30,12 @@ namespace Pine.Core.Sync;
 /// the others.
 /// </para>
 /// <para>
+/// §11's RIGHT TO ERASURE, ADDED HERE (post-audit plan item 3.1h). <see cref="ListEnvelopesFromAsync"/> and
+/// <see cref="RetractAnnouncementAsync"/> exist only so a vault can find and remove what it itself left on a
+/// provider, without first learning every peer that might be out there. Neither reads an envelope's plaintext or
+/// its key — a provider is told addresses, nothing it would need the sync key to understand.
+/// </para>
+/// <para>
 /// §13's RULES, AS A PORT CAN STATE THEM. A provider never touches the local store (it is given bytes and returns
 /// bytes); it supports deletion (<see cref="DeleteAsync"/>); and it has no plaintext to log.
 /// </para>
@@ -55,6 +61,16 @@ public interface ISyncProvider
 
     /// <summary>Removes the envelope this address holds (§11, §13: the right to erasure). False when it held none.</summary>
     Task<bool> DeleteAsync(SyncEnvelopeAddress address, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Every address <paramref name="sourceVaultId"/> has left an envelope at, as the source (post-audit plan item
+    /// 3.1h; §11's right to erasure). Not the envelopes a peer left FOR this vault — those are the peer's own data,
+    /// and erasure reaches only what this vault put there.
+    /// </summary>
+    Task<IReadOnlyList<SyncEnvelopeAddress>> ListEnvelopesFromAsync(Guid sourceVaultId, CancellationToken cancellationToken);
+
+    /// <summary>Removes <paramref name="vaultId"/>'s own announcement (§11, §13). False when it had made none.</summary>
+    Task<bool> RetractAnnouncementAsync(Guid vaultId, CancellationToken cancellationToken);
 }
 
 /// <summary>Whether a provider can be reached (post-audit plan item 3.1f).</summary>
