@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-05 — Stage 3 item 3.1g (§6.8, §12's sync audit log). Earlier: 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 3 item 3.1h (§6.9, §11's User Controls: enable/disable, forced resync, erasure). Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2405,6 +2405,48 @@ round-trip test and a few maintenance updates the new migration/entity forced in
 lists (a new migration or mapped entity is expected to move those, by design), and found no defect in the feature
 itself.
 
+### 6.9 Item 3.1h, as built (2026-10-05): §11's User Controls
+
+**One provider, so the clauses that assumed several were narrowed, and the one clause that didn't need several was
+built for real.** `14-Synchronization` §11 was written for a plugin world ADR-0021 killed; `FolderSyncProvider` is
+the only provider Pine compiles in, and that stays true here.
+
+| Row | Outcome |
+|---|---|
+| `14-Synchronization` §11 | Closed, narrowly: one on/off setting (pause folded into it honestly), a forced full resync, and real erasure |
+
+#### What was built, and the narrowing decided for each clause
+
+- **"Enable/disable per provider" and "change the provider"** narrow to one setting, `SyncSettingKeys.Enabled`, in
+  the existing generic `Setting` table — no new migration, because there is nothing to choose between.
+  `RunSyncCommandHandler` checks it first and refuses as `SyncRunRefusal.Disabled`, logged to the audit log like
+  any other refusal.
+- **"Pause and resume" collapsed into the same setting, on purpose.** There is no background sync — a run happens
+  only when the user presses the button — so a shorter-lived "pause" would be behaviourally identical to
+  "disable": two controls, one effect. Said plainly in the view model's own remarks rather than built as two
+  controls that do the same thing.
+- **"Force a full re-sync"** (`RunThroughFolderAsync(folder, forceFullResync, …)`) re-derives the export from
+  `SyncChangeSet.Never` instead of the peer's acknowledged cursor, so every row and tombstone goes again regardless
+  of what the peer claims to have. **Checked, not assumed, that this cannot duplicate or lose anything**: the
+  merge's own matching (3.1b) is by id and content, so a unit and an integration test both force a resync against
+  an already-settled pair and assert zero rows changed. The confirmation dialog names that mechanism rather than
+  giving a generic warning, in the same scrim-and-panel shape the restore dialog already uses.
+- **"Delete all envelopes from a provider" (right to erasure)** is the one clause fully real with one provider:
+  `EraseSyncDataCommand` removes every envelope and announcement this vault has left in the folder — never a
+  peer's files, never anything already merged into this vault — behind the same confirmation shape, naming the
+  folder and the actual consequence.
+
+**What this does not close.** No plugin host and no provider-selection UI — not a gap, ADR-0021's decision. A
+disabled or erased vault is not told to re-pair; pairing (3.1e) is untouched.
+
+**Verified.** Built clean across all four desktop-buildable projects. Unit **1679 → 1727**, integration
+**344 → 349**, both green. Ten mutations against the disable check, the force-resync cursor override, the erasure
+loop, and both confirmation guards: nine killed, one shown equivalent rather than hidden — removing the
+already-left short-circuit's `forceFullResync` guard only matters on a *second consecutive* forced resync with
+no change in between, where re-sending produces the same bytes as not re-sending, so no test can tell the
+difference and none was contrived to pretend otherwise. Localisation parity confirmed key by key (673/673, no
+diff either direction) rather than by line count, independently by the verifying pass.
+
 ## 7. Stage 4 — The documents
 
 | # | Work | Closes |
@@ -2528,7 +2570,19 @@ was read off its own unmet normative clauses rather than guessed: §12 (an audit
 enough to be one slice. Done 2026-10-05 (§6.8): every sync attempt, successful or not, is now logged inside the
 vault's own encrypted storage and readable from Settings, newest-first. Verified: unit 1668 → 1679, integration
 340 → 344, both green; eight mutations, eight caught; an independent pass found no defect, only tests to add.
-**The next item is `14-Synchronization` §11, User Controls** — pause/resume, enable or disable sync per provider,
-force a full re-sync, change provider, delete all envelopes (right to erasure) — the last normative section of
-this document with nothing built against it, now that §5, §6 (via §7's merge), §8, §9 and §12 each have at least a
-narrow, honest slice.
+~~The next item is `14-Synchronization` §11, User Controls.~~
+
+Done 2026-10-05 (§6.9): sync can be turned off (pause folded into the same setting, honestly, since nothing runs in
+the background to pause), forced to resend everything to a peer regardless of its cursor (checked safe against the
+merge's own idempotency, not assumed), and erased — every envelope and announcement this vault left in the folder,
+gone, behind a confirmation naming the real consequence. One provider, so "change provider" and "per-provider"
+narrowed to "on or off"; no plugin host was built (ADR-0021 still holds). Verified: unit 1679 → 1727, integration
+344 → 349, both green; ten mutations, nine killed, one shown equivalent rather than papered over.
+
+**Every normative clause in `14-Synchronization` now has at least a narrow, honest slice built against it** — §4
+(the merge policy, 3.1b), §5 (the envelope, 3.1d), §6 (change-set semantics, 3.1a/3.1b), §7 (the conflict table,
+3.1b/3.1c), §8 (the provider, 3.1f), §9 (the offline behaviour, 3.1f), §11 (user controls, 3.1h) and §12 (the audit
+log, 3.1g). §10, Cloud Only Mode, is the one section nothing has touched — and it names a different kind of
+provider (a cloud, not a folder) that §8's "one compiled-in provider" decision does not obviously extend to; that
+is either the next item or a candidate to mark out of scope the way a plugin host already was, and deciding which
+needs a reading of §10 against ADR-0012's no-network rule, not a guess.
