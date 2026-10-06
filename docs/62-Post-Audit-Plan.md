@@ -7,7 +7,7 @@
 | Reconciled       | 2026-09-09 · Written at the close of iteration 37, when all four phases of `60-Production-Readiness-Audit` §10 were ticked (37/37) and 68 debt rows remained open. It plans what comes after the audit's roadmap, not the roadmap itself. Every item names the row it closes, so this document goes stale the moment those rows do — read the register, not this, for current state. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-09-09                                                                           |
-| Last Updated     | 2026-10-05 — Stage 4 item 4.2 (§7.2, TD-84 narrowed: plugin inventory struck). Earlier: 4.1 (§7.1, TD-147 closed: six non-normative documents corrected). Stage 3 (sync) is closed, items 3.0 and 3.1a–3.1h (§6.1–§6.9), with `14-Synchronization` §10 marked out of scope. Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
+| Last Updated     | 2026-10-05 — Stage 4 item 4.3 (§7.3, register sweep: TD-128 closed, mooted). **This plan's named items are exhausted** — Stage 4 is closed. Earlier: 4.2 (§7.2, TD-84 narrowed: plugin inventory struck); 4.1 (§7.1, TD-147 closed: six non-normative documents corrected). Stage 3 (sync) is closed, items 3.0 and 3.1a–3.1h (§6.1–§6.9), with `14-Synchronization` §10 marked out of scope. Earlier: 3.1g (§6.8, §12's sync audit log); 3.1f (§6.7, folder provider/transport/runner: first merge run from the application); 3.1e (§6.6, pairing: TD-154 narrowed); 3.1a–3.1d (§6.2–§6.5); item 3.0 (§6.1, TD-152 and TD-149 closed). Stage 0 closed (§3.1–§3.3); **Stage 1 closed**, items 1.1–1.5 (§4.1–§4.5); **Stage 2 closed as far as a commit can close it**: items 2.1 (§5.1), 2.2 (§5.2, everything but the certificate), 2.3 (§5.3), 2.4 (§5.4) and 2.5 (§5.5, TD-138's device half excepted) |
 | Prerequisites    | `60-Production-Readiness-Audit` §10 (all phases closed), §11.1 (current verdict)      |
 | Related Documents| `60-Production-Readiness-Audit`, `28-CI-CD`, `23-Roadmap`                             |
 
@@ -2453,7 +2453,7 @@ diff either direction) rather than by line count, independently by the verifying
 |---|---|---|
 | 4.1 | ✅ **Done** (2026-10-05) — Revise the non-normative documents that still promise a plugin ecosystem, see §7.1 | TD-147 (closed) |
 | 4.2 | ✅ **Done** (2026-10-05) — Re-scope `TD-84` (the Diagnostic Information Bundle), whose Fix column waits on a plugin host that will now never exist, see §7.2 | TD-84 (narrowed, not closed) |
-| 4.3 | Sweep the register for rows whose *mitigation* has been overtaken, as TD-67's was | — |
+| 4.3 | ✅ **Done** (2026-10-05) — Sweep the register for rows whose *mitigation* has been overtaken, as TD-67's was, see §7.3 | TD-128 (closed) |
 
 **4.3 is the most valuable item in this section and the least obvious.** TD-67 sat at 🟡 P2 because
 "neither is reachable from the wizard", and TD-28 made it reachable five iterations later while
@@ -2523,6 +2523,31 @@ present; only the live register row and the normative document were corrected.
 
 **Verified.** All sixteen `Documentation`-filtered unit tests pass, re-run directly rather than taken on trust. No
 source file was touched, so no build or integration run applied.
+
+### 7.3 Item 4.3, as built (2026-10-05): the register sweep, and its one real find
+
+**The class TD-67 named happened again, in the other direction.** Every row in the register whose Impact column
+argued "not reachable / not used / not exposed / no caller / dead code / behind a gate that's always off" was
+listed before any was re-verified — the same discipline as searching broadly before fixing narrowly — and each
+was checked against the current code, not the code as of when it was written.
+
+**Six rows checked and found still accurate, not touched:** TD-116 (`PortableAiProvider`'s vision refusal —
+traced the real DI registration and the factory's capability refusal; still no caller on any head), TD-141
+(attachments still only arrive from the receipt scanner — manual entry has no file picker), TD-143 (the rules
+screen still writes exactly one condition), TD-151 (import profiles are still built and discarded, never saved),
+and TD-100 (checked and explicitly **not** promoted, because its account-default line predates the row itself —
+a row that slightly overstated its own gap from the start is a different problem than one overtaken by later
+work, and out of this item's scope on purpose).
+
+**One row promoted, and it closes rather than worsens.** TD-128 (the shell's disabled "Rules" nav button, 🟢,
+"honest because it says Coming soon") was mooted by iteration 34's own rule-engine amendment (TD-37, §12.70),
+which wired that exact button to `NavigateToRulesCommand` and replaced its tooltip — years before this sweep
+re-read the row. Confirmed directly in `ShellView.axaml`'s own comment ("Enabled as of the Phase 3 rule-engine
+work...") and in `RulesViewModel`'s real create/list/enable/disable/delete against `IRuleRepository`. Corrected
+in place: the Impact and Fix columns struck through with a dated note citing the commit and the amendment that
+mooted them, Status changed to Closed, nothing deleted.
+
+**Verified.** All sixteen `Documentation`-filtered unit tests pass, re-run directly. No source file was touched.
 
 ## 8. What is deliberately NOT in this plan
 
@@ -2658,6 +2683,15 @@ shows is still live.~~
 
 Done 2026-10-05, item 4.2 (§7.2): TD-84's plugin-inventory third is struck from both the register and
 `30-Observability`, citing ADR-0021; the row stays open and narrowed, not closed, because metrics and SLOs — the
-other two preconditions — still don't exist. No code changed. **The next item is 4.3: sweep the register for a
-row whose severity rests on a mitigation that later work has overtaken, the way TD-67's was** — the last item in
-Stage 4, and the last item this plan currently names at all.
+other two preconditions — still don't exist. No code changed. ~~The next item is 4.3: sweep the register for a
+row whose severity rests on a mitigation that later work has overtaken, the way TD-67's was — the last item in
+Stage 4, and the last item this plan currently names at all.~~
+
+Done 2026-10-05, item 4.3 (§7.3): six rows checked against current code and found still accurate; one, TD-128
+(the shell's disabled "Rules" button), found mooted the same way TD-67 was — the rule engine §6.2's own history
+closed in iteration 34 had already wired it to a real screen, and nobody had re-read the row since. Closed, not
+promoted. **This was the last item this plan names.** Every item in §3 through §7's tables now reads ✅, or
+narrowed-and-explained where a full close was never honest to claim. Further work is the register's to name, not
+this plan's: an open TD row (TD-108's certificate, TD-138's device half, TD-144/TD-145's retention, TD-154's
+device-authentication half, or whatever `60-Production-Readiness-Audit` names next) or ordinary product work —
+which is the destination this plan's own §9 named from the start.
