@@ -2695,3 +2695,13 @@ narrowed-and-explained where a full close was never honest to claim. Further wor
 this plan's: an open TD row (TD-108's certificate, TD-138's device half, TD-144/TD-145's retention, TD-154's
 device-authentication half, or whatever `60-Production-Readiness-Audit` names next) or ordinary product work —
 which is the destination this plan's own §9 named from the start.
+
+**Post-closure, 2026-10-05: TD-145's `secure_delete` half, closed from the register directly.** With this plan's
+own items exhausted, the next work was picked from `60-Production-Readiness-Audit` as §9 said it would be:
+TD-145's row named two still-open things, and one — SQLite `secure_delete`, so a hard delete overwrites freed
+bytes rather than leaving them until a page is reused — was concretely buildable without a design decision, unlike
+the retention policy beside it (a claim about peers this vault has never met). An EF Core interceptor now forces it
+on every connection, sync and async, not configurable; verified on a plain connection because SQLCipher already
+defaults it ON on a keyed one, which the work states plainly rather than claiming credit for a vendor default.
+Retention stays open. This correction lives in TD-145's own row, not a new numbered item here — the register, not
+this plan, is where it belongs now.
