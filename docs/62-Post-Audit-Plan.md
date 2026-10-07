@@ -2770,3 +2770,8 @@ landing on a bound, user-facing property. Ran clean against the real tree. **Fal
 shapes, three caught and two honestly not**: direct assignment, aliasing, interpolation and a wrapped-line
 right-hand side are all caught; helper-method indirection and a true multi-line right-hand side are stated as
 real limits of a text-scan technique, not papered over.
+
+**Post-closure, 2026-10-07: TD-105, the dashboard's failure sentence stops overwriting the greeting.** A second
+`LocalizedMessageSlot` backs a new `ErrorMessage` property, shown only when non-empty and cleared at the top of
+every `InitializeAsync`, mirroring the exact pattern `AddTransactionView` already uses. TD-106's guard, landed
+moments earlier, confirmed clean against the changed file — proof the two items compose rather than compete.
