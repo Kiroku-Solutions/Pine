@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NetArchTest.Rules;
@@ -12,7 +14,7 @@ using Pine.Application.Common.Behaviors;
 
 namespace Pine.Tests.Unit.Architecture;
 
-public class ArchitectureTests
+public partial class ArchitectureTests
 {
     /// <summary>
     /// The complete public instance/static method surface <c>Account</c> is allowed to have.
@@ -861,6 +863,234 @@ public class ArchitectureTests
             FilesAllowedTheTrainingCapability,
             "training gates a hosted service, not a screen; a view that branches on it is gating a feature " +
             "on a capability that only coincides with the right one today");
+    }
+
+    /// <summary>The name fragments that mark an [ObservableProperty] as a user-visible failure/status slot.</summary>
+    private static readonly string[] BoundFailureSlotNameFragments = ["Message", "Error", "Status"];
+
+    [GeneratedRegex(@"catch\s*\(\s*[\w.]+\s+(?<var>[A-Za-z_]\w*)\s*\)")]
+    private static partial Regex CatchClauseWithVariable();
+
+    [GeneratedRegex(@"^\s*public\s+partial\s+.+?\s+(?<name>[A-Za-z_]\w*)\s*\{\s*get;")]
+    private static partial Regex ObservablePropertyDeclaration();
+
+    [GeneratedRegex(@"^\s*(?:var\s+)?(?:this\.)?(?<lhs>[A-Za-z_]\w*)\s*=\s*(?<rhs>.+);\s*$")]
+    private static partial Regex SimpleAssignmentStatement();
+
+    /// <summary>
+    /// TD-106. No view model writes a caught exception's own text — <c>.Message</c> or
+    /// <c>.ToString()</c> — directly or indirectly (through a local alias) into an
+    /// <c>[ObservableProperty]</c> whose name marks it as a user-visible failure/status slot (its
+    /// name contains "Message", "Error" or "Status"). That is the exact shape TD-24 closed eleven
+    /// instances of — see <c>Diagnostics/UserFacingError.cs</c> and the eleven "WAS:" comments at the
+    /// call sites it replaced.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY A SOURCE-TEXT SCAN, NOT A NETARCHTEST DEPENDENCY RULE. NetArchTest (and Mono.Cecil
+    /// underneath it) answers "does this TYPE reference that TYPE" — a type-level IL question. Whether
+    /// a caught exception's <c>.Message</c> flows into a specific property assignment is a question
+    /// about the statements inside one catch block, which no dependency rule in this file can see:
+    /// <c>UserFacingError</c> itself has an IL dependency on <c>Exception</c> and on every
+    /// <c>ErrorMessage</c>-shaped property's containing type regardless of whether it is used
+    /// correctly. This repository already has the right precedent for a check at this level:
+    /// <see cref="OnlyCompositionReadsTheTrainingCapability"/> above and
+    /// <c>NoSentenceLiteralsInUiCodeTests</c> both read source text rather than reflecting over
+    /// compiled metadata, specifically because the thing being checked lives inside a method body.
+    /// This follows that same technique rather than adding a Roslyn or Mono.Cecil dependency this
+    /// repository does not otherwise carry.
+    /// </para>
+    /// <para>
+    /// WHAT COUNTS AS "BOUND". Only an <c>[ObservableProperty]</c>-backed property is considered —
+    /// not any assignment target — because a local variable carrying <c>ex.Message</c> toward a log
+    /// call or toward an exception's own problem list is not the defect TD-106 names.
+    /// <c>PineConfiguration.Bind</c>'s <c>conversionFailure</c> is exactly this: it holds
+    /// <c>ex.Message</c> from a config-binding <c>InvalidOperationException</c>, but it is a local
+    /// variable that joins a validation-problem list and is never bound to a screen, so this test
+    /// must not and does not flag it. Matching the name heuristic too (rather than every
+    /// <c>[ObservableProperty]</c>) keeps the rule pointed at the failure/status slots TD-24 actually
+    /// fixed — <c>ErrorMessage</c>, <c>PasswordChangeMessage</c>, <c>VaultExportMessage</c>, and their
+    /// siblings across <c>SettingsViewModel</c> and the other nine sites.
+    /// </para>
+    /// <para>
+    /// A SMALL TAINT PASS, NOT JUST ONE LINE. The direct shape —
+    /// <c>ErrorMessage = ex.Message;</c> or <c>ErrorMessage = $"Error: {ex.Message}";</c> — is a
+    /// single-line regex match. A future author could write <c>var detail = ex.Message;</c> followed
+    /// by <c>ErrorMessage = detail;</c> one line later, which is the same leak through an alias. This
+    /// walks each catch block's lines in source order and propagates "derived from the caught
+    /// exception's own text" through local-variable assignment, so the aliased form is caught too —
+    /// see the falsification note on the test itself for what was actually tried.
+    /// </para>
+    /// <para>
+    /// HONEST LIMITS. This cannot see a leak that crosses a method boundary: a private helper
+    /// <c>string Format(Exception x) =&gt; x.Message;</c> called as <c>ErrorMessage = Format(ex);</c>
+    /// carries no literal <c>.Message</c> or <c>.ToString()</c> text anywhere this scan looks, and is
+    /// invisible to it — as is a leak through a field written in one method and read in another. It
+    /// also works per physical source line, so a statement whose right-hand side wraps across lines is
+    /// not matched, and its brace counting is naive character counting rather than a real tokenizer,
+    /// so a stray <c>{</c> or <c>}</c> inside a string literal or comment on the same line as real
+    /// braces could mis-scope a block (the same simplifying assumption
+    /// <c>NoSentenceLiteralsInUiCodeTests</c> already makes for string content). These are documented
+    /// rather than hidden: a text scan trades them for not needing a compiler pass.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoViewModel_WritesAnExceptionMessageDirectlyIntoABoundProperty()
+    {
+        // Arrange
+        var repositoryRoot = RepositoryRootDirectory();
+        var uiRoot = Path.Combine(repositoryRoot, "src", "Pine.Ui.Avalonia");
+        var violations = new List<string>();
+        var filesScanned = 0;
+
+        // Act
+        foreach (var file in Directory.EnumerateFiles(uiRoot, "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            filesScanned++;
+            var lines = File.ReadAllLines(file);
+            var relative = Path.GetRelativePath(repositoryRoot, file).Replace('\\', '/');
+            var observableProperties = ObservablePropertyNames(lines);
+
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var catchMatch = CatchClauseWithVariable().Match(lines[i]);
+                if (!catchMatch.Success)
+                {
+                    continue;
+                }
+
+                var exceptionVariable = catchMatch.Groups["var"].Value;
+                var (blockStart, blockEnd) = FindBraceBlock(lines, i);
+                var taintedLocals = new HashSet<string>(StringComparer.Ordinal);
+                // No trailing \b after the alternation: ToString()'s closing ')' is immediately
+                // followed by the end of the right-hand side half the time (e.g. "ex.ToString()"
+                // with nothing after), and \b does not match between two non-word characters --
+                // so a shared trailing \b silently never matched the ToString() half at all.
+                var directLeak = new Regex(
+                    $@"\b{Regex.Escape(exceptionVariable)}\.(Message\b|ToString\s*\(\s*\))",
+                    RegexOptions.Compiled);
+
+                for (var j = blockStart; j <= blockEnd; j++)
+                {
+                    if (lines[j].TrimStart().StartsWith("//", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var assignment = SimpleAssignmentStatement().Match(lines[j]);
+                    if (!assignment.Success)
+                    {
+                        continue;
+                    }
+
+                    var lhs = assignment.Groups["lhs"].Value;
+                    var rhs = assignment.Groups["rhs"].Value;
+
+                    var rhsIsTainted = directLeak.IsMatch(rhs)
+                        || taintedLocals.Any(local => Regex.IsMatch(rhs, $@"\b{Regex.Escape(local)}\b"));
+
+                    if (!rhsIsTainted)
+                    {
+                        continue;
+                    }
+
+                    var isBoundFailureSlot = observableProperties.Contains(lhs)
+                        && BoundFailureSlotNameFragments.Any(fragment => lhs.Contains(fragment, StringComparison.Ordinal));
+
+                    if (isBoundFailureSlot)
+                    {
+                        violations.Add(
+                            $"{relative}:{j + 1} -- {lhs} is assigned from {exceptionVariable}.Message/ToString()");
+                    }
+                    else
+                    {
+                        taintedLocals.Add(lhs);
+                    }
+                }
+            }
+        }
+
+        // Assert
+        filesScanned.Should().BeGreaterThan(50, "finding almost no files means the scan is broken");
+
+        violations.Should().BeEmpty(
+            "TD-106: an exception's own text may reach a bound failure/status property only through " +
+            "IUserFacingFailure/UserFacingError, never directly or via a local alias. Route the catch " +
+            "block through UserFacingError.Report/Describe instead, as every other catch block here does.");
+    }
+
+    /// <summary>
+    /// The names of the <c>[ObservableProperty]</c>-backed properties declared in <paramref name="lines"/>.
+    /// </summary>
+    private static HashSet<string> ObservablePropertyNames(string[] lines)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!lines[i].Contains("[ObservableProperty]", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // The declaration follows within a few lines; other attributes (e.g.
+            // [NotifyPropertyChangedFor]) may sit between the marker and the property itself.
+            for (var j = i + 1; j < Math.Min(i + 6, lines.Length); j++)
+            {
+                var match = ObservablePropertyDeclaration().Match(lines[j]);
+                if (match.Success)
+                {
+                    names.Add(match.Groups["name"].Value);
+                    break;
+                }
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// The line range of the brace-delimited block that opens at or after <paramref name="fromLine"/>
+    /// — a catch clause's body. Naive character counting: see the HONEST LIMITS remark on
+    /// <see cref="NoViewModel_WritesAnExceptionMessageDirectlyIntoABoundProperty"/>.
+    /// </summary>
+    private static (int Start, int End) FindBraceBlock(string[] lines, int fromLine)
+    {
+        var depth = 0;
+        var start = -1;
+
+        for (var i = fromLine; i < lines.Length; i++)
+        {
+            foreach (var c in lines[i])
+            {
+                if (c == '{')
+                {
+                    start = start == -1 ? i : start;
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0 && start != -1)
+                    {
+                        return (start, i);
+                    }
+                }
+            }
+        }
+
+        return (start == -1 ? fromLine : start, lines.Length - 1);
     }
 
     private static string RepositoryRootDirectory()
