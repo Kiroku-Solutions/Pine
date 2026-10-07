@@ -2760,3 +2760,13 @@ already honoured `ColumnMappings` by name. A new `IImportHeaderReader`, segregat
 doubles that only import don't need it, lets the wizard ask whichever importer the factory hands it for headers —
 no per-format dispatch left in the view model, and any future importer gets this for free. Verified end-to-end: a
 real `.xlsx` with non-default header names, mapped and imported through a real vault, lands the right rows.
+
+**Post-closure, 2026-10-07: TD-106, a guard against a defect class rather than a fix to one instance.** Eleven
+known sites of TD-24's "raw exception message bound to a screen" defect were already fixed; nothing stopped a
+twelfth. A source-text scan — this repo's established technique for inside-a-method-body checks NetArchTest can't
+express, following `NoSentenceLiteralsInUiCodeTests`' own precedent — walks every catch block in
+`Pine.Ui.Avalonia` and flags an `ex.Message`/`.ToString()` (direct, or through one level of local-variable alias)
+landing on a bound, user-facing property. Ran clean against the real tree. **Falsified with five mutation
+shapes, three caught and two honestly not**: direct assignment, aliasing, interpolation and a wrapped-line
+right-hand side are all caught; helper-method indirection and a true multi-line right-hand side are stated as
+real limits of a text-scan technique, not papered over.
