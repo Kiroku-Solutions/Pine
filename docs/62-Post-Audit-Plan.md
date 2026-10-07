@@ -2740,3 +2740,13 @@ real risk was ever checked: whether Media Foundation's enumeration order reliabl
 `VideoCapture(index)` ordering. A wrong mapping there is a silent wrong-camera bug, not a missing feature, so
 nothing was kept rather than ship it unverified. The register row is flagged for a dedicated review before any
 retry, not left to look like ordinary open work.
+
+**Post-closure, 2026-10-07: TD-151 built, TD-66 fixed alongside it.** The project owner decided to build real
+save/reuse rather than delete the three dead requests. The import wizard now offers saved profiles at the mapping
+step, pre-fills one on Apply, and saves or updates one through the two commands that previously compiled and were
+sent by nothing. Doing so forced a real fix: the import key's source identifier moved from the profile's
+user-editable name to its immutable id, because the name was only stable before this item as a throwaway constant
+— a real, reusable, user-named profile would have broken duplicate detection the moment a name changed. **One
+real bug caught in review**: the agent finishing this item found a validation check (profile must map a Date and
+an Amount column) disabled behind a stray `if (false && ...)` — its own predecessor's mutation-testing pass, left
+live in production code when the agent died before reverting it. Fixed before this landed.
