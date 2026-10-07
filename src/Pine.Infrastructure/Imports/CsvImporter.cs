@@ -54,11 +54,16 @@ public sealed class CsvImporter : IImporter
         // schema change or migration is involved.
         string? referenceCol = profile.ColumnMappings.GetValueOrDefault("Reference");
 
-        // The only source identifier reachable from inside ImportAsync. The honest consequence: keys are
-        // stable only while the profile NAME is stable — re-importing the same bank file under a renamed
-        // or duplicated profile derives different keys, so every row will look new. Renaming a profile is
-        // therefore a data event, not a cosmetic one.
-        var source = profile.Name;
+        // TD-66: the source identifier used to be profile.Name, the only thing reachable inside
+        // ImportAsync at the time — stable only by accident, because the wizard minted a throwaway
+        // profile with a constant literal name on every run. Now that profiles are saved, reused and
+        // user-named (TD-151), a DISPLAY name is not a safe key component: nothing stops two profiles
+        // sharing one, and nothing should force a user's naming choice to double as a stability
+        // guarantee. The profile's id is structural, immutable once created, and never shown to the
+        // user to edit, so it is what the key is built from instead. Re-importing the same file under
+        // the SAME saved profile reproduces the same keys; two different profiles — even sharing a
+        // name — do not collide.
+        var source = profile.Id.ToString("D", CultureInfo.InvariantCulture);
 
         // Counts the row's position in the FILE, incremented for every record CsvHelper yields, including
         // the ones rejected below. Deliberately not the index into `transactions`: an output index shifts

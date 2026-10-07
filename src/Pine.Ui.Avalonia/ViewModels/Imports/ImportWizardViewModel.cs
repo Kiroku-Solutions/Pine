@@ -10,6 +10,8 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Importing.Commands;
+using Pine.Application.Importing.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Common;
@@ -81,7 +83,53 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool InvertAmounts { get; set; } = false;
 
+    /// <summary>
+    /// Gets or sets the date format the mapping step uses to parse the Date column. Was hardcoded to
+    /// <c>"yyyy-MM-dd"</c> in both <see cref="GeneratePreviewAsync"/> and
+    /// <see cref="ExecuteImportAsync"/> before TD-151 -- a setting <see cref="ImportProfile"/> has
+    /// always carried but the wizard never let the user see or change, let alone save.
+    /// </summary>
+    [ObservableProperty]
+    public partial string DateFormat { get; set; } = "yyyy-MM-dd";
+
+    /// <summary>
+    /// Gets or sets the column delimiter, as typed text rather than a <see cref="char"/> -- a single
+    /// text box is the natural control for it, and <see cref="BuildDelimiter"/> is the one place that
+    /// narrows it back to the one character <see cref="ImportProfile.Delimiter"/> stores.
+    /// </summary>
+    [ObservableProperty]
+    public partial string DelimiterText { get; set; } = ",";
+
     public ObservableCollection<string> AvailableColumns { get; } = new();
+
+    // Saved profiles (TD-151). A profile used to be minted fresh on every import and thrown away --
+    // "Temp Profile" for the preview, "Final Profile" for the real write -- so a user mapped the same
+    // bank's columns by hand every single time. These three members are the wizard's half of fixing
+    // that: a list to choose from, the one currently applied (if any), and the name under which the
+    // current mapping would be saved.
+
+    /// <summary>Gets every profile saved in this vault, loaded once when the wizard opens.</summary>
+    public ObservableCollection<ImportProfile> AvailableProfiles { get; } = new();
+
+    [ObservableProperty]
+    public partial ImportProfile? SelectedProfile { get; set; }
+
+    /// <summary>
+    /// Gets or sets the name under which the current mapping will be saved. Pre-filled with the
+    /// applied profile's own name when one is applied, so "Save" defaults to updating it rather than
+    /// to creating an unnamed duplicate.
+    /// </summary>
+    [ObservableProperty]
+    public partial string ProfileNameToSave { get; set; } = "";
+
+    /// <summary>
+    /// Gets or sets the id of the profile the current mapping was loaded from, or <see
+    /// langword="null"/> when the mapping has never been applied from -- or already saved as -- a
+    /// saved profile. <see cref="SaveProfileAsync"/> reads this to decide whether saving UPDATES that
+    /// profile or CREATES a new one.
+    /// </summary>
+    [ObservableProperty]
+    public partial Guid? LoadedProfileId { get; set; }
 
     // Step 2: Preview
     public ObservableCollection<Transaction> PreviewTransactions { get; } = new();
@@ -207,6 +255,12 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             "import-accounts-load",
             new UserFacingMessage("ImportWizard.Failure.AccountsLoad"),
             _status.Set);
+        ObservedTask.Run(
+            LoadProfilesAsync,
+            _logger,
+            "import-profiles-load",
+            new UserFacingMessage("ImportWizard.Failure.ProfilesLoad"),
+            _status.Set);
     }
 
     /// <summary>
@@ -224,6 +278,177 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             Accounts.Add(account);
         }
         SelectedAccount = Accounts.FirstOrDefault();
+    }
+
+    /// <summary>Loads every profile saved in this vault, so the mapping step can offer one (TD-151).</summary>
+    private async Task LoadProfilesAsync()
+    {
+        var profiles = await _mediator.Send(new GetImportProfilesQuery());
+        AvailableProfiles.Clear();
+        foreach (var profile in profiles)
+        {
+            AvailableProfiles.Add(profile);
+        }
+    }
+
+    /// <summary>
+    /// Pre-fills the mapping step from a saved profile, so a user who has already mapped this bank's
+    /// columns once never has to do it by hand again (TD-151).
+    /// </summary>
+    /// <param name="profile">The profile to apply. Does nothing when <see langword="null"/>.</param>
+    /// <remarks>
+    /// Column mappings are applied even when <see cref="AvailableColumns"/> does not yet contain the
+    /// saved header -- the file may not have been read yet, or the statement may use slightly
+    /// different capitalisation -- so the value is set directly rather than through the combo box's
+    /// item list. <see cref="LoadedProfileId"/> and <see cref="ProfileNameToSave"/> are set together so
+    /// that <see cref="SaveProfileAsync"/> updates this same profile unless the user changes the name.
+    /// </remarks>
+    [RelayCommand]
+    private void ApplyProfile(ImportProfile? profile)
+    {
+        if (profile is null)
+        {
+            return;
+        }
+
+        DateColumn = profile.ColumnMappings.GetValueOrDefault("Date") ?? DateColumn;
+        PayeeColumn = profile.ColumnMappings.GetValueOrDefault("Payee") ?? PayeeColumn;
+        AmountColumn = profile.ColumnMappings.GetValueOrDefault("Amount") ?? AmountColumn;
+        CategoryColumn = profile.ColumnMappings.GetValueOrDefault("Category") ?? CategoryColumn;
+        HasHeaders = profile.HasHeaderRecord;
+        InvertAmounts = profile.InvertAmounts;
+        DateFormat = profile.DateFormat;
+        DelimiterText = profile.Delimiter.ToString();
+
+        LoadedProfileId = profile.Id;
+        ProfileNameToSave = profile.Name;
+
+        _status.Set("ImportWizard.Profile.Applied", profile.Name);
+    }
+
+    /// <summary>
+    /// Saves the mapping step's current settings as a named profile -- creating one, or updating the
+    /// profile <see cref="LoadedProfileId"/> names, so re-using and then tweaking a saved profile
+    /// updates it rather than silently forking it (TD-151).
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveProfileAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ProfileNameToSave))
+        {
+            _status.Set("ImportWizard.Profile.NameRequired");
+            return;
+        }
+
+        var mappings = new Dictionary<string, string>
+        {
+            { "Date", DateColumn },
+            { "Payee", PayeeColumn },
+            { "Amount", AmountColumn },
+            { "Category", CategoryColumn }
+        };
+        var delimiter = BuildDelimiter();
+
+        try
+        {
+            if (LoadedProfileId is { } id)
+            {
+                var updated = await _mediator.Send(new UpdateImportProfileCommand(
+                    id, DateFormat, delimiter, HasHeaders, InvertAmounts, mappings));
+
+                var index = IndexOfProfile(id);
+                if (index >= 0)
+                {
+                    AvailableProfiles[index] = updated;
+                }
+                else
+                {
+                    AvailableProfiles.Add(updated);
+                }
+
+                SelectedProfile = updated;
+            }
+            else
+            {
+                var created = await _mediator.Send(new CreateImportProfileCommand(
+                    ProfileNameToSave.Trim(), DateFormat, delimiter, HasHeaders, InvertAmounts, mappings));
+
+                AvailableProfiles.Add(created);
+                LoadedProfileId = created.Id;
+                SelectedProfile = created;
+            }
+
+            _status.Set("ImportWizard.Profile.Saved", ProfileNameToSave.Trim());
+        }
+        catch (Exception ex)
+        {
+            _status.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "import-save-profile",
+                new UserFacingMessage("ImportWizard.Failure.SaveProfile")));
+        }
+    }
+
+    private int IndexOfProfile(Guid id)
+    {
+        for (var i = 0; i < AvailableProfiles.Count; i++)
+        {
+            if (AvailableProfiles[i].Id == id)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Narrows <see cref="DelimiterText"/> to the single character <see cref="ImportProfile.Delimiter"/>
+    /// stores, falling back to a comma when the box is empty -- never throwing on what a user typed.
+    /// </summary>
+    private char BuildDelimiter() => string.IsNullOrEmpty(DelimiterText) ? ',' : DelimiterText[0];
+
+    /// <summary>
+    /// Builds the <see cref="ImportProfile"/> the importer is run against, for the preview and for
+    /// the real write alike.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE IDENTITY RULE THAT MAKES TD-66's FIX WORTH HAVING. When the current mapping was applied
+    /// from a saved profile (<see cref="LoadedProfileId"/> set, and still present in
+    /// <see cref="AvailableProfiles"/>), that SAME profile instance is reused and only its settings
+    /// are refreshed -- its id never changes. Every importer derives the transaction's import key
+    /// from the profile's id, so reusing a saved profile reproduces the same keys an earlier import
+    /// under it produced, which is exactly what makes duplicate detection work across two imports
+    /// separated by a save. Building a fresh profile here instead would mint a new id every time and
+    /// silently defeat that, whatever the profile's name happened to be.
+    /// </para>
+    /// <para>
+    /// Otherwise -- no profile applied, or it was removed from the list -- a new, unsaved profile is
+    /// created. Its name is cosmetic only (TD-66): it is never read back out of the import key.
+    /// </para>
+    /// </remarks>
+    private ImportProfile BuildWorkingProfile()
+    {
+        var mappings = new Dictionary<string, string>
+        {
+            { "Date", DateColumn },
+            { "Payee", PayeeColumn },
+            { "Amount", AmountColumn },
+            { "Category", CategoryColumn }
+        };
+
+        var profile = LoadedProfileId is { } id
+            ? AvailableProfiles.FirstOrDefault(p => p.Id == id)
+            : null;
+
+        profile ??= ImportProfile.Create(
+            string.IsNullOrWhiteSpace(ProfileNameToSave) ? _localizer["ImportWizard.Profile.DefaultName"] : ProfileNameToSave,
+            _timeProvider);
+
+        profile.UpdateSettings(DateFormat, BuildDelimiter(), HasHeaders, InvertAmounts, mappings, _timeProvider);
+        return profile;
     }
 
     public void OnFileSelected(string filePath, string fileName)
@@ -313,18 +538,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
 
         try
         {
-            // Build the profile
-            var profile = ImportProfile.Create("Temp Profile", _timeProvider);
-            
-            var mappings = new Dictionary<string, string>
-            {
-                { "Date", DateColumn },
-                { "Payee", PayeeColumn },
-                { "Amount", AmountColumn },
-                { "Category", CategoryColumn }
-            };
-            
-            profile.UpdateSettings("yyyy-MM-dd", ',', HasHeaders, InvertAmounts, mappings, _timeProvider);
+            var profile = BuildWorkingProfile();
 
             // Run importer on the file (without saving to DB). The importer is chosen from the
             // file's own extension: a .xlsx or .pdf used to be handed to the CSV reader here, and a
@@ -381,15 +595,13 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
 
         try
         {
-            var profile = ImportProfile.Create("Final Profile", _timeProvider);
-            var mappings = new Dictionary<string, string>
-            {
-                { "Date", DateColumn },
-                { "Payee", PayeeColumn },
-                { "Amount", AmountColumn },
-                { "Category", CategoryColumn }
-            };
-            profile.UpdateSettings("yyyy-MM-dd", ',', HasHeaders, InvertAmounts, mappings, _timeProvider);
+            // TD-151/TD-66: when the current mapping came from a saved profile, BuildWorkingProfile
+            // returns THAT profile -- same id, settings refreshed from whatever the user has on
+            // screen -- so the import key every importer derives from the profile's id (TD-66) is the
+            // one already on file for every earlier import made under it. Building a brand new
+            // profile here, as "Final Profile" used to, would have silently broken that continuity on
+            // every single import even after TD-66 moved the key off the profile's name.
+            var profile = BuildWorkingProfile();
 
             // Same choice as the preview made, from the same file, so the rows the user approved
             // on the preview step are the rows this writes.

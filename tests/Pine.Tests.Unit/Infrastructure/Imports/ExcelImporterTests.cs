@@ -267,20 +267,38 @@ public class ExcelImporterTests
     public async Task ImportAsync_WithSameContentTwice_ReproducesTheSameKeysInOrder()
     {
         // Re-import recognition depends entirely on this: if the keys drifted between two reads of the
-        // same bytes, every re-imported row would look new and the vault would fill with duplicates.
+        // same bytes under the SAME SAVED PROFILE, every re-imported row would look new and the vault
+        // would fill with duplicates. One profile instance is built once and reused for both imports --
+        // its id, not its name, is what the key is built from (TD-66).
         var workbook = XlsxTestWorkbook.Build(
             XlsxTestWorkbook.Row(XlsxTestWorkbook.Text("Date"), XlsxTestWorkbook.Text("Payee"), XlsxTestWorkbook.Text("Amount")),
             XlsxTestWorkbook.Row(XlsxTestWorkbook.Date(new DateTime(2026, 1, 15)), XlsxTestWorkbook.Text("Acme Coffee"), XlsxTestWorkbook.Number(-4.50d)),
             XlsxTestWorkbook.Row(XlsxTestWorkbook.Date(new DateTime(2026, 1, 16)), XlsxTestWorkbook.Text("Grocer"), XlsxTestWorkbook.Number(-31.20d)),
             XlsxTestWorkbook.Row(XlsxTestWorkbook.Date(new DateTime(2026, 1, 16)), XlsxTestWorkbook.Text("Grocer"), XlsxTestWorkbook.Number(-31.20d)));
 
-        var first = await ImportAsync(workbook, CreateProfile("Bank XLSX"));
-        var second = await ImportAsync(workbook, CreateProfile("Bank XLSX"));
+        var profile = CreateProfile("Bank XLSX");
+        var first = await ImportAsync(workbook, profile);
+        var second = await ImportAsync(workbook, profile);
 
         Assert.Equal(3, first.Count);
         Assert.Equal(
             first.Select(transaction => transaction.ImportKey),
             second.Select(transaction => transaction.ImportKey));
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithTwoDifferentProfilesSharingTheSameName_ProducesDifferentKeys()
+    {
+        // TD-66: the key must be stable on the profile's IDENTITY, not on what the user chose to call
+        // it. Two distinct saved profiles can legitimately share a display name.
+        var workbook = XlsxTestWorkbook.Build(
+            XlsxTestWorkbook.Row(XlsxTestWorkbook.Text("Date"), XlsxTestWorkbook.Text("Payee"), XlsxTestWorkbook.Text("Amount")),
+            XlsxTestWorkbook.Row(XlsxTestWorkbook.Date(new DateTime(2026, 1, 15)), XlsxTestWorkbook.Text("Acme Coffee"), XlsxTestWorkbook.Number(-4.50d)));
+
+        var first = await ImportAsync(workbook, CreateProfile("Bank XLSX"));
+        var second = await ImportAsync(workbook, CreateProfile("Bank XLSX"));
+
+        Assert.NotEqual(first[0].ImportKey, second[0].ImportKey);
     }
 
     [Fact]

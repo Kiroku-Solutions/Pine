@@ -99,11 +99,10 @@ public sealed class ExcelImporter : IImporter
         // schema change or migration is involved.
         int referenceCol = ResolveColumn(profile, "Reference", headers, table.Columns.Count);
 
-        // The only source identifier reachable from inside ImportAsync. The honest consequence: keys are
-        // stable only while the profile NAME is stable — re-importing the same bank file under a renamed
-        // or duplicated profile derives different keys, so every row will look new. Renaming a profile is
-        // therefore a data event, not a cosmetic one.
-        var source = profile.Name;
+        // TD-66, same fix as CsvImporter and for the same reason: the source identifier is the
+        // profile's id, not its display name. See CsvImporter.ImportAsync's remark for the full
+        // reasoning — it applies here field for field, as the type's own remarks already promise.
+        var source = profile.Id.ToString("D", CultureInfo.InvariantCulture);
 
         for (int i = firstDataRow; i < table.Rows.Count; i++)
         {

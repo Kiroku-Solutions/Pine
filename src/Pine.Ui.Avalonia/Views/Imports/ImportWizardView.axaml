@@ -37,7 +37,24 @@
                 <TextBlock Text="{loc:Tr ImportWizard.Mapping.Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                 <TextBlock Text="{loc:Tr ImportWizard.Mapping.GuessHint}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,10"/>
 
-                <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
+                <!-- Saved profiles (TD-151): pick one already mapped for this bank instead of starting
+                     from scratch. Applying one only pre-fills the fields below; nothing is sent until
+                     "Save mapping as profile" is pressed. -->
+                <Border Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}"
+                        BorderThickness="1" CornerRadius="8" Padding="12" IsVisible="{Binding AvailableProfiles.Count}">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{loc:Tr ImportWizard.Profile.SectionTitle}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ComboBox ItemsSource="{Binding AvailableProfiles}" SelectedItem="{Binding SelectedProfile}"
+                                      DisplayMemberBinding="{Binding Name}" Width="220"/>
+                            <Button Content="{loc:Tr ImportWizard.Profile.Apply}" Classes="pine-outline" Padding="12,6" CornerRadius="8"
+                                    Command="{Binding ApplyProfileCommand}" CommandParameter="{Binding SelectedProfile}"
+                                    IsEnabled="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.DateColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding DateColumn}" Margin="0,5" Width="200"/>
 
@@ -50,9 +67,24 @@
                     <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.CategoryColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding CategoryColumn}" Margin="0,5" Width="200"/>
 
-                    <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.HasHeaderRow}" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
-                    <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.InvertAmounts}" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.DateFormat}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DateFormat}" Margin="0,5" Width="200"/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.Delimiter}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding DelimiterText}" MaxLength="1" Margin="0,5" Width="200"/>
+
+                    <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.HasHeaderRow}" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
+                    <CheckBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.InvertAmounts}" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
                 </Grid>
+
+                <!-- Save the mapping above as a named profile (TD-151). Saving again while a profile is
+                     applied UPDATES it; saving with no profile applied, or after changing the name,
+                     creates a new one. ImportWizardViewModel.SaveProfileAsync decides which. -->
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBox Text="{Binding ProfileNameToSave}" PlaceholderText="{loc:Tr ImportWizard.Profile.NameWatermark}" Width="200"/>
+                    <Button Content="{loc:Tr ImportWizard.Profile.Save}" Classes="pine-outline" Padding="12,6" CornerRadius="8"
+                            Command="{Binding SaveProfileCommand}"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Step 2: Preview -->

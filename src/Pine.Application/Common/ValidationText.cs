@@ -141,6 +141,18 @@ public static class ValidationText
     public static UserFacingMessage BudgetAlreadyExists(string category, string currency)
         => new("Validation.Budget.AlreadyExists", category, currency);
 
+    /// <summary>An import profile with no name, so there is nothing to show in the saved-profiles list.</summary>
+    public static UserFacingMessage ImportProfileNameRequired() => new("Validation.ImportProfile.NameRequired");
+
+    /// <summary>An import profile whose date format cannot parse a date at all.</summary>
+    public static UserFacingMessage ImportProfileDateFormatInvalid() => new("Validation.ImportProfile.DateFormatInvalid");
+
+    /// <summary>An import profile with no mapping for the two fields a transaction cannot do without.</summary>
+    public static UserFacingMessage ImportProfileMappingIncomplete() => new("Validation.ImportProfile.MappingIncomplete");
+
+    /// <summary>An update naming an import profile that was deleted, or never existed.</summary>
+    public static UserFacingMessage ImportProfileNotFound() => new("Validation.ImportProfile.NotFound");
+
     /// <summary>A sync conflict resolution naming a conflict that is not recorded (post-audit plan item 3.1c).</summary>
     public static UserFacingMessage SyncConflictNotFound() => new("Validation.SyncConflict.NotFound");
 

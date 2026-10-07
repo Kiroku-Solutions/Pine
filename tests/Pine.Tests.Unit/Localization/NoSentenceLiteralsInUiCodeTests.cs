@@ -52,19 +52,17 @@ public partial class NoSentenceLiteralsInUiCodeTests
     /// <remarks>
     /// The independent review of plan item 2.4 named five things <see cref="SentenceLiteral"/>
     /// structurally cannot see -- it requires sentence punctuation, and a title, a status word or an
-    /// enum member name has none. Four of the five were real bugs and are fixed: the unlock screen's
+    /// enum member name has none. All five were real bugs and are fixed: the unlock screen's
     /// "Unlock Vault" title, the diagnostics status words, "Copied!", and the three file-picker
-    /// strings all now flow through the string tables. <c>ImportProfile.Create("Temp Profile", ...)</c>
-    /// and <c>Create("Final Profile", ...)</c> are the one pair <see cref="TitleCaseLiteral"/> still
-    /// finds that is NOT a bug: both name a transient staging <c>ImportProfile</c> the import wizard
-    /// builds and discards internally (see <c>ImportWizardViewModel</c>) -- never listed, never
-    /// bound to a screen -- so there is no user-facing word to translate.
+    /// strings all now flow through the string tables. The one pair this allow-list used to carry --
+    /// <c>ImportProfile.Create("Temp Profile", ...)</c> and <c>Create("Final Profile", ...)</c>,
+    /// transient staging objects the import wizard built and discarded on every import -- is gone:
+    /// TD-151 made profiles real, named by the user and saved, so <c>ImportWizardViewModel</c> no
+    /// longer mints either literal (see <c>BuildWorkingProfile</c> and
+    /// <c>ImportWizard.Profile.DefaultName</c>, its one remaining, already-localised fallback name).
+    /// Left empty rather than removed, for the same ratchet reason as <see cref="KnownEnglish"/>.
     /// </remarks>
-    private static readonly Dictionary<string, string> KnownNonSentenceEnglish = new(StringComparer.Ordinal)
-    {
-        ["Temp Profile"] = "an internal ImportProfile name for the wizard's own staging object; never shown on screen",
-        ["Final Profile"] = "an internal ImportProfile name for the wizard's own committed object; never shown on screen",
-    };
+    private static readonly Dictionary<string, string> KnownNonSentenceEnglish = new(StringComparer.Ordinal);
 
     [Fact]
     public void NoUiCode_WritesAnEnglishSentence_ExceptTheRegisteredOnes()

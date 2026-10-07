@@ -32,13 +32,14 @@ namespace Pine.Tests.Unit.Application;
 public partial class EveryRequestHasASenderTests
 {
     /// <summary>Requests with no sender in <c>src/</c>, each kept on purpose, with the row that decides it.</summary>
-    private static readonly Dictionary<string, string> KnownUnsent = new(StringComparer.Ordinal)
-    {
-        ["CreateImportProfileCommand"] =
-            "TD-151: import profiles are never saved. The wizard builds a throwaway profile per import",
-        ["UpdateImportProfileCommand"] = "TD-151: as above",
-        ["GetImportProfilesQuery"] = "TD-151: as above; there is nothing saved to list",
-    };
+    /// <remarks>
+    /// Empty since TD-151 closed 2026-10-06: <c>ImportWizardViewModel</c> now sends
+    /// <c>CreateImportProfileCommand</c>, <c>UpdateImportProfileCommand</c> and
+    /// <c>GetImportProfilesQuery</c> for real. Left as a <see cref="Dictionary{TKey,TValue}"/> rather
+    /// than deleted, so the next request that genuinely needs the escape hatch has somewhere to add
+    /// it without re-deriving the ratchet's shape.
+    /// </remarks>
+    private static readonly Dictionary<string, string> KnownUnsent = new(StringComparer.Ordinal);
 
     [Fact]
     public void EveryRequest_IsConstructedByTheProduct_NotOnlyByTests()

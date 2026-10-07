@@ -68,6 +68,8 @@ public sealed class ImportWizardBroadcastTests : IDisposable
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
+        mediator.Send(Arg.Any<Pine.Application.Importing.Queries.GetImportProfilesQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<ImportProfile>>(Array.Empty<ImportProfile>()));
 
         var rows = new List<ImportReviewRow>();
         foreach (var disposition in dispositions)
