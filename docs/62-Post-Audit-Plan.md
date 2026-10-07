@@ -2750,3 +2750,13 @@ user-editable name to its immutable id, because the name was only stable before 
 real bug caught in review**: the agent finishing this item found a validation check (profile must map a Date and
 an Amount column) disabled behind a stray `if (false && ...)` — its own predecessor's mutation-testing pass, left
 live in production code when the agent died before reverting it. Fixed before this landed.
+
+**Post-closure, 2026-10-07: TD-122's Status column corrected, and TD-123 built on top of it.** TD-122's row read
+"Done" in its Impact column and "Open" in Status for ten iterations — re-verified directly (real `ExcelImporter`,
+no `PdfImporter`, the picker offers exactly csv/xlsx/xls) and the column fixed to match. That decision unblocked
+TD-123, whose own Fix column had waited on it: the wizard's column-mapping step read headers only for CSV, so
+`AvailableColumns` stayed empty for a spreadsheet even though `ExcelImporter` itself (landed by TD-151/TD-66)
+already honoured `ColumnMappings` by name. A new `IImportHeaderReader`, segregated from `IImporter` so test
+doubles that only import don't need it, lets the wizard ask whichever importer the factory hands it for headers —
+no per-format dispatch left in the view model, and any future importer gets this for free. Verified end-to-end: a
+real `.xlsx` with non-default header names, mapped and imported through a real vault, lands the right rows.
