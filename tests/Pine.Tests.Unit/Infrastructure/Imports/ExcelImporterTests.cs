@@ -342,4 +342,99 @@ public class ExcelImporterTests
         Assert.Equal("Dining", split.Category);
         Assert.Equal(-4.50m, split.Amount.Amount);
     }
+
+    /// <summary>
+    /// Covers <see cref="ExcelImporter.ReadHeaders"/> (TD-123), the method the wizard's mapping step
+    /// now calls instead of leaving a spreadsheet's column list empty.
+    /// </summary>
+    [Fact]
+    public void ReadHeaders_ReturnsTheFirstRowsText_InColumnOrder()
+    {
+        var workbook = XlsxTestWorkbook.Build(
+            XlsxTestWorkbook.Row(
+                XlsxTestWorkbook.Text("Date"), XlsxTestWorkbook.Text("Payee"),
+                XlsxTestWorkbook.Text("Amount"), XlsxTestWorkbook.Text("Category")),
+            XlsxTestWorkbook.Row(
+                XlsxTestWorkbook.Date(new DateTime(2026, 1, 15)), XlsxTestWorkbook.Text("Acme Coffee"),
+                XlsxTestWorkbook.Number(-4.50d), XlsxTestWorkbook.Text("Dining")));
+
+        var importer = new ExcelImporter(TimeProvider.System);
+        using var stream = new MemoryStream(workbook);
+
+        var headers = importer.ReadHeaders(stream);
+
+        Assert.Equal(new List<string> { "Date", "Payee", "Amount", "Category" }, headers);
+    }
+
+    [Fact]
+    public void ReadHeaders_ReadsTheFirstSheet_TheSameOneImportAsyncDefaultsTo()
+    {
+        // XlsxTestWorkbook only ever builds a single sheet, which is exactly the point: both
+        // ReadHeaders and ImportAsync read result.Tables[0] with no sheet-name parameter anywhere in
+        // either path, so there is no way for the two to disagree about which sheet is "the" sheet.
+        var workbook = XlsxTestWorkbook.Build(
+            XlsxTestWorkbook.Row(XlsxTestWorkbook.Text("Only"), XlsxTestWorkbook.Text("Sheet")));
+
+        var importer = new ExcelImporter(TimeProvider.System);
+        using var stream = new MemoryStream(workbook);
+
+        var headers = importer.ReadHeaders(stream);
+
+        Assert.Equal(new List<string> { "Only", "Sheet" }, headers);
+    }
+
+    private static readonly IReadOnlyList<XlsxCell>[] NoRows = Array.Empty<IReadOnlyList<XlsxCell>>();
+
+    [Fact]
+    public void ReadHeaders_WithAnEmptyWorkbook_ReturnsAnEmptyList_NotAnException()
+    {
+        var workbook = XlsxTestWorkbook.Build(NoRows);
+
+        var importer = new ExcelImporter(TimeProvider.System);
+        using var stream = new MemoryStream(workbook);
+
+        var headers = importer.ReadHeaders(stream);
+
+        Assert.Empty(headers);
+    }
+
+    [Fact]
+    public void ReadHeaders_WithACorruptFile_ThrowsRatherThanReturningFabricatedHeaders()
+    {
+        var importer = new ExcelImporter(TimeProvider.System);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("not a workbook"));
+
+        Assert.ThrowsAny<Exception>(() => importer.ReadHeaders(stream));
+    }
+
+    [Fact]
+    public async Task ReadHeaders_AndBuildHeaderIndex_AgreeOnWhatTheHeaderRowSays()
+    {
+        // The guard against the two drifting apart (TD-123's own stated risk): the same header text
+        // ReadHeaders hands the wizard is exactly what ImportAsync's name-based column resolution
+        // matches against, because both are built on ReadHeaderRowTexts.
+        var workbook = XlsxTestWorkbook.Build(
+            XlsxTestWorkbook.Row(XlsxTestWorkbook.Text("Posted"), XlsxTestWorkbook.Text("Merchant"), XlsxTestWorkbook.Text("Value")),
+            XlsxTestWorkbook.Row(XlsxTestWorkbook.Date(new DateTime(2026, 1, 15)), XlsxTestWorkbook.Text("Acme Coffee"), XlsxTestWorkbook.Number(-4.50d)));
+
+        var importer = new ExcelImporter(TimeProvider.System);
+
+        using var headerStream = new MemoryStream(workbook);
+        var headers = importer.ReadHeaders(headerStream);
+
+        var mappings = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Date"] = headers[0],
+            ["Payee"] = headers[1],
+            ["Amount"] = headers[2],
+        };
+        var profile = CreateProfile(mappings: mappings);
+
+        using var importStream = new MemoryStream(workbook);
+        var result = await importer.ImportAsync(CreateAccount(), importStream, profile, CancellationToken.None);
+
+        var transaction = Assert.Single(result);
+        Assert.Equal("Acme Coffee", transaction.Payee);
+        Assert.Equal(-4.50m, transaction.TotalAmount.Amount);
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CsvHelper;
@@ -13,7 +14,7 @@ using Pine.Core.Accounts;
 
 namespace Pine.Infrastructure.Importing;
 
-public sealed class CsvImporter : IImporter
+public sealed class CsvImporter : IImporter, IImportHeaderReader
 {
     private readonly TimeProvider _timeProvider;
 
@@ -164,5 +165,28 @@ public sealed class CsvImporter : IImporter
         }
 
         return transactions;
+    }
+
+    /// <summary>
+    /// Reads the first line of the file and splits it on a comma -- exactly what
+    /// <c>ImportWizardViewModel.ReadCsvHeaders</c> did inline before TD-123 moved it here so the
+    /// wizard's mapping step and this importer share one idea of "the header row".
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="ImportProfile.Delimiter"/>-aware: the caller has no profile yet
+    /// -- this runs before the user has mapped anything -- and a comma is what the wizard's own
+    /// logic always assumed here. Widening it to the chosen delimiter is a separate, later change,
+    /// not a silent behaviour shift smuggled into this one.
+    /// </remarks>
+    public IReadOnlyList<string> ReadHeaders(Stream fileStream)
+    {
+        ArgumentNullException.ThrowIfNull(fileStream);
+
+        using var reader = new StreamReader(fileStream);
+        var headerLine = reader.ReadLine();
+
+        return headerLine is null
+            ? Array.Empty<string>()
+            : headerLine.Split(',').Select(h => h.Trim()).ToArray();
     }
 }

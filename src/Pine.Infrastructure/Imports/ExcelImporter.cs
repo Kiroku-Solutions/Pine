@@ -13,7 +13,7 @@ using Pine.Core.Transactions;
 
 namespace Pine.Infrastructure.Importing;
 
-public sealed class ExcelImporter : IImporter
+public sealed class ExcelImporter : IImporter, IImportHeaderReader
 {
     private readonly TimeProvider _timeProvider;
 
@@ -244,17 +244,65 @@ public sealed class ExcelImporter : IImporter
     private static Dictionary<string, int> BuildHeaderIndex(DataRow headerRow)
     {
         var headers = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var texts = ReadHeaderRowTexts(headerRow);
 
-        for (int column = 0; column < headerRow.Table.Columns.Count; column++)
+        for (int column = 0; column < texts.Count; column++)
         {
-            var text = CellToText(headerRow[column]).Trim();
-            if (text.Length > 0)
+            if (texts[column].Length > 0)
             {
-                headers.TryAdd(text, column);
+                headers.TryAdd(texts[column], column);
             }
         }
 
         return headers;
+    }
+
+    /// <summary>
+    /// Renders every cell of one row as text, in column order. The single place that decides what a
+    /// header cell looks like as a string -- <see cref="BuildHeaderIndex"/> (used while importing)
+    /// and <see cref="ReadHeaders"/> (used by the wizard's mapping step, TD-123) both build on this,
+    /// so the two can never disagree about what the header row says.
+    /// </summary>
+    private static List<string> ReadHeaderRowTexts(DataRow headerRow)
+    {
+        var texts = new List<string>(headerRow.Table.Columns.Count);
+
+        for (int column = 0; column < headerRow.Table.Columns.Count; column++)
+        {
+            texts.Add(CellToText(headerRow[column]).Trim());
+        }
+
+        return texts;
+    }
+
+    /// <summary>
+    /// Reads the first row of the first sheet as header text -- the same sheet and the same row
+    /// <see cref="ImportAsync"/> treats as the header when <see cref="ImportProfile.HasHeaderRecord"/>
+    /// is set (TD-123). Used by the wizard's mapping step to populate its column list before any
+    /// profile exists, so the dropdown it fills is never a guess at what this importer will see.
+    /// </summary>
+    /// <remarks>
+    /// Returns an empty list, not a thrown exception, for a workbook with no sheets or an
+    /// empty/header-only sheet: an import that will find nothing to parse is not a reason to stop
+    /// the wizard from reaching its next step. A workbook ExcelDataReader itself cannot open (a
+    /// corrupt file, or one that is not actually a spreadsheet) still throws out of
+    /// <see cref="ExcelReaderFactory.CreateReader"/>, exactly as a corrupt CSV already fails out of
+    /// <c>CsvImporter.ReadHeaders</c>'s <see cref="StreamReader"/> -- both surface to the wizard's
+    /// existing <c>catch</c> and are reported the same honest way, not swallowed here.
+    /// </remarks>
+    public IReadOnlyList<string> ReadHeaders(Stream fileStream)
+    {
+        ArgumentNullException.ThrowIfNull(fileStream);
+
+        using var reader = ExcelReaderFactory.CreateReader(fileStream);
+        var result = reader.AsDataSet();
+
+        if (result.Tables.Count == 0 || result.Tables[0].Rows.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        return ReadHeaderRowTexts(result.Tables[0].Rows[0]);
     }
 
     /// <summary>

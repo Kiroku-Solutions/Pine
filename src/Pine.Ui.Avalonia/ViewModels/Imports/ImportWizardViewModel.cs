@@ -455,35 +455,65 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     {
         SelectedFilePath = filePath;
         SelectedFileName = fileName;
-        
-        // Try to read headers if it's a CSV
-        if (Path.GetExtension(fileName).Equals(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            ReadCsvHeaders(filePath);
-        }
+
+        ReadHeaders(filePath, fileName);
     }
 
-    private void ReadCsvHeaders(string filePath)
+    /// <summary>
+    /// Populates <see cref="AvailableColumns"/> from the selected file's header row, for whichever
+    /// format the import picker offers (TD-123).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WAS: a hardcoded <c>.csv</c> check guarding inline comma-splitting -- <c>ReadCsvHeaders</c> --
+    /// so <see cref="AvailableColumns"/> stayed empty for a spreadsheet even after TD-151/TD-66 gave
+    /// <c>ExcelImporter</c> a real, column-mapping-aware <c>ImportAsync</c>. The user was asked to
+    /// map columns from a list that was never populated, for a format whose importer would have
+    /// honoured the mapping if only it had been given one.
+    /// </para>
+    /// <para>
+    /// NOW: the SAME <see cref="IImporterFactory"/> the preview and the real import already use
+    /// (TD-28) picks the importer, and header reading is asked of it through
+    /// <see cref="IImportHeaderReader"/> -- a capability only the two importers that have a header
+    /// row carry. Any format the factory accepts gets this for free the moment its importer
+    /// implements the interface; no extension dispatch lives in this view model at all.
+    /// </para>
+    /// </remarks>
+    private void ReadHeaders(string filePath, string fileName)
     {
         try
         {
-            using var reader = new StreamReader(filePath);
-            var headerLine = reader.ReadLine();
-            if (headerLine != null)
+            var importer = _importerFactory.ForFile(fileName);
+            if (importer is not IImportHeaderReader headerReader)
             {
-                var headers = headerLine.Split(',');
-                AvailableColumns.Clear();
-                foreach (var h in headers)
-                {
-                    AvailableColumns.Add(h.Trim());
-                }
-
-                // Try auto-guessing
-                DateColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Date", StringComparison.OrdinalIgnoreCase)) ?? AvailableColumns.FirstOrDefault() ?? "";
-                PayeeColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Payee", StringComparison.OrdinalIgnoreCase) || c.Contains("Description", StringComparison.OrdinalIgnoreCase)) ?? "";
-                AmountColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Amount", StringComparison.OrdinalIgnoreCase)) ?? "";
-                CategoryColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Category", StringComparison.OrdinalIgnoreCase)) ?? "";
+                // No format currently reaches here that lacks the capability -- the picker offers
+                // only .csv/.xlsx/.xls (TD-122) and both have one -- but a future importer without
+                // one must leave the mapping step's columns empty rather than throw.
+                return;
             }
+
+            using var stream = File.OpenRead(filePath);
+            var headers = headerReader.ReadHeaders(stream);
+
+            AvailableColumns.Clear();
+            foreach (var header in headers)
+            {
+                AvailableColumns.Add(header);
+            }
+
+            // Try auto-guessing
+            DateColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Date", StringComparison.OrdinalIgnoreCase)) ?? AvailableColumns.FirstOrDefault() ?? "";
+            PayeeColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Payee", StringComparison.OrdinalIgnoreCase) || c.Contains("Description", StringComparison.OrdinalIgnoreCase)) ?? "";
+            AmountColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Amount", StringComparison.OrdinalIgnoreCase)) ?? "";
+            CategoryColumn = AvailableColumns.FirstOrDefault(c => c.Contains("Category", StringComparison.OrdinalIgnoreCase)) ?? "";
+        }
+        catch (UnsupportedImportFormatException)
+        {
+            // The picker already restricts selection to formats the factory recognises (TD-122), so
+            // this is not an expected path -- but it is not a reason to show a scary error either:
+            // NextStepAsync's own file/account check is what tells the user they picked nothing
+            // usable. Leaving AvailableColumns empty is honest here, same as it always was for an
+            // unreadable format.
         }
         catch (Exception ex)
         {

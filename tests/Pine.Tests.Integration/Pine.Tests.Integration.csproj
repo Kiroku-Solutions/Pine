@@ -30,4 +30,15 @@
     <ProjectReference Include="..\..\src\Pine.Infrastructure\Pine.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      TD-123: linked rather than duplicated. Pine.Tests.Unit.ExcelImporterTests already builds real
+      .xlsx bytes with this helper (no spreadsheet-writing package in the graph for a test-only
+      need); the wizard-through-the-real-pipeline test this project adds for TD-123 needs the same
+      bytes, and a second, slightly different xlsx builder is exactly the kind of drift this ticket
+      itself is about avoiding between two places that both claim to know "what counts as a header".
+    -->
+    <Compile Include="..\Pine.Tests.Unit\TestSupport\XlsxTestWorkbook.cs" Link="TestSupport\XlsxTestWorkbook.cs" />
+  </ItemGroup>
+
 </Project>
