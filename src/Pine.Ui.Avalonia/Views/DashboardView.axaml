@@ -25,6 +25,10 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <TextBlock Text="{loc:Tr Dashboard.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+                    <!-- TD-105: a failed load's sentence, in its own slot. Used to overwrite Greeting
+                         itself, leaving the header reading an error where it should still say
+                         "Welcome to Pine". Same pattern as AddTransactionView's ErrorMessage. -->
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">

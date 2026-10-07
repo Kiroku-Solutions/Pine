@@ -38,6 +38,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     private readonly IMediator _mediator;
     private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _greeting;
+    private readonly LocalizedMessageSlot _errorMessage;
 
     /// <summary>The shell this page is shown in; where the Scan Receipt button navigates (item 1.4).</summary>
     private readonly IShellNavigator _shell;
@@ -61,6 +62,19 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// </remarks>
     [ObservableProperty]
     public partial string Greeting { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What a failed <see cref="InitializeAsync"/> says, in a slot of its own (TD-105).
+    /// </summary>
+    /// <remarks>
+    /// Used to be the same sentence written into <see cref="Greeting"/>, which left the header
+    /// reading "An error occurred" where it should have read "Welcome to Pine" -- a dashboard
+    /// with no room for a greeting and its own failure to coexist. This mirrors
+    /// <c>AddTransactionViewModel.ErrorMessage</c>: a bound, localizable slot the view shows only
+    /// when it is non-empty, next to -- never instead of -- the page's own heading.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string ErrorMessage { get; set; } = string.Empty;
 
     /// <summary>The five tiles, in the order the grid shows them.</summary>
     public ObservableCollection<IDashboardWidgetViewModel> Widgets { get; } = new();
@@ -112,6 +126,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         _localizer = localizer ?? Localizer.Instance;
         _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
         _greeting.Set("Dashboard.Header.Greeting");
+        _errorMessage = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text ?? string.Empty);
         InitializeWidgets();
 
         // No Register call (TD-34) and no load (TD-35) here: activation follows IsActive, and
@@ -131,6 +146,11 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// <param name="cancellationToken">Threaded to the tiles.</param>
     public Task InitializeAsync(CancellationToken cancellationToken)
     {
+        // Cleared on every (re-)activation, not merely on success: a stale sentence from a load
+        // that failed once must not keep showing after a later visit's load succeeds, since
+        // nothing here ever calls Set() on the happy path to overwrite it.
+        _errorMessage.Clear();
+
         foreach (var widget in Widgets)
         {
             if (widget is DashboardWidgetViewModelBase tile)
@@ -157,7 +177,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         _logger,
         "dashboard-initialise",
         DashboardWidgetViewModelBase.LoadFailed,
-        _greeting.Set);
+        _errorMessage.Set);
 
     /// <summary>
     /// Releases the greeting and the tiles, which each hold subscriptions to the process-lifetime
@@ -171,6 +191,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     public void Dispose()
     {
         _greeting.Dispose();
+        _errorMessage.Dispose();
 
         foreach (var widget in Widgets)
         {
