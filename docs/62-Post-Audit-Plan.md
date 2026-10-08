@@ -2549,6 +2549,26 @@ mooted them, Status changed to Closed, nothing deleted.
 
 **Verified.** All sixteen `Documentation`-filtered unit tests pass, re-run directly. No source file was touched.
 
+### 7.4 Ten decisions, taken 2026-10-07, so the rows waiting on them become ordinary software work
+
+A full row-by-row register audit (2026-10-07) found 52 rows that are pure unbuilt software with no external
+blocker, and 10 rows blocked only on a product decision. The project owner decided all ten in one sitting; each
+is recorded here, against the row it unblocks, so the decision survives independently of whichever item
+eventually implements it.
+
+| Row | Decision |
+|---|---|
+| TD-63 | A budget's currency is the vault's own base currency, not per-account. A person's budget is a whole-of-vault concept. |
+| TD-82 | Pre-unlock logs stay plaintext — encrypting before a key exists is structurally impossible — but must be strictly redacted of personal data. `15-Security`/`30-Observability` amended to state this as the honest ceiling, not a gap. |
+| TD-100 | The reconciliation-preview screen defaults to the vault's base currency's scale when no account is selected. |
+| TD-103 | Accept headless Skia as a stated CI image requirement — an industry-standard way to test UI/bitmap work in a pipeline, not worth redesigning the decode seam to avoid. |
+| TD-110 | Keep bundling OCR weights. Breaking ADR-0012's offline-only guarantee to save ~300MB in a modern installer is not a trade this project makes. |
+| TD-112 | The document-status rule applies only to `docs/*` design, product and architecture documents. GitHub/AI meta-files (`CONTRIBUTING.md`, `GEMINI.md`, `CODE_OF_CONDUCT.md`, …) are formally exempt. |
+| TD-119 | Config (plaintext, outside the vault) is only what the app needs to paint the pre-unlock screen (theme, language). Everything else — auto-lock timeout, start page, confidence gate — is a Setting, encrypted inside the vault, because it's an operative preference that should travel with the `.pine` file. |
+| TD-126 | A stream carried by a message is owned by its recipient: the sender hands it off and forgets it; the recipient calls it and disposes it in a `finally`. Ownership transfer, not shared ownership. |
+| TD-145 | Tombstone retention is infinite — zero deletion. A personal-finance vault's deleted-row ids cost kilobytes, not a resource worth the risk of guessing when every peer has seen a deletion. Revisit only if a server/orchestrator ever exists that can make that guarantee. |
+| TD-154 | Per-device sync signatures are not worth building for v1. The shared sync key's authentication is enough; a compromised key is rotated (TD-86), not defended against with a PKI trust list this project does not otherwise need. |
+
 ## 8. What is deliberately NOT in this plan
 
 - **A plugin host.** ADR-0021. Not deferred — decided.
