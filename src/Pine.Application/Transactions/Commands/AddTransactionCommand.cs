@@ -314,21 +314,21 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
         if (request.LineItems is { Count: > 0 })
         {
             var currency = new CurrencyCode(normalised);
-            var lineItemSum = request.LineItems.Aggregate(
-                Money.Zero(currency),
-                (running, lineItem) => running + Money.FromRounded(lineItem.TotalPrice, currency));
-            var total = Money.FromRounded(request.Amount, currency);
 
-            if (lineItemSum != total)
+            // Shared with UpdateTransactionCommandValidator's split-sum check via AmountSumCheck
+            // (TD-68) -- the arithmetic lives once, and each validator only supplies its own field
+            // name and user-facing message.
+            if (!AmountSumCheck.Matches(request.LineItems.Select(li => li.TotalPrice), request.Amount, currency, out var lineItemSum, out var total))
             {
+                var difference = total - lineItemSum;
                 return new[]
                 {
                     new ValidationError(
                         nameof(AddTransactionCommand.LineItems),
                         $"The line items add up to {lineItemSum.Amount} but the transaction total is " +
-                        $"{total.Amount}. The {(total - lineItemSum).Amount} difference must be recorded " +
+                        $"{total.Amount}. The {difference.Amount} difference must be recorded " +
                         "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed).",
-                        ValidationText.LineItemsDoNotAddUp(lineItemSum.Amount, total.Amount, (total - lineItemSum).Amount)),
+                        ValidationText.LineItemsDoNotAddUp(lineItemSum.Amount, total.Amount, difference.Amount)),
                 };
             }
         }

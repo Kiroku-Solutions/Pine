@@ -63,7 +63,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="core:Transaction">
                                     <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
-                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto">
+                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto, Auto">
 
                                             <Border Grid.Column="0" Classes="tx-avatar" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
                                                 <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
@@ -117,7 +117,20 @@
                                                 </Button.IsVisible>
                                             </Button>
 
+                                            <!-- Edit action (TD-68). Sits next to Void so a correction never has
+                                                 to go through void-then-re-enter. Hidden exactly where the
+                                                 command would refuse: voided, a transfer leg, or more than one
+                                                 split (see Converters.CanEditTransaction). -->
                                             <Button Grid.Column="5" Classes="pine-outline"
+                                                    Content="{loc:Tr Transactions.EditAction}"
+                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding ., Converter={x:Static conv:Converters.CanEditTransaction}}"
+                                                    AutomationProperties.Name="{loc:Tr Transactions.EditAutomationName}"
+                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginEditCommand}"
+                                                    CommandParameter="{Binding}" />
+
+                                            <Button Grid.Column="6" Classes="pine-outline"
                                                     Content="{loc:Tr Transactions.VoidAction}"
                                                     FontSize="12" Padding="10,5" Margin="16,0,0,0"
                                                     VerticalAlignment="Center"
@@ -147,6 +160,17 @@
                 <ContentControl.DataTemplates>
                     <DataTemplate DataType="{x:Type vm:AddTransactionViewModel}">
                         <views:AddTransactionView />
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+        </Border>
+
+        <!-- Edit dialog (TD-68) -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsEditTransactionDialogVisible}">
+            <ContentControl Content="{Binding EditTransactionVm}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="{x:Type vm:EditTransactionViewModel}">
+                        <views:EditTransactionView />
                     </DataTemplate>
                 </ContentControl.DataTemplates>
             </ContentControl>

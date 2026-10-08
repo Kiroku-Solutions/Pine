@@ -147,6 +147,15 @@ public sealed class PineViewModelFactory : IViewModelFactory
     }
 
     /// <inheritdoc />
+    public EditTransactionViewModel CreateEditTransaction(Pine.Core.Transactions.Transaction transaction, Action onComplete)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(onComplete);
+
+        return ActivatorUtilities.CreateInstance<EditTransactionViewModel>(_provider, transaction, onComplete);
+    }
+
+    /// <inheritdoc />
     public CreateAccountViewModel CreateCreateAccount(Action onComplete)
     {
         ArgumentNullException.ThrowIfNull(onComplete);

@@ -47,6 +47,29 @@ public static class Converters
         new FuncValueConverter<Money?, string>(m => m is null ? string.Empty : m.ToAmountString(CultureInfo.CurrentCulture));
 
     /// <summary>
+    /// Whether the transaction row's Edit action should be offered (TD-68).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// MATCHES <c>UpdateTransactionCommandValidator</c>'s OWN REFUSALS, SO THE BUTTON NEVER OPENS A
+    /// FORM THAT CANNOT SAVE. A voided transaction is refused because <c>Transaction.Update</c> would
+    /// rewrite what the void deliberately preserved; a transfer leg is refused because it is one half
+    /// of a linked pair the edit does not know how to keep in step.
+    /// </para>
+    /// <para>
+    /// A TRANSACTION WITH MORE THAN ONE SPLIT IS ALSO HIDDEN HERE. <c>EditTransactionViewModel</c>'s
+    /// form is deliberately the single-category shape <c>AddTransactionViewModel</c>'s is -- saving it
+    /// always replaces the whole split set with exactly one split (<c>UpdateTransactionCommand</c>
+    /// requires the full set). Offering it on a transaction that already carries more than one would
+    /// silently collapse the others the moment the user saved, which is data loss dressed up as an
+    /// edit. Multi-split editing is not built by this ticket.
+    /// </para>
+    /// </remarks>
+    public static readonly IValueConverter CanEditTransaction =
+        new FuncValueConverter<Transaction?, bool>(t =>
+            t is not null && !t.IsVoided && t.Type != TransactionType.Transfer && t.Splits.Count <= 1);
+
+    /// <summary>
     /// Renders a date as the current culture writes a date in prose, without the weekday (TD-21):
     /// <c>May 3, 2026</c>, <c>3 May 2026</c>, <c>3 de mayo de 2026</c>.
     /// </summary>

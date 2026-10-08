@@ -88,6 +88,16 @@ public static class ValidationText
     public static UserFacingMessage VoidCurrencyMismatch(string transactionCurrency, string accountCurrency)
         => new("Validation.Void.CurrencyMismatch", transactionCurrency, accountCurrency);
 
+    /// <summary>An edit naming a transaction that has been voided (TD-68).</summary>
+    public static UserFacingMessage TransactionVoided() => new("Validation.Transaction.Voided");
+
+    /// <summary>An edit naming a transaction that is one leg of a transfer (TD-68).</summary>
+    public static UserFacingMessage TransactionIsTransferLeg() => new("Validation.Transaction.IsTransferLeg");
+
+    /// <summary>An edited transaction whose splits do not sum to the new total (TD-68).</summary>
+    public static UserFacingMessage SplitsDoNotAddUp(decimal splitSum, decimal total, decimal difference)
+        => new("Validation.SplitsDoNotAddUp", splitSum, total, difference);
+
     /// <summary>A rule with no name.</summary>
     public static UserFacingMessage RuleTitleRequired() => new("Validation.Rule.TitleRequired");
 

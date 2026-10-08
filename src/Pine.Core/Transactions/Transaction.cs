@@ -472,6 +472,74 @@ public sealed class Transaction : AggregateRoot
     }
 
     /// <summary>
+    /// Updates the mutable recording details of this transaction: when it happened, who it was paid
+    /// to or received from, its signed amount, and any notes -- without touching its identity, its
+    /// <see cref="ImportKey"/>, its <see cref="AccountId"/>, or its linked leg.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// REFUSED ON A VOIDED TRANSACTION, ON PURPOSE (TD-68, closing against TD-02). <see cref="Void"/>'s
+    /// own contract is a cancellation that deliberately KEEPS the row -- the row stops counting but its
+    /// last true values stay on it as the record of what was cancelled. Letting an edit change a voided
+    /// row's amount, date or payee would silently rewrite the thing the void exists to preserve, through
+    /// a door that has nothing to do with un-voiding it. Unvoiding is TD-69, a separate and still-open
+    /// ticket; this method does not reach for it, and refuses cleanly instead of reaching past it.
+    /// </para>
+    /// <para>
+    /// REFUSED ON A TRANSFER LEG, ON PURPOSE. A transfer is two linked transactions on two accounts,
+    /// constructed together so neither can exist without the other (<see cref="CreateTransferPair"/>).
+    /// Editing one leg's amount here would leave the other leg -- and the account on its far side --
+    /// silently out of step, with no caller pairing the edit the way
+    /// <c>VoidTransactionCommandHandler</c> pairs a void. Editing a transfer is out of scope for this
+    /// close of TD-68; it would need the same both-legs choreography void already has.
+    /// </para>
+    /// <para>
+    /// TYPE IS RE-DERIVED FROM THE NEW AMOUNT'S SIGN, exactly as the add-transaction handler derives it
+    /// on create: Income for a non-negative total, Expense for a negative one. A caller that edits an
+    /// expense into a positive figure is describing a correction into income, not a different
+    /// operation, and "forbid crossing the line" is a rule no screen has ever asked for.
+    /// </para>
+    /// <para>
+    /// SPLITS ARE DELIBERATELY NOT TOUCHED HERE. A caller that is also changing the split set calls
+    /// <see cref="ReplaceSplits"/> afterwards, in the same unit of work -- this method only changes the
+    /// header fields, so a currency change does not have to simultaneously describe every split for the
+    /// currency check inside <see cref="ReplaceSplits"/> to make sense of what just happened.
+    /// </para>
+    /// </remarks>
+    /// <param name="date">When the money moved, as the user now understands it.</param>
+    /// <param name="payee">Who the money was paid to, or received from.</param>
+    /// <param name="totalAmount">The new signed amount.</param>
+    /// <param name="notes">Free text the user attached to the transaction.</param>
+    /// <param name="timeProvider">Clock used to reject a future date.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="totalAmount"/> or <paramref name="timeProvider"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="date"/> is more than a day in the future.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// This transaction is voided, or is one leg of a transfer.
+    /// </exception>
+    public void Update(DateTimeOffset date, string payee, Money totalAmount, string notes, TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(totalAmount);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        if (IsVoided)
+            throw new InvalidOperationException("A voided transaction cannot be edited. Unvoid it first.");
+
+        if (Type == TransactionType.Transfer)
+            throw new InvalidOperationException("A transfer leg cannot be edited directly.");
+
+        var now = timeProvider.GetUtcNow();
+        if (date > now.AddDays(1))
+            throw new ArgumentException("Transaction date cannot be in the future.", nameof(date));
+
+        Date = date;
+        DateUtc = date.UtcDateTime;
+        Payee = payee;
+        TotalAmount = totalAmount;
+        Type = totalAmount.Amount >= 0 ? TransactionType.Income : TransactionType.Expense;
+        Notes = notes;
+    }
+
+    /// <summary>
     /// The maximum length of <see cref="VoidReason"/>, matching the persisted column width.
     /// </summary>
     public const int MaxVoidReasonLength = 256;

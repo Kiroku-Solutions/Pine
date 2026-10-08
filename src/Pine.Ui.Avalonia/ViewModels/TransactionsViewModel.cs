@@ -49,6 +49,14 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     [ObservableProperty]
     public partial AddTransactionViewModel? AddTransactionVm { get; set; }
 
+    /// <summary>Whether the edit-transaction dialog is on screen (TD-68).</summary>
+    [ObservableProperty]
+    public partial bool IsEditTransactionDialogVisible { get; set; }
+
+    /// <summary>The edit-transaction dialog this page opens, pre-filled from the row the user chose.</summary>
+    [ObservableProperty]
+    public partial EditTransactionViewModel? EditTransactionVm { get; set; }
+
     public ObservableCollection<Transaction> Transactions { get; } = new();
 
     /// <summary>
@@ -267,6 +275,40 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 _error.Set);
         });
         IsAddTransactionDialogVisible = true;
+    }
+
+    /// <summary>
+    /// Opens the edit-transaction dialog for one row (TD-68).
+    /// </summary>
+    /// <remarks>
+    /// The same guard the Edit button's visibility is driven by
+    /// (<see cref="Utils.Converters.CanEditTransaction"/>) is repeated here: a voided transaction, a
+    /// transfer leg, or a transaction with more than one split all refuse to open. The button is
+    /// hidden in every one of those states, so reaching this method with one means something is out
+    /// of sync and silently doing nothing is better than opening a dialog that cannot save.
+    /// </remarks>
+    /// <param name="transaction">The row the user acted on.</param>
+    [RelayCommand]
+    private void BeginEdit(Transaction? transaction)
+    {
+        if (transaction is null || transaction.IsVoided || transaction.Type == Pine.Core.Transactions.TransactionType.Transfer || transaction.Splits.Count > 1)
+        {
+            return;
+        }
+
+        EditTransactionVm = _viewModels.CreateEditTransaction(transaction, () =>
+        {
+            IsEditTransactionDialogVisible = false;
+            EditTransactionVm = null;
+
+            ObservedTask.Run(
+                LoadDataAsync,
+                _logger,
+                "transactions-reload",
+                new UserFacingMessage("Transactions.Failure.ReloadAfterSave"),
+                _error.Set);
+        });
+        IsEditTransactionDialogVisible = true;
     }
 
     /// <summary>

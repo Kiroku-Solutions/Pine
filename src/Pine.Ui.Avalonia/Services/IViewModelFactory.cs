@@ -127,6 +127,15 @@ public interface IViewModelFactory
     AddTransactionViewModel CreateAddTransaction(Action onComplete);
 
     /// <summary>
+    /// Creates the edit-transaction dialog, pre-filled from <paramref name="transaction"/>, which
+    /// calls <paramref name="onComplete"/> once the edit is written or the dialog is dismissed.
+    /// </summary>
+    /// <param name="transaction">The transaction to edit.</param>
+    /// <param name="onComplete">What the parent page does when the dialog is finished with.</param>
+    /// <remarks>TD-68. See <see cref="CreateAddTransaction"/> for why this takes a callback.</remarks>
+    EditTransactionViewModel CreateEditTransaction(Pine.Core.Transactions.Transaction transaction, Action onComplete);
+
+    /// <summary>
     /// Creates the create-account dialog, which calls <paramref name="onComplete"/> when it is done.
     /// </summary>
     /// <param name="onComplete">What the parent page does when the dialog is finished with.</param>

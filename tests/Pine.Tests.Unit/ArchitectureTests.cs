@@ -1209,10 +1209,19 @@ public partial class ArchitectureTests
     /// <see cref="ExpectedAccountPublicMethods"/> records its own amendment.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// AMENDED FOR TD-68: <c>Update</c> added. It is the edit half of TD-02 that TD-68 closes --
+    /// changing a transaction's date, payee, amount and notes without voiding and re-entering it.
+    /// It is not a bypass of the shape this list guards against: it still refuses on a voided
+    /// transaction and on a transfer leg (both <c>InvalidOperationException</c>, same posture as
+    /// <c>Void</c>'s own "already voided" refusal), it re-derives <c>Type</c> from the new amount's
+    /// sign rather than accepting one, and every field it touches was already reachable only through
+    /// a domain operation -- there was no settable property here to remove.
+    /// </summary>
     private static readonly string[] ExpectedTransactionPublicMethods =
     [
         "AddLineItem", "AddSplit", "AssignImportKey", "Create", "CreateTransferPair", "EnsureValid",
-        "LineItemDifference", "ReplaceLineItems", "ReplaceSplits", "ValidateLineItems",
+        "LineItemDifference", "ReplaceLineItems", "ReplaceSplits", "Update", "ValidateLineItems",
         "ValidateSplits", "Void",
     ];
 
