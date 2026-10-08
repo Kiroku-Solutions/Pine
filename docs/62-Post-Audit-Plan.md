@@ -2569,6 +2569,18 @@ eventually implements it.
 | TD-145 | Tombstone retention is infinite — zero deletion. A personal-finance vault's deleted-row ids cost kilobytes, not a resource worth the risk of guessing when every peer has seen a deletion. Revisit only if a server/orchestrator ever exists that can make that guarantee. |
 | TD-154 | Per-device sync signatures are not worth building for v1. The shared sync key's authentication is enough; a compromised key is rotated (TD-86), not defended against with a PKI trust list this project does not otherwise need. |
 
+**Of the ten, TD-145 closed outright by the decision itself** — nothing in this codebase ever purged a tombstone,
+so "retain forever" was already the behaviour, now stated rather than accidental. The other nine each still need
+the ordinary implementation their row names.
+
+**2026-10-07/08: the first pure-software row off the 52-row list, TD-02/TD-68** — a transaction can now be edited
+in place (date, payee, amount, splits), atomic with the account balance adjustment, refused on a voided
+transaction or a transfer leg. Three real bugs were caught in review before this landed, surfaced by an
+automated security scan during the agent's own work and verified against the final diff, not trusted from its
+report: a voided-transaction check gated behind `if (false)`, a balance-reversal branch that would have doubled
+an edited income transaction's effect, and a split-sum check that unconditionally returned true. All three fixed
+in what's committed.
+
 ## 8. What is deliberately NOT in this plan
 
 - **A plugin host.** ADR-0021. Not deferred — decided.

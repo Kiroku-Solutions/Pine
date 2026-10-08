@@ -37,8 +37,7 @@ Each decision is recorded in full in `62-Post-Audit-Plan` §7.4. One-line remind
 - **TD-119** — config is pre-unlock-screen-paint needs only (theme, language); everything else is an encrypted
   Setting.
 - **TD-126** — a stream in a message is owned by its recipient (ownership transfer).
-- **TD-145** — ✅ **closed outright by the decision**: retention is infinite; nothing to build, the current
-  behaviour (no purge ever) already matches the decision. See `60-Production-Readiness-Audit` TD-145.
+- ~~**TD-145**~~ — ✅ **closed 2026-10-07**, outright by the decision: retention is infinite; nothing to build.
 - **TD-154** — per-device sync signatures are not worth building for v1; the shared sync key's authentication is
   enough.
 
@@ -46,10 +45,10 @@ Each decision is recorded in full in `62-Post-Audit-Plan` §7.4. One-line remind
 
 Ready to implement in any order; none needs a human's input first.
 
-- **Transactions/ledger**: TD-02 (transaction edit command), TD-59 (owned-child EF state set explicitly), TD-62
-  (validators beyond currency), TD-68 (update/edit command), TD-69 (unvoid command), TD-70 (set-opening-balance
-  gesture), TD-71 (hide voided rows), TD-77 (`OpeningBalanceAmount` as a real `Money`), TD-95 (`Quantity` scale +
-  column type), TD-96 (`Budget` dates get `DateUtc` treatment).
+- **Transactions/ledger**: ~~TD-02, TD-68~~ ✅ **closed 2026-10-07/08** (edit command, atomic with balance),
+  TD-59 (owned-child EF state set explicitly), TD-62 (validators beyond currency), TD-69 (unvoid command), TD-70
+  (set-opening-balance gesture), TD-71 (hide voided rows), TD-77 (`OpeningBalanceAmount` as a real `Money`),
+  TD-95 (`Quantity` scale + column type), TD-96 (`Budget` dates get `DateUtc` treatment).
 - **Import**: TD-50 (file-type/magic-byte + size-cap validation), TD-64 (currency validation before dedup),
   TD-65 (dedup check-then-insert race), TD-102 (import-key scheme that doesn't leak decimal scale).
 - **Sync**: TD-144 (two residual edge cases: manual migration-down/up rewind, byte-copied vault collision).
