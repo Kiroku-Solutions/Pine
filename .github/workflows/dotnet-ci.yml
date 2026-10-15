@@ -1,743 +1,743 @@
-name: CI
-
-# TD-07: this workflow builds the PRODUCT, not just the test projects.
-# The previous version only restored/built/tested tests/**, which is why three
-# broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
-# The Web/WASM head no longer exists: iteration 31 deleted it (Phase 3, item 1).
-
-# TRIGGERS: ARMED (TD-07 closed, post-audit plan Stage 0 item 0.1).
-# `push:` and `pull_request:` were removed in 79c5364 to save compute minutes, and iteration 6 of the
-# production-readiness remediation confirmed that as the intended operating mode. It was the wrong
-# mode: for thirty-one iterations nothing fired this workflow, so a commit that broke a platform head
-# or reddened the suite reached `main` undetected unless a human remembered to dispatch it. Every
-# other guard this repository owns -- the architecture rules, the coverage floor, the egress scan, the
-# document-status tests, the whole suite -- was inert behind that missing trigger.
+# name: CI
 #
-# WHAT IS ARMED, AND WHY EACH ONE:
-#   pull_request -> main : the gate ON THE WAY IN. This is the one that matters; a red PR cannot be
-#                          merged, which is the only point at which a defect is still cheap.
-#   push         -> main : the gate AFTER THE FACT, for anything that reaches main without a PR
-#                          (a direct push, an admin merge, a squash that behaves differently from its
-#                          PR head). It catches what the first one cannot see.
-#   workflow_dispatch    : kept, so a release build can still be fired by hand.
+# # TD-07: this workflow builds the PRODUCT, not just the test projects.
+# # The previous version only restored/built/tested tests/**, which is why three
+# # broken platform heads (Web/WASM, Android, iOS) shipped without CI noticing.
+# # The Web/WASM head no longer exists: iteration 31 deleted it (Phase 3, item 1).
 #
-# THE COMPUTE BUDGET, STATED PLAINLY: this file fans out to six runner-legs per event, one of them
-# macOS (billed at 10x). That cost is accepted for `pull_request` and `push`, because a platform head
-# that only breaks on a runner nobody starts is exactly the failure TD-07 records. The ONE job held
-# back is `package`: it publishes a ~680 MB artefact and produces nothing a reviewer reads, so it is
-# skipped on pull_request (see its own `if:`) and runs on push/dispatch. If the budget ever becomes
-# the blocker again, narrow this to `pull_request` ALONE -- never to nothing. A gate on the way in is
-# worth more than a gate after the fact, and both are worth more than an obligation to remember.
-# HOW EVERY LOOP IN THIS FILE IS WRITTEN, AND WHY IT MATTERS MORE THAN IT LOOKS.
-# Each build/test step asks `scripts/ci-projects.sh` for its projects, captures the answer in a
-# variable, and reads it line by line. The obvious spelling -- `for p in $(bash ...)` -- was
-# written first and is wrong in a way that no test would have shown: a command substitution in a
-# `for` word list DOES NOT propagate its exit status, even under `set -euo pipefail`, so a script
-# that failed would leave the loop iterating zero times and the step reporting SUCCESS. A
-# pipeline that builds nothing and goes green is worse than one that does not run. It also
-# word-splits, so a project path containing a space would reach dotnet in fragments. The
-# assignment propagates the failure and `read -r` keeps the path whole.
+# # TRIGGERS: ARMED (TD-07 closed, post-audit plan Stage 0 item 0.1).
+# # `push:` and `pull_request:` were removed in 79c5364 to save compute minutes, and iteration 6 of the
+# # production-readiness remediation confirmed that as the intended operating mode. It was the wrong
+# # mode: for thirty-one iterations nothing fired this workflow, so a commit that broke a platform head
+# # or reddened the suite reached `main` undetected unless a human remembered to dispatch it. Every
+# # other guard this repository owns -- the architecture rules, the coverage floor, the egress scan, the
+# # document-status tests, the whole suite -- was inert behind that missing trigger.
+# #
+# # WHAT IS ARMED, AND WHY EACH ONE:
+# #   pull_request -> main : the gate ON THE WAY IN. This is the one that matters; a red PR cannot be
+# #                          merged, which is the only point at which a defect is still cheap.
+# #   push         -> main : the gate AFTER THE FACT, for anything that reaches main without a PR
+# #                          (a direct push, an admin merge, a squash that behaves differently from its
+# #                          PR head). It catches what the first one cannot see.
+# #   workflow_dispatch    : kept, so a release build can still be fired by hand.
+# #
+# # THE COMPUTE BUDGET, STATED PLAINLY: this file fans out to six runner-legs per event, one of them
+# # macOS (billed at 10x). That cost is accepted for `pull_request` and `push`, because a platform head
+# # that only breaks on a runner nobody starts is exactly the failure TD-07 records. The ONE job held
+# # back is `package`: it publishes a ~680 MB artefact and produces nothing a reviewer reads, so it is
+# # skipped on pull_request (see its own `if:`) and runs on push/dispatch. If the budget ever becomes
+# # the blocker again, narrow this to `pull_request` ALONE -- never to nothing. A gate on the way in is
+# # worth more than a gate after the fact, and both are worth more than an obligation to remember.
+# # HOW EVERY LOOP IN THIS FILE IS WRITTEN, AND WHY IT MATTERS MORE THAN IT LOOKS.
+# # Each build/test step asks `scripts/ci-projects.sh` for its projects, captures the answer in a
+# # variable, and reads it line by line. The obvious spelling -- `for p in $(bash ...)` -- was
+# # written first and is wrong in a way that no test would have shown: a command substitution in a
+# # `for` word list DOES NOT propagate its exit status, even under `set -euo pipefail`, so a script
+# # that failed would leave the loop iterating zero times and the step reporting SUCCESS. A
+# # pipeline that builds nothing and goes green is worse than one that does not run. It also
+# # word-splits, so a project path containing a space would reach dotnet in fragments. The
+# # assignment propagates the failure and `read -r` keeps the path whole.
+# #
+# on:
+#   pull_request:
+#     branches: [main]
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
 #
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  DOTNET_NOLOGO: 'true'
-  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
-  # Force the NuGet global-packages folder into the workspace so a single
-  # actions/cache path works identically on ubuntu, windows and macos runners
-  # (~/.nuget/packages vs %USERPROFILE%\.nuget\packages would otherwise differ).
-  NUGET_PACKAGES: ${{ github.workspace }}/.nuget-packages
-  # Directory.Build.props sets TreatWarningsAsErrors=true. Nothing in this file
-  # is allowed to weaken that: a warning must remain a build failure.
-  DOTNET_CONFIGURATION: Release
-
-jobs:
-  # ---------------------------------------------------------------------------
-  # Desktop / shared surface: every project whose TFM is plain `net10.0` and which
-  # is not a test project.
-  #
-  # THE LIST IS NOT WRITTEN HERE ANY MORE (TD-54, plan item 0.2). It used to be,
-  # and a comment recorded that it had been "verified TFM-by-TFM against each
-  # .csproj on 2026-08-26 (11 projects)" -- which was true, and was the problem: a
-  # twelfth project would have changed nothing in this file and been built by
-  # nobody, under a green tick. `scripts/ci-projects.sh` derives each leg from
-  # `Pine.slnx` instead, and `BuildHygieneTests` fails the suite if the legs stop
-  # covering the solution exactly. See that script's header for why this is not
-  # simply `dotnet build Pine.slnx` (NETSDK1147: the solution cannot be built in
-  # one command on any runner that lacks the android and ios workloads).
-  #
-  # Built on BOTH ubuntu and windows: the code contains no Windows-only P/Invoke
-  # and the Windows-only NuGet packages in Pine.Infrastructure
-  # (OpenCvSharp4.runtime.win, Sdcb.PaddleInference.runtime.win64.mkl) are
-  # runtime-asset packages that contribute no compile-time reference.
-  # ---------------------------------------------------------------------------
-  # IMAGE REQUIREMENT (TD-103): Pine.Tests.Unit registers a headless Skia platform for the whole
-  # assembly (tests/Pine.Tests.Unit/TestAppInitializer.cs), so the runner image needs the native Skia
-  # runtime (SkiaSharp.NativeAssets.* arrives via NuGet; on Linux the system libfontconfig1 and
-  # libfreetype6 must exist). The GitHub-hosted ubuntu-latest / windows-latest images used here
-  # provide it. A self-hosted or container image must too. See docs/28-CI-CD.md section 7.1.
-  desktop:
-    name: Build desktop/shared (net10.0) - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # A receipt means "this job did this", so the log starts empty. The runners
-      # here are ephemeral and would give an empty workspace anyway; relying on
-      # that would be relying on a fact about someone else's infrastructure
-      # rather than on something this file states.
-      - name: Discard any stale gate receipts
-        shell: bash
-        run: bash scripts/ci-receipts.sh reset
-
-      - name: Setup .NET SDK (pinned by global.json)
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      # There are no packages.lock.json files in this repo, so the cache key is
-      # hashed over every .csproj plus the shared MSBuild/SDK inputs. That is a
-      # coarse key (it changes on any csproj edit) but it is never stale.
-      #
-      # Directory.Packages.props IS PART OF THE KEY, AND HAS TO BE (TD-42). Since
-      # central package management moved every version out of the .csproj files,
-      # a version bump changes no .csproj at all. Without this entry a restore
-      # would hit a cache populated under the previous versions, and the runner
-      # would build against packages no file in the repository names.
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Restore desktop/shared projects
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh desktop)"
-          while IFS= read -r p
-          do
-            echo "::group::restore $p"
-            dotnet restore "$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      - name: Build desktop/shared projects (Release, warnings are errors)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh desktop)"
-          while IFS= read -r p
-          do
-            echo "::group::build $p"
-            dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
-            bash scripts/ci-receipts.sh record "build:$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      # -----------------------------------------------------------------------
-      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
-      #
-      # Every step above can complete without doing its work: a step with an
-      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
-      # an empty list iterates zero times. Both report green. This step states,
-      # independently of those steps, what this job was supposed to produce, and
-      # fails if a receipt is missing. Two statements that a mutation has to edit
-      # in both places is the whole mechanism.
-      #
-      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
-      # can be skipped, which is the thing being guarded against.
-      # -----------------------------------------------------------------------
-      - name: Every desktop project was built
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected=""
-          projects="$(bash scripts/ci-projects.sh desktop)"
-          while IFS= read -r p
-          do
-            expected="$expected build:$p"
-          done <<< "$projects"
-          bash scripts/ci-receipts.sh verify $expected
-
-  # ---------------------------------------------------------------------------
-  # Platform heads that require a .NET workload. These are NOT skipped: they are
-  # real gating jobs. Each leg installs exactly the workload its head needs,
-  # because a bare GitHub runner has no android/ios workload
-  # installed and `dotnet restore` fails with NETSDK1147 without them.
-  #   - android: needs the `android` workload plus a JDK (pinned to Temurin 17).
-  #   - ios:     needs the `ios` workload and can only build on macOS.
-  #
-  # There used to be a third leg, `browser-wasm`, building Pine.Ui.Web with the
-  # `wasm-tools` workload. Iteration 31 deleted the Browser head (Phase 3, item
-  # 1), so the leg went with it. It was the only leg in this file that compiled a
-  # head which could never run the product: no AES-GCM on the browser runtime
-  # means no vault can be opened there, and OpenCV and PaddleInference ship no
-  # WebAssembly build at all. A green light over that is worse than no light.
-  # ---------------------------------------------------------------------------
-  platform-heads:
-    name: Build ${{ matrix.head }} head - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # No `project:` here any more (TD-54, plan item 0.2). `head` doubles as
-          # the leg name that `scripts/ci-projects.sh` answers to, so a second
-          # android or ios project added to Pine.slnx joins this job on its own.
-          # What still has to be written by hand is a NEW platform: the script
-          # refuses to classify an unknown TFM suffix rather than guessing a
-          # runner for it, so adding one fails loudly here instead of quietly
-          # everywhere.
-          - head: android
-            os: ubuntu-latest
-            workload: android
-          - head: ios
-            os: macos-latest
-            workload: ios
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # A receipt means "this job did this", so the log starts empty. The runners
-      # here are ephemeral and would give an empty workspace anyway; relying on
-      # that would be relying on a fact about someone else's infrastructure
-      # rather than on something this file states.
-      - name: Discard any stale gate receipts
-        shell: bash
-        run: bash scripts/ci-receipts.sh reset
-
-      - name: Setup .NET SDK (pinned by global.json)
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Setup JDK 17 (Android build requirement)
-        if: matrix.head == 'android'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-${{ matrix.head }}-
-            nuget-${{ runner.os }}-
-
-      - name: Install ${{ matrix.workload }} workload
-        run: dotnet workload install ${{ matrix.workload }} --skip-manifest-update
-
-      - name: Restore the ${{ matrix.head }} projects
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
-          while IFS= read -r p
-          do
-            echo "::group::restore $p"
-            dotnet restore "$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      - name: Build the ${{ matrix.head }} projects (Release, warnings are errors)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
-          while IFS= read -r p
-          do
-            echo "::group::build $p"
-            dotnet build "$p" --configuration Release --no-restore
-            bash scripts/ci-receipts.sh record "build:$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      # -----------------------------------------------------------------------
-      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
-      #
-      # Every step above can complete without doing its work: a step with an
-      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
-      # an empty list iterates zero times. Both report green. This step states,
-      # independently of those steps, what this job was supposed to produce, and
-      # fails if a receipt is missing. Two statements that a mutation has to edit
-      # in both places is the whole mechanism.
-      #
-      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
-      # can be skipped, which is the thing being guarded against.
-      # -----------------------------------------------------------------------
-      - name: Every ${{ matrix.head }} project was built
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected=""
-          projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
-          while IFS= read -r p
-          do
-            expected="$expected build:$p"
-          done <<< "$projects"
-          bash scripts/ci-receipts.sh verify $expected
-
-  # ---------------------------------------------------------------------------
-  # Tests. Pine.Tests.Unit and Pine.Tests.Integration are the whole suite
-  # (854 and 197 respectively as of iteration 27).
-  #
-  # There used to be three more test projects here - Accessibility, Performance
-  # and Mutation - each holding a single empty `UnitTest1.Test1()` from the
-  # `dotnet new xunit` template. This workflow compiled them and deliberately did
-  # not run them, on the grounds that running an empty file would be "a green
-  # light over an empty file". Iteration 27 deleted them (TD-38): a project that
-  # has to be explicitly excluded from the thing it is named after was carrying a
-  # promise instead of a test. The three documents that named them -
-  # 39-Performance, 40-Accessibility and 18-Test-Strategy - say so now, which is
-  # where an unkept intention belongs.
-  # ---------------------------------------------------------------------------
-  test:
-    name: Test (unit + integration) - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # A receipt means "this job did this", so the log starts empty. The runners
-      # here are ephemeral and would give an empty workspace anyway; relying on
-      # that would be relying on a fact about someone else's infrastructure
-      # rather than on something this file states.
-      - name: Discard any stale gate receipts
-        shell: bash
-        run: bash scripts/ci-receipts.sh reset
-
-      - name: Setup .NET SDK (pinned by global.json)
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Restore test projects
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh test)"
-          while IFS= read -r p
-          do
-            echo "::group::restore $p"
-            dotnet restore "$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      - name: Build the test projects
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh test)"
-          while IFS= read -r p
-          do
-            echo "::group::build $p"
-            dotnet build "$p" --configuration Release --no-restore
-            bash scripts/ci-receipts.sh record "build:$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      # One step for every test project, rather than one step per NAMED test
-      # project. The .trx file is named after the project rather than after the
-      # word "unit" or "integration", so a third suite lands in the artefact with
-      # a name that says what it is instead of overwriting one of the other two.
-      - name: Run the test suites
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
-          # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
-          projects="$(bash scripts/ci-projects.sh test)"
-          while IFS= read -r p
-          do
-            suite="$(basename "$p" .csproj)"
-            echo "::group::test $suite"
-            dotnet test "$p" \
-              --configuration Release --no-build \
-              --logger "trx;LogFileName=$suite-${{ matrix.os }}.trx" \
-              --results-directory TestResults
-            bash scripts/ci-receipts.sh record "test:$p"
-            echo "::endgroup::"
-          done <<< "$projects"
-
-      # -----------------------------------------------------------------------
-      # DOES THE SIGNING PATH ACTUALLY SIGN? (TD-108, plan item 2.2)
-      #
-      # It needs no certificate and no publish: packaging/selftest-signing.sh
-      # mints a throwaway self-signed certificate, signs copied binaries in a
-      # fixture that looks like a real artefact (nested directories, .json and
-      # .txt files beside the code), and falsifies every refusal
-      # packaging/sign.sh makes -- an unsigned file in the artefact, bytes edited
-      # after signing, an untrusted root, a stage with no loadable code, a run
-      # that would sign nothing, a missing timestamp authority -- plus a positive
-      # control, so a gate that has started saying no to everything is caught too.
-      #
-      # IT IS IN THIS JOB, NOT IN `package`, AND THAT PLACEMENT IS THE POINT.
-      # `package` carries `if: github.event_name != 'pull_request'`, so anything
-      # living there is invisible on the way IN and only fires after a merge.
-      # This file's own header says a gate on the way in is worth more than a
-      # gate after the fact; a pull request that breaks signing must go red in
-      # review, not on main. `package` depends on this job, so a broken signing
-      # path stops the artefact being built at all.
-      #
-      # WHY IT EXISTS AT ALL: the signing seam sat in this repository for
-      # twenty-four iterations without ever executing, and when it was finally
-      # run it did not work -- Git Bash rewrote `/fd` into a path, so signtool
-      # rejected the very flag it had been given. Nothing would have reported
-      # that until the first release with a real certificate. Case I keeps that
-      # exact command form on file and expects it to keep failing.
-      #
-      # windows ONLY, and the condition is restated in the verify step below --
-      # the same arrangement as the coverage floor. signtool.exe and
-      # New-SelfSignedCertificate are Windows-only; on a runner image that ever
-      # ships without a Windows SDK this FAILS rather than skips, which is how
-      # anyone would find out before a release day.
-      # -----------------------------------------------------------------------
-      - name: The signing path signs, and refuses what it should (no certificate needed)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash packaging/selftest-signing.sh
-          bash scripts/ci-receipts.sh record signing-selftest
-
-      # -----------------------------------------------------------------------
-      # Coverage floor (Phase 2 item 9). The gate is a script rather than a flag
-      # because `coverlet.collector` -- the only coverage package this repository
-      # references -- cannot enforce a threshold. Its own VSTestIntegration.md
-      # says the VSTest integration does not support "threshold validation", and
-      # `coverlet.msbuild`, which does support /p:Threshold=, is not referenced.
-      # So scripts/coverage-gate.sh reads the cobertura report and decides.
-      #
-      # ubuntu ONLY, deliberately. The floors were measured on one platform and a
-      # second platform would either duplicate the same number or, if it differed,
-      # turn the gate into a source of noise nobody could act on. The suite still
-      # runs on both; only the measurement is single-platform.
-      #
-      # This step used to carry a disclaimer: "nothing triggers this workflow
-      # (TD-07), so a coverage gate here is a gate nobody passes through". The
-      # triggers came back in Stage 0 item 0.1 and the disclaimer went with them.
-      # The gate now runs on every pull request into main. It remains a one-command
-      # local script as well, so a contributor can answer it before pushing rather
-      # than after.
-      - name: Coverage floor
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: bash scripts/coverage-gate.sh
-
-      # -----------------------------------------------------------------------
-      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
-      #
-      # Every step above can complete without doing its work: a step with an
-      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
-      # an empty list iterates zero times. Both report green. This step states,
-      # independently of those steps, what this job was supposed to produce, and
-      # fails if a receipt is missing. Two statements that a mutation has to edit
-      # in both places is the whole mechanism.
-      #
-      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
-      # can be skipped, which is the thing being guarded against.
-      # -----------------------------------------------------------------------
-      #
-      # THE COVERAGE CONDITION IS RESTATED HERE ON PURPOSE. The step above runs on
-      # ubuntu only; this says, separately, that on ubuntu the gate must have
-      # produced its receipt. Deleting that step, changing its condition, or
-      # replacing its `run:` with something that does nothing all break the
-      # agreement between the two.
-      - name: Every suite ran, the coverage floor was answered, and the signing path was exercised
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected=""
-          projects="$(bash scripts/ci-projects.sh test)"
-          while IFS= read -r p
-          do
-            # BOTH, and the `build:` half was missing until the guard test found it.
-            # Building a test project is itself a gate here -- Directory.Build.props
-            # makes a warning an error -- so a suite that was run without its
-            # project having been built in this job is a hole of the same shape.
-            expected="$expected build:$p test:$p"
-          done <<< "$projects"
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            expected="$expected coverage"
-          fi
-          # THE SIGNING SELF-TEST'S CONDITION IS RESTATED HERE, for the same reason the coverage
-          # floor's is: the step above runs on windows only, and this says separately that on
-          # windows its receipt must exist. Deleting that step, changing its condition, or replacing
-          # its `run:` with something that does nothing all break the agreement between the two.
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            expected="$expected signing-selftest"
-          fi
-          bash scripts/ci-receipts.sh verify $expected
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.os }}
-          path: TestResults/*.trx
-          if-no-files-found: error
-
-      - name: Upload coverage report
-        if: always() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.os }}
-          path: TestResults/coverage/**/coverage.cobertura.xml
-          if-no-files-found: ignore
-
-  # ---------------------------------------------------------------------------
-  # Packaging (TD-49). Produces the only shippable artefact Pine has: a
-  # version-stamped, RID-pinned, checksummed win-x64 archive plus a release
-  # manifest. It is NOT an installer and it carries no updater; packaging/package.sh
-  # says so in the manifest it writes, rather than leaving a reader to assume.
-  #
-  # `needs: [desktop, test]` is load-bearing: a packaging job that runs on a red
-  # suite is a mechanism for shipping a known-broken build, which is worse than
-  # having no mechanism at all.
-  #
-  # `lfs: true` IS NOT OPTIONAL HERE, AND ITS ABSENCE WAS A LATENT DEFECT.
-  # The YOLO model file is LFS-tracked (.gitattributes). It used to be three:
-  # `PP-OCRv4-det.onnx` and `PP-OCRv4-rec.onnx` were deleted by TD-41 after
-  # `git log -S` proved no commit on any branch had ever named either of them.
-  # The OCR's own weights are embedded resources inside the
-  # Sdcb.PaddleOCR.Models.LocalV5 assembly and are PP-OCRv5, so the v4 pair had
-  # been superseded before it was ever wired to anything. A
-  # default actions/checkout fetches a 133-byte POINTER FILE for it. Every other
-  # job in this workflow still checks out the pointer -- harmless there, because
-  # nothing they do reads the weights -- but an artefact built from a pointer is an
-  # application whose OCR fails at first use, shipped, with a green pipeline behind
-  # it. The publish step is the first thing in this repository that ever needed the
-  # real bytes.
-  #
-  # THIS IS THE ONE JOB HELD BACK FROM PULL REQUESTS (Stage 0 item 0.1). It runs on
-  # push to `main` and on manual dispatch, not on every pull request. The reason is
-  # cost against value: it publishes a ~680 MB artefact that no reviewer downloads,
-  # and every defect it could catch -- a broken build, a red suite -- is already
-  # caught by `desktop` and `test`, which it depends on and which DO run on every
-  # pull request. What it uniquely proves is that the artefact still packages, and
-  # that question is asked on the way into `main`, not on the way into a review.
-  # ---------------------------------------------------------------------------
-  package:
-    name: Package win-x64 artefact
-    needs: [desktop, test]
-    if: github.event_name != 'pull_request'
-    runs-on: windows-latest
-    steps:
-      - name: Checkout (with LFS payloads, not pointers)
-        uses: actions/checkout@v4
-        with:
-          lfs: true
-
-      # A receipt means "this job did this", so the log starts empty. The runners
-      # here are ephemeral and would give an empty workspace anyway; relying on
-      # that would be relying on a fact about someone else's infrastructure
-      # rather than on something this file states.
-      - name: Discard any stale gate receipts
-        shell: bash
-        run: bash scripts/ci-receipts.sh reset
-
-      - name: Verify the model weights are real files and not LFS pointers
-        shell: bash
-        run: |
-          set -euo pipefail
-          for f in src/Pine.Infrastructure/Assets/Ai/*.onnx; do
-            size=$(stat -c %s "$f")
-            echo "$f = $size bytes"
-            # A pointer file is ~133 bytes. Anything under 1 MiB is not a model.
-            if [ "$size" -lt 1048576 ]; then
-              echo "::error::$f is an LFS pointer ($size bytes), not the model. The artefact would ship an application whose OCR cannot start."
-              exit 1
-            fi
-          done
-          # After the loop, so it cannot be reached by a loop that found no files
-          # at all -- which is how this check would otherwise pass over a moved
-          # or renamed Assets/Ai directory.
-          bash scripts/ci-receipts.sh record weights
-
-      - name: Setup .NET SDK (pinned by global.json)
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      # -----------------------------------------------------------------------
-      # SIGNING (TD-108, plan item 2.2).
-      #
-      # THE ROW ASKED FOR TWO THINGS AND ONLY ONE OF THEM IS IN ANYONE'S GIFT
-      # HERE: "obtain a code-signing certificate, then add --require-signature".
-      # A certificate is bought from a CA against a verified legal identity; no
-      # commit can produce one. What a commit CAN do is make the day it arrives a
-      # configuration change and not an engineering one, and make the current
-      # unsigned state impossible to mistake for the signed one.
-      #
-      # So the branch below is not "sign if we feel like it". It is one decision,
-      # taken once, driving BOTH halves:
-      #   - a certificate is configured -> sign, AND pass --require-signature, so
-      #     a certificate that is present but broken fails the job instead of
-      #     quietly degrading to an unsigned build. That silent degradation is the
-      #     only outcome that would be worse than today's.
-      #   - no certificate              -> build unsigned, say so in the log, in
-      #     the receipt, in the manifest, and in the NAME OF THE UPLOADED
-      #     ARTEFACT. An unsigned build that is labelled is a known state; an
-      #     unsigned build that looks like a release is TD-108's actual harm.
-      #
-      # TO TURN SIGNING ON: set the repository secret PINE_SIGNING_CERT_BASE64
-      # (base64 of the .pfx), PINE_SIGNING_PASSWORD if it has one, and the
-      # repository variable PINE_TIMESTAMP_URL. Nothing else changes. The
-      # timestamp URL is not optional and not defaulted: packaging/sign.sh
-      # refuses to sign without one, because an untimestamped signature stops
-      # validating the day the certificate expires.
-      # -----------------------------------------------------------------------
-      - name: Build the artefact
-        shell: bash
-        env:
-          PINE_SIGNING_CERT_BASE64: ${{ secrets.PINE_SIGNING_CERT_BASE64 }}
-          PINE_SIGNING_PASSWORD: ${{ secrets.PINE_SIGNING_PASSWORD }}
-          PINE_TIMESTAMP_URL: ${{ vars.PINE_TIMESTAMP_URL }}
-        run: |
-          set -euo pipefail
-
-          if [ -n "${PINE_SIGNING_CERT_BASE64:-}" ]; then
-            # RUNNER_TEMP, not the workspace: the workspace is what gets published, and a .pfx
-            # swept into an artefact would put the project's signing key on a download page.
-            cert="$RUNNER_TEMP/pine-signing.pfx"
-            printf '%s' "$PINE_SIGNING_CERT_BASE64" | base64 -d > "$cert"
-            export PINE_SIGNING_CERT="$cert"
-            PINE_SIGNTOOL="$(bash packaging/find-signtool.sh)"
-            export PINE_SIGNTOOL
-
-            # The `trap` deletes the key even if packaging fails, which is the run where it would
-            # otherwise be left behind.
-            trap 'rm -f "$cert"' EXIT
-
-            bash packaging/package.sh --out artifacts --require-signature
-            bash scripts/ci-receipts.sh record signing:signed
-          else
-            echo "::warning::No PINE_SIGNING_CERT_BASE64 secret is configured, so this artefact is UNSIGNED. Windows SmartScreen will warn on first launch and a user cannot tell this build from one a third party modified. This is audit row TD-108, and it is open."
-            bash packaging/package.sh --out artifacts
-            bash scripts/ci-receipts.sh record signing:unsigned
-          fi
-
-          bash scripts/ci-receipts.sh record artefact
-
-      # -----------------------------------------------------------------------
-      # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
-      #
-      # Every step above can complete without doing its work: a step with an
-      # `if:` that is false is SKIPPED and does not fail its job, and a loop over
-      # an empty list iterates zero times. Both report green. This step states,
-      # independently of those steps, what this job was supposed to produce, and
-      # fails if a receipt is missing. Two statements that a mutation has to edit
-      # in both places is the whole mechanism.
-      #
-      # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
-      # can be skipped, which is the thing being guarded against.
-      # -----------------------------------------------------------------------
-      #
-      # THE SIGNING HALF IS WEAKER THAN THE COVERAGE ONE, AND THE DIFFERENCE IS
-      # WORTH STATING. The receipt says which branch of the step above ran; the
-      # manifest says what packaging/sign.sh managed to do, written from that
-      # script's facts rather than from package.sh's hopes. Demanding that they
-      # agree catches a manifest that claims `"signed": true` after the unsigned
-      # branch ran. But both are downstream of ONE condition -- whether a
-      # certificate is configured -- which the step above uses to choose its
-      # branch and package.sh re-reads from the same environment. So this is not
-      # two independent statements in the way the coverage receipt is: there is
-      # no single edit that makes them disagree without failing the job for
-      # another reason. What it does buy is the artefact's NAME, which is
-      # computed here from the manifest rather than written as a literal.
-      - name: The weights were checked, the artefact was built, and it says truthfully whether it is signed
-        id: artefact
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          manifest="$(ls artifacts/*.release.json)"
-          echo "manifest: $manifest"
-
-          # Deliberately not jq: it is not installed on every runner image, and a missing jq would
-          # turn this gate into a step that fails for a reason unrelated to what it guards.
-          claim="$(grep -o '"signed": [a-z]*' "$manifest" | head -1 | awk '{ print $2 }')"
-
-          case "$claim" in
-            true)  expected="signing:signed"; name="pine-win-x64" ;;
-            false) expected="signing:unsigned"; name="pine-win-x64-UNSIGNED" ;;
-            *)
-              echo "::error::the release manifest does not say whether the artefact is signed."
-              exit 1
-              ;;
-          esac
-
-          echo "manifest claims signed=$claim"
-          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
-
-          bash scripts/ci-receipts.sh verify weights artefact "$expected"
-
-      # The NAME carries the signing state (see the step above). A reviewer who
-      # downloads `pine-win-x64-UNSIGNED.zip` has been told what they have before
-      # they open it; one who downloads `pine-win-x64.zip` and finds a
-      # SmartScreen warning has been misled by this workflow.
-      - name: Upload the artefact and its manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artefact.outputs.artifact_name }}
-          path: |
-            artifacts/*.tar.gz
-            artifacts/*.release.json
-          if-no-files-found: error
-          # ~680 MB per run, measured. Kept short deliberately: this is a build output, and the
-          # 1.1 GiB unpacked size is itself an open row (TD-41 -- four overlapping PaddleOCR model
-          # packages, 383 MB of the total).
-          retention-days: 7
+# concurrency:
+#   group: ci-${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
+#
+# env:
+#   DOTNET_NOLOGO: 'true'
+#   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+#   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+#   # Force the NuGet global-packages folder into the workspace so a single
+#   # actions/cache path works identically on ubuntu, windows and macos runners
+#   # (~/.nuget/packages vs %USERPROFILE%\.nuget\packages would otherwise differ).
+#   NUGET_PACKAGES: ${{ github.workspace }}/.nuget-packages
+#   # Directory.Build.props sets TreatWarningsAsErrors=true. Nothing in this file
+#   # is allowed to weaken that: a warning must remain a build failure.
+#   DOTNET_CONFIGURATION: Release
+#
+# jobs:
+#   # ---------------------------------------------------------------------------
+#   # Desktop / shared surface: every project whose TFM is plain `net10.0` and which
+#   # is not a test project.
+#   #
+#   # THE LIST IS NOT WRITTEN HERE ANY MORE (TD-54, plan item 0.2). It used to be,
+#   # and a comment recorded that it had been "verified TFM-by-TFM against each
+#   # .csproj on 2026-08-26 (11 projects)" -- which was true, and was the problem: a
+#   # twelfth project would have changed nothing in this file and been built by
+#   # nobody, under a green tick. `scripts/ci-projects.sh` derives each leg from
+#   # `Pine.slnx` instead, and `BuildHygieneTests` fails the suite if the legs stop
+#   # covering the solution exactly. See that script's header for why this is not
+#   # simply `dotnet build Pine.slnx` (NETSDK1147: the solution cannot be built in
+#   # one command on any runner that lacks the android and ios workloads).
+#   #
+#   # Built on BOTH ubuntu and windows: the code contains no Windows-only P/Invoke
+#   # and the Windows-only NuGet packages in Pine.Infrastructure
+#   # (OpenCvSharp4.runtime.win, Sdcb.PaddleInference.runtime.win64.mkl) are
+#   # runtime-asset packages that contribute no compile-time reference.
+#   # ---------------------------------------------------------------------------
+#   # IMAGE REQUIREMENT (TD-103): Pine.Tests.Unit registers a headless Skia platform for the whole
+#   # assembly (tests/Pine.Tests.Unit/TestAppInitializer.cs), so the runner image needs the native Skia
+#   # runtime (SkiaSharp.NativeAssets.* arrives via NuGet; on Linux the system libfontconfig1 and
+#   # libfreetype6 must exist). The GitHub-hosted ubuntu-latest / windows-latest images used here
+#   # provide it. A self-hosted or container image must too. See docs/28-CI-CD.md section 7.1.
+#   desktop:
+#     name: Build desktop/shared (net10.0) - ${{ matrix.os }}
+#     runs-on: ${{ matrix.os }}
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         os: [ubuntu-latest, windows-latest]
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#
+#       # A receipt means "this job did this", so the log starts empty. The runners
+#       # here are ephemeral and would give an empty workspace anyway; relying on
+#       # that would be relying on a fact about someone else's infrastructure
+#       # rather than on something this file states.
+#       - name: Discard any stale gate receipts
+#         shell: bash
+#         run: bash scripts/ci-receipts.sh reset
+#
+#       - name: Setup .NET SDK (pinned by global.json)
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           global-json-file: global.json
+#
+#       # There are no packages.lock.json files in this repo, so the cache key is
+#       # hashed over every .csproj plus the shared MSBuild/SDK inputs. That is a
+#       # coarse key (it changes on any csproj edit) but it is never stale.
+#       #
+#       # Directory.Packages.props IS PART OF THE KEY, AND HAS TO BE (TD-42). Since
+#       # central package management moved every version out of the .csproj files,
+#       # a version bump changes no .csproj at all. Without this entry a restore
+#       # would hit a cache populated under the previous versions, and the runner
+#       # would build against packages no file in the repository names.
+#       - name: Cache NuGet packages
+#         uses: actions/cache@v4
+#         with:
+#           path: ${{ github.workspace }}/.nuget-packages
+#           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+#           restore-keys: |
+#             nuget-${{ runner.os }}-
+#
+#       - name: Restore desktop/shared projects
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh desktop)"
+#           while IFS= read -r p
+#           do
+#             echo "::group::restore $p"
+#             dotnet restore "$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       - name: Build desktop/shared projects (Release, warnings are errors)
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh desktop)"
+#           while IFS= read -r p
+#           do
+#             echo "::group::build $p"
+#             dotnet build "$p" --configuration "$DOTNET_CONFIGURATION" --no-restore
+#             bash scripts/ci-receipts.sh record "build:$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       # -----------------------------------------------------------------------
+#       # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+#       #
+#       # Every step above can complete without doing its work: a step with an
+#       # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+#       # an empty list iterates zero times. Both report green. This step states,
+#       # independently of those steps, what this job was supposed to produce, and
+#       # fails if a receipt is missing. Two statements that a mutation has to edit
+#       # in both places is the whole mechanism.
+#       #
+#       # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+#       # can be skipped, which is the thing being guarded against.
+#       # -----------------------------------------------------------------------
+#       - name: Every desktop project was built
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           expected=""
+#           projects="$(bash scripts/ci-projects.sh desktop)"
+#           while IFS= read -r p
+#           do
+#             expected="$expected build:$p"
+#           done <<< "$projects"
+#           bash scripts/ci-receipts.sh verify $expected
+#
+#   # ---------------------------------------------------------------------------
+#   # Platform heads that require a .NET workload. These are NOT skipped: they are
+#   # real gating jobs. Each leg installs exactly the workload its head needs,
+#   # because a bare GitHub runner has no android/ios workload
+#   # installed and `dotnet restore` fails with NETSDK1147 without them.
+#   #   - android: needs the `android` workload plus a JDK (pinned to Temurin 17).
+#   #   - ios:     needs the `ios` workload and can only build on macOS.
+#   #
+#   # There used to be a third leg, `browser-wasm`, building Pine.Ui.Web with the
+#   # `wasm-tools` workload. Iteration 31 deleted the Browser head (Phase 3, item
+#   # 1), so the leg went with it. It was the only leg in this file that compiled a
+#   # head which could never run the product: no AES-GCM on the browser runtime
+#   # means no vault can be opened there, and OpenCV and PaddleInference ship no
+#   # WebAssembly build at all. A green light over that is worse than no light.
+#   # ---------------------------------------------------------------------------
+#   platform-heads:
+#     name: Build ${{ matrix.head }} head - ${{ matrix.os }}
+#     runs-on: ${{ matrix.os }}
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           # No `project:` here any more (TD-54, plan item 0.2). `head` doubles as
+#           # the leg name that `scripts/ci-projects.sh` answers to, so a second
+#           # android or ios project added to Pine.slnx joins this job on its own.
+#           # What still has to be written by hand is a NEW platform: the script
+#           # refuses to classify an unknown TFM suffix rather than guessing a
+#           # runner for it, so adding one fails loudly here instead of quietly
+#           # everywhere.
+#           - head: android
+#             os: ubuntu-latest
+#             workload: android
+#           - head: ios
+#             os: macos-latest
+#             workload: ios
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#
+#       # A receipt means "this job did this", so the log starts empty. The runners
+#       # here are ephemeral and would give an empty workspace anyway; relying on
+#       # that would be relying on a fact about someone else's infrastructure
+#       # rather than on something this file states.
+#       - name: Discard any stale gate receipts
+#         shell: bash
+#         run: bash scripts/ci-receipts.sh reset
+#
+#       - name: Setup .NET SDK (pinned by global.json)
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           global-json-file: global.json
+#
+#       - name: Setup JDK 17 (Android build requirement)
+#         if: matrix.head == 'android'
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: '17'
+#
+#       - name: Cache NuGet packages
+#         uses: actions/cache@v4
+#         with:
+#           path: ${{ github.workspace }}/.nuget-packages
+#           key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+#           restore-keys: |
+#             nuget-${{ runner.os }}-${{ matrix.head }}-
+#             nuget-${{ runner.os }}-
+#
+#       - name: Install ${{ matrix.workload }} workload
+#         run: dotnet workload install ${{ matrix.workload }} --skip-manifest-update
+#
+#       - name: Restore the ${{ matrix.head }} projects
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+#           while IFS= read -r p
+#           do
+#             echo "::group::restore $p"
+#             dotnet restore "$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       - name: Build the ${{ matrix.head }} projects (Release, warnings are errors)
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+#           while IFS= read -r p
+#           do
+#             echo "::group::build $p"
+#             dotnet build "$p" --configuration Release --no-restore
+#             bash scripts/ci-receipts.sh record "build:$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       # -----------------------------------------------------------------------
+#       # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+#       #
+#       # Every step above can complete without doing its work: a step with an
+#       # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+#       # an empty list iterates zero times. Both report green. This step states,
+#       # independently of those steps, what this job was supposed to produce, and
+#       # fails if a receipt is missing. Two statements that a mutation has to edit
+#       # in both places is the whole mechanism.
+#       #
+#       # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+#       # can be skipped, which is the thing being guarded against.
+#       # -----------------------------------------------------------------------
+#       - name: Every ${{ matrix.head }} project was built
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           expected=""
+#           projects="$(bash scripts/ci-projects.sh ${{ matrix.head }})"
+#           while IFS= read -r p
+#           do
+#             expected="$expected build:$p"
+#           done <<< "$projects"
+#           bash scripts/ci-receipts.sh verify $expected
+#
+#   # ---------------------------------------------------------------------------
+#   # Tests. Pine.Tests.Unit and Pine.Tests.Integration are the whole suite
+#   # (854 and 197 respectively as of iteration 27).
+#   #
+#   # There used to be three more test projects here - Accessibility, Performance
+#   # and Mutation - each holding a single empty `UnitTest1.Test1()` from the
+#   # `dotnet new xunit` template. This workflow compiled them and deliberately did
+#   # not run them, on the grounds that running an empty file would be "a green
+#   # light over an empty file". Iteration 27 deleted them (TD-38): a project that
+#   # has to be explicitly excluded from the thing it is named after was carrying a
+#   # promise instead of a test. The three documents that named them -
+#   # 39-Performance, 40-Accessibility and 18-Test-Strategy - say so now, which is
+#   # where an unkept intention belongs.
+#   # ---------------------------------------------------------------------------
+#   test:
+#     name: Test (unit + integration) - ${{ matrix.os }}
+#     runs-on: ${{ matrix.os }}
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         os: [ubuntu-latest, windows-latest]
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#
+#       # A receipt means "this job did this", so the log starts empty. The runners
+#       # here are ephemeral and would give an empty workspace anyway; relying on
+#       # that would be relying on a fact about someone else's infrastructure
+#       # rather than on something this file states.
+#       - name: Discard any stale gate receipts
+#         shell: bash
+#         run: bash scripts/ci-receipts.sh reset
+#
+#       - name: Setup .NET SDK (pinned by global.json)
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           global-json-file: global.json
+#
+#       - name: Cache NuGet packages
+#         uses: actions/cache@v4
+#         with:
+#           path: ${{ github.workspace }}/.nuget-packages
+#           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+#           restore-keys: |
+#             nuget-${{ runner.os }}-
+#
+#       - name: Restore test projects
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh test)"
+#           while IFS= read -r p
+#           do
+#             echo "::group::restore $p"
+#             dotnet restore "$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       - name: Build the test projects
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh test)"
+#           while IFS= read -r p
+#           do
+#             echo "::group::build $p"
+#             dotnet build "$p" --configuration Release --no-restore
+#             bash scripts/ci-receipts.sh record "build:$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       # One step for every test project, rather than one step per NAMED test
+#       # project. The .trx file is named after the project rather than after the
+#       # word "unit" or "integration", so a third suite lands in the artefact with
+#       # a name that says what it is instead of overwriting one of the other two.
+#       - name: Run the test suites
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Captured first, then read line by line -- see HOW EVERY LOOP IN THIS FILE IS
+#           # WRITTEN, in the header. `for p in $(...)` would swallow the failure.
+#           projects="$(bash scripts/ci-projects.sh test)"
+#           while IFS= read -r p
+#           do
+#             suite="$(basename "$p" .csproj)"
+#             echo "::group::test $suite"
+#             dotnet test "$p" \
+#               --configuration Release --no-build \
+#               --logger "trx;LogFileName=$suite-${{ matrix.os }}.trx" \
+#               --results-directory TestResults
+#             bash scripts/ci-receipts.sh record "test:$p"
+#             echo "::endgroup::"
+#           done <<< "$projects"
+#
+#       # -----------------------------------------------------------------------
+#       # DOES THE SIGNING PATH ACTUALLY SIGN? (TD-108, plan item 2.2)
+#       #
+#       # It needs no certificate and no publish: packaging/selftest-signing.sh
+#       # mints a throwaway self-signed certificate, signs copied binaries in a
+#       # fixture that looks like a real artefact (nested directories, .json and
+#       # .txt files beside the code), and falsifies every refusal
+#       # packaging/sign.sh makes -- an unsigned file in the artefact, bytes edited
+#       # after signing, an untrusted root, a stage with no loadable code, a run
+#       # that would sign nothing, a missing timestamp authority -- plus a positive
+#       # control, so a gate that has started saying no to everything is caught too.
+#       #
+#       # IT IS IN THIS JOB, NOT IN `package`, AND THAT PLACEMENT IS THE POINT.
+#       # `package` carries `if: github.event_name != 'pull_request'`, so anything
+#       # living there is invisible on the way IN and only fires after a merge.
+#       # This file's own header says a gate on the way in is worth more than a
+#       # gate after the fact; a pull request that breaks signing must go red in
+#       # review, not on main. `package` depends on this job, so a broken signing
+#       # path stops the artefact being built at all.
+#       #
+#       # WHY IT EXISTS AT ALL: the signing seam sat in this repository for
+#       # twenty-four iterations without ever executing, and when it was finally
+#       # run it did not work -- Git Bash rewrote `/fd` into a path, so signtool
+#       # rejected the very flag it had been given. Nothing would have reported
+#       # that until the first release with a real certificate. Case I keeps that
+#       # exact command form on file and expects it to keep failing.
+#       #
+#       # windows ONLY, and the condition is restated in the verify step below --
+#       # the same arrangement as the coverage floor. signtool.exe and
+#       # New-SelfSignedCertificate are Windows-only; on a runner image that ever
+#       # ships without a Windows SDK this FAILS rather than skips, which is how
+#       # anyone would find out before a release day.
+#       # -----------------------------------------------------------------------
+#       - name: The signing path signs, and refuses what it should (no certificate needed)
+#         if: matrix.os == 'windows-latest'
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           bash packaging/selftest-signing.sh
+#           bash scripts/ci-receipts.sh record signing-selftest
+#
+#       # -----------------------------------------------------------------------
+#       # Coverage floor (Phase 2 item 9). The gate is a script rather than a flag
+#       # because `coverlet.collector` -- the only coverage package this repository
+#       # references -- cannot enforce a threshold. Its own VSTestIntegration.md
+#       # says the VSTest integration does not support "threshold validation", and
+#       # `coverlet.msbuild`, which does support /p:Threshold=, is not referenced.
+#       # So scripts/coverage-gate.sh reads the cobertura report and decides.
+#       #
+#       # ubuntu ONLY, deliberately. The floors were measured on one platform and a
+#       # second platform would either duplicate the same number or, if it differed,
+#       # turn the gate into a source of noise nobody could act on. The suite still
+#       # runs on both; only the measurement is single-platform.
+#       #
+#       # This step used to carry a disclaimer: "nothing triggers this workflow
+#       # (TD-07), so a coverage gate here is a gate nobody passes through". The
+#       # triggers came back in Stage 0 item 0.1 and the disclaimer went with them.
+#       # The gate now runs on every pull request into main. It remains a one-command
+#       # local script as well, so a contributor can answer it before pushing rather
+#       # than after.
+#       - name: Coverage floor
+#         if: matrix.os == 'ubuntu-latest'
+#         shell: bash
+#         run: bash scripts/coverage-gate.sh
+#
+#       # -----------------------------------------------------------------------
+#       # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+#       #
+#       # Every step above can complete without doing its work: a step with an
+#       # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+#       # an empty list iterates zero times. Both report green. This step states,
+#       # independently of those steps, what this job was supposed to produce, and
+#       # fails if a receipt is missing. Two statements that a mutation has to edit
+#       # in both places is the whole mechanism.
+#       #
+#       # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+#       # can be skipped, which is the thing being guarded against.
+#       # -----------------------------------------------------------------------
+#       #
+#       # THE COVERAGE CONDITION IS RESTATED HERE ON PURPOSE. The step above runs on
+#       # ubuntu only; this says, separately, that on ubuntu the gate must have
+#       # produced its receipt. Deleting that step, changing its condition, or
+#       # replacing its `run:` with something that does nothing all break the
+#       # agreement between the two.
+#       - name: Every suite ran, the coverage floor was answered, and the signing path was exercised
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           expected=""
+#           projects="$(bash scripts/ci-projects.sh test)"
+#           while IFS= read -r p
+#           do
+#             # BOTH, and the `build:` half was missing until the guard test found it.
+#             # Building a test project is itself a gate here -- Directory.Build.props
+#             # makes a warning an error -- so a suite that was run without its
+#             # project having been built in this job is a hole of the same shape.
+#             expected="$expected build:$p test:$p"
+#           done <<< "$projects"
+#           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+#             expected="$expected coverage"
+#           fi
+#           # THE SIGNING SELF-TEST'S CONDITION IS RESTATED HERE, for the same reason the coverage
+#           # floor's is: the step above runs on windows only, and this says separately that on
+#           # windows its receipt must exist. Deleting that step, changing its condition, or replacing
+#           # its `run:` with something that does nothing all break the agreement between the two.
+#           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+#             expected="$expected signing-selftest"
+#           fi
+#           bash scripts/ci-receipts.sh verify $expected
+#
+#       - name: Upload test results
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: test-results-${{ matrix.os }}
+#           path: TestResults/*.trx
+#           if-no-files-found: error
+#
+#       - name: Upload coverage report
+#         if: always() && matrix.os == 'ubuntu-latest'
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: coverage-${{ matrix.os }}
+#           path: TestResults/coverage/**/coverage.cobertura.xml
+#           if-no-files-found: ignore
+#
+#   # ---------------------------------------------------------------------------
+#   # Packaging (TD-49). Produces the only shippable artefact Pine has: a
+#   # version-stamped, RID-pinned, checksummed win-x64 archive plus a release
+#   # manifest. It is NOT an installer and it carries no updater; packaging/package.sh
+#   # says so in the manifest it writes, rather than leaving a reader to assume.
+#   #
+#   # `needs: [desktop, test]` is load-bearing: a packaging job that runs on a red
+#   # suite is a mechanism for shipping a known-broken build, which is worse than
+#   # having no mechanism at all.
+#   #
+#   # `lfs: true` IS NOT OPTIONAL HERE, AND ITS ABSENCE WAS A LATENT DEFECT.
+#   # The YOLO model file is LFS-tracked (.gitattributes). It used to be three:
+#   # `PP-OCRv4-det.onnx` and `PP-OCRv4-rec.onnx` were deleted by TD-41 after
+#   # `git log -S` proved no commit on any branch had ever named either of them.
+#   # The OCR's own weights are embedded resources inside the
+#   # Sdcb.PaddleOCR.Models.LocalV5 assembly and are PP-OCRv5, so the v4 pair had
+#   # been superseded before it was ever wired to anything. A
+#   # default actions/checkout fetches a 133-byte POINTER FILE for it. Every other
+#   # job in this workflow still checks out the pointer -- harmless there, because
+#   # nothing they do reads the weights -- but an artefact built from a pointer is an
+#   # application whose OCR fails at first use, shipped, with a green pipeline behind
+#   # it. The publish step is the first thing in this repository that ever needed the
+#   # real bytes.
+#   #
+#   # THIS IS THE ONE JOB HELD BACK FROM PULL REQUESTS (Stage 0 item 0.1). It runs on
+#   # push to `main` and on manual dispatch, not on every pull request. The reason is
+#   # cost against value: it publishes a ~680 MB artefact that no reviewer downloads,
+#   # and every defect it could catch -- a broken build, a red suite -- is already
+#   # caught by `desktop` and `test`, which it depends on and which DO run on every
+#   # pull request. What it uniquely proves is that the artefact still packages, and
+#   # that question is asked on the way into `main`, not on the way into a review.
+#   # ---------------------------------------------------------------------------
+#   package:
+#     name: Package win-x64 artefact
+#     needs: [desktop, test]
+#     if: github.event_name != 'pull_request'
+#     runs-on: windows-latest
+#     steps:
+#       - name: Checkout (with LFS payloads, not pointers)
+#         uses: actions/checkout@v4
+#         with:
+#           lfs: true
+#
+#       # A receipt means "this job did this", so the log starts empty. The runners
+#       # here are ephemeral and would give an empty workspace anyway; relying on
+#       # that would be relying on a fact about someone else's infrastructure
+#       # rather than on something this file states.
+#       - name: Discard any stale gate receipts
+#         shell: bash
+#         run: bash scripts/ci-receipts.sh reset
+#
+#       - name: Verify the model weights are real files and not LFS pointers
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           for f in src/Pine.Infrastructure/Assets/Ai/*.onnx; do
+#             size=$(stat -c %s "$f")
+#             echo "$f = $size bytes"
+#             # A pointer file is ~133 bytes. Anything under 1 MiB is not a model.
+#             if [ "$size" -lt 1048576 ]; then
+#               echo "::error::$f is an LFS pointer ($size bytes), not the model. The artefact would ship an application whose OCR cannot start."
+#               exit 1
+#             fi
+#           done
+#           # After the loop, so it cannot be reached by a loop that found no files
+#           # at all -- which is how this check would otherwise pass over a moved
+#           # or renamed Assets/Ai directory.
+#           bash scripts/ci-receipts.sh record weights
+#
+#       - name: Setup .NET SDK (pinned by global.json)
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           global-json-file: global.json
+#
+#       - name: Cache NuGet packages
+#         uses: actions/cache@v4
+#         with:
+#           path: ${{ github.workspace }}/.nuget-packages
+#           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+#           restore-keys: |
+#             nuget-${{ runner.os }}-
+#
+#       # -----------------------------------------------------------------------
+#       # SIGNING (TD-108, plan item 2.2).
+#       #
+#       # THE ROW ASKED FOR TWO THINGS AND ONLY ONE OF THEM IS IN ANYONE'S GIFT
+#       # HERE: "obtain a code-signing certificate, then add --require-signature".
+#       # A certificate is bought from a CA against a verified legal identity; no
+#       # commit can produce one. What a commit CAN do is make the day it arrives a
+#       # configuration change and not an engineering one, and make the current
+#       # unsigned state impossible to mistake for the signed one.
+#       #
+#       # So the branch below is not "sign if we feel like it". It is one decision,
+#       # taken once, driving BOTH halves:
+#       #   - a certificate is configured -> sign, AND pass --require-signature, so
+#       #     a certificate that is present but broken fails the job instead of
+#       #     quietly degrading to an unsigned build. That silent degradation is the
+#       #     only outcome that would be worse than today's.
+#       #   - no certificate              -> build unsigned, say so in the log, in
+#       #     the receipt, in the manifest, and in the NAME OF THE UPLOADED
+#       #     ARTEFACT. An unsigned build that is labelled is a known state; an
+#       #     unsigned build that looks like a release is TD-108's actual harm.
+#       #
+#       # TO TURN SIGNING ON: set the repository secret PINE_SIGNING_CERT_BASE64
+#       # (base64 of the .pfx), PINE_SIGNING_PASSWORD if it has one, and the
+#       # repository variable PINE_TIMESTAMP_URL. Nothing else changes. The
+#       # timestamp URL is not optional and not defaulted: packaging/sign.sh
+#       # refuses to sign without one, because an untimestamped signature stops
+#       # validating the day the certificate expires.
+#       # -----------------------------------------------------------------------
+#       - name: Build the artefact
+#         shell: bash
+#         env:
+#           PINE_SIGNING_CERT_BASE64: ${{ secrets.PINE_SIGNING_CERT_BASE64 }}
+#           PINE_SIGNING_PASSWORD: ${{ secrets.PINE_SIGNING_PASSWORD }}
+#           PINE_TIMESTAMP_URL: ${{ vars.PINE_TIMESTAMP_URL }}
+#         run: |
+#           set -euo pipefail
+#
+#           if [ -n "${PINE_SIGNING_CERT_BASE64:-}" ]; then
+#             # RUNNER_TEMP, not the workspace: the workspace is what gets published, and a .pfx
+#             # swept into an artefact would put the project's signing key on a download page.
+#             cert="$RUNNER_TEMP/pine-signing.pfx"
+#             printf '%s' "$PINE_SIGNING_CERT_BASE64" | base64 -d > "$cert"
+#             export PINE_SIGNING_CERT="$cert"
+#             PINE_SIGNTOOL="$(bash packaging/find-signtool.sh)"
+#             export PINE_SIGNTOOL
+#
+#             # The `trap` deletes the key even if packaging fails, which is the run where it would
+#             # otherwise be left behind.
+#             trap 'rm -f "$cert"' EXIT
+#
+#             bash packaging/package.sh --out artifacts --require-signature
+#             bash scripts/ci-receipts.sh record signing:signed
+#           else
+#             echo "::warning::No PINE_SIGNING_CERT_BASE64 secret is configured, so this artefact is UNSIGNED. Windows SmartScreen will warn on first launch and a user cannot tell this build from one a third party modified. This is audit row TD-108, and it is open."
+#             bash packaging/package.sh --out artifacts
+#             bash scripts/ci-receipts.sh record signing:unsigned
+#           fi
+#
+#           bash scripts/ci-receipts.sh record artefact
+#
+#       # -----------------------------------------------------------------------
+#       # DID THE GATES ABOVE ACTUALLY RUN? (plan item 0.3)
+#       #
+#       # Every step above can complete without doing its work: a step with an
+#       # `if:` that is false is SKIPPED and does not fail its job, and a loop over
+#       # an empty list iterates zero times. Both report green. This step states,
+#       # independently of those steps, what this job was supposed to produce, and
+#       # fails if a receipt is missing. Two statements that a mutation has to edit
+#       # in both places is the whole mechanism.
+#       #
+#       # IT CARRIES NO `if:`, EVER. A verify step with a condition is a gate that
+#       # can be skipped, which is the thing being guarded against.
+#       # -----------------------------------------------------------------------
+#       #
+#       # THE SIGNING HALF IS WEAKER THAN THE COVERAGE ONE, AND THE DIFFERENCE IS
+#       # WORTH STATING. The receipt says which branch of the step above ran; the
+#       # manifest says what packaging/sign.sh managed to do, written from that
+#       # script's facts rather than from package.sh's hopes. Demanding that they
+#       # agree catches a manifest that claims `"signed": true` after the unsigned
+#       # branch ran. But both are downstream of ONE condition -- whether a
+#       # certificate is configured -- which the step above uses to choose its
+#       # branch and package.sh re-reads from the same environment. So this is not
+#       # two independent statements in the way the coverage receipt is: there is
+#       # no single edit that makes them disagree without failing the job for
+#       # another reason. What it does buy is the artefact's NAME, which is
+#       # computed here from the manifest rather than written as a literal.
+#       - name: The weights were checked, the artefact was built, and it says truthfully whether it is signed
+#         id: artefact
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#
+#           manifest="$(ls artifacts/*.release.json)"
+#           echo "manifest: $manifest"
+#
+#           # Deliberately not jq: it is not installed on every runner image, and a missing jq would
+#           # turn this gate into a step that fails for a reason unrelated to what it guards.
+#           claim="$(grep -o '"signed": [a-z]*' "$manifest" | head -1 | awk '{ print $2 }')"
+#
+#           case "$claim" in
+#             true)  expected="signing:signed"; name="pine-win-x64" ;;
+#             false) expected="signing:unsigned"; name="pine-win-x64-UNSIGNED" ;;
+#             *)
+#               echo "::error::the release manifest does not say whether the artefact is signed."
+#               exit 1
+#               ;;
+#           esac
+#
+#           echo "manifest claims signed=$claim"
+#           echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+#
+#           bash scripts/ci-receipts.sh verify weights artefact "$expected"
+#
+#       # The NAME carries the signing state (see the step above). A reviewer who
+#       # downloads `pine-win-x64-UNSIGNED.zip` has been told what they have before
+#       # they open it; one who downloads `pine-win-x64.zip` and finds a
+#       # SmartScreen warning has been misled by this workflow.
+#       - name: Upload the artefact and its manifest
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: ${{ steps.artefact.outputs.artifact_name }}
+#           path: |
+#             artifacts/*.tar.gz
+#             artifacts/*.release.json
+#           if-no-files-found: error
+#           # ~680 MB per run, measured. Kept short deliberately: this is a build output, and the
+#           # 1.1 GiB unpacked size is itself an open row (TD-41 -- four overlapping PaddleOCR model
+#           # packages, 383 MB of the total).
+#           retention-days: 7
