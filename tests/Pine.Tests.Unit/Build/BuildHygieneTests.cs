@@ -218,8 +218,22 @@ public partial class BuildHygieneTests
             + "recorded, with four of them referenced at once");
     }
 
+    private static readonly string[] ScriptDirectories = ["scripts", "packaging"];
+
+    // Files under src/**/Assets that may exist unnamed. Each entry is a decision with a reason.
+    //  - PineLogo.svg: the vector source of PineLogo.png (which SetupView names). Not loaded by any
+    //    code, but kept as the editable master of the logo; it is a few KB. Remove it, or load it,
+    //    and delete this entry (TD-131).
+    private static readonly HashSet<string> UnreferencedAssetAllowList =
+        new(StringComparer.Ordinal) { "PineLogo.svg" };
+
+    // A file name must appear in code or markup. Project files, .md and .json are excluded: a csproj
+    // comment or a doc mentioning a dead asset (the Assets/Ai csproj does) must not make it look used.
+    private static readonly HashSet<string> SourceExtensionsThatCanNameAnAsset =
+        new(StringComparer.OrdinalIgnoreCase) { ".cs", ".axaml", ".xaml" };
+
     /// <summary>
-    /// TD-41. Every file shipped from <c>Assets/Ai</c> must be named by production code.
+    /// TD-41, TD-131. Every file shipped from any <c>Assets</c> folder under <c>src/</c> must be named by production code.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -243,23 +257,39 @@ public partial class BuildHygieneTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void ShippedModelAssetsAreNamedByProductionCode()
+    public void ShippedAssetsAreNamedByProductionCode()
     {
-        var assetDirectory = Path.Combine(RepositoryRoot(), "src", "Pine.Infrastructure", "Assets", "Ai");
+        // TD-131: the rule covers EVERY `Assets` folder under src/, not only Assets/Ai. A folder added
+        // later is picked up automatically; none has to be remembered.
+        var srcRoot = Path.Combine(RepositoryRoot(), "src");
+        var sep = Path.DirectorySeparatorChar;
 
-        Directory.Exists(assetDirectory).Should().BeTrue("the OCR ships a model from this folder");
+        var assetDirectories = Directory
+            .GetDirectories(srcRoot, "Assets", SearchOption.AllDirectories)
+            .Where(dir => !dir.Contains($"{sep}obj{sep}", StringComparison.Ordinal))
+            .Where(dir => !dir.Contains($"{sep}bin{sep}", StringComparison.Ordinal))
+            .ToArray();
 
-        var assets = Directory
-            .GetFiles(assetDirectory, "*", SearchOption.AllDirectories)
+        assetDirectories.Should().Contain(
+            dir => dir.EndsWith($"{sep}Assets{sep}Ai", StringComparison.Ordinal)
+                || dir.EndsWith($"{sep}Pine.Infrastructure{sep}Assets", StringComparison.Ordinal),
+            "the OCR ships a model from Pine.Infrastructure/Assets/Ai; not finding it means the scan is broken");
+
+        var assets = assetDirectories
+            .SelectMany(dir => Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+            .Where(path => !path.Contains($"{sep}obj{sep}", StringComparison.Ordinal))
+            .Where(path => !path.Contains($"{sep}bin{sep}", StringComparison.Ordinal))
             .Select(Path.GetFileName)
             .Where(name => name is not null)
             .Select(name => name!)
+            .Where(name => !UnreferencedAssetAllowList.Contains(name))
             .ToArray();
 
         assets.Should().NotBeEmpty("finding no assets means the scan is broken, not that none ship");
 
         var sources = Directory
-            .GetFiles(Path.Combine(RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
+            .GetFiles(Path.Combine(RepositoryRoot(), "src"), "*", SearchOption.AllDirectories)
+            .Where(path => SourceExtensionsThatCanNameAnAsset.Contains(Path.GetExtension(path)))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Select(File.ReadAllText)
@@ -277,6 +307,47 @@ public partial class BuildHygieneTests
             + "every build output and every artefact. Three such files shipped for months, totalling "
             + "203 MB, superseded by the model weights embedded in the PaddleOCR package before they "
             + "were ever wired");
+    }
+
+    /// <summary>
+    /// TD-130. Every shell script the repository owns runs with <c>-u</c> and <c>pipefail</c>, and
+    /// with <c>-e</c> unless it has deliberately chosen explicit exit-code capture.
+    /// </summary>
+    /// <remarks>
+    /// A broken pipeline and a true negative look identical to a reader, and §12.58 of the audit
+    /// recorded a false "no blob over 500 KB" from exactly that. <c>selftest-signing.sh</c> is the one
+    /// script that omits <c>-e</c> on purpose (it runs cases and records each exit code itself).
+    /// </remarks>
+    [Fact]
+    public void EveryShellScriptFailsLoudlyOnAMaskedPipeline()
+    {
+        var root = RepositoryRoot();
+        var scripts = ScriptDirectories
+            .Select(dir => Path.Combine(root, dir))
+            .Where(Directory.Exists)
+            .SelectMany(dir => Directory.GetFiles(dir, "*.sh"))
+            .ToArray();
+
+        scripts.Should().NotBeEmpty("finding no scripts means the scan is broken, not that none exist");
+
+        var explicitCapture = new HashSet<string>(StringComparer.Ordinal) { "selftest-signing.sh" };
+
+        foreach (var script in scripts)
+        {
+            var name = Path.GetFileName(script);
+            var setLine = File.ReadAllLines(script)
+                .FirstOrDefault(line => Regex.IsMatch(line, @"^set\s+-[a-z]+\b", RegexOptions.None, TimeSpan.FromSeconds(5)));
+
+            setLine.Should().NotBeNull($"{name} must declare its shell options");
+            setLine.Should().Contain("pipefail", $"{name}: a failure inside a pipeline must not be masked");
+            setLine.Should().Contain("u", $"{name}: an unset variable must not expand to nothing");
+
+            if (!explicitCapture.Contains(name))
+            {
+                Regex.IsMatch(setLine!, @"^set\s+-[a-z]*e", RegexOptions.None, TimeSpan.FromSeconds(5))
+                    .Should().BeTrue($"{name} must stop at the first failing command");
+            }
+        }
     }
 
     /// <summary>

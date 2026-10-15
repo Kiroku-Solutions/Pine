@@ -4,10 +4,10 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-28-CI-CD`                                                                 |
 | Status           | Aspirational — the pipeline described is not the pipeline that exists                |
-| Reconciled       | 2026-09-12 · One workflow exists; it builds, tests, and **signs the Windows artefact when a certificate is configured** — see §9.2 for what is built and what §9 still promises that is not. There is no SBOM, no provenance and no reproducibility check. The trigger gap is closed: as of 2026-09-10 the workflow runs on `pull_request` into `main` and on `push` to `main` (`dotnet-ci.yml`:31-36, TD-07). |
+| Reconciled       | 2026-10-12 · §7.1 now states the headless-Skia requirement of the unit suite (TD-103). Earlier: 2026-09-12 · One workflow exists; it builds, tests, and **signs the Windows artefact when a certificate is configured** — see §9.2 for what is built and what §9 still promises that is not. There is no SBOM, no provenance and no reproducibility check. The trigger gap is closed: as of 2026-09-10 the workflow runs on `pull_request` into `main` and on `push` to `main` (`dotnet-ci.yml`:31-36, TD-07). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
-| Last Updated     | 2026-07-08                                                                           |
+| Last Updated     | 2026-10-12                                                                           |
 | Specification Standard | Internal (CI/CD pipeline)                                                     |
 | Glossary         | `PINE-DOC-03-GLOSSARY`                                                               |
 | Prerequisites    | `00-Vision`..`27-Development-Guidelines`                                            |
@@ -102,6 +102,18 @@ graph LR
 
 - `Pine.Tests.Unit` covers `Pine.Core`, `Pine.Application`.
 - Tests run in a no-network sandbox.
+- **CI image requirement: headless Skia (TD-103).** `Pine.Tests.Unit` is not
+  platform-free: a `[ModuleInitializer]` (`TestAppInitializer`) registers
+  Avalonia's headless Skia platform for the whole assembly so view models that
+  decode a bitmap (the receipt-scan view model) can be tested. Any image that
+  runs the unit suite must therefore provide the native Skia runtime (the
+  `SkiaSharp.NativeAssets.*` package for the OS, plus the system libraries
+  Skia loads on Linux — `libfontconfig1` and `libfreetype6`). This is an
+  accepted, stated requirement and not a defect: headless Skia is the standard
+  way to test UI and bitmap code in a pipeline, and the decode seam is
+  deliberately not redesigned to avoid it. The `ubuntu-latest` and
+  `windows-latest` GitHub-hosted runners the workflow uses satisfy it; a
+  self-hosted or container image must be checked against it.
 - Coverage threshold: ≥ 80% lines and ≥ 75% branches *on the core
   package*. The threshold is enforced for new code only.
 

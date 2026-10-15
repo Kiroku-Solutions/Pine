@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- TD-129: no lock file; the workload this head needs is absent on a bare runner (NETSDK1147). -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-ios</TargetFramework>
     <SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>

@@ -9,6 +9,48 @@
   </PropertyGroup>
 
   <!--
+    REPRODUCIBLE RESTORE (TD-129).
+
+    Central package management pins every version this repository NAMES; transitive versions still
+    floated, so two restores of one commit on two days could produce different assemblies and
+    nothing showed it. Each restorable project now carries a committed packages.lock.json that
+    records the whole resolved graph, with content hashes.
+
+    RestoreLockedMode is on when CI=true (GitHub Actions sets it) and can be forced with
+    -p:RestoreLockedMode=true: a restore whose resolved graph differs from the lock file FAILS
+    (NU1004) instead of quietly resolving something else, and a package whose content differs from the recorded hash fails too (NU1403). Locally it stays off, so adding or
+    bumping a package regenerates the lock file; commit the result. To regenerate deliberately:
+    dotnet restore <project> with the force-evaluate switch
+
+    SCOPE. The net10.0-android and net10.0-ios heads opt out in their own .csproj: they cannot be
+    restored without their workloads (NETSDK1147), so no lock file for them can be produced or
+    verified on a machine that lacks one. They are the only projects outside the lock; a test
+    (BuildHygieneTests) fails when any other project lacks a lock file or opts out.
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <!--
+    NUGET AUDIT (TD-55).
+
+    TreatWarningsAsErrors promotes the NU1901-NU1904 vulnerability warnings to errors, so a newly
+    published advisory against an UNCHANGED dependency would turn the build red with no code change.
+    The audit stays on, and stays visible as warnings, but those four IDs are exempted from
+    promotion: advisories are triaged on their own schedule rather than breaking every build. The
+    audit is a best-effort network lookup; when the advisory source is unreachable (offline builds)
+    NuGet reports NU1900, which is a warning, and is likewise not promoted.
+    NuGetAuditMode=all audits transitive packages too; NuGetAuditLevel=low reports every severity.
+  -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!--
     VERSION IDENTITY (TD-49).
 
     WHAT WAS WRONG. Nothing anywhere set a version, so MSBuild used its default and every build Pine

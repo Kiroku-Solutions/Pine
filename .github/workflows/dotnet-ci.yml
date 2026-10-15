@@ -81,6 +81,11 @@ jobs:
   # (OpenCvSharp4.runtime.win, Sdcb.PaddleInference.runtime.win64.mkl) are
   # runtime-asset packages that contribute no compile-time reference.
   # ---------------------------------------------------------------------------
+  # IMAGE REQUIREMENT (TD-103): Pine.Tests.Unit registers a headless Skia platform for the whole
+  # assembly (tests/Pine.Tests.Unit/TestAppInitializer.cs), so the runner image needs the native Skia
+  # runtime (SkiaSharp.NativeAssets.* arrives via NuGet; on Linux the system libfontconfig1 and
+  # libfreetype6 must exist). The GitHub-hosted ubuntu-latest / windows-latest images used here
+  # provide it. A self-hosted or container image must too. See docs/28-CI-CD.md section 7.1.
   desktop:
     name: Build desktop/shared (net10.0) - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -118,7 +123,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -239,7 +244,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ matrix.head }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-${{ matrix.head }}-
             nuget-${{ runner.os }}-
@@ -343,7 +348,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -603,7 +608,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.nuget-packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', 'Directory.Build.props', 'Directory.Packages.props', 'global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 

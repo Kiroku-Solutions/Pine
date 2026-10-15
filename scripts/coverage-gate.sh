@@ -96,6 +96,28 @@ FLOOR_PINE_INFRASTRUCTURE=82
 FLOOR_PINE_APPLICATION=61
 FLOOR_PINE_UI_AVALONIA=45
 
+# ---------------------------------------------------------------------------
+# BRANCH FLOORS (TD-135). Same rules as above: measured, rounded DOWN, never above, ratcheted.
+# A line executed once with its `if` never taken counts as a covered line; branch coverage is the
+# signal that notices. Measured 2026-10-11 against 1 962 unit tests (1 957 passing; the 5 failures
+# are unrelated build-hygiene tests), cobertura `branch-rate`:
+#
+#   assembly              measured   floor
+#   overall                 69.20%     68
+#   Pine.Core               88.17%     87
+#   Pine.Infrastructure     65.80%     65
+#   Pine.Application        79.24%     78
+#   Pine.Ui.Avalonia        61.56%     61
+#
+# Margins are 0.5 or more: a floor within a few tenths of the measured figure would flip
+# on a single branch. Do not lower these; add tests.
+# ---------------------------------------------------------------------------
+BRANCH_FLOOR_OVERALL=68
+BRANCH_FLOOR_PINE_CORE=87
+BRANCH_FLOOR_PINE_INFRASTRUCTURE=65
+BRANCH_FLOOR_PINE_APPLICATION=78
+BRANCH_FLOOR_PINE_UI_AVALONIA=61
+
 RUN_TESTS=1
 REPORT=""
 
@@ -135,15 +157,18 @@ echo "==> Report: $REPORT"
 # carrying a line-rate as a 0..1 fraction. `head -1` on the package grep would silently read the
 # wrong assembly, so each lookup is anchored on the package name.
 rate_of() {
-  # $1 = package name, or the empty string for the root element
-  local line
+  # $1 = package name, or the empty string for the root element; $2 = attribute (line-rate|branch-rate)
+  # Every grep that may legitimately find nothing is tolerated explicitly and answered by the empty
+  # check in the caller, so a miss is reported by name instead of killing the script silently
+  # under `set -e` (TD-130).
+  local line="" attr="${2:-line-rate}"
   if [[ -z "$1" ]]; then
-    line="$(grep -m1 -o '<coverage[^>]*' "$REPORT")"
+    line="$(grep -m1 -o '<coverage[^>]*' "$REPORT" || true)"
   else
     line="$(grep -m1 -o "<package name=\"$1\"[^>]*" "$REPORT" || true)"
   fi
   [[ -z "$line" ]] && { echo ""; return; }
-  echo "$line" | grep -o 'line-rate="[0-9.]*"' | head -1 | sed 's/line-rate="//; s/"//'
+  echo "$line" | { grep -o "${attr}=\"[0-9.]*\"" || true; } | head -1 | sed "s/${attr}=\"//; s/\"//"
 }
 
 # Fractions are compared as integer percentages, floor()ed, so a floor of 61 means "61% or better".
@@ -154,10 +179,11 @@ as_percent() {
 FAILURES=0
 
 check() {
-  local label="$1" package="$2" floor="$3"
+  local label="$1" package="$2" floor="$3" attr="${4:-line-rate}" kind="line"
   local rate percent
+  [[ "$attr" == "branch-rate" ]] && kind="branch"
 
-  rate="$(rate_of "$package")"
+  rate="$(rate_of "$package" "$attr")"
   if [[ -z "$rate" ]]; then
     echo "::error::$label is not present in the coverage report. A renamed or removed assembly must" \
          "be a deliberate edit to this script, not a silently skipped check."
@@ -169,12 +195,21 @@ check() {
 
   if [[ "$percent" -lt "$floor" ]]; then
     printf '  %-24s %3d%%  FLOOR %3d%%   FAILED\n' "$label" "$percent" "$floor"
-    echo "::error::$label line coverage is ${percent}%, below its floor of ${floor}%."
+    echo "::error::$label $kind coverage is ${percent}%, below its floor of ${floor}%."
     FAILURES=$((FAILURES + 1))
   else
     printf '  %-24s %3d%%  floor %3d%%   ok\n' "$label" "$percent" "$floor"
   fi
 }
+
+# A zero is distinguishable from a silence (TD-130): say how many assemblies were examined, and
+# refuse to proceed on an empty report.
+PACKAGES_EXAMINED="$(grep -c '<package name=' "$REPORT" || true)"
+echo "==> Assemblies examined in the report: ${PACKAGES_EXAMINED}"
+if [[ "${PACKAGES_EXAMINED:-0}" -lt 1 ]]; then
+  echo "::error::The coverage report contains no <package> elements; refusing to treat that as a pass." >&2
+  exit 1
+fi
 
 echo
 echo "================ LINE COVERAGE (unit suite only) ================"
@@ -183,6 +218,14 @@ check "Pine.Core"           "Pine.Core"           "$FLOOR_PINE_CORE"
 check "Pine.Infrastructure" "Pine.Infrastructure" "$FLOOR_PINE_INFRASTRUCTURE"
 check "Pine.Application"    "Pine.Application"    "$FLOOR_PINE_APPLICATION"
 check "Pine.Ui.Avalonia"    "Pine.Ui.Avalonia"    "$FLOOR_PINE_UI_AVALONIA"
+echo "================================================================="
+echo
+echo "=============== BRANCH COVERAGE (unit suite only) ==============="
+check "overall"             ""                    "$BRANCH_FLOOR_OVERALL"             "branch-rate"
+check "Pine.Core"           "Pine.Core"           "$BRANCH_FLOOR_PINE_CORE"           "branch-rate"
+check "Pine.Infrastructure" "Pine.Infrastructure" "$BRANCH_FLOOR_PINE_INFRASTRUCTURE" "branch-rate"
+check "Pine.Application"    "Pine.Application"    "$BRANCH_FLOOR_PINE_APPLICATION"    "branch-rate"
+check "Pine.Ui.Avalonia"    "Pine.Ui.Avalonia"    "$BRANCH_FLOOR_PINE_UI_AVALONIA"    "branch-rate"
 echo "================================================================="
 echo
 
