@@ -1,15 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ExcelDataReader;
+using Pine.Core.Accounts;
+using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
 
 namespace Pine.Infrastructure.Importing;
 
-public sealed class ExcelImporter : IImporter
+public sealed class ExcelImporter : IImporter, IImportHeaderReader
 {
     private readonly TimeProvider _timeProvider;
 
@@ -22,21 +26,41 @@ public sealed class ExcelImporter : IImporter
 
     /// <remarks>
     /// <para>
-    /// This importer parses NO rows today: it opens the workbook, walks it, and returns an empty list.
-    /// It therefore assigns no import keys, and nothing here has been verified against a real export.
+    /// This is the spreadsheet counterpart of <see cref="CsvImporter"/> and deliberately mirrors it
+    /// field for field: the same <see cref="ImportProfile.ColumnMappings"/> keys, the same defaults for
+    /// a missing cell, the same "skip an empty row" rule, and the same import key derivation. A bank
+    /// statement exported as .csv and as .xlsx should produce the same transactions, so the two
+    /// importers must not disagree about what a row means.
     /// </para>
     /// <para>
-    /// Whoever makes it produce transactions MUST call
-    /// <see cref="Transaction.AssignImportKey"/> on each one before returning it —
-    /// <c>ImportKeyFactory.FromReference</c> if the workbook carries a stable identifier of its own (an
-    /// OFX-style FITID column does appear in some bank Excel exports), otherwise
-    /// <c>ImportKeyFactory.Derive</c> with the row's position in the FILE, not its position in the
-    /// returned list.
+    /// WHAT IS DIFFERENT FROM CSV, AND WHY. A CSV cell is always text; a spreadsheet cell is typed, so a
+    /// date arrives as a <see cref="DateTime"/> and an amount as a <see cref="double"/> — the string
+    /// parse that CSV relies on would fail on both and quietly hand back the defaults. Every field below
+    /// therefore checks the typed case FIRST and falls back to the string parse only when the cell was
+    /// stored as text, which is what a bank export that writes its dates as strings produces.
     /// </para>
     /// <para>
-    /// If a row ever escapes without a key, it is not silently trusted: the import handler saves it and
-    /// reports it as <c>ImportedWithoutKeyCheck</c>, so the user sees an unchecked row rather than an
-    /// assumed-unique one.
+    /// COLUMN MAPPINGS RESOLVE TWO WAYS. <see cref="ImportProfile.ColumnMappings"/> is documented as
+    /// holding "header names or indices". With <see cref="ImportProfile.HasHeaderRecord"/> set, a
+    /// mapping is matched against the text of the first row (trimmed, case-insensitively); when that
+    /// fails, or when the sheet has no header row at all, the mapping is read as a zero-based column
+    /// index. A mapping that resolves to neither simply contributes nothing, exactly as an unmatched
+    /// CSV header does.
+    /// </para>
+    /// <para>
+    /// A BAD ROW IS NOT AN EXCEPTION. <see cref="CsvImporter"/> throws nothing on an unparseable cell:
+    /// it falls back to the field's default (the current instant for a date, <c>0</c> for an amount)
+    /// and drops the row only when it carries neither an amount nor a payee. This importer does the
+    /// same, because a single malformed row in a thousand-row statement must not abort the import of
+    /// the other nine hundred and ninety-nine.
+    /// </para>
+    /// <para>
+    /// The key is assigned before the transaction leaves the importer, for the reason
+    /// <see cref="ImportKeyFactory"/> sets out: <c>FromReference</c> when the workbook carries a stable
+    /// identifier of its own (an OFX-style FITID column does appear in some bank Excel exports),
+    /// otherwise <c>Derive</c> with the row's position in the FILE, not its position in the returned
+    /// list. A row that escaped without a key would be saved and reported as
+    /// <c>ImportedWithoutKeyCheck</c> — an unchecked row rather than an assumed-unique one.
     /// </para>
     /// </remarks>
     public Task<IReadOnlyList<Transaction>> ImportAsync(Pine.Core.Accounts.Account targetAccount, Stream fileStream, ImportProfile profile, CancellationToken cancellationToken = default)
@@ -46,20 +70,383 @@ public sealed class ExcelImporter : IImporter
         using var reader = ExcelReaderFactory.CreateReader(fileStream);
         var result = reader.AsDataSet();
 
-        if (result.Tables.Count > 0)
+        if (result.Tables.Count == 0)
         {
-            var table = result.Tables[0];
-            // Iterate rows starting from index 1 (skipping header)
-            for (int i = 1; i < table.Rows.Count; i++)
+            return Task.FromResult((IReadOnlyList<Transaction>)transactions);
+        }
+
+        var table = result.Tables[0];
+
+        // The header row is data like any other to ExcelDataReader — AsDataSet names the columns
+        // Column1, Column2, ... and yields row 0 as content — so the profile, not the reader, decides
+        // whether the first row is a header.
+        var firstDataRow = profile.HasHeaderRecord ? 1 : 0;
+        var headers = profile.HasHeaderRecord && table.Rows.Count > 0
+            ? BuildHeaderIndex(table.Rows[0])
+            : null;
+
+        // Required mapping keys
+        int dateCol = ResolveColumn(profile, "Date", headers, table.Columns.Count);
+        int payeeCol = ResolveColumn(profile, "Payee", headers, table.Columns.Count);
+        int amountCol = ResolveColumn(profile, "Amount", headers, table.Columns.Count);
+        int categoryCol = ResolveColumn(profile, "Category", headers, table.Columns.Count);
+        int notesCol = ResolveColumn(profile, "Notes", headers, table.Columns.Count);
+
+        // Optional. A source that carries its own stable identifier (an OFX FITID, a bank's transaction
+        // reference) can expose it through this mapping and get a key that survives a re-export in a
+        // different row order, which a derived key cannot. It is a plain extra entry in the existing
+        // free-form ColumnMappings dictionary, so profiles that do not set it are unaffected and no
+        // schema change or migration is involved.
+        int referenceCol = ResolveColumn(profile, "Reference", headers, table.Columns.Count);
+
+        // TD-66, same fix as CsvImporter and for the same reason: the source identifier is the
+        // profile's id, not its display name. See CsvImporter.ImportAsync's remark for the full
+        // reasoning — it applies here field for field, as the type's own remarks already promise.
+        var source = profile.Id.ToString("D", CultureInfo.InvariantCulture);
+
+        for (int i = firstDataRow; i < table.Rows.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var row = table.Rows[i];
+
+            // Counts the row's position in the FILE among the rows an importer is asked to read,
+            // incremented for every row considered, including the ones rejected below. Deliberately not
+            // the index into `transactions`: an output index shifts whenever a row ahead of it is
+            // rejected, so a parser change (or a blank row read differently) would renumber every later
+            // row and their keys would stop matching the ones already stored. It is measured from the
+            // first DATA row so that the same statement exported as CSV and as XLSX — where CsvHelper
+            // has already consumed the header — numbers its rows identically.
+            var rowIndex = i - firstDataRow;
+
+            // Set by every mapped cell that holds something. It exists because CSV and Excel disagree
+            // about what a blank row looks like: CsvHelper hands back empty STRINGS, which fail the
+            // "no amount and no payee" test below, whereas a blank spreadsheet cell is DBNull, which
+            // never reaches the payee variable and leaves it at its "Unknown" default. Without this
+            // flag the trailing blank rows every bank export carries would import as "Unknown"
+            // transactions of zero — new junk that the CSV path does not produce.
+            var rowHasValue = false;
+
+            // Date
+            DateTimeOffset date = _timeProvider.GetUtcNow();
+            if (TryGetCell(row, dateCol, out var dateObj))
             {
-                var row = table.Rows[i];
-                // Placeholder: Extract columns based on ImportProfile mapping
-                // e.g. var date = row[0]; var amount = row[1];
-                
-                cancellationToken.ThrowIfCancellationRequested();
+                rowHasValue |= !IsBlank(dateObj);
+
+                if (dateObj is DateTime dateValue)
+                {
+                    // The offset convention matches the CSV path: a DateTimeOffset built from a
+                    // zone-less DateTime takes the local offset, exactly as TryParseExact with
+                    // DateTimeStyles.None does for "2026-01-15". Only the calendar date reaches the
+                    // import key, so the two paths agree on what the row identifies.
+                    date = new DateTimeOffset(dateValue);
+                }
+                else if (dateObj is string dateStr)
+                {
+                    if (DateTimeOffset.TryParseExact(dateStr, profile.DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
+                    {
+                        date = parsedDate;
+                    }
+                }
             }
+
+            // Payee
+            string payee = "Unknown";
+            if (TryGetCell(row, payeeCol, out var payeeObj))
+            {
+                rowHasValue |= !IsBlank(payeeObj);
+                payee = CellToText(payeeObj).Trim();
+            }
+
+            // Amount
+            decimal rawAmount = 0m;
+            if (TryGetCell(row, amountCol, out var amountObj))
+            {
+                rowHasValue |= !IsBlank(amountObj);
+                if (TryCellToDecimal(amountObj, out var parsedAmount))
+                {
+                    rawAmount = parsedAmount;
+                }
+            }
+
+            if (profile.InvertAmounts)
+            {
+                rawAmount = -rawAmount;
+            }
+
+            // Category
+            string category = "";
+            if (TryGetCell(row, categoryCol, out var catObj))
+            {
+                rowHasValue |= !IsBlank(catObj);
+                category = CellToText(catObj).Trim();
+            }
+
+            // Notes
+            string notes = "";
+            if (TryGetCell(row, notesCol, out var notesObj))
+            {
+                rowHasValue |= !IsBlank(notesObj);
+                notes = CellToText(notesObj).Trim();
+            }
+
+            // Reference (optional)
+            string reference = "";
+            if (TryGetCell(row, referenceCol, out var referenceObj))
+            {
+                rowHasValue |= !IsBlank(referenceObj);
+                reference = CellToText(referenceObj).Trim();
+            }
+
+            // Validate that we have the bare minimum
+            if (!rowHasValue || (rawAmount == 0 && string.IsNullOrEmpty(payee)))
+            {
+                continue; // Skip invalid or empty row
+            }
+
+            var currency = targetAccount.Balance.Currency;
+            var amount = new Money(rawAmount, currency);
+
+            var type = amount.Amount >= 0 ? Pine.Core.Transactions.TransactionType.Income : Pine.Core.Transactions.TransactionType.Expense;
+            var transaction = Transaction.Create(targetAccount.Id, date, payee, amount, type, _timeProvider, notes);
+
+            // Optional: Set category. For now, since Transaction domain entity doesn't have a mutable category,
+            // we'd either add a single split or handle it in the application layer.
+            if (!string.IsNullOrEmpty(category))
+            {
+                transaction.AddSplit(amount, category, notes);
+            }
+
+            // Assigned before the transaction leaves the importer, because only the importer knows the
+            // row's file position and whether the source supplied a reference of its own. The key
+            // describes the transaction as CREATED — the inverted amount, the parsed date and payee —
+            // so re-parsing the same row under the same profile reproduces it exactly.
+            // TD-102: a file imported before the h2 scheme carries scale-sensitive h1 keys. The row's
+            // h1 key is remembered (probed, never stored) so such a file is still recognised.
+            transaction.AssignImportKey(
+                reference.Length > 0
+                    ? ImportKeyFactory.FromReference(source, reference)
+                    : ImportKeyFactory.Derive(date, amount.Amount, currency.Value, payee, source, rowIndex),
+                reference.Length > 0
+                    ? null
+                    : ImportKeyFactory.DeriveLegacyV1(date, amount.Amount, currency.Value, payee, source, rowIndex));
+
+            transactions.Add(transaction);
         }
 
         return Task.FromResult((IReadOnlyList<Transaction>)transactions);
+    }
+
+    /// <summary>
+    /// Maps the text of each header cell to its column index.
+    /// </summary>
+    /// <remarks>
+    /// Matching is ordinal case-insensitive on the trimmed text, because a header is a human label and
+    /// an export that capitalises "AMOUNT" one quarter and "Amount" the next must not silently stop
+    /// mapping. The FIRST occurrence of a duplicated header wins, which is the same column CsvHelper
+    /// would hand back for that name.
+    /// </remarks>
+    private static Dictionary<string, int> BuildHeaderIndex(DataRow headerRow)
+    {
+        var headers = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var texts = ReadHeaderRowTexts(headerRow);
+
+        for (int column = 0; column < texts.Count; column++)
+        {
+            if (texts[column].Length > 0)
+            {
+                headers.TryAdd(texts[column], column);
+            }
+        }
+
+        return headers;
+    }
+
+    /// <summary>
+    /// Renders every cell of one row as text, in column order. The single place that decides what a
+    /// header cell looks like as a string -- <see cref="BuildHeaderIndex"/> (used while importing)
+    /// and <see cref="ReadHeaders"/> (used by the wizard's mapping step, TD-123) both build on this,
+    /// so the two can never disagree about what the header row says.
+    /// </summary>
+    private static List<string> ReadHeaderRowTexts(DataRow headerRow)
+    {
+        var texts = new List<string>(headerRow.Table.Columns.Count);
+
+        for (int column = 0; column < headerRow.Table.Columns.Count; column++)
+        {
+            texts.Add(CellToText(headerRow[column]).Trim());
+        }
+
+        return texts;
+    }
+
+    /// <summary>
+    /// Reads the first row of the first sheet as header text -- the same sheet and the same row
+    /// <see cref="ImportAsync"/> treats as the header when <see cref="ImportProfile.HasHeaderRecord"/>
+    /// is set (TD-123). Used by the wizard's mapping step to populate its column list before any
+    /// profile exists, so the dropdown it fills is never a guess at what this importer will see.
+    /// </summary>
+    /// <remarks>
+    /// Returns an empty list, not a thrown exception, for a workbook with no sheets or an
+    /// empty/header-only sheet: an import that will find nothing to parse is not a reason to stop
+    /// the wizard from reaching its next step. A workbook ExcelDataReader itself cannot open (a
+    /// corrupt file, or one that is not actually a spreadsheet) still throws out of
+    /// <see cref="ExcelReaderFactory.CreateReader"/>, exactly as a corrupt CSV already fails out of
+    /// <c>CsvImporter.ReadHeaders</c>'s <see cref="StreamReader"/> -- both surface to the wizard's
+    /// existing <c>catch</c> and are reported the same honest way, not swallowed here.
+    /// </remarks>
+    public IReadOnlyList<string> ReadHeaders(Stream fileStream)
+    {
+        ArgumentNullException.ThrowIfNull(fileStream);
+
+        using var reader = ExcelReaderFactory.CreateReader(fileStream);
+        var result = reader.AsDataSet();
+
+        if (result.Tables.Count == 0 || result.Tables[0].Rows.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        return ReadHeaderRowTexts(result.Tables[0].Rows[0]);
+    }
+
+    /// <summary>
+    /// Resolves one <see cref="ImportProfile.ColumnMappings"/> entry to a zero-based column index, or
+    /// <c>-1</c> when the mapping is absent or names nothing in this sheet.
+    /// </summary>
+    /// <remarks>
+    /// The header name is tried before the numeric index so that a sheet whose columns are labelled
+    /// "1", "2", "3" resolves by its own labels rather than by position — the labels are what the user
+    /// saw when they built the profile.
+    /// </remarks>
+    private static int ResolveColumn(ImportProfile profile, string field, Dictionary<string, int>? headers, int columnCount)
+    {
+        var mapping = profile.ColumnMappings.GetValueOrDefault(field);
+        if (string.IsNullOrWhiteSpace(mapping))
+        {
+            return -1;
+        }
+
+        mapping = mapping.Trim();
+
+        if (headers is not null && headers.TryGetValue(mapping, out var byName))
+        {
+            return byName;
+        }
+
+        if (int.TryParse(mapping, NumberStyles.Integer, CultureInfo.InvariantCulture, out var byIndex)
+            && byIndex >= 0
+            && byIndex < columnCount)
+        {
+            return byIndex;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Reads one cell, treating an unmapped column, an out-of-range index and an empty cell alike as
+    /// "not present" so the caller keeps the field's default.
+    /// </summary>
+    private static bool TryGetCell(DataRow row, int columnIndex, out object value)
+    {
+        value = null!;
+
+        if (columnIndex < 0 || columnIndex >= row.Table.Columns.Count)
+        {
+            return false;
+        }
+
+        var cell = row[columnIndex];
+        if (cell is null or DBNull)
+        {
+            return false;
+        }
+
+        value = cell;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a cell holds nothing a row could be built from — an empty or whitespace-only string.
+    /// </summary>
+    /// <remarks>
+    /// A numeric or date cell is never blank: a spreadsheet that stores <c>0</c> stored it on purpose,
+    /// and treating it as absent would drop a genuine zero-amount row.
+    /// </remarks>
+    private static bool IsBlank(object cell) => cell is string text && string.IsNullOrWhiteSpace(text);
+
+    /// <summary>
+    /// Renders a typed cell as the text a CSV export of the same sheet would have carried.
+    /// </summary>
+    /// <remarks>
+    /// A payee, category or reference column can legitimately hold a number (an account or FITID column
+    /// read as a <see cref="double"/> is the common case), and dropping it because it was not a string
+    /// would lose the very identifier the reference mapping exists to use.
+    /// <see cref="CultureInfo.InvariantCulture"/> is pinned so the rendered text — and therefore the
+    /// derived import key — does not depend on the machine's locale.
+    /// </remarks>
+    private static string CellToText(object cell) => cell switch
+    {
+        string text => text,
+        DateTime dateValue => dateValue.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+        _ => cell.ToString() ?? string.Empty,
+    };
+
+    /// <summary>
+    /// Converts an amount cell to a decimal, handling the numeric cell a spreadsheet normally stores
+    /// and the text cell an export that formats its own currency produces.
+    /// </summary>
+    /// <remarks>
+    /// The double path checks <see cref="double.IsFinite"/> and the decimal range first: a NaN or an
+    /// infinity reaching the cast would throw <see cref="OverflowException"/> and abort the whole
+    /// import, whereas returning <c>false</c> leaves the row at its <c>0</c> default and lets the
+    /// remaining rows through — the bad-row rule <see cref="CsvImporter"/> follows.
+    /// The string path strips the same "$" and thousands separators CSV strips.
+    /// </remarks>
+    private static bool TryCellToDecimal(object cell, out decimal value)
+    {
+        switch (cell)
+        {
+            case decimal decimalValue:
+                value = decimalValue;
+                return true;
+
+            case double doubleValue:
+                if (double.IsFinite(doubleValue) && doubleValue >= (double)decimal.MinValue && doubleValue <= (double)decimal.MaxValue)
+                {
+                    value = (decimal)doubleValue;
+                    return true;
+                }
+
+                value = 0m;
+                return false;
+
+            case float floatValue:
+                if (float.IsFinite(floatValue))
+                {
+                    value = (decimal)floatValue;
+                    return true;
+                }
+
+                value = 0m;
+                return false;
+
+            case int intValue:
+                value = intValue;
+                return true;
+
+            case long longValue:
+                value = longValue;
+                return true;
+
+            case string amountStr:
+                return decimal.TryParse(amountStr.Replace("$", "").Replace(",", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+
+            default:
+                value = 0m;
+                return false;
+        }
     }
 }

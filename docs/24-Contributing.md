@@ -7,7 +7,7 @@
 | Reconciled       | 2026-08-31 · No `CODEOWNERS`, no pull-request template, no locale leads; `.github/` contains only `workflows/`. The roles this and `04-Stakeholders` assign do not exist for a repository with one contributor. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
-| Last Updated     | 2026-07-08                                                                           |
+| Last Updated     | 2026-10-12                                                                           |
 | Specification Standard | Internal (contribution model)                                                  |
 | Glossary         | `PINE-DOC-03-GLOSSARY`                                                               |
 | Prerequisites    | `00-Vision`..`23-Roadmap`                                                            |
@@ -207,6 +207,18 @@ placeholder rules are:
   affected document.
 - A documentation change is consistent with the upstream documents
   it references.
+- **Scope of the status rule (TD-112).** The `Status` / `Reconciled`
+  header rule applies to design, product and architecture documents:
+  every top-level `docs/*.md` file, plus the root documents a reader
+  meets first (`README.md`, `STATUS.md`, `PRODUCT.md`, `CHANGELOG.md`).
+  GitHub and AI-assistant meta-files are formally **exempt**:
+  `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `TRADEMARK.md`, `GEMINI.md`
+  and anything under `docs/superpowers/`. They configure tooling or
+  repository conventions; they do not describe what the software does,
+  so they cannot be implemented or unimplemented. The exemption list
+  is pinned in `DocumentStatusTests` — a new root markdown file must
+  be added to the covered list or to the exempt list, or the suite
+  fails.
 
 ## 15. Translation Contribution Rules
 

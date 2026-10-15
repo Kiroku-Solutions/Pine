@@ -59,7 +59,7 @@ public static class VaultSecurityServiceCollectionExtensions
         services.TryAddSingleton<VaultAutoLockService>();
         services.TryAddSingleton<IVaultAutoLockService>(
             sp => sp.GetRequiredService<VaultAutoLockService>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService>(
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, VaultAutoLockService>(
             sp => sp.GetRequiredService<VaultAutoLockService>()));
 
         return services;

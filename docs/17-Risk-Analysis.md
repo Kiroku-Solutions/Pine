@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-17-RISK-ANALYSIS`                                                          |
 | Status           | Non-normative — strategic risk register                                              |
-| Reconciled       | 2026-08-31 · An analysis with owners and scores. The mitigations it points at carry their own status in the documents that specify them. |
+| Reconciled       | 2026-08-31 · An analysis with owners and scores. The mitigations it points at carry their own status in the documents that specify them. **2026-10-05 · R-10 is answered rather than mitigated: ADR-0021 decided there will be no plugin ecosystem, so the risk that one "never forms" is resolved by removing the goal, not by treating the cause. §6.2's and §6.10's plugin-SDK treatments are struck through accordingly (TD-147).** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -78,7 +78,7 @@ A new risk is added when:
 | R-07   | A serious security vulnerability is discovered close to a release.                       | 3          | 5      | 15    | Mitigate  | Security         |
 | R-08   | A contributor violates the (future) Code of Conduct.                                     | 3          | 3      | 9     | Mitigate  | Community        |
 | R-09   | The donation model proves insufficient to fund maintenance.                                | 3          | 5      | 15    | Mitigate  | Community        |
-| R-10   | A plugin ecosystem never forms.                                                          | 3          | 4      | 12    | Mitigate  | Ecosystem        |
+| R-10   | ~~A plugin ecosystem never forms.~~ **Answered, not mitigated — ADR-0021 (TD-147): there will be no plugin ecosystem by decision, so there is nothing left to fail to form.** | 3          | 4      | 12    | ~~Mitigate~~ Answered | Ecosystem        |
 | R-11   | A platform vendor changes a security policy (e.g. permission model) that breaks the app.  | 3          | 4      | 12    | Mitigate  | Platform         |
 | R-12   | A new OS baseline is released and our minimum-supported list lags behind.                  | 3          | 3      | 9     | Mitigate  | Platform         |
 | R-13   | A dependency is abandoned or compromised.                                                | 3          | 4      | 12    | Mitigate  | Engineering      |
@@ -106,10 +106,12 @@ A new risk is added when:
 ### 6.2 R-02 — Paid third-party AI
 
 - **Treatment.** Architecture tests in CI assert that no AI module
-  has a hard dependency on a paid API. Plugin trust model rejects
-  plugins that call paid APIs by default.
+  has a hard dependency on a paid API. ~~Plugin trust model rejects
+  plugins that call paid APIs by default.~~ **Withdrawn, ADR-0021
+  (TD-147): there is no plugin trust model because there are no
+  plugins; the architecture tests are the whole treatment.**
 - **Owner.** Architecture.
-- **Linked doc.** `12-Plugin-Architecture`, `13-AI-Architecture`.
+- **Linked doc.** `12-Plugin-Architecture` (Withdrawn), `13-AI-Architecture`.
 
 ### 6.3 R-03 — Sync provider breakage
 
@@ -164,10 +166,13 @@ A new risk is added when:
 
 ### 6.10 R-10 — No plugin ecosystem
 
-- **Treatment.** Stable Plugin SDK; public SDK roadmap; sample
-  plugins.
+- ~~**Treatment.** Stable Plugin SDK; public SDK roadmap; sample
+  plugins.~~ **Answered, ADR-0021 (TD-147): there is no SDK, no SDK
+  roadmap and no sample plugins to publish. The risk is closed by the
+  decision not to build an ecosystem, which removes the cause rather
+  than treating it.**
 - **Owner.** Ecosystem.
-- **Linked doc.** `12-Plugin-Architecture`, `33-Plugin-SDK`.
+- **Linked doc.** `12-Plugin-Architecture` (Withdrawn), `33-Plugin-SDK` (Withdrawn), `25-ADR` (ADR-0021).
 
 ### 6.11 R-11..R-12 — Platform changes
 

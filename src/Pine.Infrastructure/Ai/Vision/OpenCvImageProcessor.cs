@@ -7,6 +7,16 @@ using Pine.Core.Ai;
 
 namespace Pine.Infrastructure.Ai.Vision;
 
+/// <remarks>
+/// <para>
+/// TUNED-CONSTANTS BOUNDARY (TD-118). The numeric thresholds, geometry and kernel parameters in this class are the
+/// algorithm, tuned together with the model version (OCR pre-processing and perspective geometry). They are deliberately NOT in
+/// <c>PineOptions</c>: exposing them would let a user break receipt detection and report it as a
+/// bug. Configurable limits (paths, sizes, timeouts) belong in options; these do not. Change one
+/// only with a model or fixture change that re-evaluates the whole pipeline. See
+/// <c>docs/13-AI-Architecture.md</c> section 7.1.
+/// </para>
+/// </remarks>
 public sealed class OpenCvImageProcessor : IImageProcessor
 {
     public async Task<Stream> PerspectiveCropAsync(Stream originalImage, Quadrilateral cropQuad, CancellationToken cancellationToken = default)

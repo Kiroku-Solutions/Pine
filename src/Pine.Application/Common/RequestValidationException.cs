@@ -89,13 +89,16 @@ public sealed class RequestValidationException : Exception, IUserFacingFailure
     public IReadOnlyList<ValidationError> Errors { get; }
 
     /// <summary>
-    /// Gets the sentence shown to the user (TD-24). Every <see cref="ValidationError.Message"/> is
-    /// required by this type's contract to be a complete, user-facing sentence, and
-    /// <see cref="Compose"/> is what joins them into <see cref="Exception.Message"/> — so the two
-    /// coincide here by construction rather than by accident, and this exception is one of the few
-    /// that opts in to being rendered verbatim.
+    /// Gets the messages shown to the user (TD-24): every error's own
+    /// <see cref="ValidationError.UserFacingMessage"/>, in the order the validators reported them,
+    /// so that every problem is reported at once. <see cref="Exception.Message"/> is composed from the
+    /// English <see cref="ValidationError.Message"/>s and is for the log; until TD-139 the two were the
+    /// same string, which is how "Account &lt;guid&gt; was not found." reached a screen.
     /// </summary>
-    public string UserFacingMessage => Message;
+    public IReadOnlyList<UserFacingMessage> UserFacingMessages
+        => Errors.Count == 0
+            ? [ValidationText.RequestRejected()]
+            : Errors.Select(error => error.UserFacingMessage).ToArray();
 
     private static string Compose(IReadOnlyList<ValidationError> errors)
     {

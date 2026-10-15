@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -8,16 +9,38 @@ using MediatR;
 using Pine.Application.Common;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
+using System.IO;
+using Avalonia.Media.Imaging;
+using Pine.Application.Attachments;
+using Pine.Core.Common;
 using Pine.Core.Transactions;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Services;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class TransactionsViewModel : ObservableObject, IRecipient<DataChangedMessage>
+public partial class TransactionsViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
+    private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _voidError;
+
     private readonly IMediator _mediator;
+
+    /// <summary>
+    /// Builds the add-transaction dialog this page opens (TD-28/TD-58).
+    /// </summary>
+    /// <remarks>
+    /// It used to be built with <c>new</c> here, which handed it the mediator and nothing else --
+    /// so its optional <c>ILogger&lt;T&gt;</c> defaulted to <see langword="null"/> and every error
+    /// it showed the user was recorded nowhere. The container supplies the rest now.
+    /// </remarks>
+    private readonly IViewModelFactory _viewModels;
+
     private readonly ILogger<TransactionsViewModel>? _logger;
 
     [ObservableProperty]
@@ -26,16 +49,87 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [ObservableProperty]
     public partial AddTransactionViewModel? AddTransactionVm { get; set; }
 
+    /// <summary>Whether the edit-transaction dialog is on screen (TD-68).</summary>
+    [ObservableProperty]
+    public partial bool IsEditTransactionDialogVisible { get; set; }
+
+    /// <summary>The edit-transaction dialog this page opens, pre-filled from the row the user chose.</summary>
+    [ObservableProperty]
+    public partial EditTransactionViewModel? EditTransactionVm { get; set; }
+
     public ObservableCollection<Transaction> Transactions { get; } = new();
 
+    /// <summary>
+    /// The ids of the transactions that have a receipt attached, so the list can show a marker.
+    /// </summary>
+    /// <remarks>
+    /// A SET OF IDS, NOT AN ATTACHMENT PER ROW, AND THE DIFFERENCE IS THE BLOB. The attachment
+    /// table holds the file in the same row as its metadata, so anything that materialises an
+    /// <c>Attachment</c> reads the photograph with it. Showing a paperclip on a page of
+    /// transactions must never do that, so the page loads summaries -- which the repository
+    /// projects without the content column -- and keeps only the ids.
+    /// </remarks>
+    public ObservableCollection<Guid> TransactionsWithReceipts { get; } = new();
+
+    /// <summary>The receipt currently open in the viewer, if any.</summary>
+    [ObservableProperty]
+    public partial Bitmap? ReceiptImage { get; set; }
+
+    /// <summary>Whether the receipt viewer is open.</summary>
+    [ObservableProperty]
+    public partial bool IsReceiptOpen { get; set; }
+
+    /// <summary>The attachment the viewer is showing, so it can be removed from there.</summary>
+    private Guid? _openAttachmentId;
+
     private int _currentPage = 1;
-    private const int PageSize = 30;
+
+    /// <summary>
+    /// How many transactions one page holds, from <c>PineUiOptions.TransactionsPageSize</c> (TD-27).
+    /// </summary>
+    /// <remarks>
+    /// Was <c>const int PageSize = 30</c>, which quietly overrode the <c>PageSize = 50</c> default
+    /// on <c>GetTransactionsQuery</c>. That default is now gone and this is the only page size.
+    /// </remarks>
+    private int _pageSize;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
+    /// <summary>
+    /// Why the list is empty, when it is empty because something failed (TD-35).
+    /// </summary>
+    /// <remarks>
+    /// THIS SCREEN HAD NO ERROR SURFACE AT ALL, and the page load ended in a bare
+    /// <c>catch { /* Handle error silently or via status message */ }</c>. A locked vault, a
+    /// corrupt database or a validation refusal all produced the same thing: an empty transaction
+    /// list, which the user reads as "I have no transactions". That is a statement about their
+    /// records that nothing had checked. The property is bound in <c>TransactionsView.axaml</c> and
+    /// is cleared at the start of every load, so it never outlives the failure it describes.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
     [ObservableProperty]
     public partial bool HasMorePages { get; set; } = true;
+
+    /// <summary>
+    /// Whether voided rows are listed (TD-71). Off by default: a vault with many corrections reads
+    /// badly when every cancelled row sits among the live ones. The rows are still on record and one
+    /// toggle away, which is what keeps hiding them compatible with voiding rather than deleting.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowVoided { get; set; }
+
+    partial void OnShowVoidedChanged(bool value)
+    {
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-reload",
+            TransactionsUnavailable,
+            _error.Set);
+    }
 
     /// <summary>Whether the void confirmation is on screen.</summary>
     [ObservableProperty]
@@ -57,17 +151,71 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [ObservableProperty]
     public partial bool IsVoiding { get; set; }
 
-    public TransactionsViewModel(IMediator mediator, ILogger<TransactionsViewModel>? logger = null)
+    /// <summary>Creates the transaction list.</summary>
+    /// <param name="mediator">The dispatcher.</param>
+    /// <param name="uiOptions">Carries the page size. Optional, for tests that construct this by hand.</param>
+    /// <param name="localizer">
+    /// Words this page's error messages. The container injects the process-wide instance. Optional for
+    /// tests that construct this page by hand, which get a private English localizer -- NOT
+    /// <see cref="Localizer.Instance"/>, which a parallel test may be switching to Spanish at that moment.
+    /// </param>
+    /// <param name="logger">The category logger.</param>
+    public TransactionsViewModel(
+        IMediator mediator,
+        IViewModelFactory viewModels,
+        IOptions<PineUiOptions>? uiOptions = null,
+        ILocalizer? localizer = null,
+        ILogger<TransactionsViewModel>? logger = null)
     {
+        localizer ??= new Localizer();
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
+        _voidError = new LocalizedMessageSlot(localizer, text => VoidError = text);
         _mediator = mediator;
+        _viewModels = viewModels;
+        _pageSize = (uiOptions?.Value ?? new PineUiOptions()).TransactionsPageSize;
         _logger = logger;
-        WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((TransactionsViewModel)r).Receive(m));
-        _ = LoadDataAsync();
+
+        // No Register call here any more (TD-34): ObservableRecipient registers this page when the
+        // navigator activates it and unregisters it on the way out, so a list the user left behind
+        // no longer re-queries on every broadcast until the GC happens to collect it.
+        //
+        // And no `_ = LoadDataAsync()` here any more (TD-35). It made construction a race: the
+        // first page of transactions arrived on a continuation nobody held, so a caller could not
+        // tell a list that is empty from one that has not loaded yet. PageActivation calls
+        // InitializeAsync when this page becomes the current one.
     }
 
+    /// <summary>
+    /// Reads the first page of transactions. Started by <c>PageActivation</c> on navigation.
+    /// </summary>
+    /// <param name="cancellationToken">Cooperative cancellation; the query itself is not cancellable yet.</param>
+    /// <returns>A task that completes when the first page is on screen, or its failure is.</returns>
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadDataAsync();
+
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "transactions-initialise",
+        TransactionsUnavailable,
+        _error.Set);
+
+    /// <summary>What the user reads when the list cannot be read. Written once; used by both paths.</summary>
+    private static readonly UserFacingMessage TransactionsUnavailable = new("Transactions.Failure.Load");
+
+    /// <summary>Reloads the list when something elsewhere changed the data.</summary>
+    /// <remarks>
+    /// Observed rather than discarded (TD-35): <c>IRecipient&lt;T&gt;</c> is <c>void</c>, so this
+    /// still starts work it cannot await, but the outcome is now read.
+    /// </remarks>
+    /// <param name="message">The broadcast. It carries no payload.</param>
     public void Receive(DataChangedMessage message)
     {
-        _ = LoadDataAsync();
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-reload",
+            TransactionsUnavailable,
+            _error.Set);
     }
 
     [RelayCommand]
@@ -76,7 +224,32 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         _currentPage = 1;
         Transactions.Clear();
         HasMorePages = true;
+
+        // Cleared here rather than in LoadNextPageAsync: paging forward must not erase the
+        // explanation of a page that failed, but a fresh load from the top must.
+        _error.Clear();
+
         await LoadNextPageAsync();
+    }
+
+    /// <summary>
+    /// TD-119: the page size is an in-vault Setting; the configured value stays in force when the
+    /// Setting is absent, invalid, or cannot be read.
+    /// </summary>
+    private async Task ResolvePageSizePreferenceAsync()
+    {
+        try
+        {
+            var preferences = await _mediator.Send(new Pine.Application.Settings.GetUserPreferencesQuery());
+            if (preferences is { TransactionsPageSize: >= 1 })
+            {
+                _pageSize = preferences.TransactionsPageSize;
+            }
+        }
+        catch (Exception)
+        {
+            // Keep the configured page size.
+        }
     }
 
     [RelayCommand]
@@ -87,14 +260,21 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         IsLoading = true;
         try
         {
-            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, PageSize));
+            if (_currentPage == 1)
+            {
+                await ResolvePageSizePreferenceAsync();
+            }
+
+            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, _pageSize, ShowVoided));
 
             foreach (var t in pagedResult.Items)
             {
                 Transactions.Add(t);
             }
 
-            if (_currentPage * PageSize >= pagedResult.TotalCount)
+            await RefreshReceiptMarkersAsync();
+
+            if (_currentPage * _pageSize >= pagedResult.TotalCount)
             {
                 HasMorePages = false;
             }
@@ -103,9 +283,16 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
                 _currentPage++;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Handle error silently or via status message
+            // WAS: `catch { }` with the comment "Handle error silently or via status message"
+            // (TD-35). It did the first and never the second, so every failure of the only query
+            // this page makes produced an empty list and no record anywhere.
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "transactions-load-page",
+                TransactionsUnavailable));
         }
         finally
         {
@@ -116,13 +303,55 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
     [RelayCommand]
     private void ShowAddTransactionDialog()
     {
-        AddTransactionVm = new AddTransactionViewModel(_mediator, () =>
+        AddTransactionVm = _viewModels.CreateAddTransaction(() =>
         {
             IsAddTransactionDialogVisible = false;
             AddTransactionVm = null;
-            _ = LoadDataAsync(); // Refresh
+
+            // Observed rather than discarded (TD-35). This is the refresh whose silent failure is
+            // most alarming: the transaction was saved, and the list would simply not show it.
+            ObservedTask.Run(
+                LoadDataAsync,
+                _logger,
+                "transactions-reload",
+                new UserFacingMessage("Transactions.Failure.ReloadAfterSave"),
+                _error.Set);
         });
         IsAddTransactionDialogVisible = true;
+    }
+
+    /// <summary>
+    /// Opens the edit-transaction dialog for one row (TD-68).
+    /// </summary>
+    /// <remarks>
+    /// The same guard the Edit button's visibility is driven by
+    /// (<see cref="Utils.Converters.CanEditTransaction"/>) is repeated here: a voided transaction, a
+    /// transfer leg, or a transaction with more than one split all refuse to open. The button is
+    /// hidden in every one of those states, so reaching this method with one means something is out
+    /// of sync and silently doing nothing is better than opening a dialog that cannot save.
+    /// </remarks>
+    /// <param name="transaction">The row the user acted on.</param>
+    [RelayCommand]
+    private void BeginEdit(Transaction? transaction)
+    {
+        if (transaction is null || transaction.IsVoided || transaction.Type == Pine.Core.Transactions.TransactionType.Transfer || transaction.Splits.Count > 1)
+        {
+            return;
+        }
+
+        EditTransactionVm = _viewModels.CreateEditTransaction(transaction, () =>
+        {
+            IsEditTransactionDialogVisible = false;
+            EditTransactionVm = null;
+
+            ObservedTask.Run(
+                LoadDataAsync,
+                _logger,
+                "transactions-reload",
+                new UserFacingMessage("Transactions.Failure.ReloadAfterSave"),
+                _error.Set);
+        });
+        IsEditTransactionDialogVisible = true;
     }
 
     /// <summary>
@@ -143,7 +372,7 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
 
         VoidTarget = transaction;
         VoidReason = string.Empty;
-        VoidError = null;
+        _voidError.Clear();
         IsVoidDialogVisible = true;
     }
 
@@ -154,7 +383,7 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         IsVoidDialogVisible = false;
         VoidTarget = null;
         VoidReason = string.Empty;
-        VoidError = null;
+        _voidError.Clear();
     }
 
     /// <summary>
@@ -183,7 +412,7 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
         if (VoidTarget is null || IsVoiding) return;
 
         IsVoiding = true;
-        VoidError = null;
+        _voidError.Clear();
         try
         {
             await _mediator.Send(new VoidTransactionCommand(VoidTarget.Id, VoidReason));
@@ -192,20 +421,242 @@ public partial class TransactionsViewModel : ObservableObject, IRecipient<DataCh
             VoidTarget = null;
             VoidReason = string.Empty;
 
+            // THE RELOAD USED TO BE HERE TOO, AND IT RAN TWICE (TD-34). This view model is itself
+            // an IRecipient<DataChangedMessage>, and the broadcast below is synchronous, so the
+            // line that followed it -- `await LoadDataAsync();` -- was the SECOND full reload of
+            // the same list: two round trips, two Transactions.Clear() calls, a visible flicker.
+            // The broadcast stays, because the dashboard and its widgets have no other way to
+            // learn a transaction was voided; only the duplicate self-refresh is gone.
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
-            await LoadDataAsync();
         }
         catch (Exception ex)
         {
-            VoidError = UserFacingError.Report(
+            _voidError.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "void-transaction",
-                "The transaction could not be voided. Nothing was changed.");
+                new UserFacingMessage("Transactions.Failure.Void")));
         }
         finally
         {
             IsVoiding = false;
         }
+    }
+
+    /// <summary>
+    /// Puts a voided transaction back in force and refreshes every screen that shows money (TD-69).
+    /// </summary>
+    /// <remarks>
+    /// No confirmation or reason: unlike a void it needs no audit text, and it is itself reversible by
+    /// voiding again. A failure is shown in the page's own error line, since the void dialog is not open.
+    /// </remarks>
+    /// <param name="transaction">The voided row the user acted on.</param>
+    [RelayCommand]
+    private async Task UnvoidAsync(Transaction? transaction)
+    {
+        if (transaction is null || !transaction.IsVoided) return;
+
+        _error.Clear();
+        try
+        {
+            await _mediator.Send(new UnvoidTransactionCommand(transaction.Id));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "unvoid-transaction",
+                new UserFacingMessage("Transactions.Failure.Unvoid")));
+        }
+    }
+
+    /// <summary>
+    /// Opens the receipt attached to a transaction.
+    /// </summary>
+    /// <param name="transaction">The row whose receipt to show.</param>
+    /// <remarks>
+    /// <para>
+    /// THE CONTENT IS READ HERE AND NOWHERE EARLIER. Loading the page reads summaries only; the
+    /// bytes are fetched when a user asks to see one, which is the whole reason
+    /// <c>IAttachmentRepository</c> separates the two operations.
+    /// </para>
+    /// <para>
+    /// The query verifies the stored hash and throws <c>AttachmentCorruptedException</c> when it
+    /// does not match. That exception implements <c>IUserFacingFailure</c>, so
+    /// <c>UserFacingError.Report</c> shows its sentence verbatim rather than the generic fallback --
+    /// the user is told the image does not match its fingerprint and that the transaction is fine.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task ViewReceiptAsync(Transaction? transaction)
+    {
+        if (transaction is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var summaries = await _mediator.Send(new GetTransactionAttachmentsQuery(transaction.Id));
+
+            if (summaries.Count == 0)
+            {
+                return;
+            }
+
+            var content = await _mediator.Send(new GetAttachmentContentQuery(summaries[0].Id));
+
+            if (content is null)
+            {
+                return;
+            }
+
+            // A contract is a PDF (TD-141), and the viewer decodes images. Say so rather than
+            // letting the decoder throw and reporting "could not be opened".
+            if (!content.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                _voidError.Set(new UserFacingMessage("Transactions.Failure.PreviewUnsupported"));
+                return;
+            }
+
+            using var buffer = new MemoryStream(content.Content);
+            ReceiptImage = new Bitmap(buffer);
+            _openAttachmentId = summaries[0].Id;
+            IsReceiptOpen = true;
+        }
+        catch (Exception ex)
+        {
+            _voidError.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-view",
+                new UserFacingMessage("Transactions.Failure.OpenReceipt")));
+        }
+    }
+
+    /// <summary>
+    /// Supplies the file chooser (TD-141). Set by the view, which owns the window the dialog belongs
+    /// to; left <see langword="null"/> in tests that do not exercise attaching, in which case
+    /// attaching does nothing.
+    /// </summary>
+    public IAttachmentFilePicker? AttachmentFilePicker { get; set; }
+
+    /// <summary>
+    /// Lets the user attach a receipt, contract or photo to a transaction (FR-TXN-02's manual path).
+    /// </summary>
+    /// <param name="transaction">The row to attach to.</param>
+    /// <remarks>
+    /// A cancelled dialog is not an error and sends nothing. Everything else -- an unsupported type,
+    /// an empty or oversized file, a transaction that has since gone -- is refused by the command's
+    /// validator and reaches the user as its own sentence.
+    /// </remarks>
+    [RelayCommand]
+    private async Task AttachFileAsync(Transaction? transaction)
+    {
+        if (transaction is null || AttachmentFilePicker is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var picked = await AttachmentFilePicker.PickAsync();
+
+            if (picked is null)
+            {
+                return;
+            }
+
+            _voidError.Clear();
+            await _mediator.Send(new AttachFileToTransactionCommand(transaction.Id, picked.FileName, picked.Content));
+            await RefreshReceiptMarkersAsync();
+        }
+        catch (Exception ex)
+        {
+            _voidError.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-add",
+                new UserFacingMessage("Transactions.Failure.AttachFile")));
+        }
+    }
+
+    /// <summary>Closes the receipt viewer.</summary>
+    [RelayCommand]
+    private void CloseReceipt()
+    {
+        IsReceiptOpen = false;
+        ReceiptImage = null;
+        _openAttachmentId = null;
+    }
+
+    /// <summary>
+    /// Removes the receipt currently open in the viewer.
+    /// </summary>
+    /// <remarks>
+    /// DELETING EVIDENCE IS A DELIBERATE ACT AND IS TREATED AS ONE: it is reachable only from the
+    /// open viewer, so the user is looking at the image they are about to remove. The transaction
+    /// is untouched -- Pine voids ledger rows rather than deleting them, and removing a receipt is
+    /// not a correction to the figure.
+    /// </remarks>
+    [RelayCommand]
+    private async Task RemoveReceiptAsync()
+    {
+        if (_openAttachmentId is not { } attachmentId)
+        {
+            return;
+        }
+
+        try
+        {
+            await _mediator.Send(new RemoveAttachmentCommand(attachmentId));
+            CloseReceipt();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _voidError.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-remove",
+                new UserFacingMessage("Transactions.Failure.RemoveReceipt")));
+        }
+    }
+
+    /// <summary>
+    /// Refreshes which of the loaded transactions carry a receipt.
+    /// </summary>
+    /// <remarks>
+    /// One query per loaded page rather than one per row: the summaries are cheap because the
+    /// projection leaves the blob behind, but a query per row on a fifty-row page would still be
+    /// fifty round trips.
+    /// </remarks>
+    private async Task RefreshReceiptMarkersAsync()
+    {
+        TransactionsWithReceipts.Clear();
+
+        foreach (var transaction in Transactions)
+        {
+            var summaries = await _mediator.Send(new GetTransactionAttachmentsQuery(transaction.Id));
+
+            if (summaries.Count > 0)
+            {
+                TransactionsWithReceipts.Add(transaction.Id);
+            }
+        }
+    }
+
+    /// <summary>Releases the localized message slots.</summary>
+    /// <remarks>
+    /// CA1001, for the reason every page that owns a slot gives: each subscribes to the process-lifetime
+    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
+    /// </remarks>
+    public void Dispose()
+    {
+        _error.Dispose();
+        _voidError.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

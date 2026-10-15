@@ -65,6 +65,27 @@ public sealed class EfCoreUnitOfWork : IUnitOfWork, IDisposable, IAsyncDisposabl
         {
             throw Pine.Core.Common.ConcurrencyConflictException.From(ex);
         }
+        catch (DbUpdateException ex) when (IsImportKeyUniqueViolation(ex))
+        {
+            // TD-65: a concurrent import already wrote one of these rows. Nothing was committed (the
+            // surrounding transaction rolls back), and a retry's dedup check will skip the rows that
+            // now exist, so this is reported as the same retryable conflict as a lost update.
+            throw Pine.Core.Common.ConcurrencyConflictException.From(ex);
+        }
+    }
+
+    private static bool IsImportKeyUniqueViolation(DbUpdateException ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 } sqlite
+                && sqlite.Message.Contains("Transactions.ImportKey", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <inheritdoc />

@@ -84,12 +84,14 @@ public class VaultSession : IVaultSession, IDisposable
     /// Creates a session on the system clock.
     /// </summary>
     /// <remarks>
-    /// WHY THIS OVERLOAD EXISTS: three of the five composition roots (<c>Pine.Ui.Web</c>,
-    /// <c>Pine.Ui.Android</c>, <c>Pine.Ui.Ios</c>) register <c>IVaultSession</c> but do NOT register
-    /// a <see cref="TimeProvider"/>. Making the injected constructor the only one would turn a
-    /// compile-time-clean change into a runtime failure on exactly the three heads CI has never
-    /// built (TD-08). The DI container prefers the greediest constructor it can satisfy, so
-    /// Windows and macOS get the injected clock and the other three fall back here.
+    /// WHY THIS OVERLOAD EXISTS: it dates from when each head registered its own services and two
+    /// of them (<c>Pine.Ui.Android</c>, <c>Pine.Ui.Ios</c>) registered <c>IVaultSession</c> without
+    /// a <see cref="TimeProvider"/> — so making the injected constructor the only one would have
+    /// turned a compile-time-clean change into a runtime failure on exactly the heads CI has never
+    /// built (TD-08). A third head, <c>Pine.Ui.Web</c>, was in that list until the Phase 3 platform
+    /// review deleted it. The DI container prefers the greediest constructor it can satisfy, so in
+    /// the shared root every head now gets the injected clock and nothing reaches this overload
+    /// through composition; it survives for direct construction in tests.
     /// </remarks>
     public VaultSession()
         : this(TimeProvider.System)
@@ -136,6 +138,9 @@ public class VaultSession : IVaultSession, IDisposable
 
         lock (_gate)
         {
+            // A re-unlock with a rotated key (TD-86) must not leave the previous key in memory.
+            if (_key is not null && !ReferenceEquals(_key, key)) Array.Clear(_key, 0, _key.Length);
+
             // Copy to prevent external modification
             _key = new byte[key.Length];
             Array.Copy(key, _key, key.Length);

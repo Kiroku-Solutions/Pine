@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-40-ACCESSIBILITY`                                                          |
 | Status           | Aspirational — no accessibility verification exists                                  |
-| Reconciled       | 2026-08-31 · `tests/Pine.Tests.Accessibility` contains one empty template file and is compile-checked, never run (TD-38). No axe, no automated audit, no manual pass on record. |
+| Reconciled       | 2026-09-07 · **`tests/Pine.Tests.Accessibility` no longer exists** — iteration 27 deleted it (TD-38), for the reason given in `39-Performance`: it held one empty template test, was compiled and never run, and named a kind of verification it did not perform. There is still no axe, no automated audit and no manual pass on record; that was true before the deletion and is unchanged by it. **No accessibility coverage was lost, because there was none.** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

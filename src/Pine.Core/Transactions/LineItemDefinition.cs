@@ -20,9 +20,15 @@ namespace Pine.Core.Transactions;
 /// <see cref="Transaction.ReplaceLineItems"/> will not reconcile against the total.
 /// </para>
 /// </remarks>
+/// <para>
+/// <c>Id</c> carries an existing child's identity through a rebuild (TD-60), on the same terms as
+/// <see cref="SplitDefinition.Id"/>: last, optional, and filled in only by the repository's
+/// detached-merge path. <see cref="System.Guid.Empty"/> means new.
+/// </para>
 public readonly record struct LineItemDefinition(
     string Description,
     decimal Quantity,
     Money UnitPrice,
     Money TotalPrice,
-    LineItemKind? Kind = LineItemKind.Product);
+    LineItemKind? Kind = LineItemKind.Product,
+    Guid Id = default);

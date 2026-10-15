@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Pine.Core.Common;
 
@@ -34,6 +36,16 @@ namespace Pine.Ui.Avalonia.Diagnostics;
 /// the caller that has already logged, and for the tests.
 /// </para>
 /// <para>
+/// IT RETURNS KEYS, AND UNTIL TD-139 IT RETURNED ENGLISH. The exception's sentence was written in
+/// <c>Pine.Core</c> or <c>Pine.Application</c>, which have no string table, and the call site's
+/// fallback was an English literal — so on a Spanish screen the error line was English, on every
+/// screen, because this is the one funnel a caught exception passes through. Worse, call sites
+/// assigned the returned string straight to a property whose <c>LocalizedMessageSlot</c> still held
+/// an earlier key: switching language re-rendered that stale key over the error, so a concurrency
+/// conflict became "El beneficiario es obligatorio." — reproduced before the fix. The messages now go
+/// through the slot.
+/// </para>
+/// <para>
 /// NOT A <c>Result&lt;T&gt;</c>, AND THAT IS STILL THE HONEST ANSWER. <c>RequestValidationException</c>'s
 /// remarks record why Pine signals refusal with exceptions rather than a result envelope: the request
 /// types return <c>Guid</c>, <c>IReadOnlyList&lt;Transaction&gt;</c>, <c>string?</c> and <c>void</c>, and
@@ -53,27 +65,27 @@ namespace Pine.Ui.Avalonia.Diagnostics;
 public static partial class UserFacingError
 {
     /// <summary>
-    /// Maps an exception to the sentence a user may see, without logging.
+    /// Maps an exception to the messages a user may see, without logging.
     /// </summary>
     /// <param name="exception">The caught exception.</param>
     /// <param name="fallback">
-    /// The complete sentence to show when <paramref name="exception"/> did not opt in to being shown.
-    /// It must say what did not happen from the user's point of view — "The transaction could not be
-    /// saved. Nothing was changed." — and must not be a category label like "Error".
+    /// The message to show when <paramref name="exception"/> did not opt in to being shown. Its
+    /// wording must say what did not happen from the user's point of view — "The transaction could
+    /// not be saved. Nothing was changed." — and must not be a category label like "Error".
     /// </param>
-    /// <returns>Either the exception's own user-facing sentence or <paramref name="fallback"/>.</returns>
-    public static string Describe(Exception exception, string fallback)
+    /// <returns>
+    /// Either the exception's own user-facing messages or <paramref name="fallback"/> alone. Never
+    /// empty. KEYS, NOT SENTENCES (TD-139): hand them to a <c>LocalizedMessageSlot</c>, which words
+    /// them in the active language and words them again when it changes. Rendering them into a
+    /// string and assigning that string would freeze them in one language.
+    /// </returns>
+    public static IReadOnlyList<UserFacingMessage> Describe(Exception exception, UserFacingMessage fallback)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        if (string.IsNullOrWhiteSpace(fallback))
-        {
-            // A blank fallback would silently render an empty error area, which reads as success.
-            // This is a programming error in the call site, not a runtime condition.
-            throw new ArgumentException(
-                "A fallback sentence is required: it is what the user reads when the exception is not one we show.",
-                nameof(fallback));
-        }
+        // A missing fallback would silently render an empty error area, which reads as success.
+        // This is a programming error in the call site, not a runtime condition.
+        ArgumentNullException.ThrowIfNull(fallback);
 
         // A single-inner AggregateException is unwrapped because it is a transport artefact -- an
         // async boundary re-wrapping a throw -- and not a decision anyone made about what to say.
@@ -88,46 +100,47 @@ public static partial class UserFacingError
 
         if (exception is IUserFacingFailure userFacing)
         {
-            var message = userFacing.UserFacingMessage;
+            var messages = userFacing.UserFacingMessages;
 
             // An implementer that returns nothing gets the fallback rather than an empty screen.
             // Trusted to opt in, not trusted to be non-empty.
-            if (!string.IsNullOrWhiteSpace(message))
+            if (messages is { Count: > 0 } && messages.All(message => message is not null))
             {
-                return message;
+                return messages;
             }
         }
 
-        return fallback;
+        return [fallback];
     }
 
     /// <summary>
-    /// Writes the exception to the log and returns the sentence to show the user.
+    /// Writes the exception to the log and returns the messages to show the user.
     /// </summary>
     /// <param name="logger">
     /// The view model's logger, or <c>null</c>. Nullable because view models are constructed directly
     /// by the designer and by the existing tests; a null logger loses the log record, never the
-    /// sentence.
+    /// message.
     /// </param>
     /// <param name="exception">The caught exception.</param>
     /// <param name="operation">
     /// A short stable identifier for what was being attempted — <c>"add-transaction"</c>,
     /// <c>"import-execute"</c>. It reaches the log only, never the screen, so it may name internals.
     /// </param>
-    /// <param name="fallback">See <see cref="Describe(Exception, string)"/>.</param>
-    /// <returns>The sentence to show the user.</returns>
-    public static string Report(ILogger? logger, Exception exception, string operation, string fallback)
+    /// <param name="fallback">See <see cref="Describe(Exception, UserFacingMessage)"/>.</param>
+    /// <returns>The messages to show the user.</returns>
+    public static IReadOnlyList<UserFacingMessage> Report(
+        ILogger? logger, Exception exception, string operation, UserFacingMessage fallback)
     {
         // Describe first: its argument checks must fire even when there is no logger, so that a bad
         // call site fails identically in the designer, in a test and in the app.
-        var message = Describe(exception, fallback);
+        var messages = Describe(exception, fallback);
 
         if (logger is not null)
         {
             LogUserFacingFailure(logger, operation, exception);
         }
 
-        return message;
+        return messages;
     }
 
     // Source-generated, because CA1848 is an error in this repository. Error level: every call site

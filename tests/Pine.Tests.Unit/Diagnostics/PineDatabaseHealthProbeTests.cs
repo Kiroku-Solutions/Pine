@@ -116,7 +116,19 @@ public class PineDatabaseHealthProbeTests
 
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
+            // THIS VAULT'S POOL, NOT EVERY POOL IN THE PROCESS (TD-140). ClearAllPools reaches into
+            // the pooled connections of every test class running in parallel, and a pooled connection
+            // handed out after its handle is gone is the ObjectDisposedException the integration suite
+            // acquired. Same mistake, same fix, in the unit suite's own harness.
+            using (var forThisVault = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = DatabasePath,
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                Password = Convert.ToHexString(Key),
+            }.ToString()))
+            {
+                SqliteConnection.ClearPool(forThisVault);
+            }
 
             try
             {

@@ -50,7 +50,7 @@ public class MlNetCategorizerVaultScopingTests
         // arbitrary category asserted with any confidence at all is worse than an empty one,
         // because CategorizeTransactionQueryHandler turns a non-empty Guid into a real category on
         // a real transaction.
-        result.CategoryId.Should().Be(Guid.Empty);
+        result.Category.Should().BeEmpty();
         result.ConfidenceScore.Should().Be(0.0);
     }
 
@@ -65,7 +65,7 @@ public class MlNetCategorizerVaultScopingTests
         var result = await categorizer.PredictCategoryAsync("TESCO", 12.50m);
 
         // Assert
-        result.CategoryId.Should().Be(Guid.Empty);
+        result.Category.Should().BeEmpty();
         store.ReadCount.Should().Be(0, "a locked vault has no key, so there is nothing to decrypt");
     }
 
@@ -107,7 +107,7 @@ public class MlNetCategorizerVaultScopingTests
         // Arrange
         var store = new FakeCategorizerModelStore { VaultFingerprint = VaultA };
         using var categorizer = NewCategorizer(store);
-        var groceries = Guid.NewGuid();
+        var groceries = "Groceries";
 
         // Act - train on a corpus where one distinctive payee maps to one category.
         await categorizer.TrainModelAsync(BuildHistory(40, groceries));
@@ -120,7 +120,7 @@ public class MlNetCategorizerVaultScopingTests
         // unreachable through the composed graph. It passes here only because one object both
         // trains and predicts.
         store.WriteCount.Should().Be(1);
-        result.CategoryId.Should().Be(groceries);
+        result.Category.Should().Be(groceries);
     }
 
     [Fact]
@@ -155,10 +155,10 @@ public class MlNetCategorizerVaultScopingTests
         // Arrange - train vault A, then swap the store to vault B, which has no model.
         var store = new FakeCategorizerModelStore { VaultFingerprint = VaultA };
         using var categorizer = NewCategorizer(store);
-        var groceries = Guid.NewGuid();
+        var groceries = "Groceries";
 
         await categorizer.TrainModelAsync(BuildHistory(40, groceries));
-        (await categorizer.PredictCategoryAsync("TESCO STORES", 12.50m)).CategoryId
+        (await categorizer.PredictCategoryAsync("TESCO STORES", 12.50m)).Category
             .Should().Be(groceries, "the model should be live for the vault it was trained in");
 
         // Act - the user locks Personal and opens Business.
@@ -170,7 +170,7 @@ public class MlNetCategorizerVaultScopingTests
         // exists; a categoriser that carries one vault's learned payees into the other leaks the
         // first vault's spending through the second vault's suggestions, without either database
         // ever being decrypted.
-        result.CategoryId.Should().Be(Guid.Empty);
+        result.Category.Should().BeEmpty();
         result.ConfidenceScore.Should().Be(0.0);
     }
 
@@ -180,13 +180,13 @@ public class MlNetCategorizerVaultScopingTests
         // Arrange
         var store = new FakeCategorizerModelStore { VaultFingerprint = VaultA };
         using var categorizer = NewCategorizer(store);
-        var groceries = Guid.NewGuid();
+        var groceries = "Groceries";
         await categorizer.TrainModelAsync(BuildHistory(40, groceries));
 
         // Act - lock, then reopen the same vault. The engine must be dropped on the lock and
         // rebuilt from the sealed bytes afterwards, not merely kept because the vault came back.
         store.VaultFingerprint = null;
-        (await categorizer.PredictCategoryAsync("TESCO STORES", 12.50m)).CategoryId.Should().Be(Guid.Empty);
+        (await categorizer.PredictCategoryAsync("TESCO STORES", 12.50m)).Category.Should().BeEmpty();
 
         var readsBeforeReopen = store.ReadCount;
         store.VaultFingerprint = VaultA;
@@ -194,7 +194,7 @@ public class MlNetCategorizerVaultScopingTests
 
         // Assert
         store.ReadCount.Should().Be(readsBeforeReopen + 1, "the model must be read back, not retained across the lock");
-        result.CategoryId.Should().Be(groceries);
+        result.Category.Should().Be(groceries);
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class MlNetCategorizerVaultScopingTests
 
         // Assert - a damaged derived artefact must never become a reason the user cannot use their
         // vault. It is discarded and retrained on the next cycle.
-        result.CategoryId.Should().Be(Guid.Empty);
+        result.Category.Should().BeEmpty();
     }
 
     [Fact]
@@ -258,15 +258,24 @@ public class MlNetCategorizerVaultScopingTests
     /// perfectly predictive of the category. Real data is not this clean; these tests are about
     /// which vault answers, not about accuracy, so a separable corpus keeps them deterministic.
     /// </summary>
-    private static List<(string Text, decimal Amount, Guid CategoryId)> BuildHistory(int rows, Guid? groceries = null)
+    /// <summary>
+    /// Two categories, alternating, so the model has something to discriminate between.
+    /// </summary>
+    /// <remarks>
+    /// The labels are NAMES rather than <see cref="Guid"/>s (TD-32). They used to be freshly
+    /// generated identifiers, which made these tests pass while the product they stood for could
+    /// not work: nothing in the application has ever produced a Guid-shaped label, so the real
+    /// training set was always empty.
+    /// </remarks>
+    private static List<TrainingExample> BuildHistory(int rows, string? groceries = null)
     {
-        var groceriesId = groceries ?? Guid.NewGuid();
-        var transport = Guid.NewGuid();
+        var groceriesLabel = groceries ?? "Groceries";
+        const string transport = "Transport";
 
         return Enumerable.Range(0, rows)
             .Select(i => i % 2 == 0
-                ? ($"TESCO STORES {i}", 10m + i, groceriesId)
-                : ($"UBER TRIP {i}", 20m + i, transport))
+                ? new TrainingExample($"TESCO STORES {i}", 10m + i, groceriesLabel)
+                : new TrainingExample($"UBER TRIP {i}", 20m + i, transport))
             .ToList();
     }
 

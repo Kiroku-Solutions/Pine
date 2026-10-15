@@ -226,11 +226,27 @@ public sealed class RecalculateAccountBalanceCommandValidator
             {
                 new ValidationError(
                     nameof(RecalculateAccountBalanceCommand.AccountId),
-                    $"Account {request.AccountId} was not found."),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 
         var accountCurrency = account.Balance.Currency.Value;
+
+        // TD-77. The opening balance carries its own currency now; if it is not the account's (a
+        // hand-edited or sync-damaged vault) its raw amount must not be folded into the account's total.
+        if (!account.OpeningBalanceCurrencyMatchesAccount)
+        {
+            var openingCurrency = account.OpeningBalanceCurrency!.Value;
+            return new[]
+            {
+                new ValidationError(
+                    nameof(RecalculateAccountBalanceCommand.AccountId),
+                    $"'{account.Name}' has an opening balance recorded in {openingCurrency} but the account is in {accountCurrency}.",
+                    ValidationText.OpeningBalanceCurrencyMismatch(account.Name, openingCurrency, accountCurrency)),
+            };
+        }
+
         var currencies = await _transactionRepository.GetDistinctCurrenciesInForceAsync(
             request.AccountId, cancellationToken);
 
@@ -247,7 +263,8 @@ public sealed class RecalculateAccountBalanceCommandValidator
                     nameof(RecalculateAccountBalanceCommand.AccountId),
                     $"'{account.Name}' holds transactions in {string.Join(", ", foreign)} but the "
                     + $"account is in {accountCurrency}. Its balance cannot be recomputed until those "
-                    + "transactions are corrected, because there is no meaningful total to compute."),
+                    + "transactions are corrected, because there is no meaningful total to compute.",
+                    ValidationText.AccountHoldsForeignCurrencies(account.Name, string.Join(", ", foreign), accountCurrency)),
             };
         }
 

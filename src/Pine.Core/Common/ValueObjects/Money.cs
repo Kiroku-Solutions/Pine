@@ -66,7 +66,7 @@ namespace Pine.Core.Common.ValueObjects;
 /// <see cref="ToString"/> — see the remarks there.
 /// </para>
 /// </remarks>
-public sealed class Money : ValueObject
+public sealed class Money : ValueObject, IFormattable
 {
     public decimal Amount { get; }
     public CurrencyCode Currency { get; }
@@ -343,7 +343,22 @@ public sealed class Money : ValueObject
     /// domain, and rounding it for display would hide exactly the discrepancy worth seeing.
     /// </para>
     /// </remarks>
-    public override string ToString() => $"{ToAmountString()} {Currency}";
+    public override string ToString() => ToString(null, CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Renders the amount and its currency code in <paramref name="formatProvider"/>'s conventions.
+    /// </summary>
+    /// <param name="format">Ignored: the currency's scale decides the digits, not the caller.</param>
+    /// <param name="formatProvider">The culture to write the figure in; the current culture when null.</param>
+    /// <returns>For example <c>1,500.00 USD</c> or <c>1.500,00 USD</c>.</returns>
+    /// <remarks>
+    /// IMPLEMENTED SO A SENTENCE CAN CARRY A <see cref="Money"/> (TD-21). A composite format string hands
+    /// its provider to an <see cref="IFormattable"/> argument and calls plain <see cref="ToString()"/> on
+    /// anything else — so before this, "a duplicate of {0}" formatted in Spanish still wrote the figure
+    /// in whatever the process culture was.
+    /// </remarks>
+    public string ToString(string? format, IFormatProvider? formatProvider) =>
+        $"{ToAmountString(formatProvider)} {Currency}";
 
     /// <summary>
     /// Renders the amount alone, at its currency's scale and in the current culture — no currency
@@ -370,15 +385,23 @@ public sealed class Money : ValueObject
     /// domain, and rounding it for display would hide exactly the discrepancy worth seeing.
     /// </para>
     /// </remarks>
-    public string ToAmountString()
+    public string ToAmountString() => ToAmountString(CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Renders the amount alone, at its currency's scale, in <paramref name="formatProvider"/>'s
+    /// conventions.
+    /// </summary>
+    /// <param name="formatProvider">The culture to write the figure in; the current culture when null.</param>
+    /// <returns>The figure, with group separators and no currency code.</returns>
+    public string ToAmountString(IFormatProvider? formatProvider)
     {
         var digits = Math.Max(Scale, Amount.Scale);
 
         // The format specifier is built invariantly — it is a token, not a number to render — while
-        // the amount itself is rendered in the current culture, which is what the user's decimal and
+        // the amount itself is rendered in the given culture, which is what the user's decimal and
         // group separators require.
         var format = string.Create(CultureInfo.InvariantCulture, $"N{digits}");
-        return Amount.ToString(format, CultureInfo.CurrentCulture);
+        return Amount.ToString(format, formatProvider ?? CultureInfo.CurrentCulture);
     }
 
     // EF Core constructor

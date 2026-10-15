@@ -54,8 +54,10 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
         _detector = new ReceiptDetector();
         _ocr = new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
-        _extractor = new HeuristicFieldExtractor(loggerFactory?.CreateLogger<HeuristicFieldExtractor>());
-        _extractor.LoadModel();
+        // No logger and no LoadModel call any more (TD-36): the extractor's only log record was a
+        // failure to load an ONNX model that was never used for inference, and whose file has never
+        // existed in this repository. Extraction was always heuristic.
+        _extractor = new HeuristicFieldExtractor();
         _categorizer = categorizer;
     }
 
@@ -122,10 +124,13 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// would tear down the trainer's prediction engine as a side effect of this provider going
     /// away. Whoever constructs an object disposes it -- this type constructs the other three.
     /// </remarks>
+    /// <remarks>
+    /// The extractor is no longer among them (TD-36). It stopped being <c>IDisposable</c> when its
+    /// unused <c>InferenceSession</c> was deleted; it now holds nothing that needs releasing.
+    /// </remarks>
     public void Dispose()
     {
         _detector?.Dispose();
         _ocr?.Dispose();
-        _extractor?.Dispose();
     }
 }

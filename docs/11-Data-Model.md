@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-11-DATA-MODEL`                                                             |
 | Status           | Partially implemented — the SQLite schema is real; the sync contracts are not        |
-| Reconciled       | 2026-08-31 · Schema, migrations, row versions and scaled-integer money are implemented (TD-17, TD-30, TD-31). Two of this document's own assumptions were already corrected in place at :536-537. The JSON sync contracts describe a subsystem that does not exist. |
+| Reconciled       | 2026-09-09 · Schema, migrations, row versions and scaled-integer money are implemented (TD-17, TD-30, TD-31). Every aggregate root now also carries `RowCreatedAtUtc` and `RowUpdatedAtUtc`, stamped by `PineDbContext` rather than by the domain, and an owned child keeps its primary key across an edit instead of being deleted and re-inserted under a new one (TD-60, §12.72). Two of this document's own assumptions were already corrected in place at :536-537. The JSON sync contracts still describe a subsystem that does not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

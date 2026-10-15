@@ -130,11 +130,10 @@ public class ImportDeduplicationTests
 
         foreach (var row in second.Skipped)
         {
-            row.Reason.Should().NotBeNullOrWhiteSpace();
-            row.Reason.Should().Contain("Everyday",
+            row.Reason.Key.Should().Be(ImportReviewText.SkippedAlreadyInAccount("x").Key,
+                "the explanation must state the outcome, so it can be shown to a user");
+            row.Reason.Arguments.Should().Contain("Everyday",
                 "the explanation must name the account the row is already in, not merely say 'duplicate'");
-            row.Reason.Should().Contain("Not imported",
-                "the sentence must state the outcome, so it can be shown to a user unchanged");
         }
 
         host.CountRowsRaw("Transactions").Should().Be(3, "re-importing a statement must not double the vault");
@@ -166,8 +165,7 @@ public class ImportDeduplicationTests
 
         result.Rows[0].Disposition.Should().Be(ImportRowDisposition.Imported);
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.SkippedDuplicateInFile);
-        result.Rows[1].Reason.Should().NotBeNullOrWhiteSpace();
-        result.Rows[1].Reason.Should().Contain("same file",
+        result.Rows[1].Reason.Key.Should().Be(ImportReviewText.SkippedDuplicateInFile().Key,
             "the user must be able to tell an in-file twin from a row already in the account");
 
         host.CountRowsRaw("Transactions").Should().Be(1, "the batch guard must hold before the rows are written, not after");
@@ -244,7 +242,7 @@ public class ImportDeduplicationTests
         var row = first.Rows.Should().ContainSingle().Subject;
         row.Disposition.Should().Be(ImportRowDisposition.ImportedWithoutKeyCheck);
         row.WasImported.Should().BeTrue();
-        row.Reason.Should().Contain("no import key");
+        row.Reason.Key.Should().Be(ImportReviewText.ImportedWithoutKeyCheck().Key);
         first.Skipped.Should().BeEmpty("an unverifiable row is still the user's data, and it was saved");
 
         host.CountRowsRaw("Transactions").Should().Be(1);
@@ -339,6 +337,48 @@ public class ImportDeduplicationTests
             "both accounts must end up holding the statement in full");
         (await host.ReadBalanceAsync(second)).Should().Be(OpeningBalance - 16.50m,
             "the second account's balance must move by every row it imported");
+    }
+
+    /// <summary>
+    /// TD-62 (owner decision), end to end: a zero-amount row is saved and flagged (not dropped, not rejected),
+    /// moves no money, is skipped on re-import by its key, and can be hidden with the existing void command.
+    /// </summary>
+    /// <returns>A task representing the test.</returns>
+    [Fact]
+    public async Task Import_WithAZeroAmountRow_KeepsAndFlagsIt_DeduplicatesIt_AndItCanBeVoided()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+        var account = await host.SeedAccountAsync("Everyday", OpeningBalance);
+        var statement = new StatementImporter(
+            Source,
+            new StatementRow("Gas station authorization", 0m, StatementDay),
+            new StatementRow("Coffee Hut", -4.50m, StatementDay));
+
+        var first = await ImportAsync(host, account, statement);
+
+        first.Imported.Should().HaveCount(2);
+        first.Rows.Select(row => row.IsZeroAmount).Should().Equal(true, false);
+        host.CountRowsRaw("Transactions").Should().Be(2);
+        (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance - 4.50m, "a zero row moves nothing");
+
+        var persisted = await host.QueryAsync(context => context.Transactions.AsNoTracking()
+            .Where(t => t.AccountId == account).ToListAsync());
+        persisted.Single(t => t.TotalAmount.Amount == 0m).IsZeroAmountImport.Should().BeTrue();
+        persisted.Single(t => t.TotalAmount.Amount != 0m).IsZeroAmountImport.Should().BeFalse();
+
+        var second = await ImportAsync(host, account, statement);
+        second.Rows.Select(row => row.Disposition).Should()
+            .AllBeEquivalentTo(ImportRowDisposition.SkippedAlreadyInAccount, "the zero row keeps its key and dedups like any other");
+        host.CountRowsRaw("Transactions").Should().Be(2);
+
+        var zeroId = persisted.Single(t => t.TotalAmount.Amount == 0m).Id;
+        await host.Mediator.Send(new VoidTransactionCommand(zeroId, "Zero-amount row hidden after import"));
+        var voided = await host.QueryAsync(context => context.Transactions.AsNoTracking().SingleAsync(t => t.Id == zeroId));
+        voided.IsVoided.Should().BeTrue();
+        (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance - 4.50m);
+
+        var third = await ImportAsync(host, account, statement);
+        third.Imported.Should().BeEmpty("a hidden (voided) row keeps its key, so re-importing the file does not bring it back");
     }
 
     private static async Task<ImportTransactionsResult> ImportAsync(

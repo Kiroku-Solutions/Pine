@@ -217,6 +217,87 @@ public sealed class AesGcmVaultKeyService : IVaultKeyService
     /// <summary>
     /// Encrypts the data key under the auth key with AES-256-GCM and the supplied associated data.
     /// </summary>
+    private static readonly byte[] RotationAadSuffix = System.Text.Encoding.UTF8.GetBytes("|pine.rekey-journal.v1");
+
+    /// <inheritdoc />
+    public VaultKeyRotation BeginDataKeyRotation(string currentPassword, string newPassword, VaultHeader header)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        if (string.IsNullOrEmpty(currentPassword))
+        {
+            throw new ArgumentException("Password cannot be empty.", nameof(currentPassword));
+        }
+
+        if (string.IsNullOrEmpty(newPassword))
+        {
+            throw new ArgumentException("Password cannot be empty.", nameof(newPassword));
+        }
+
+        var oldKey = UnwrapDataKey(currentPassword, header);
+        var newKey = RandomNumberGenerator.GetBytes(DataKeyLengthBytes);
+        byte[]? currentAuth = null;
+        byte[]? newAuth = null;
+        try
+        {
+            var parameters = header.KdfParameters;
+            var newSalt = RandomNumberGenerator.GetBytes(parameters.SaltLengthBytes);
+            var newHeaderAad = VaultHeaderBinding.Compute(
+                header.HeaderVersion, header.VaultId, header.CreatedAtUtc, parameters, newSalt);
+
+            newAuth = _keyDerivationService.DeriveKey(newPassword, parameters, newSalt);
+            currentAuth = _keyDerivationService.DeriveKey(currentPassword, header);
+
+            var newHeader = header.Rewrapped(newSalt, Wrap(newAuth, newKey, newHeaderAad));
+            var newUnderCurrent = Wrap(currentAuth, newKey, RotationAad(header));
+            var oldUnderNew = Wrap(newAuth, oldKey, RotationAad(newHeader));
+
+            return new VaultKeyRotation(newHeader, newUnderCurrent, oldUnderNew, oldKey, newKey);
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(oldKey);
+            CryptographicOperations.ZeroMemory(newKey);
+            throw;
+        }
+        finally
+        {
+            if (currentAuth is not null) CryptographicOperations.ZeroMemory(currentAuth);
+            if (newAuth is not null) CryptographicOperations.ZeroMemory(newAuth);
+        }
+    }
+
+    /// <inheritdoc />
+    public byte[] UnwrapRotationKey(string password, VaultHeader header, VaultKeyWrap wrap)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        ArgumentNullException.ThrowIfNull(wrap);
+        if (string.IsNullOrEmpty(password))
+        {
+            throw new ArgumentException("Password cannot be empty.", nameof(password));
+        }
+
+        EnsureAuthKeyLength(header.KdfParameters);
+        EnsureWrapAvailable(wrap.Algorithm);
+        var authKey = _keyDerivationService.DeriveKey(password, header);
+        try
+        {
+            return Unwrap(authKey, wrap, RotationAad(header));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(authKey);
+        }
+    }
+
+    private static byte[] RotationAad(VaultHeader header)
+    {
+        var binding = VaultHeaderBinding.Compute(header);
+        var aad = new byte[binding.Length + RotationAadSuffix.Length];
+        binding.CopyTo(aad, 0);
+        RotationAadSuffix.CopyTo(aad, binding.Length);
+        return aad;
+    }
+
     private static VaultKeyWrap Wrap(byte[] authKey, byte[] dataKey, byte[] associatedData)
     {
         var nonce = RandomNumberGenerator.GetBytes(VaultKeyWrap.Aes256GcmNonceLengthBytes);
@@ -288,7 +369,10 @@ public sealed class AesGcmVaultKeyService : IVaultKeyService
     /// Refuses early when the running platform does not provide AES-GCM.
     /// </summary>
     /// <remarks>
-    /// <c>AesGcm.IsSupported</c> is false on the browser/WASM runtime. Letting the platform's own
+    /// <c>AesGcm.IsSupported</c> is false on the browser/WASM runtime, which is the case that
+    /// motivated this guard; the head that ran there was deleted in the Phase 3 platform review and
+    /// the guard stays, because it asks a runtime question that any future target can answer no to.
+    /// Letting the platform's own
     /// <see cref="PlatformNotSupportedException"/> escape would reach the unlock screen as an
     /// unclassifiable error; the named exception lets it say "this build cannot open vaults" rather
     /// than blaming the password.

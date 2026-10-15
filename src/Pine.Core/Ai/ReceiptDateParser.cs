@@ -102,7 +102,9 @@ public static class ReceiptDateParser
     /// <param name="text">A line of receipt text, which may contain other words.</param>
     /// <param name="culture">
     /// The culture whose component order is preferred for an ambiguous string. Defaults to
-    /// <see cref="CultureInfo.CurrentCulture"/> — the single place this type reads ambient state.
+    /// <see cref="Pine.Core.Common.MachineCulture.RegionalFormat"/> — the single place this type reads
+    /// ambient state. Not <see cref="CultureInfo.CurrentCulture"/>, which follows the display language
+    /// in a running head; a receipt's date order is the region's, whatever language the screen is in.
     /// </param>
     /// <param name="now">The clock the plausibility window is measured against. Defaults to now.</param>
     /// <returns>
@@ -131,7 +133,8 @@ public static class ReceiptDateParser
             return new ReceiptDateCandidate(iso, IsAmbiguous: false, Alternative: null);
         }
 
-        var dayFirstPreferred = PrefersDayFirst(culture ?? CultureInfo.CurrentCulture);
+        // The machine's region, not the display language: a receipt is printed where the user shops (TD-21).
+        var dayFirstPreferred = PrefersDayFirst(culture ?? Pine.Core.Common.MachineCulture.RegionalFormat);
 
         var preferredFormats = dayFirstPreferred ? DayFirstFormats : MonthFirstFormats;
         var otherFormats = dayFirstPreferred ? MonthFirstFormats : DayFirstFormats;

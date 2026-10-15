@@ -35,10 +35,31 @@ public sealed class TransactionLineItem : Entity
     {
         TransactionId = transactionId;
         Kind = kind;
+        LineQuantity.EnsureValid(quantity);
         Description = description ?? string.Empty;
         Quantity = quantity;
         UnitPrice = CopyOf(unitPrice);
         TotalPrice = CopyOf(totalPrice);
+    }
+
+    /// <summary>
+    /// Re-describes this line item in place, keeping its <see cref="Entity.Id"/> (TD-60).
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> for the same reason as <see cref="TransactionSplit.Update"/>: only
+    /// <see cref="Transaction.ReplaceLineItems"/> may call it, and only once the staged set has been
+    /// reconciled against the transaction total. Note that the kind travels too, nullable and all —
+    /// a legacy row's absent kind must survive an edit to the description beside it, or editing one
+    /// field would quietly assert a reconciliation the data has never made.
+    /// </remarks>
+    internal void Update(string description, decimal quantity, Money unitPrice, Money totalPrice, LineItemKind? kind)
+    {
+        LineQuantity.EnsureValid(quantity);
+        Description = description ?? string.Empty;
+        Quantity = quantity;
+        UnitPrice = CopyOf(unitPrice);
+        TotalPrice = CopyOf(totalPrice);
+        Kind = kind;
     }
 
     /// <summary>

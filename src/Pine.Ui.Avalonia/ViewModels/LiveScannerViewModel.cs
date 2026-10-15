@@ -8,12 +8,13 @@ using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
-using OpenCvSharp;
 using Pine.Core.Ai;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -21,23 +22,35 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// Drives a real-time webcam feed, detects receipts via YOLO,
 /// then hands the captured frame to ScanReceiptViewModel for OCR.
 /// </summary>
-public record CameraOption(int Index, string Name);
-
-public partial class LiveScannerViewModel : ObservableObject, IDisposable
+public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<RetakeRequestedMessage>, IDisposable
 {
     private readonly IAIProvider _aiProvider;
-    private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Where frames come from (TD-120). This screen used to open the webcam through OpenCvSharp itself;
+    /// it now asks for the default camera and receives frames, and never names a native type. Which
+    /// camera, and why there is no picker, is <see cref="ICameraSource"/>'s to explain.
+    /// </summary>
+    private readonly ICameraSource _camera;
+    private readonly LocalizedMessageSlot _status;
+    /// <summary>
+    /// The shell this page is shown in (TD-121). The crop page is created with it too, so the
+    /// capture flow stays beside the sidebar instead of replacing it.
+    /// </summary>
+    private readonly IShellNavigator _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
+    /// resolve, so a page this head cannot serve is a compile-time surface a test can enumerate
+    /// instead of a throw on the user's click.
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly ILogger<LiveScannerViewModel>? _logger;
     private readonly object _captureLock = new();
     private int _consecutiveDetections;
-    private VideoCapture? _capture;
+    private ICameraSession? _session;
     private CancellationTokenSource? _cts;
     private volatile bool _isDisposed;
-
-    public System.Collections.ObjectModel.ObservableCollection<CameraOption> Cameras { get; } = new();
-
-    [ObservableProperty]
-    public partial CameraOption? SelectedCamera { get; set; }
 
     [ObservableProperty]
     public partial WriteableBitmap? LiveFeed { get; set; }
@@ -45,30 +58,55 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsScanning { get; set; }
 
+    /// <summary>What this screen says before anything has been pressed.</summary>
+    /// <remarks>
+    /// IT WAS AN ENGLISH LITERAL, AND THE INDEPENDENT REVIEW OF ITEM 1.5 CAUGHT IT. Every other
+    /// sentence on this screen goes through the localizer, so a Spanish user read "Press Start to
+    /// activate camera" above a button labelled "Iniciar cámara". It is a key now, set in the
+    /// constructor through the same slot as the rest, so it follows a language switch too.
+    /// </remarks>
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Press Start to activate camera";
+    public partial string StatusMessage { get; set; } = string.Empty;
 
     public LiveScannerViewModel(
         IAIProvider aiProvider,
-        INavigationService navigationService,
+        ICameraSource camera,
+        IShellNavigator navigationService,
+        IViewModelFactory viewModels,
+        ILocalizer localizer,
         ILogger<LiveScannerViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
+        ArgumentNullException.ThrowIfNull(camera);
         _aiProvider = aiProvider;
+        _camera = camera;
         _navigationService = navigationService;
+        _viewModels = viewModels;
+        _status = new LocalizedMessageSlot(localizer, text => PostToUI(() => StatusMessage = text ?? string.Empty));
         _logger = logger;
 
-        // Populate mock cameras (OpenCV index based)
-        for (int i = 0; i < 4; i++)
-        {
-            Cameras.Add(new CameraOption(i, $"Camera {i}"));
-        }
-        SelectedCamera = Cameras[0];
-
-        WeakReferenceMessenger.Default.Register<RetakeRequestedMessage>(this, (r, m) =>
-        {
-            StartScanning();
-        });
+        // RENDERED SYNCHRONOUSLY FIRST, AND THAT IS NOT A DETAIL. The slot's assignment goes through
+        // PostToUI, because every other caller is on the capture thread -- so setting the opening
+        // sentence through it alone leaves this property EMPTY until the dispatcher runs, which is
+        // what the screen would paint on its first frame, and what a test reads. The key is rendered
+        // here and registered with the slot immediately after, so the sentence is there from
+        // construction AND still follows a language switch.
+        StatusMessage = localizer["LiveScanner.Status.Idle"];
+        _status.Set("LiveScanner.Status.Idle");
     }
+
+    /// <summary>
+    /// The user rejected the photo on the crop or scan screen and wants another go.
+    /// </summary>
+    /// <remarks>
+    /// THE OLD REGISTRATION CAPTURED <c>this</c> BY CALLING <see cref="StartScanning"/> (TD-34),
+    /// which handed the process-wide messenger a strong reference to a view model that owns a
+    /// CAMERA. Every visit to this screen left one behind, subscribed and holding a
+    /// camera session that only <see cref="Dispose"/> releases. Registration now follows
+    /// <c>IsActive</c>, and navigation both unregisters and disposes.
+    /// </remarks>
+    /// <param name="message">The retake request. It carries no payload.</param>
+    public void Receive(RetakeRequestedMessage message) => StartScanning();
 
     [RelayCommand]
     private void StartScanning()
@@ -77,7 +115,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
 
         _cts = new CancellationTokenSource();
         IsScanning = true;
-        StatusMessage = "Opening camera...";
+        _status.Set("LiveScanner.Status.OpeningCamera");
 
         // Fire-and-forget on the thread pool; errors are caught internally
         _ = Task.Run(() => CaptureLoopAsync(_cts.Token));
@@ -92,15 +130,14 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         // Release the camera under lock so the background thread doesn't race
         lock (_captureLock)
         {
-            _capture?.Release();
-            _capture?.Dispose();
-            _capture = null;
+            _session?.Dispose();
+            _session = null;
         }
 
         _cts?.Dispose();
         _cts = null;
         IsScanning = false;
-        StatusMessage = "Camera stopped";
+        _status.Set("LiveScanner.Status.CameraStopped");
     }
 
     [RelayCommand]
@@ -111,25 +148,27 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         // Grab the last frame from the feed
         lock (_captureLock)
         {
-            if (_capture != null && _capture.IsOpened())
+            if (_session != null)
             {
-                using var frame = new Mat();
-                if (_capture.Read(frame) && !frame.Empty())
+                using var frame = _session.ReadFrame();
+                if (frame is not null)
                 {
-                    PostToUI(() => StatusMessage = "Manual capture! Extracting text...");
-                    _ = CaptureAndNavigateAsync(frame);
+                    _status.Set("LiveScanner.Status.ManualCapture");
+
+                    // OBSERVED, AND THE DISCARD HERE WAS THE ODD ONE OUT (TD-35).
+                    // CaptureAndNavigateAsync is NOT `async` -- it returns Task.CompletedTask -- so
+                    // a throw from frame.EncodePng() inside it propagated SYNCHRONOUSLY out of
+                    // this relay command, while this thread still held _captureLock. The
+                    // Func<Task> overload is the one that matters: it catches a synchronous throw
+                    // from the factory as well as a faulted task, which a plain discard could not.
+                    ObservedTask.Run(
+                        () => CaptureAndNavigateAsync(frame),
+                        _logger,
+                        "camera-manual-capture",
+                        new UserFacingMessage("LiveScanner.Failure.ManualCapture"),
+                        _status.Set);
                 }
             }
-        }
-    }
-
-    partial void OnSelectedCameraChanged(CameraOption? value)
-    {
-        if (IsScanning)
-        {
-            // Restart the camera feed with the new camera
-            StopScanning();
-            StartScanning();
         }
     }
 
@@ -139,81 +178,74 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
 
     private async Task CaptureLoopAsync(CancellationToken token)
     {
-        VideoCapture? localCapture = null;
+        ICameraSession? opened = null;
         try
         {
-            int cameraIndex = SelectedCamera?.Index ?? 0;
-            
-            // Use DirectShow for much faster camera initialization on Windows
-            localCapture = new VideoCapture(cameraIndex, VideoCaptureAPIs.DSHOW);
-            if (!localCapture.IsOpened())
+            opened = _camera.OpenDefault();
+            if (opened is null)
             {
-                // Fallback to default if DSHOW fails
-                localCapture = new VideoCapture(cameraIndex);
-            }
-            
-            if (!localCapture.IsOpened())
-            {
-                PostToUI(() => StatusMessage = "Failed to open camera.");
+                _status.Set("LiveScanner.Status.CameraFailed");
                 return;
             }
 
             // Store for shared access
-            lock (_captureLock) { _capture = localCapture; }
+            lock (_captureLock) { _session = opened; }
 
-            PostToUI(() => StatusMessage = "Looking for receipt...");
+            _status.Set("LiveScanner.Status.LookingForReceipt");
 
-            using var frame = new Mat();
             int frameCounter = 0;
 
             while (!token.IsCancellationRequested)
             {
-                bool readOk;
+                ICameraFrame? frame;
                 lock (_captureLock)
                 {
-                    if (_capture == null || !_capture.IsOpened()) break;
-                    readOk = _capture.Read(frame);
+                    if (_session == null) break;
+                    frame = _session.ReadFrame();
                 }
 
-                if (!readOk || frame.Empty())
+                if (frame is null)
                 {
                     await Task.Delay(50, token);
                     continue;
                 }
 
-                // Render every frame to the UI
-                RenderFrameToUI(frame);
-
-                // Run AI detection every 10 frames (~300 ms) to avoid overwhelming the CPU
-                frameCounter++;
-                if (frameCounter % 10 == 0)
+                using (frame)
                 {
-                    var result = await DetectReceiptInFrameAsync(frame, token);
-                    if (result != null)
+                    // Render every frame to the UI
+                    RenderFrameToUI(frame);
+
+                    // Run AI detection every 10 frames (~300 ms) to avoid overwhelming the CPU
+                    frameCounter++;
+                    if (frameCounter % 10 == 0)
                     {
-                        if (result.PassedFilters && result.CroppedImageStream != null)
+                        var result = await DetectReceiptInFrameAsync(frame, token);
+                        if (result != null)
                         {
-                            _consecutiveDetections++;
-                            PostToUI(() => StatusMessage = $"Receipt detected! Hold still... ({_consecutiveDetections}/5)");
-                            
-                            if (_consecutiveDetections >= 5)
+                            if (result.PassedFilters && result.CroppedImageStream != null)
                             {
-                                await CaptureAndNavigateCroppedAsync(result.CroppedImageStream, result.OcrImageStream);
-                                return; // Exit the loop cleanly
-                            }
-                        }
-                        else
-                        {
-                            _consecutiveDetections = 0; // Reset if confidence drops or filters fail
-                            
-                            // If confidence is high but filters failed, show the specific reason to the user
-                            if (result.Confidence > 0.85f && !string.IsNullOrEmpty(result.StatusMessage))
-                            {
-                                PostToUI(() => StatusMessage = $"⚠️ {result.StatusMessage}");
+                                _consecutiveDetections++;
+                                _status.Set("LiveScanner.Status.HoldStillFormat", _consecutiveDetections);
+
+                                if (_consecutiveDetections >= 5)
+                                {
+                                    await CaptureAndNavigateCroppedAsync(result.CroppedImageStream, result.OcrImageStream);
+                                    return; // Exit the loop cleanly
+                                }
                             }
                             else
                             {
-                                PostToUI(() => StatusMessage = $"Scanning... (Max Conf: {result.Confidence:P1})");
+                                _consecutiveDetections = 0; // Reset if confidence drops or filters fail
+
+                                // If confidence is high but filters failed, show the specific reason to the user
+                                if (result.Confidence > 0.85f && result.StatusMessage is not null)
+                                {
+                                    _status.Set("LiveScanner.Status.ProviderWarningFormat", result.StatusMessage);
+                                }
+                                else
+                                {
+                                    _status.Set("LiveScanner.Status.ScanningFormat", result.Confidence);
+                                }
                             }
                         }
                     }
@@ -229,28 +261,35 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            // WAS: $"Camera error: {ex.Message}" (TD-24). OpenCV and the DirectShow backend report
+            // WAS: $"Camera error: {ex.Message}" (TD-24). The camera backend reports
             // failures as native strings naming device paths and library entry points; none of it is
             // actionable and all of it is now in the log instead.
-            var message = UserFacingError.Report(
+            // The slot marshals to the UI thread itself (see its assign delegate in the constructor).
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "camera-capture-loop",
-                "The camera could not be read. Check that it is connected and not in use by another application, then try again.");
-            PostToUI(() => StatusMessage = message);
+                new UserFacingMessage("LiveScanner.Failure.CaptureLoop")));
         }
         finally
         {
             // Guarantee camera is released even on unexpected exit
+            bool released;
             lock (_captureLock)
             {
-                if (_capture != null)
-                {
-                    _capture.Release();
-                    _capture.Dispose();
-                    _capture = null;
-                }
+                released = _session is not null;
+                _session?.Dispose();
+                _session = null;
             }
+
+            // AND RELEASE ONE THAT WAS OPENED BUT NEVER STORED. Anything between opening the camera and
+            // publishing it to `_session` that throws or is cancelled would otherwise leave this local
+            // holding a device nothing else can reach.
+            if (!released)
+            {
+                opened?.Dispose();
+            }
+
             PostToUI(() => IsScanning = false);
         }
     }
@@ -260,40 +299,29 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     // ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Converts an OpenCV Mat to an Avalonia WriteableBitmap.
-    /// Uses the constructor overload that copies from an IntPtr,
-    /// so all pixel data is copied BEFORE we post to the UI thread.
-    /// This avoids the use-after-free that occurs when a `using` Mat
-    /// is disposed before the Dispatcher callback executes.
+    /// Paints a camera frame into a new <see cref="WriteableBitmap"/> and posts it to the UI thread.
     /// </summary>
-    private void RenderFrameToUI(Mat frame)
+    /// <remarks>
+    /// The pixels are copied into the bitmap on THIS thread, before posting, so the frame can be
+    /// disposed as soon as this returns without the UI thread reading freed memory.
+    /// </remarks>
+    private void RenderFrameToUI(ICameraFrame frame)
     {
         if (_isDisposed) return;
 
-        // Convert BGR → BGRA (Avalonia expects 4-channel premultiplied alpha)
-        using var bgra = new Mat();
-        Cv2.CvtColor(frame, bgra, ColorConversionCodes.BGR2BGRA);
-
-        int width = bgra.Width;
-        int height = bgra.Height;
-        int stride = (int)(bgra.Step());
-
-        // Build the bitmap on this thread — the constructor copies the data immediately
         var bitmap = new WriteableBitmap(
-            new PixelSize(width, height),
+            new PixelSize(frame.Width, frame.Height),
             new Vector(96, 96),
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
 
-        using (var buf = bitmap.Lock())
+        using (var buffer = bitmap.Lock())
         {
             unsafe
             {
-                Buffer.MemoryCopy(
-                    (void*)bgra.Data, 
-                    (void*)buf.Address, 
-                    buf.RowBytes * height, 
-                    stride * height);
+                frame.CopyBgraTo(
+                    new Span<byte>((void*)buffer.Address, buffer.RowBytes * frame.Height),
+                    buffer.RowBytes);
             }
         }
 
@@ -309,11 +337,11 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     //  AI detection helper
     // ────────────────────────────────────────────────────────────
 
-    private async Task<Pine.Core.Ai.ReceiptAnalysisResult?> DetectReceiptInFrameAsync(Mat frame, CancellationToken token)
+    private async Task<Pine.Core.Ai.ReceiptAnalysisResult?> DetectReceiptInFrameAsync(ICameraFrame frame, CancellationToken token)
     {
         try
         {
-            byte[] jpg = frame.ImEncode(".jpg");
+            byte[] jpg = frame.EncodeJpeg();
             using var ms = new MemoryStream(jpg);
             return await _aiProvider.AnalyzeAndCropReceiptAsync(ms, token);
         }
@@ -323,12 +351,11 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
             // WAS: $"AI Error: {ex.Message}" (TD-24). A per-frame detection failure is not the
             // user's problem to diagnose, and the frame loop keeps running, so the sentence says what
             // it costs them rather than which model threw.
-            var message = UserFacingError.Report(
+            _status.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "camera-detect-receipt",
-                "Pine could not find a receipt in the camera image. Move the receipt into frame, or take the photo manually.");
-            PostToUI(() => StatusMessage = message);
+                new UserFacingMessage("LiveScanner.Failure.DetectReceipt")));
             return null;
         }
     }
@@ -337,15 +364,25 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
     //  Capture & Navigate
     // ────────────────────────────────────────────────────────────
 
-    private Task CaptureAndNavigateAsync(Mat frame)
+    private Task CaptureAndNavigateAsync(ICameraFrame frame)
     {
-        byte[] png = frame.ImEncode(".png");
+        byte[] png = frame.EncodePng();
         var imageStream = new MemoryStream(png);
 
         PostToUI(() =>
         {
             StopScanning();
-            _navigationService.NavigateTo<CropReceiptViewModel>();
+
+            // Posted, so it runs later -- possibly after the user left this page (TD-121). See the
+            // same guard in CaptureAndNavigateCroppedAsync.
+            if (_isDisposed || !IsActive)
+            {
+                imageStream.Dispose();
+                return;
+            }
+
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
+            // HANDED OFF (TD-126): the recipient owns the stream now; this method does not touch it again.
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(imageStream));
         });
 
@@ -360,6 +397,9 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
             memStream = new MemoryStream();
             croppedImageStream.CopyTo(memStream);
             memStream.Position = 0;
+
+            // Copied, so the original is never sent and nobody else will release it (TD-126).
+            croppedImageStream.Dispose();
         }
 
         MemoryStream? ocrMemStream = null;
@@ -371,6 +411,7 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
                 ocrMemStream = new MemoryStream();
                 ocrImageStream.CopyTo(ocrMemStream);
                 ocrMemStream.Position = 0;
+                ocrImageStream.Dispose();
             }
         }
 
@@ -378,10 +419,22 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         {
             StopScanning();
 
+            // THE FRAME WAS POSTED, SO THIS RUNS LATER (TD-121). By then the user may have clicked
+            // another page, or the vault may have locked. Navigating anyway would pull the user back
+            // onto the crop screen from wherever they went -- it sits beside the sidebar now, so
+            // leaving mid-capture is a real gesture -- and a disposed scanner must not act at all.
+            if (_isDisposed || !IsActive)
+            {
+                memStream.Dispose();
+                ocrMemStream?.Dispose();
+                return;
+            }
+
             // Navigate first so CropReceiptViewModel is created and registers the message handler
-            _navigationService.NavigateTo<CropReceiptViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
 
             // Deliver the already cropped image (user can adjust further if needed)
+            // HANDED OFF (TD-126): the recipient owns both streams now; this method does not touch them again.
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(memStream, ocrMemStream));
         });
 
@@ -397,10 +450,24 @@ public partial class LiveScannerViewModel : ObservableObject, IDisposable
         global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
     }
 
+    /// <summary>
+    /// Releases the camera. Idempotent -- <c>_isDisposed</c> makes a second call a no-op, which is
+    /// what lets navigation and <c>LiveScannerView.OnUnloaded</c> both call it safely.
+    /// </summary>
     public void Dispose()
     {
+        _status.Dispose();
         if (_isDisposed) return;
         _isDisposed = true;
+
+        // TD-34: unregister here as well as from the navigator. Dispose is reachable from
+        // LiveScannerView.OnUnloaded, which can fire without any navigation having happened, and a
+        // disposed scanner that still receives RetakeRequestedMessage would call StartScanning on
+        // a camera it has already put down. StartScanning does check _isDisposed, so this is
+        // defence in depth rather than the only guard -- but it is the one that stops the messenger
+        // holding a dead recipient at all.
+        IsActive = false;
+
         StopScanning();
         GC.SuppressFinalize(this);
     }

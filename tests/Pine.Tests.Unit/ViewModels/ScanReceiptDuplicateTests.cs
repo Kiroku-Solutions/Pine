@@ -12,6 +12,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Xunit;
 
@@ -38,7 +39,10 @@ namespace Pine.Tests.Unit.ViewModels;
 public class ScanReceiptDuplicateTests
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly INavigationService _navigationService = Substitute.For<INavigationService>();
+    private readonly IShellNavigator _navigationService = Substitute.For<IShellNavigator>();
+
+    /// <summary>English, in the United States' conventions, whatever machine runs the test (TD-21).</summary>
+    private readonly Localizer _localizer = new(System.Globalization.CultureInfo.GetCultureInfo("en-US"));
 
     private static Account UsdAccount() =>
         Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System);
@@ -48,7 +52,7 @@ public class ScanReceiptDuplicateTests
         _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<Account>>(new[] { account }));
 
-        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService);
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), _localizer);
 
         // The constructor kicks the account load off without awaiting it; assign explicitly so the
         // test does not race the fire-and-forget task for the currency the arithmetic depends on.
@@ -76,7 +80,7 @@ public class ScanReceiptDuplicateTests
 
         await vm.SaveTransactionCommand.ExecuteAsync(null);
 
-        vm.DuplicateWarning.Should().Contain("24.50");
+        vm.DuplicateWarning.Should().Be("This looks like a duplicate of 24.50 USD to ACME on Thursday, March 5, 2026. Save again to add it anyway.");
         await _mediator.DidNotReceive().Send(Arg.Any<AddTransactionCommand>(), Arg.Any<CancellationToken>());
     }
 

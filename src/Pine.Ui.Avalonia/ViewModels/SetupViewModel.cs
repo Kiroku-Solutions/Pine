@@ -5,16 +5,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
+using Pine.Core.Common;
 using Pine.Core.Security;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
+using Microsoft.Extensions.Options;
+using Pine.Core.Configuration;
+using System.Collections.Generic;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class SetupViewModel : ObservableObject
+public partial class SetupViewModel : ObservableObject, IDisposable
 {
     /// <summary>
     /// Pre-TD-05 vaults recorded only a raw salt file with no KDF metadata. Its presence still
@@ -22,9 +26,37 @@ public partial class SetupViewModel : ObservableObject
     /// </summary>
     private const string LegacySaltFileName = "pine.salt";
 
-    private readonly IServiceProvider _serviceProvider;
+    /// <summary>
+    /// The vault registry this screen creates the new vault profile in.
+    /// </summary>
+    /// <remarks>
+    /// INJECTED, NOT RESOLVED (TD-28). <c>InitializeVaultAsync</c> used to pull this out of the
+    /// container mid-command, which is the last service-locator call left in this type once
+    /// navigation stopped needing one. It is a singleton on every head, so this is the same object
+    /// -- only the reach has gone.
+    /// </remarks>
+    private readonly IVaultManager _vaultManager;
+    private readonly LocalizedMessageSlot _message;
+    private readonly LocalizedMessageSlot _strengthStatus;
+    private readonly LocalizedMessageSlot _advice;
+
+    private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
+    {
+        if (message is null) slot.Clear(); else slot.Set(message);
+    }
+
+    private static void SetOrClear(LocalizedMessageSlot slot, IReadOnlyList<UserFacingMessage> messages)
+    {
+        if (messages.Count == 0) slot.Clear(); else slot.Set(messages);
+    }
+
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the shell this screen hands over to once the vault exists (TD-28).
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly IVaultHeaderStore _vaultHeaderStore;
 
     /// <summary>
@@ -33,6 +65,15 @@ public partial class SetupViewModel : ObservableObject
     /// <see cref="VaultKeyMaterial"/> and hands both halves straight on.
     /// </summary>
     private readonly IVaultKeyService _vaultKeyService;
+
+    /// <summary>
+    /// Creates the new vault's database schema (TD-28). This screen no longer opens a DI scope or
+    /// resolves the migrator itself: the scope, the DbContext and the migration all belong to the
+    /// persistence adapter behind this port. The setup path is deliberately a different method from
+    /// the unlock path -- a brand-new vault has nothing to probe and no data to back up.
+    /// </summary>
+    private readonly IVaultDatabaseOpener _vaultDatabaseOpener;
+
     private readonly ILogger<SetupViewModel>? _logger;
 
     [ObservableProperty]
@@ -57,7 +98,7 @@ public partial class SetupViewModel : ObservableObject
     public partial string ConfirmPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Enter a strong master password to encrypt your vault.";
+    public partial string StatusMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -131,8 +172,8 @@ public partial class SetupViewModel : ObservableObject
             : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
         PasswordMeetsFloor = result.MeetsFloor;
         PasswordStrengthLevelValue = result.Level;
-        PasswordStrengthStatusText = BuildStatusText(result);
-        PasswordAdviceText = BuildAdviceText(result);
+        SetOrClear(_strengthStatus, PasswordFeedbackText.Status(result));
+        SetOrClear(_advice, PasswordFeedbackText.Advice(result));
 
         UpdatePasswordsMatch();
     }
@@ -144,75 +185,38 @@ public partial class SetupViewModel : ObservableObject
         PasswordsMatch = string.IsNullOrEmpty(ConfirmPassword) || ConfirmPassword == MasterPassword;
     }
 
-    private static string BuildStatusText(PasswordStrengthResult result)
-    {
-        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
-        {
-            return string.Empty;
-        }
+    private readonly PineSecurityOptions _securityOptions;
 
-        var band = result.Level switch
-        {
-            PasswordStrengthLevel.VeryWeak => "Very weak",
-            PasswordStrengthLevel.Weak => "Weak",
-            PasswordStrengthLevel.Moderate => "Moderate",
-            PasswordStrengthLevel.Strong => "Strong",
-            PasswordStrengthLevel.VeryStrong => "Very strong",
-            _ => "Unusable",
-        };
-
-        return result.MeetsFloor
-            ? $"{band} -- meets Pine's minimum for a vault password."
-            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
-    }
-
-    /// <summary>
-    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
-    /// already said by <see cref="BuildStatusText"/> (<see cref="PasswordWeakness.Empty"/> and
-    /// <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of "does
-    /// not meet the minimum").
-    /// </summary>
-    private static string BuildAdviceText(PasswordStrengthResult result)
-    {
-        var sentences = result.Weaknesses
-            .Select(AdviceFor)
-            .Where(static s => s is not null);
-
-        return string.Join(" ", sentences);
-    }
-
-    private static string? AdviceFor(PasswordWeakness weakness) => weakness switch
-    {
-        PasswordWeakness.Empty => null,
-        PasswordWeakness.BelowEntropyFloor => null,
-        PasswordWeakness.TooShort =>
-            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
-        PasswordWeakness.CommonPassword =>
-            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
-        PasswordWeakness.RepeatedPattern =>
-            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
-        PasswordWeakness.SequentialRun =>
-            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
-        PasswordWeakness.KeyboardPattern =>
-            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
-        PasswordWeakness.LimitedCharacterVariety =>
-            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
-        _ => null,
-    };
-
+    /// <param name="securityOptions">
+    /// Carries the Argon2id profile NEW vaults are minted with (TD-27). Optional, defaulting to
+    /// <see cref="KdfParameters.Argon2idV1"/> — see <see cref="NewVaultKdf"/> for why this can only
+    /// ever affect new vaults.
+    /// </param>
     public SetupViewModel(
-        IServiceProvider serviceProvider,
+        IVaultManager vaultManager,
         IVaultSession vaultSession,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         IVaultHeaderStore vaultHeaderStore,
         IVaultKeyService vaultKeyService,
+        IVaultDatabaseOpener vaultDatabaseOpener,
+        ILocalizer localizer,
+        IOptions<PineSecurityOptions>? securityOptions = null,
         ILogger<SetupViewModel>? logger = null)
     {
-        _serviceProvider = serviceProvider;
+        ArgumentNullException.ThrowIfNull(localizer);
+        _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _strengthStatus = new LocalizedMessageSlot(localizer, text => PasswordStrengthStatusText = text ?? string.Empty);
+        _advice = new LocalizedMessageSlot(localizer, text => PasswordAdviceText = text ?? string.Empty);
+        _message.Set("Setup.Status.Prompt");
+        _securityOptions = securityOptions?.Value ?? new PineSecurityOptions();
+        _vaultManager = vaultManager;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _vaultHeaderStore = vaultHeaderStore;
         _vaultKeyService = vaultKeyService;
+        _vaultDatabaseOpener = vaultDatabaseOpener;
         _logger = logger;
     }
 
@@ -233,7 +237,7 @@ public partial class SetupViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(VaultName))
         {
-            StatusMessage = "Vault name cannot be empty.";
+            _message.Set("Setup.Status.VaultNameEmpty");
             return;
         }
 
@@ -244,9 +248,7 @@ public partial class SetupViewModel : ObservableObject
         var strength = PasswordStrengthPolicy.Evaluate(MasterPassword);
         if (!strength.MeetsFloor)
         {
-            StatusMessage = string.IsNullOrEmpty(PasswordAdviceText)
-                ? "This password does not meet Pine's minimum strength for a vault password."
-                : $"This password does not meet Pine's minimum strength for a vault password. {PasswordAdviceText}";
+            _message.Set([new UserFacingMessage("Password.BelowMinimum"), .. PasswordFeedbackText.Advice(strength)]);
             return;
         }
 
@@ -254,17 +256,16 @@ public partial class SetupViewModel : ObservableObject
         // loss, not an inconvenience, so a mismatch must refuse rather than warn.
         if (MasterPassword != ConfirmPassword)
         {
-            StatusMessage = "Passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
+            _message.Set("Setup.Status.PasswordMismatch");
             return;
         }
 
         IsBusy = true;
-        StatusMessage = "Encrypting vault... (this takes a moment)";
+        _message.Set("Setup.Status.Encrypting");
 
         try
         {
-            var vaultManager = _serviceProvider.GetRequiredService<VaultManager>();
-            var profile = await vaultManager.CreateVaultAsync(VaultName);
+            var profile = await _vaultManager.CreateVaultAsync(VaultName);
             
             await Task.Run(async () => 
             {
@@ -281,7 +282,7 @@ public partial class SetupViewModel : ObservableObject
                 // that data key wrapped under an auth key derived from the master password with
                 // the Argon2idV1 profile. The password is stamped nowhere -- what lands on disk is
                 // the wrap, and only this password's auth key opens it.
-                var material = _vaultKeyService.CreateVault(MasterPassword, KdfParameters.Argon2idV1);
+                var material = _vaultKeyService.CreateVault(MasterPassword, _securityOptions.ToKdfParameters());
 
                 // ORDERING IS A CORRECTNESS REQUIREMENT, NOT A STYLE CHOICE. The header is written
                 // BEFORE anything creates the database file, because the two failure modes are not
@@ -299,25 +300,15 @@ public partial class SetupViewModel : ObservableObject
                 _vaultSession.Unlock(vaultDir, material.DataKey);
                 Array.Clear(material.DataKey, 0, material.DataKey.Length);
 
-                // Resolved only after Unlock: the migrator depends on PineDbContext, which refuses
-                // to be constructed while the vault session is locked.
-                //
-                // IVaultMigrator and PineDbContext are Scoped (TD-01), so they are resolved from an
-                // EXPLICIT scope rather than from the root provider. Resolving a Scoped service
-                // from the root creates a root-scoped instance that lives for the whole process --
-                // here that would be a DbContext pinned to this vault's path and key, still alive
-                // after the user locks it and opens a different vault. The scope is disposed only
-                // after MigrateAsync has completed.
-                using var migrationScope = _serviceProvider.CreateScope();
-                var migrator = migrationScope.ServiceProvider.GetRequiredService<IVaultMigrator>();
-
-                // Migrations (never EnsureCreated) are the single source of truth for the schema:
-                // this creates the full schema AND records __EFMigrationsHistory. On a brand-new
-                // vault there is no data yet, so no pre-migration backup is taken.
-                await migrator.MigrateAsync(CancellationToken.None).ConfigureAwait(false);
+                // The schema phase (TD-28). Creating it needs an explicit DI scope, a DbContext
+                // and the migrator, and all three now live behind IVaultDatabaseOpener rather than
+                // in this view model. Called only after Unlock: the migrator depends on
+                // PineDbContext, which refuses to be constructed while the vault session is locked.
+                // Migrations (never EnsureCreated) remain the single source of truth for the schema.
+                await _vaultDatabaseOpener.CreateSchemaAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
-            StatusMessage = "Vault initialized!";
+            _message.Set("Setup.Status.Initialized");
 
             // No settings are written here (TD-47/TD-48/TD-80): the storage-mode and telemetry
             // choices this step used to record described capabilities Pine does not have --
@@ -327,7 +318,7 @@ public partial class SetupViewModel : ObservableObject
             // it replaced. A fresh vault also seeds no account: see DashboardView's always-visible
             // "+ New Account" affordance for the empty-vault path.
 
-            _navigationService.NavigateTo<ShellViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateShell());
         }
         catch (Exception ex)
         {
@@ -335,15 +326,34 @@ public partial class SetupViewModel : ObservableObject
             // and a database, so its failures are filesystem and SQLCipher exceptions naming the
             // absolute path the user is about to store their finances in -- shown on a screen that
             // is, by definition, the first one a new user ever sees.
-            StatusMessage = UserFacingError.Report(
+            _message.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "vault-setup",
-                "Your vault could not be created. Choose a different folder or free up disk space, then try again.");
+                new UserFacingMessage("Setup.Failure.Create")));
         }
         finally
         {
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        _strengthStatus.Dispose();
+        _advice.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

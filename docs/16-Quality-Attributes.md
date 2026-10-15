@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-16-QUALITY-ATTRIBUTES`                                                     |
 | Status           | Aspirational — the quality gates are not enforced anywhere                           |
-| Reconciled       | 2026-08-31 · The gates are described as CI-enforced (`56-IMPLEMENTATION-PLAN`:1097). CI has no coverage, performance, mutation or accessibility gate, and fires only on manual dispatch (TD-07). |
+| Reconciled       | 2026-08-31 · The gates are described as CI-enforced (`56-IMPLEMENTATION-PLAN`:1097). CI has a coverage gate (`scripts/coverage-gate.sh`, iteration 30) and no performance, mutation or accessibility gate. It no longer fires only on manual dispatch: since 2026-09-10 it runs on `pull_request` into `main` and on `push` to `main` (TD-07 closed). |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

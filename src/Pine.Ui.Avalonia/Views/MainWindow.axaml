@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
@@ -7,7 +8,7 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Pine.Ui.Avalonia.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Title="Pine - Secure Financial Engine"
+        Title="{loc:Tr MainWindow.Title}"
         Width="900" Height="600"
         MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterScreen"
@@ -44,6 +45,18 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:BudgetsViewModel}">
             <views:BudgetsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:RulesViewModel}">
+            <views:RulesView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncConflictsViewModel}">
+            <views:SyncConflictsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncPairingViewModel}">
+            <views:SyncPairingView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncRunViewModel}">
+            <views:SyncRunView />
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScanReceiptViewModel}">
             <views:ScanReceiptView />

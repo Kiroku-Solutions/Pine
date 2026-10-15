@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-27-DEV-GUIDELINES`                                                         |
 | Status           | Partially implemented — the local loop is real; the tooling around it is not         |
-| Reconciled       | 2026-08-31 · Building, testing and running from source work as described. `pine dev test`, `pine dev mermaid` and `pine dev validate-ssot` do not exist; only `pine dev init` and `pine --version` do. |
+| Reconciled       | 2026-09-07 · Building, testing and running from source work as described. `pine dev test`, `pine dev mermaid` and `pine dev validate-ssot` do not exist; only `pine dev init` and `pine --version` do. The repository-layout tree below had listed seven projects that were deleted in iteration 27 (TD-38) and they have been removed from it. **It still lists three directories that do not exist and never have** — `src/Pine.Docs/`, `tools/MermaidValidator/` and `tools/PineCliScripts/` — left in place rather than quietly deleted, because a layout tree is a plan as much as a record and removing them would hide that the plan was not carried out. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -120,23 +120,15 @@ pine/
 │   ├── Pine.Application/          # Use cases, mediators
 │   ├── Pine.Infrastructure/       # Adapters (SQLite, OS, network)
 │   ├── Pine.Cli/                  # Global tool
-│   ├── Pine.Plugins.Sdk/          # Plugin SDK
-│   ├── Pine.Plugins.Host/         # Plugin host
-│   ├── Pine.Ai.Default/           # Default AI model artefact
-│   ├── Pine.Ai.Explainer/         # Default explainer
 │   ├── Pine.Ui.Avalonia/          # Avalonia UI shell
 │   ├── Pine.Ui.Ios/               # iOS shell
 │   ├── Pine.Ui.Android/           # Android shell
 │   ├── Pine.Ui.Macos/             # macOS shell
 │   ├── Pine.Ui.Windows/           # Windows shell
-│   ├── Pine.Ui.Web/               # Web shell
 │   └── Pine.Docs/                 # Docs site (Mermaid, Astro)
 ├── tests/
 │   ├── Pine.Tests.Unit/
-│   ├── Pine.Tests.Integration/
-│   ├── Pine.Tests.Mutation/
-│   ├── Pine.Tests.Performance/
-│   └── Pine.Tests.Accessibility/
+│   └── Pine.Tests.Integration/
 ├── tools/
 │   ├── MermaidValidator/
 │   └── PineCliScripts/

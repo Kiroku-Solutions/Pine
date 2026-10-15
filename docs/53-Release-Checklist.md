@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-53-RELEASE-CHECKLIST`                                                       |
 | Status           | Aspirational — several gates cannot currently be satisfied                           |
-| Reconciled       | 2026-08-31 · It requires green CI (no automatic trigger exists), performance, mutation and accessibility gates (all three projects are empty templates), and sign-off from a Trust team and a Maintainer Council that do not exist. |
+| Reconciled       | 2026-08-31 · It requires green CI — which since 2026-09-10 does fire by itself, on `pull_request` into `main` and on `push` to `main` (TD-07) — plus performance, mutation and accessibility gates (all three projects were empty templates and were deleted in iteration 27), and sign-off from a Trust team and a Maintainer Council that do not exist. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -76,6 +76,11 @@ graph LR
 - All CI gates per `28-CI-CD` §4.1 are green.
 - The build matrix is green.
 - The signing and attestation are green.
+  - **As built (2026-09-12):** the concrete check is that the release manifest says
+    `"signed": true` and names a certificate thumbprint, and that CI uploaded the artefact as
+    `pine-win-x64` rather than `pine-win-x64-UNSIGNED`. Today it cannot: **no code-signing
+    certificate exists** (TD-108), so this line cannot be ticked for any build this pipeline
+    currently produces. Attestation — SBOM and provenance — does not exist at all.
 
 ### 4.3 Performance Green
 

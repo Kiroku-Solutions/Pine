@@ -16,6 +16,7 @@ index and it is real.
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted | — |
 | [0012](0012-no-telemetry.md) | Pine collects no telemetry, and performs no network I/O at all | Accepted | OD-10 |
 | [0013](0013-encryption-baseline.md) | Encryption baseline: SQLCipher at rest, Argon2id auth key, AES-256-GCM key envelope | Accepted | OD-03 |
+| [0021](0021-no-plugin-host.md) | Pine will not load third-party code; the plugin host and SDK are withdrawn | Accepted | OD-01 |
 
 ## What is NOT here, and why that matters
 
@@ -36,8 +37,15 @@ Two further defects in that register are recorded here so they are not rediscove
 
 ## Format note
 
-`0001` is in the plain Nygard/`adr-tools` layout (a `Date:` line and four `##` sections). `0012` and
-`0013` follow the format `25-ADR` §4.3–4.4 actually mandates: an `# NNNN — Title` heading, a
-ten-field metadata table, and seven body sections. The two do not match. New ADRs should follow
-`25-ADR` §4, since that is the normative document; `0001` is left as written rather than rewritten,
-because an ADR is meant to be an immutable record of when a decision was taken.
+All three ADRs now carry the front matter `25-ADR` §4.3 mandates: an `# NNNN — Title` heading and a
+ten-field metadata table, followed by the body sections §4.4 lists.
+
+`0001` did not, until 2026-08-31. It was in the plain Nygard/`adr-tools` layout — a `Date:` line and
+four `##` sections — and the previous revision of this note argued for leaving it that way, "because
+an ADR is meant to be an immutable record of when a decision was taken". That argument was
+overturned by a test rather than by a discussion: `EveryAdrDeclaresAStatusFromTheAdrVocabulary` was
+written to check `0012` and `0013`, and it failed on `0001`, which declared no status **in any form
+the rule could read**. The immutability that matters is the decision's — its text, its date and its
+status are untouched — and it does not extend to metadata the project's own specification makes
+mandatory. A record whose status cannot be read mechanically is a record that will drift without
+anyone noticing, which is the failure this whole directory was audited for.

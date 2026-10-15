@@ -216,8 +216,19 @@ internal static class PineLogRecordFormatter
     /// </remarks>
     private static void WriteContextValue(Utf8JsonWriter writer, string key, object? value)
     {
+        // TD-82: a field NAMED like personal data is never written, whatever its type or shape.
+        if (LogRedactor.IsSensitiveKey(key))
+        {
+            writer.WriteString(key, LogRedactor.SensitiveValuePlaceholder);
+            return;
+        }
+
         switch (value)
         {
+            case decimal:
+                // decimal is the money type; a raw amount must never reach a log (§4.3).
+                writer.WriteString(key, LogRedactor.AmountPlaceholder);
+                break;
             case null:
                 writer.WriteNull(key);
                 break;

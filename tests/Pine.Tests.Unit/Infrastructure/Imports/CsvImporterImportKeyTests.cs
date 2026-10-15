@@ -82,20 +82,38 @@ public class CsvImporterImportKeyTests
     public async Task ImportAsync_WithSameContentTwice_ReproducesTheSameKeysInOrder()
     {
         // Re-import recognition depends entirely on this: if the keys drifted between two reads of the
-        // same bytes, every re-imported row would look new and the vault would fill with duplicates.
+        // same bytes under the SAME SAVED PROFILE, every re-imported row would look new and the vault
+        // would fill with duplicates. One profile instance is built once and reused for both imports,
+        // exactly as reusing a saved profile does (TD-151) -- its id, not its name, is what the key is
+        // now built from (TD-66).
         var csv = HeaderRow + "\n"
             + "2026-01-15,Acme Coffee,-4.50\n"
             + "2026-01-16,Grocer,-31.20\n"
             + "2026-01-16,Grocer,-31.20\n";
 
-        var profileName = "Bank CSV";
-        var first = await ImportAsync(csv, CreateProfile(profileName));
-        var second = await ImportAsync(csv, CreateProfile(profileName));
+        var profile = CreateProfile("Bank CSV");
+        var first = await ImportAsync(csv, profile);
+        var second = await ImportAsync(csv, profile);
 
         Assert.Equal(3, first.Count);
         Assert.Equal(
             first.Select(transaction => transaction.ImportKey),
             second.Select(transaction => transaction.ImportKey));
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithTwoDifferentProfilesSharingTheSameName_ProducesDifferentKeys()
+    {
+        // TD-66: the key must be stable on the profile's IDENTITY, not on what the user chose to call
+        // it. Two distinct saved profiles can legitimately share a display name; if the key still
+        // depended on the name, they would collide and a row genuinely new to the second profile's
+        // history could be reported as already imported.
+        var csv = HeaderRow + "\n" + "2026-01-15,Acme Coffee,-4.50\n";
+
+        var first = await ImportAsync(csv, CreateProfile("Bank CSV"));
+        var second = await ImportAsync(csv, CreateProfile("Bank CSV"));
+
+        Assert.NotEqual(first[0].ImportKey, second[0].ImportKey);
     }
 
     [Fact]

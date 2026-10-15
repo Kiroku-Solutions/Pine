@@ -73,10 +73,10 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Baker", SecondExpense, "USD", "bread"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Baker", SecondExpense, "USD", "bread", "Groceries"));
 
         var balanceBefore = await host.ReadBalanceAsync(account);
         balanceBefore.Should().Be(OpeningBalance + Expense + SecondExpense);
@@ -123,10 +123,10 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var voidedId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Baker", SecondExpense, "USD", "bread"));
+        var voidedId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Baker", SecondExpense, "USD", "bread", "Groceries"));
 
         await host.Mediator.Send(new VoidTransactionCommand(voidedId, "Recorded twice by mistake"));
 
@@ -162,16 +162,16 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        var inForceOne = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Baker", -10m, "USD", "bread"));
-        var voidedSmall = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Kiosk", -1.25m, "USD", "paper"));
-        var voidedLarge = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Garage", -500m, "USD", "repair"));
-        var inForceTwo = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Employer", 300m, "USD", "salary"));
-        var voidedIncome = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Refund", 42.10m, "USD", "returned goods"));
+        var inForceOne = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Baker", -10m, "USD", "bread", "Groceries"));
+        var voidedSmall = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Kiosk", -1.25m, "USD", "paper", "Groceries"));
+        var voidedLarge = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Garage", -500m, "USD", "repair", "Groceries"));
+        var inForceTwo = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Employer", 300m, "USD", "salary", "Groceries"));
+        var voidedIncome = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Refund", 42.10m, "USD", "returned goods", "Groceries"));
 
         foreach (var id in new[] { voidedSmall, voidedLarge, voidedIncome })
         {
@@ -208,8 +208,8 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         var correctBalance = OpeningBalance + Expense;
         (await host.ReadBalanceAsync(account)).Should().Be(correctBalance);
@@ -282,8 +282,8 @@ public class BalanceRecalculationTests
 
         foreach (var amount in InexactInBinaryAmounts)
         {
-            await host.Mediator.Send(new RecordTransactionCommand(
-                account, TransactionDate, "Kiosk", amount, "USD", "small change"));
+            await host.Mediator.Send(new AddTransactionCommand(
+                account, TransactionDate, "Kiosk", amount, "USD", "small change", "Groceries"));
         }
 
         var result = await host.Mediator.Send(new RecalculateAccountBalanceCommand(account));
@@ -342,8 +342,8 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync(FaultInjection.Install);
         var account = await host.SeedAccountAsync("Current", OpeningBalance);
 
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         const decimal DriftedBalance = 900m;
         host.ExecuteSqlRaw($@"UPDATE ""Accounts"" SET ""Balance_Amount"" = {TenThousandths(DriftedBalance)};");
@@ -415,8 +415,8 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance, "USD");
 
-        await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         var balanceBefore = await host.ReadBalanceAsync(account);
         balanceBefore.Should().Be(OpeningBalance + Expense);
@@ -458,8 +458,8 @@ public class BalanceRecalculationTests
         await using var host = await AtomicityHost.CreateAsync();
         var account = await host.SeedAccountAsync("Current", OpeningBalance, "USD");
 
-        var transactionId = await host.Mediator.Send(new RecordTransactionCommand(
-            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop"));
+        var transactionId = await host.Mediator.Send(new AddTransactionCommand(
+            account, TransactionDate, "Grocer", Expense, "USD", "weekly shop", "Groceries"));
 
         await host.Mediator.Send(new VoidTransactionCommand(transactionId, "entered twice"));
 

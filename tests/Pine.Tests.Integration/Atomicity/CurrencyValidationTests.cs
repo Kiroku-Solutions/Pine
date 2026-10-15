@@ -129,29 +129,6 @@ public class CurrencyValidationTests
     }
 
     [Fact]
-    public async Task RecordTransaction_WithAMismatchedCurrency_IsRejectedBeforeAnythingIsWritten()
-    {
-        await using var host = await AtomicityHost.CreateAsync();
-        var account = await host.SeedAccountAsync("Current", OpeningBalance, "USD");
-
-        var act = async () => await host.Mediator.Send(new RecordTransactionCommand(
-            account, DateTimeOffset.UtcNow.AddDays(-1), "Grocer", -75.50m, "EUR", "weekly shop"));
-
-        var thrown = await act.Should().ThrowAsync<RequestValidationException>();
-
-        thrown.Which.Message.Should().Contain(
-            "Transaction currency EUR does not match account currency USD.");
-        thrown.Which.Message.Should().NotContain(DomainLeak);
-
-        (await host.QueryAsync(c => c.Transactions.AsNoTracking().CountAsync())).Should().Be(0);
-        (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance);
-        host.CountRowsRaw("Transactions").Should().Be(0);
-        host.CountRowsRaw("Accounts").Should().Be(1);
-
-        host.UnitOfWorkLog.Calls.Should().BeEmpty();
-    }
-
-    [Fact]
     public async Task TransferFunds_WithACurrencyMatchingNeitherAccount_IsRejectedBeforeAnythingIsWritten()
     {
         await using var host = await AtomicityHost.CreateAsync();

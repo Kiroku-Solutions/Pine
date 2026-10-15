@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-14-SYNCHRONIZATION`                                                        |
-| Status           | Aspirational — no synchronisation code exists                                        |
-| Reconciled       | 2026-08-31 · A repo-wide grep for sync services, conflict resolution or a sync envelope returns nothing. The `CloudSync` setting this document implied was removed by TD-48. |
+| Status           | Aspirational — no synchronisation code exists; its persistence preconditions now do  |
+| Reconciled       | 2026-09-19 · **Update, post-audit plan item 3.1d: §5's envelope exists, still between two vault files and still with nothing sent anywhere.** `VaultMerger.ExportSealedAsync` hands out only a `pine.sync-envelope.v1` envelope and `ApplySealedAsync` accepts only one; the plaintext change set is never written. Two decisions recorded in §5 below: the sync key is **generated, not derived from a data key** (a departure from `15-Security` §7, which cannot work between two vaults whose data keys are independent), and §5's "signature" is **the AES-GCM tag**, not a per-device signature. Pairing — giving the second vault the key — is not built (TD-154). Earlier: 2026-09-18 · **Update, post-audit plan item 3.1b: a merge exists, between two vault files in one process, and still nothing is sent anywhere.** `VaultMerger` exports a §6 change set (`pine.sync.v1`, ordered by `(clock, device)`, tombstones included, plaintext and in memory only — §5's envelope is not built) and applies one in a single transaction per vault: §4's three layers, with §7's last-writer-wins by `(clock, device)` for account name/currency/opening balance and settings only, **everything else a recorded conflict** (a `SyncConflicts` row, once per change), consent never granted by a peer, totals re-derived from the merged ledger, and the Lamport receive step (TD-144). **Deliberate departure from §7:** splits are not set-unioned — a union of two valid split sets need not sum to the amount — so a split difference on both sides is a conflict. No envelope, provider, transport or conflict-resolution screen. Earlier: 2026-09-14 · **Update, post-audit plan item 3.1a:** the three missing persistence pieces this line lists below now exist in part — every written row carries `(RowClock, RowDeviceId)`, deletes leave tombstones, and `NaturalKeys` records a decision per aggregate (TD-146 closed). TD-144 stays open for the merge-side receive step and for restore rewinding the clock; TD-145 for retention and child tombstones. Still no envelope, provider or merge. Earlier: 2026-09-09 · **Still no sync code, and that is now a decision rather than an absence.** A repo-wide grep for sync services, conflict resolution or a sync envelope still returns nothing, and the `CloudSync` setting this document implied was removed by TD-48. What changed is underneath: `60-Production-Readiness-Audit` §10 Phase 3 gates sync behind "row versions, audit columns and stable natural keys", and all three now exist — row versions since TD-17, audit columns and stable owned-child identity as of §12.72 (TD-60 closed). **Three things this document specifies are still missing and are registered rather than glossed:** §6's Lamport clock and the `device_id` §7 pairs with it (TD-144 — the row version is a random GUID, which detects a change but cannot order two of them), §6's tombstones (TD-145 — every delete in this codebase is physical), and natural keys (TD-146 — identity is stable now, but it is a surrogate; nothing recognises "the same account" across two vaults). **The plugin gate is gone as of ADR-0021** (§12.74): §8's `ISyncProvider` was owned by `33-Plugin-SDK`, which is now Withdrawn, and the contract is this document's own — sync providers are compiled in rather than loaded, so this document no longer waits on a plugin host that will never be built. Any network transport would also trip `NetworkEgressTests`, which per ADR-0012 is deleted deliberately or not at all. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -36,7 +36,7 @@ Out of scope: storage envelope → `15-Security`; data shapes →
 
 | Term                  | Working definition                                                                                |
 |-----------------------|------------------------------------------------------------------------------------------------------|
-| Provider              | A plugin that implements `ISyncProvider`.                                                            |
+| Provider              | A built-in implementation of `ISyncProvider`, shipped with Pine (ADR-0021).                          |
 | Envelope              | The encrypted payload exchanged with a provider.                                                     |
 | Change set            | The set of changes since the last successful sync.                                                  |
 | Cursor                | A provider-specific token identifying the last synchronised point.                                  |
@@ -91,7 +91,7 @@ properties of the envelope are:
 ```mermaid
 sequenceDiagram
     participant A as Device A
-    participant P as Sync Provider (plugin)
+    participant P as Sync Provider (built in)
     participant B as Device B
     A->>P: PUT envelope (ciphertext + cursor + sig)
     P-->>A: ack
@@ -101,6 +101,24 @@ sequenceDiagram
     B->>P: PUT envelope (new change set)
     P-->>B: ack
 ```
+
+> **As built, post-audit plan item 3.1d (2026-09-19).** `SyncEnvelope` (`src/Pine.Infrastructure/Sync/`). Every
+> choice this section left open was taken the conservative way, and the two places it departs from the letter of
+> `15-Security` §7 and of this section are stated rather than glossed.
+>
+> | Property | As built |
+> |---|---|
+> | Plaintext | The `pine.sync.v1` JSON of `SyncChangeSet`, UTF-8. **No compression**: nothing here asks for it, and compressing before encrypting makes the ciphertext's length depend on its content. |
+> | Cipher | AES-256-GCM, 12-byte random nonce, 16-byte tag — the primitive the key wrap and the vault file cipher already use. |
+> | Key per envelope | `HKDF-SHA256(sync key, salt = 32 random bytes carried in the header, info = "pine:sync-envelope:v1")`. No two envelopes share a GCM key, so the random-nonce limit on one key never applies. |
+> | Header (what the provider sees) | Magic `PINESYNC`, format version 1, source and target vault ids, the cursor (since clock and source clock), the creation time in milliseconds, the key id, the salt and the nonce — 126 bytes, fixed length. The ciphertext's size is its own length. |
+> | Binding | The **whole header is the AEAD's associated data**, so no field can be edited and no header moved onto another envelope's body. |
+> | "The signature is over the ciphertext" | **The GCM tag**, which authenticates ciphertext and header under a key only holders of the sync key can derive. It proves "sealed by a holder of the user's sync key", not "sealed by device X": a per-device signature needs device key pairs and a trust model, which do not exist (TD-154). |
+> | The sync key | **Generated (32 bytes, CSPRNG), not derived from a data key.** `15-Security` §7 says it "is derived from the data key"; two vaults' data keys are independent random values, so a key derived from one could never be computed by the other, and it would change when the data key is rotated (TD-86). What §7 protects is kept: each vault holds the key only **sealed under its own data key** (`sync.key` beside `pine.db`, through the same `IVaultFileCipher` boundary as the categoriser's model), so reaching it still needs that vault unlocked. It is never replaced silently. Its public id is `HKDF-SHA256(sync key, info = "pine:sync-key-id:v1")`, 16 bytes. **Pairing — how a second vault is given it — is not built** (TD-154). |
+> | Refusals | Typed (`SyncEnvelopeRefusedException.Reason`), each before anything is written: malformed or truncated, another version, the wrong key (by key id), not authentic (any tag failure — one reason, no detail), sealed for another vault, a payload that disagrees with its header, **a replay or an older envelope** (its source clock is not beyond this vault's cursor for its source), and a gap (it starts after that cursor). A newer envelope that overlaps what was already applied is accepted, as a change set is. |
+>
+> A known-answer vector for the format is pinned in `SyncEnvelopeTests`; it was computed independently of the
+> implementation (Python's HMAC for HKDF, OpenSSL for the AES blocks, GCM by hand) and agreed byte for byte.
 
 ## 6. Change Set Semantics
 
@@ -132,6 +150,11 @@ explicitly; "everything is LWW" is rejected.
 
 ## 8. Provider Contract (high level)
 
+> **Amended by ADR-0021.** This section previously handed `ISyncProvider` to `33-Plugin-SDK`, which
+> is withdrawn. The interface is unchanged and becomes Pine's own: providers are compiled in and
+> shipped with the application, not loaded from outside it. Nothing else in this section changes,
+> because nothing else in it depended on who wrote the implementation.
+
 A provider implements `ISyncProvider` with the following surface:
 
 | Method                                | Purpose                                                                 |
@@ -143,8 +166,8 @@ A provider implements `ISyncProvider` with the following surface:
 | `Delete(envelopeId)`                  | Deletes a previously uploaded envelope (GDPR support).                   |
 | `Health()`                            | Returns the provider health (reachability, quota).                       |
 
-The contract is owned by `33-Plugin-SDK`; the security rules are
-owned by `15-Security`.
+~~The contract is owned by `33-Plugin-SDK`~~ — the contract is owned by this
+document (ADR-0021); the security rules are owned by `15-Security`.
 
 ## 9. Offline Behaviour
 
@@ -167,6 +190,14 @@ stateDiagram-v2
 ```
 
 ## 10. Cloud Only Mode
+
+> **Out of scope, decided rather than deferred (post-audit plan item 3.1h, 2026-10-05).** This section assumes a
+> cloud provider — "the source of truth is the provider" is only meaningful when the provider is a remote service
+> a device can be offline from. ADR-0012 forbids Pine from making any network connection, and §8's one compiled-in
+> provider is a shared folder, which has no "Cloud Only" state to be in: a folder is either reachable or it is not,
+> and §9 already covers that. Building a Cloud Only mode would mean building a cloud provider first, which ADR-0012
+> rules out the same way ADR-0021 ruled out a plugin host. This section is kept for the record and is not acted on,
+> the way §8's withdrawn plugin ownership is kept rather than deleted.
 
 Per `00-Vision` §10 and the user-approved rule: **Cloud Only
 requires an encrypted local cache** so the app stays usable

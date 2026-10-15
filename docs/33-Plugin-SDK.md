@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-33-PLUGIN-SDK`                                                              |
-| Status           | Aspirational — no SDK exists                                                         |
-| Reconciled       | 2026-08-31 · Same two empty projects (TD-37). Documents `pine plugin submit` (:69), which the CLI does not implement. |
+| Status           | Withdrawn — ADR-0021; there is no host for an SDK to target                          |
+| Reconciled       | 2026-09-09 · **WITHDRAWN by ADR-0021**, with `12-Plugin-Architecture` and for its reasons, which apply here unchanged: there is no host for this SDK to target and there will not be one. The body is kept as written. Two clauses are worth naming as the ones that could never have been honoured — §7's two-tier author/publisher signing, because no signature verification of any kind exists anywhere in the repository, and §5.1's fail-closed capability tokens, which describe enforcement against code that shares the process with the vault key and can reach it by reflection. `pine plugin submit`, which this document specifies and the CLI has never implemented, is withdrawn with the rest. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |

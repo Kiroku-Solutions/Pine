@@ -3,6 +3,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Importing"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.Importing.ImportWizardView"
              x:DataType="vm:ImportWizardViewModel">
@@ -12,7 +14,7 @@
 
             <!-- Header -->
             <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                <TextBlock Text="Import Wizard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr ImportWizard.Title}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
                 <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="{DynamicResource PinePrimary}" Margin="0,5,0,0" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
 
@@ -20,11 +22,11 @@
             <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
                         IsVisible="{Binding IsStep0}">
 
-                <TextBlock Text="1. Choose Destination Account" FontSize="16" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr ImportWizard.Step0.ChooseAccount}" FontSize="16" Foreground="{DynamicResource PineText}" />
                 <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" Width="300" DisplayMemberBinding="{Binding Name}" />
 
-                <TextBlock Text="2. Choose CSV File" FontSize="16" Foreground="{DynamicResource PineText}" Margin="0,20,0,0"/>
-                <Button Content="Select File..." Click="SelectFile_Click" Classes="pine-accent" Padding="15,10" CornerRadius="8" Width="300" HorizontalContentAlignment="Center"/>
+                <TextBlock Text="{loc:Tr ImportWizard.Step0.ChooseFile}" FontSize="16" Foreground="{DynamicResource PineText}" Margin="0,20,0,0"/>
+                <Button Content="{loc:Tr ImportWizard.Step0.SelectFile}" Click="SelectFile_Click" Classes="pine-accent" Padding="15,10" CornerRadius="8" Width="300" HorizontalContentAlignment="Center"/>
                 <TextBlock Text="{Binding SelectedFileName}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Center" />
             </StackPanel>
 
@@ -32,40 +34,72 @@
             <StackPanel Grid.Row="1" Spacing="15" VerticalAlignment="Center" HorizontalAlignment="Center"
                         IsVisible="{Binding IsStep1}">
 
-                <TextBlock Text="Map CSV Columns" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="We tried to guess the correct columns. Please verify." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,10"/>
+                <TextBlock Text="{loc:Tr ImportWizard.Mapping.Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr ImportWizard.Mapping.GuessHint}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,10"/>
 
-                <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Date:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                <!-- Saved profiles (TD-151): pick one already mapped for this bank instead of starting
+                     from scratch. Applying one only pre-fills the fields below; nothing is sent until
+                     "Save mapping as profile" is pressed. -->
+                <Border Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}"
+                        BorderThickness="1" CornerRadius="8" Padding="12" IsVisible="{Binding AvailableProfiles.Count}">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{loc:Tr ImportWizard.Profile.SectionTitle}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ComboBox ItemsSource="{Binding AvailableProfiles}" SelectedItem="{Binding SelectedProfile}"
+                                      DisplayMemberBinding="{Binding Name}" Width="220"/>
+                            <Button Content="{loc:Tr ImportWizard.Profile.Apply}" Classes="pine-outline" Padding="12,6" CornerRadius="8"
+                                    Command="{Binding ApplyProfileCommand}" CommandParameter="{Binding SelectedProfile}"
+                                    IsEnabled="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Grid ColumnDefinitions="120, 200" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,20">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.DateColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding DateColumn}" Margin="0,5" Width="200"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Payee:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.PayeeColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding PayeeColumn}" Margin="0,5" Width="200"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Amount:" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.AmountColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding AmountColumn}" Margin="0,5" Width="200"/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Category (Opt):" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.CategoryColumn}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
                     <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding AvailableColumns}" SelectedItem="{Binding CategoryColumn}" Margin="0,5" Width="200"/>
 
-                    <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Content="File has header row" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
-                    <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Content="Invert amounts (e.g. expenses are positive in CSV)" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.DateFormat}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DateFormat}" Margin="0,5" Width="200"/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="{loc:Tr ImportWizard.Mapping.Delimiter}" VerticalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+                    <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding DelimiterText}" MaxLength="1" Margin="0,5" Width="200"/>
+
+                    <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.HasHeaderRow}" IsChecked="{Binding HasHeaders}" Margin="0,15,0,5" Foreground="{DynamicResource PineText}"/>
+                    <CheckBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Content="{loc:Tr ImportWizard.Mapping.InvertAmounts}" IsChecked="{Binding InvertAmounts}" Margin="0,5,0,5" Foreground="{DynamicResource PineText}"/>
                 </Grid>
+
+                <!-- Save the mapping above as a named profile (TD-151). Saving again while a profile is
+                     applied UPDATES it; saving with no profile applied, or after changing the name,
+                     creates a new one. ImportWizardViewModel.SaveProfileAsync decides which. -->
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBox Text="{Binding ProfileNameToSave}" PlaceholderText="{loc:Tr ImportWizard.Profile.NameWatermark}" Width="200"/>
+                    <Button Content="{loc:Tr ImportWizard.Profile.Save}" Classes="pine-outline" Padding="12,6" CornerRadius="8"
+                            Command="{Binding SaveProfileCommand}"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Step 2: Preview -->
             <Grid Grid.Row="1" RowDefinitions="Auto,*"
                   IsVisible="{Binding IsStep2}">
 
-                <TextBlock Grid.Row="0" Text="Preview Transactions" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,0,0,15" />
+                <TextBlock Grid.Row="0" Text="{loc:Tr ImportWizard.Preview.Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,0,0,15" />
 
                 <DataGrid Grid.Row="1" ItemsSource="{Binding PreviewTransactions}" AutoGenerateColumns="False"
                           IsReadOnly="True" Background="Transparent" Foreground="{DynamicResource PineText}"
                           HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}" />
-                        <DataGridTextColumn Header="Payee" Binding="{Binding Payee}" Width="*"/>
-                        <DataGridTextColumn Header="Amount" Binding="{Binding TotalAmount}" />
+                        <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnDate}" Binding="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" />
+                        <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnPayee}" Binding="{Binding Payee}" Width="*"/>
+                        <DataGridTextColumn Header="{loc:Tr ImportWizard.Preview.ColumnAmount}" Binding="{Binding TotalAmount}" />
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>
@@ -76,7 +110,7 @@
                   IsVisible="{Binding IsStep3}">
 
                 <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
-                    <TextBlock Text="Import Review" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock Text="{loc:Tr ImportWizard.Review.Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <TextBlock Text="{Binding ReviewHeadline}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
                 </StackPanel>
 
@@ -86,7 +120,7 @@
                     <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
                             CornerRadius="12" Padding="16" MinWidth="150">
                         <StackPanel>
-                            <TextBlock Text="Imported" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ImportWizard.Review.ImportedTile}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
                             <TextBlock Text="{Binding ImportedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
@@ -94,11 +128,11 @@
                     <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
                             CornerRadius="12" Padding="16" MinWidth="220">
                         <StackPanel>
-                            <TextBlock Text="Not imported" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ImportWizard.Review.NotImportedTile}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
                             <TextBlock Text="{Binding SkippedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
                             <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding HasSkippedRows}">
-                                <TextBlock Text="{Binding SkippedAlreadyInAccountCount, StringFormat='{}{0} already in this account'}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
-                                <TextBlock Text="{Binding SkippedDuplicateInFileCount, StringFormat='{}{0} repeated inside this file'}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                <TextBlock Text="{Binding SkippedAlreadyInAccountSentence}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                <TextBlock Text="{Binding SkippedDuplicateInFileSentence}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -108,8 +142,18 @@
                     <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1"
                             CornerRadius="12" Padding="16" MinWidth="220" IsVisible="{Binding HasUncheckedRows}">
                         <StackPanel>
-                            <TextBlock Text="Imported, not duplicate-checked" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            <TextBlock Text="{loc:Tr ImportWizard.Review.ImportedUnchecked}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding UncheckedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Zero-amount rows (usually bank authorizations) were KEPT, not judged: the user decides
+                         whether to hide each one. Counts down as rows are hidden. -->
+                    <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1"
+                            CornerRadius="12" Padding="16" MinWidth="220" IsVisible="{Binding HasZeroAmountRows}">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr ImportWizard.Review.ZeroAmountTile}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ZeroAmountCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -139,10 +183,10 @@
                                         <Binding Path="WasSkipped"/>
                                     </Classes.skipped>
 
-                                    <Grid ColumnDefinitions="100,*,Auto" RowDefinitions="Auto,Auto">
+                                    <Grid ColumnDefinitions="140,*,Auto" RowDefinitions="Auto,Auto">
 
                                         <TextBlock Grid.Row="0" Grid.Column="0"
-                                                   Text="{Binding Transaction.Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                                   Text="{Binding Transaction.Date, Converter={x:Static conv:Converters.ProseDate}}"
                                                    FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
 
                                         <TextBlock Grid.Row="0" Grid.Column="1"
@@ -160,21 +204,37 @@
 
                                             <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
                                                     BorderBrush="{DynamicResource PineSuccess}" IsVisible="{Binding WasImportedAndChecked}">
-                                                <TextBlock Text="Imported" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.Imported}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
                                             </Border>
 
                                             <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
                                                     BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding WasImportedWithoutKeyCheck}">
-                                                <TextBlock Text="Imported, not checked" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.ImportedUnchecked}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
                                             </Border>
 
                                             <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
                                                     BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding WasSkipped}">
-                                                <TextBlock Text="Not imported" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.NotImported}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                            </Border>
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding CanHide}">
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.ZeroAmount}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                            </Border>
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineBorder}" IsVisible="{Binding IsHidden}">
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.Hidden}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}" />
                                             </Border>
 
                                             <TextBlock Text="{Binding Reason}" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
                                                        TextWrapping="Wrap" VerticalAlignment="Center" />
+
+                                            <Button Content="{loc:Tr ImportWizard.Review.HideZeroAmount}"
+                                                    Command="{Binding $parent[UserControl].((vm:ImportWizardViewModel)DataContext).HideZeroAmountRowCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    IsVisible="{Binding CanHide}"
+                                                    Padding="10,2" CornerRadius="6" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -189,17 +249,17 @@
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"
                             IsVisible="{Binding !IsStep3}">
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" IsEnabled="{Binding !IsExecuting}"/>
+                    <Button Content="{loc:Tr ImportWizard.Cancel}" Command="{Binding CancelCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8" IsEnabled="{Binding !IsExecuting}"/>
 
-                    <Button Content="Back" Command="{Binding PreviousStepCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8"
+                    <Button Content="{loc:Tr ImportWizard.Back}" Command="{Binding PreviousStepCommand}" Classes="pine-outline" Padding="15,8" CornerRadius="8"
                             IsVisible="{Binding !IsStep0}"
                             IsEnabled="{Binding !IsExecuting}"/>
 
-                    <Button Content="Next" Command="{Binding NextStepCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
+                    <Button Content="{loc:Tr ImportWizard.Next}" Command="{Binding NextStepCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
                             IsVisible="{Binding !IsStep2}"
                             IsEnabled="{Binding !IsExecuting}"/>
 
-                    <Button Content="Import" Command="{Binding ExecuteImportCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
+                    <Button Content="{loc:Tr ImportWizard.Import}" Command="{Binding ExecuteImportCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"
                             IsVisible="{Binding IsStep2}"
                             IsEnabled="{Binding !IsExecuting}"/>
                 </StackPanel>
@@ -208,7 +268,7 @@
                      to cancel or go back to — only to read, and then to finish. -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"
                             IsVisible="{Binding IsStep3}">
-                    <Button Content="Done" Command="{Binding FinishCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"/>
+                    <Button Content="{loc:Tr ImportWizard.Done}" Command="{Binding FinishCommand}" Classes="pine-accent" Padding="15,8" CornerRadius="8"/>
                 </StackPanel>
             </Grid>
         </Grid>

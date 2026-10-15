@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.CashFlowWidgetView"
+             x:DataType="vm:CashFlowWidgetViewModel">
+
+    <!-- One line per currency: in, out, net. The month is the UTC calendar month, the same window a
+         monthly budget measures (see GetMonthlyCashFlowQueryHandler). -->
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="10,0,10,10">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto, *, *, *" IsVisible="{Binding HasActivity}" Margin="0,0,0,4">
+            <TextBlock Grid.Column="1" Text="{loc:Tr Dashboard.CashFlow.Income}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+            <TextBlock Grid.Column="2" Text="{loc:Tr Dashboard.CashFlow.Spending}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+            <TextBlock Grid.Column="3" Text="{loc:Tr Dashboard.CashFlow.Net}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+        </Grid>
+
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Rows}" IsVisible="{Binding HasActivity}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CashFlowRow">
+                    <Grid ColumnDefinitions="Auto, *, *, *" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Currency}" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,10,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding Income}" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="{Binding Spending}" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                        <TextBlock Grid.Column="3" Text="{Binding Net}" FontWeight="SemiBold" HorizontalAlignment="Right"
+                                   Classes="net" Classes.negative="{Binding IsNetNegative}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="2" Text="{loc:Tr Dashboard.CashFlow.Empty}" IsVisible="{Binding IsEmpty}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center"
+                   FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+
+        <TextBlock Grid.Row="3" Text="{loc:Tr Dashboard.CashFlow.Note}" TextWrapping="Wrap"
+                   FontSize="11" Foreground="{DynamicResource PineTextMuted}" Margin="0,6,0,0" />
+    </Grid>
+
+    <UserControl.Styles>
+        <!-- The colour lives in styles, not on the element: a local Foreground would outrank the
+             negative style and a month in the red would never turn red. -->
+        <Style Selector="TextBlock.net">
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+        </Style>
+        <Style Selector="TextBlock.net.negative">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+    </UserControl.Styles>
+</UserControl>

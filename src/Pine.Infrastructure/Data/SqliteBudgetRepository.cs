@@ -38,13 +38,6 @@ public class SqliteBudgetRepository : IBudgetRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IEnumerable<Budget>> GetByCategoryAsync(Guid categoryId, CancellationToken cancellationToken = default)
-    {
-        return await _dbContext.Budgets
-            .Where(b => b.CategoryId == categoryId)
-            .ToListAsync(cancellationToken);
-    }
-
     public async Task SaveAsync(Budget budget, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(budget);

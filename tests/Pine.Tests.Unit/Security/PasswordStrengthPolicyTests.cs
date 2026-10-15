@@ -63,7 +63,9 @@ public class PasswordStrengthPolicyTests
     [Theory]
     [InlineData("xK9#mQ2$vL", 65.7)]
     [InlineData("7bTz!qW4nR#8", 70.3)]
-    [InlineData("gravel-thicket-cinder-9271", 149.6)]
+    // 149.6 in the audit's table; 129.8 since TD-73, because "thick" (inside "thicket") is now on the
+    // natural-language word list and is priced as a word. The estimator only ever moves down.
+    [InlineData("gravel-thicket-cinder-9271", 129.8)]
     public void Evaluate_ShouldAcceptAndReproduceAuditBits_ForStrongPasswords(string password, double expectedBits)
     {
         var result = PasswordStrengthPolicy.Evaluate(password);

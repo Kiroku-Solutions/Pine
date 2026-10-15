@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Pine.Application.Common;
 using Pine.Core.Common;
 using Pine.Core.Security;
+using Pine.Tests.Unit.Localization;
 using Pine.Ui.Avalonia.Diagnostics;
 using Xunit;
 
@@ -30,7 +31,7 @@ namespace Pine.Tests.Unit.Diagnostics;
 /// </remarks>
 public class UserFacingErrorTests
 {
-    private const string Fallback = "The transaction could not be saved. Nothing was changed.";
+    private static readonly UserFacingMessage Fallback = new("AddTransaction.Failure.Save");
 
     /// <summary>
     /// A type this codebase does not contain, carrying exactly the shape of text TD-24 is about: a
@@ -46,24 +47,27 @@ public class UserFacingErrorTests
 
     private sealed class OptedInException : Exception, IUserFacingFailure
     {
-        public OptedInException(string userFacing)
+        public OptedInException(params UserFacingMessage[] userFacing)
             : base("internal diagnostic text that must not be shown")
         {
-            UserFacingMessage = userFacing;
+            UserFacingMessages = userFacing;
         }
 
-        public string UserFacingMessage { get; }
+        public IReadOnlyList<UserFacingMessage> UserFacingMessages { get; }
     }
 
     [Fact]
-    public void AnExceptionThatDidNotOptIn_ShowsTheCallSitesSentence_AndNoneOfItsOwn()
+    public void AnExceptionThatDidNotOptIn_ShowsTheCallSitesMessage_AndNoneOfItsOwn()
     {
         var result = UserFacingError.Describe(new LeakyException(), Fallback);
 
-        result.Should().Be(Fallback);
-        result.Should().NotContain(@"C:\Users");
-        result.Should().NotContain("disk image");
-        result.Should().NotContain("SQLite");
+        result.Should().ContainSingle().Which.Should().BeSameAs(Fallback);
+
+        var text = Rendered.Text(result);
+        text.Should().Be("The transaction could not be saved. Nothing was changed.");
+        text.Should().NotContain(@"C:\Users");
+        text.Should().NotContain("disk image");
+        text.Should().NotContain("SQLite");
     }
 
     /// <summary>
@@ -74,30 +78,37 @@ public class UserFacingErrorTests
     {
         var exception = new LeakyException();
 
-        UserFacingError.Describe(exception, Fallback)
+        Rendered.Text(UserFacingError.Describe(exception, Fallback))
             .Should().NotBe($"Error: {exception.Message}");
     }
 
     [Fact]
-    public void AnExceptionThatOptedIn_ShowsItsOwnSentence_NotTheFallback()
+    public void AnExceptionThatOptedIn_ShowsItsOwnMessages_NotTheFallback()
     {
-        var result = UserFacingError.Describe(
-            new OptedInException("Your vault is full. Free up disk space."),
-            Fallback);
+        var own = new UserFacingMessage("Failure.VaultLocked");
 
-        result.Should().Be("Your vault is full. Free up disk space.");
+        var result = UserFacingError.Describe(new OptedInException(own), Fallback);
+
+        result.Should().ContainSingle().Which.Should().BeSameAs(own);
     }
 
     /// <summary>
     /// Opting in is trusted; being non-empty is not. An implementer returning nothing would leave the
     /// error area blank, which a user reads as success.
     /// </summary>
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void AnOptedInExceptionWithNothingToSay_FallsBack(string empty)
+    [Fact]
+    public void AnOptedInExceptionWithNothingToSay_FallsBack()
     {
-        UserFacingError.Describe(new OptedInException(empty), Fallback).Should().Be(Fallback);
+        UserFacingError.Describe(new OptedInException(), Fallback)
+            .Should().ContainSingle().Which.Should().BeSameAs(Fallback);
+    }
+
+    /// <summary>A null among an implementer's messages would throw inside the slot, on the UI thread.</summary>
+    [Fact]
+    public void AnOptedInExceptionCarryingANullMessage_FallsBack()
+    {
+        UserFacingError.Describe(new OptedInException(new UserFacingMessage("Failure.VaultLocked"), null!), Fallback)
+            .Should().ContainSingle().Which.Should().BeSameAs(Fallback);
     }
 
     /// <summary>
@@ -107,7 +118,7 @@ public class UserFacingErrorTests
     [Fact]
     public void AnOptedInExceptionsDiagnosticMessage_IsNeverShown()
     {
-        UserFacingError.Describe(new OptedInException("A sentence for a person."), Fallback)
+        Rendered.Text(UserFacingError.Describe(new OptedInException(new UserFacingMessage("Failure.VaultLocked")), Fallback))
             .Should().NotContain("internal diagnostic text");
     }
 
@@ -116,7 +127,7 @@ public class UserFacingErrorTests
     {
         var aggregate = new AggregateException(new ConcurrencyConflictException());
 
-        UserFacingError.Describe(aggregate, Fallback)
+        Rendered.Text(UserFacingError.Describe(aggregate, Fallback))
             .Should().Contain("Reload and try again.");
     }
 
@@ -130,11 +141,11 @@ public class UserFacingErrorTests
             new ConcurrencyConflictException(),
             new ConcurrencyConflictException());
 
-        UserFacingError.Describe(aggregate, Fallback).Should().Be(Fallback);
+        UserFacingError.Describe(aggregate, Fallback).Should().ContainSingle().Which.Should().BeSameAs(Fallback);
     }
 
     /// <summary>
-    /// A wrapper that did not opt in keeps its own framing. Reaching past it to a nested sentence
+    /// A wrapper that did not opt in keeps its own framing. Reaching past it to a nested message
     /// would silently overrule the layer that chose to wrap.
     /// </summary>
     [Fact]
@@ -142,7 +153,7 @@ public class UserFacingErrorTests
     {
         var wrapped = new InvalidOperationException("wrapper", new ConcurrencyConflictException());
 
-        UserFacingError.Describe(wrapped, Fallback).Should().Be(Fallback);
+        UserFacingError.Describe(wrapped, Fallback).Should().ContainSingle().Which.Should().BeSameAs(Fallback);
     }
 
     [Fact]
@@ -154,21 +165,30 @@ public class UserFacingErrorTests
     }
 
     /// <summary>
-    /// A blank fallback renders an empty error area, which reads as success. That is a defect in the
-    /// call site and is refused loudly rather than shown quietly.
+    /// A missing fallback renders an empty error area, which reads as success. That is a defect in
+    /// the call site and is refused loudly rather than shown quietly. A blank KEY cannot get this
+    /// far at all: <see cref="UserFacingMessage"/> refuses one on construction.
     /// </summary>
+    [Fact]
+    public void AMissingFallback_IsRefused()
+    {
+        var act = () => UserFacingError.Describe(new LeakyException(), null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public void ABlankFallback_IsRefused(string? blank)
+    public void ABlankKey_IsRefused(string? blank)
     {
-        var act = () => UserFacingError.Describe(new LeakyException(), blank!);
+        var act = () => new UserFacingMessage(blank!);
 
         act.Should().Throw<ArgumentException>();
     }
 
-    // ---- The three types that opted in, and what each of them now says -----------------------
+    // ---- The types that opted in, and what each of them now says ------------------------------
 
     [Fact]
     public void AConcurrencyConflict_ReachesTheUserWithItsReloadInstruction()
@@ -176,24 +196,59 @@ public class UserFacingErrorTests
         // TD-98: nothing caught this type, so a refused write either arrived as an unhandled
         // exception or was flattened into the call site's sentence. The instruction that RESOLVES
         // the conflict is the whole value of the message, and it now survives the trip to a screen.
-        var result = UserFacingError.Describe(
+        var result = Rendered.Text(UserFacingError.Describe(
             ConcurrencyConflictException.From(new InvalidOperationException("store detail")),
-            Fallback);
+            Fallback));
 
         result.Should().Contain("Reload and try again.");
         result.Should().NotContain("store detail");
     }
 
     [Fact]
-    public void AValidationFailure_ShowsTheValidatorsOwnSentences()
+    public void AValidationFailure_ShowsEveryValidatorsMessage_InOrder()
     {
         var exception = new RequestValidationException(new[]
         {
-            new ValidationError("Amount", "The amount must be greater than zero."),
+            new ValidationError("Amount", "log: amount", ValidationText.TransferAmountNotPositive()),
+            new ValidationError("Reason", "log: reason", ValidationText.VoidReasonRequired()),
         });
 
-        UserFacingError.Describe(exception, Fallback)
-            .Should().Be("The amount must be greater than zero.");
+        Rendered.Text(UserFacingError.Describe(exception, Fallback))
+            .Should().Be("Transfer amount must be greater than zero. A reason is required to void a transaction.");
+    }
+
+    /// <summary>
+    /// The half TD-139 exists for: the same failure, on a Spanish screen, is Spanish.
+    /// </summary>
+    [Fact]
+    public void AValidationFailure_IsWordedInTheActiveLanguage()
+    {
+        var exception = new RequestValidationException(new[]
+        {
+            new ValidationError("Currency", "Transaction currency EUR does not match account currency USD.",
+                ValidationText.CurrencyMismatch("EUR", "USD")),
+        });
+
+        var spanish = Rendered.Text(UserFacingError.Describe(exception, Fallback), "es");
+
+        spanish.Should().Be("La moneda de la transacción (EUR) no coincide con la moneda de la cuenta (USD).");
+    }
+
+    /// <summary>
+    /// An entity id used to reach the screen through a validator's sentence. It stays in the log's
+    /// half and is not an argument of the user's.
+    /// </summary>
+    [Fact]
+    public void AnAccountThatWasNotFound_IsNotNamedByItsIdOnScreen()
+    {
+        var id = Guid.NewGuid();
+        var exception = new RequestValidationException(new[]
+        {
+            new ValidationError("AccountId", $"Account {id} was not found.", ValidationText.AccountNotFound()),
+        });
+
+        exception.Message.Should().Contain(id.ToString(), "the log keeps the identifier");
+        Rendered.Text(UserFacingError.Describe(exception, Fallback)).Should().NotContain(id.ToString());
     }
 
     /// <summary>
@@ -202,15 +257,16 @@ public class UserFacingErrorTests
     /// thing to show a person whose session simply timed out.
     /// </summary>
     [Fact]
-    public void ALockedVault_ShowsAFixedSentence_NotTheDiagnosticOne()
+    public void ALockedVault_ShowsAFixedMessage_NotTheDiagnosticOne()
     {
         var exception = new VaultLockedException("The vault is locked, so no file key can be derived.");
 
         var result = UserFacingError.Describe(exception, Fallback);
+        var text = Rendered.Text(result);
 
-        result.Should().NotContain("file key");
-        result.Should().Contain("Unlock the vault");
-        result.Should().NotBe(Fallback, "a timed-out session is not a defect and must not read like one");
+        text.Should().NotContain("file key");
+        text.Should().Contain("Unlock the vault");
+        result.Should().NotContain(Fallback, "a timed-out session is not a defect and must not read like one");
     }
 
     // ---- Report: the detail is moved to the log, not deleted --------------------------------
@@ -223,7 +279,7 @@ public class UserFacingErrorTests
 
         var shown = UserFacingError.Report(logger, exception, "add-transaction", Fallback);
 
-        shown.Should().Be(Fallback);
+        shown.Should().ContainSingle().Which.Should().BeSameAs(Fallback);
         logger.Records.Should().ContainSingle();
         logger.Records[0].Level.Should().Be(LogLevel.Error);
         logger.Records[0].Exception.Should().BeSameAs(exception,
@@ -232,10 +288,10 @@ public class UserFacingErrorTests
     }
 
     [Fact]
-    public void Report_WithoutALogger_StillProducesTheSentence()
+    public void Report_WithoutALogger_StillProducesTheMessage()
     {
         UserFacingError.Report(null, new LeakyException(), "add-transaction", Fallback)
-            .Should().Be(Fallback);
+            .Should().ContainSingle().Which.Should().BeSameAs(Fallback);
     }
 
     [Fact]
@@ -243,8 +299,8 @@ public class UserFacingErrorTests
     {
         var exception = ConcurrencyConflictException.From(new InvalidOperationException("x"));
 
-        UserFacingError.Report(new RecordingLogger(), exception, "op", Fallback)
-            .Should().Be(UserFacingError.Describe(exception, Fallback));
+        Rendered.Text(UserFacingError.Report(new RecordingLogger(), exception, "op", Fallback))
+            .Should().Be(Rendered.Text(UserFacingError.Describe(exception, Fallback)));
     }
 
     private sealed class RecordingLogger : ILogger

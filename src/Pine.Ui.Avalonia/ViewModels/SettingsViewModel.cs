@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,16 +11,27 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Budgets;
+using Pine.Application.Budgets.Queries;
 using Pine.Application.Common;
+using Pine.Application.Security;
 using Pine.Application.Security.Commands;
+using Pine.Application.Security.Queries;
+using Pine.Application.Services;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
+using Pine.Application.Sync.Commands;
+using Pine.Application.Sync.Queries;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Core.Security;
+using Pine.Core.Sync;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Utils;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Services;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
@@ -34,7 +46,7 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// encryption key - for the rest of the session. The mediator is a singleton that opens a fresh
 /// scope per request, and it is also what commits the writes: repositories no longer flush.
 /// </remarks>
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, IDisposable
 {
     [ObservableProperty]
     public partial int SelectedThemeIndex { get; set; }
@@ -42,11 +54,47 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int SelectedPaletteIndex { get; set; }
 
+    /// <summary>The language the interface is rendered in.</summary>
+    /// <remarks>
+    /// A <see cref="LanguageOption"/> AND NO LONGER AN <c>int</c> INDEX (D6). This is a public
+    /// surface change on a view model and it is deliberate: an index is a position in a list, so
+    /// the day a third language is inserted in alphabetical order, every stored "1" starts meaning
+    /// a different language. It also could not be otherwise -- the two <c>ComboBoxItem</c>
+    /// elements the index selected were themselves hardcoded English literals, which is the thing
+    /// TD-45 is about.
+    /// </remarks>
     [ObservableProperty]
-    public partial int SelectedLanguageIndex { get; set; }
+    public partial LanguageOption? SelectedLanguage { get; set; }
 
-    /// <summary>Key of the persisted UI language setting.</summary>
+    /// <summary>The languages offered by the picker.</summary>
+    public IReadOnlyList<LanguageOption> Languages => _localizer.Available;
+
+    /// <summary>
+    /// Key of the UI language setting as it was persisted INSIDE the vault, before TD-45.
+    /// </summary>
+    /// <remarks>
+    /// KEPT ONLY SO THE VALUE CAN BE MIGRATED OUT AND THEN LEFT ALONE (D4, D5). The preference now
+    /// lives outside the vault, because the unlock and vault-selection screens are rendered before
+    /// any vault is open and would otherwise stay in a language the user did not choose. Writing
+    /// both stores would be duplicated state waiting to diverge, so this key is READ once, for
+    /// migration, and never written again.
+    /// </remarks>
     public const string LanguageSettingKey = "Appearance.Language";
+
+    /// <summary>
+    /// Whether the user has agreed to the categoriser being trained on this vault's transactions
+    /// (TD-89). Persisted as an in-vault Setting; unset means off.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool TrainingConsent { get; set; }
+
+    /// <summary>
+    /// The vault's base currency chooser (TD-63 follow-up): the existing currency picker, seeded with the resolved
+    /// base currency. Choosing a row saves <see cref="BaseCurrency.SettingKey"/> through <c>SaveSettingCommand</c>,
+    /// whose validator refuses anything that is not an ISO 4217 code. Pine converts nothing: this decides which
+    /// currency a budget is in and which accounts form the single base-currency total.
+    /// </summary>
+    public CurrencyPickerViewModel BaseCurrencyPicker { get; } = new();
 
     /// <summary>Accent palettes offered in the appearance picker.</summary>
     public IReadOnlyList<ThemePalette> Palettes { get; } = ThemeManager.Palettes;
@@ -67,29 +115,226 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool RecalculationNeedsAttention { get; set; }
 
+    /// <summary>
+    /// The opening balance the user has typed for an account that has none on record (TD-70). Text,
+    /// because it is parsed here with the user's culture and a malformed entry is reported rather
+    /// than becoming a zero.
+    /// </summary>
+    [ObservableProperty]
+    public partial string OpeningBalanceInput { get; set; } = string.Empty;
+
     /// <summary>Whether a recalculation is in flight.</summary>
     [ObservableProperty]
     public partial bool IsRecalculating { get; set; }
 
     private readonly ISender _sender;
+    private readonly ILocalizer _localizer;
+    private readonly LanguagePreferenceStore _languageStore;
     private readonly ILogger<SettingsViewModel>? _logger;
+
+    /// <summary>
+    /// The session the Lock button asks to lock (TD-56). Optional so the shorter construction used
+    /// by the designer and by the existing tests keeps compiling; the container always supplies it.
+    /// </summary>
+    private readonly IVaultSession? _vaultSession;
+
+    private readonly IPlatformUnlock? _platformUnlock;
+    private bool _suppressPlatformUnlockChange;
+
+    /// <summary>Whether this head can offer "Unlock with Windows sign-in" at all (TD-87).</summary>
+    public bool IsPlatformUnlockAvailable => _platformUnlock is { IsAvailable: true };
+
+    /// <summary>Whether this vault currently has a platform wrap. Bound to the toggle.</summary>
+    [ObservableProperty]
+    public partial bool PlatformUnlockEnabled { get; set; }
+
+    private void LoadPlatformUnlockState()
+    {
+        _suppressPlatformUnlockChange = true;
+        try
+        {
+            var directory = _vaultSession?.DbPath;
+            PlatformUnlockEnabled = IsPlatformUnlockAvailable && directory is not null && _platformUnlock!.IsEnabled(directory);
+        }
+        catch (Exception)
+        {
+            PlatformUnlockEnabled = false;
+        }
+        finally
+        {
+            _suppressPlatformUnlockChange = false;
+        }
+    }
+
+    /// <summary>
+    /// Turning the toggle on seals the CURRENT SESSION's data key under the platform key; off deletes
+    /// the wrap. The password wrap is never touched. The vault is already unlocked, so the session key
+    /// is the proof of identity; there is no separate re-confirmation flow in Settings to reuse. A
+    /// failure puts the toggle back and reports a fixed sentence (the key and the exception detail
+    /// never reach the UI).
+    /// </summary>
+    partial void OnPlatformUnlockEnabledChanged(bool value)
+    {
+        if (_suppressPlatformUnlockChange) return;
+
+        try
+        {
+            var directory = _vaultSession?.DbPath;
+            if (_platformUnlock is null || directory is null) throw new InvalidOperationException();
+
+            if (value)
+            {
+                var key = _vaultSession!.Key ?? throw new InvalidOperationException();
+                var copy = (byte[])key.Clone();
+                try { _platformUnlock.Enable(directory, copy); }
+                finally { Array.Clear(copy, 0, copy.Length); }
+            }
+            else
+            {
+                _platformUnlock.Disable(directory);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "platform-unlock-toggle failed");
+            _suppressPlatformUnlockChange = true;
+            try { PlatformUnlockEnabled = !value; }
+            finally { _suppressPlatformUnlockChange = false; }
+            _error.Set(new UserFacingMessage("Settings.Security.PlatformUnlock.Failed"));
+        }
+    }
+
+    /// <summary>Holds the vault-export sentence as a KEY, so it survives a language switch.</summary>
+    private readonly LocalizedMessageSlot _exportMessage;
+    private readonly LocalizedMessageSlot _restoreMessage;
+    private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _recalculationReport;
+    private readonly LocalizedMessageSlot _passwordChangeMessage;
+    private readonly LocalizedMessageSlot _newPasswordStatus;
+    private readonly LocalizedMessageSlot _newPasswordAdvice;
+    private readonly LocalizedMessageSlot _eraseMessage;
+    private readonly LocalizedMessageSlot _diagnosticBundleMessage;
+
+    private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
+    {
+        if (message is null) slot.Clear(); else slot.Set(message);
+    }
+
+    private static void SetOrClear(LocalizedMessageSlot slot, IReadOnlyList<UserFacingMessage> messages)
+    {
+        if (messages.Count == 0) slot.Clear(); else slot.Set(messages);
+    }
+
     private bool _isInitializing = true;
 
-    public SettingsViewModel(ISender sender, ILogger<SettingsViewModel>? logger = null)
+    public SettingsViewModel(
+        ISender sender,
+        ILocalizer localizer,
+        LanguagePreferenceStore languageStore,
+        ILogger<SettingsViewModel>? logger = null,
+        IVaultSession? vaultSession = null,
+        IPlatformUnlock? platformUnlock = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
+        ArgumentNullException.ThrowIfNull(localizer);
+        ArgumentNullException.ThrowIfNull(languageStore);
         _sender = sender;
+        _localizer = localizer;
+        _languageStore = languageStore;
         _logger = logger;
+        _vaultSession = vaultSession;
+        _platformUnlock = platformUnlock;
+        LoadPlatformUnlockState();
+        _exportMessage = new LocalizedMessageSlot(localizer, text => VaultExportMessage = text);
+        _restoreMessage = new LocalizedMessageSlot(localizer, text => VaultRestoreMessage = text);
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
+        _recalculationReport = new LocalizedMessageSlot(localizer, text => RecalculationReport = text);
+        _passwordChangeMessage = new LocalizedMessageSlot(localizer, text => PasswordChangeMessage = text);
+        _newPasswordStatus = new LocalizedMessageSlot(localizer, text => NewPasswordStrengthStatusText = text ?? string.Empty);
+        _newPasswordAdvice = new LocalizedMessageSlot(localizer, text => NewPasswordAdviceText = text ?? string.Empty);
+        _eraseMessage = new LocalizedMessageSlot(localizer, text => EraseMessage = text);
+        _diagnosticBundleMessage = new LocalizedMessageSlot(localizer, text => DiagnosticBundleMessage = text);
+        _localizer.LanguageChanged += OnLanguageChanged;
+        BaseCurrencyPicker.PropertyChanged += OnBaseCurrencyPickerChanged;
 
         // Default values
         SelectedThemeIndex = 2; // System
         SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
-        SelectedLanguageIndex = 0; // English
 
-        _ = LoadSettingsAsync();
+        // The picker shows what the localizer is ACTUALLY on, not a hardcoded default. The two
+        // used to be unrelated, which is how a picker reading "English" could sit above an
+        // application that had never consulted it.
+        SelectedLanguage = CurrentOption();
     }
 
+    private LanguageOption CurrentOption()
+    {
+        foreach (var option in _localizer.Available)
+        {
+            if (string.Equals(option.Code, _localizer.CurrentLanguage, StringComparison.Ordinal))
+            {
+                return option;
+            }
+        }
+
+        return _localizer.Available[0];
+    }
+
+    /// <inheritdoc />
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadSettingsAsync();
+
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "settings-load",
+        SettingsUnavailable,
+        _error.Set);
+
+    /// <summary>What the user reads when their saved settings cannot be read back.</summary>
+    private static readonly UserFacingMessage SettingsUnavailable = new("Settings.Failure.Load");
+
+    /// <summary>What the user reads when a change they just made could not be stored.</summary>
+    /// <remarks>
+    /// This one matters more than it looks. <c>ThemeManager.Apply*</c> runs on the line BEFORE the
+    /// save, so the change is already visible on screen when the write fails -- without this
+    /// sentence the user sees the new theme, believes it is saved, and finds it reverted at the
+    /// next launch with nothing having said otherwise.
+    /// </remarks>
+    private static readonly UserFacingMessage SettingNotSaved = new("Settings.Failure.SettingNotSaved");
+
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Reads the three persisted appearance settings and applies them.
+    /// </summary>
+    /// <remarks>
+    /// THE <c>finally</c> IS THE FIX, NOT AN ORNAMENT (TD-35). <c>_isInitializing</c> starts
+    /// <see langword="true"/> so that applying a stored value does not immediately write it back,
+    /// and it used to be cleared on the last line of the happy path -- AFTER three awaited queries
+    /// that had no <c>catch</c>. Any one of them throwing left the latch stuck <see langword="true"/>
+    /// for the life of the view model, and every one of
+    /// <see cref="OnSelectedThemeIndexChanged"/>, <see cref="OnSelectedPaletteIndexChanged"/> and
+    /// <see cref="OnSelectedLanguageIndexChanged"/> opens with <c>if (_isInitializing) return;</c>.
+    /// The result was a settings page that silently stopped saving anything for the rest of the
+    /// session, while still visibly applying every change -- because <c>ThemeManager.Apply*</c> runs
+    /// before the save. Clearing it in a <c>finally</c> means a failed read costs the user their
+    /// stored values, and nothing else.
+    /// </remarks>
     private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            await LoadAppearanceSettingsAsync();
+            await LoadPreferencesAsync();
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+    }
+
+    private async Task LoadAppearanceSettingsAsync()
     {
         var themeSetting = await _sender.Send(new GetSettingQuery(ThemeManager.VariantSettingKey));
         if (themeSetting != null && int.TryParse(themeSetting, out int themeIndex))
@@ -105,15 +350,23 @@ public partial class SettingsViewModel : ObservableObject
             SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
         }
 
-        var langSetting = await _sender.Send(new GetSettingQuery(LanguageSettingKey));
-        if (langSetting != null && int.TryParse(langSetting, out int langIndex))
+        var consentSetting = await _sender.Send(new GetSettingQuery(CategorizationTrainingBackgroundService.TrainingConsentSettingKey));
+        TrainingConsent = string.Equals(
+            consentSetting, CategorizationTrainingBackgroundService.TrainingConsentGranted, StringComparison.Ordinal);
+
+        // The resolved base currency (explicit choice, else the oldest account's), null for an empty vault.
+        var baseCurrency = await _sender.Send(new GetBaseCurrencyQuery());
+        if (!string.IsNullOrEmpty(baseCurrency))
         {
-            SelectedLanguageIndex = langIndex;
+            BaseCurrencyPicker.SelectedCode = baseCurrency;
         }
 
-        _isInitializing = false;
+        await MigrateLegacyLanguageSettingAsync();
+        SelectedLanguage = CurrentOption();
 
         await LoadAccountsAsync();
+        await LoadExchangeRatesAsync();
+        await LoadSyncAuditLogAsync();
     }
 
     /// <summary>
@@ -134,6 +387,184 @@ public partial class SettingsViewModel : ObservableObject
         {
             // The rest of this page must keep working when the account list cannot be read; a
             // maintenance tool that takes the settings screen down with it is worse than absent.
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // Sync audit log (`14-Synchronization` §12).
+    //
+    // READ-ONLY, NEWEST FIRST, NO EDITING. §12 asks only that the user can "inspect" the log; it
+    // never says resolve, delete or export from here, so none of those is offered. The rows
+    // themselves are written by RunSyncCommandHandler on every attempt, success or refusal, and
+    // this page only ever reads them back through GetSyncAuditLogQuery.
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>Every logged sync attempt, newest first.</summary>
+    public ObservableCollection<SyncAuditLogRowOption> SyncAuditLog { get; } = [];
+
+    /// <summary>Whether there is anything to show, for the empty-state sentence.</summary>
+    public bool HasSyncAuditLog => SyncAuditLog.Count > 0;
+
+    /// <summary>
+    /// Reloads the sync audit log.
+    /// </summary>
+    /// <remarks>
+    /// EMPTY ON FAILURE, SILENTLY, LIKE <see cref="LoadBackupsAsync"/>. A locked vault or a read that fails for
+    /// any other reason is not worth a red sentence on a page that is mostly about something else; the honest
+    /// result when nothing can be read is an empty list and the sentence that already covers that case.
+    /// </remarks>
+    [RelayCommand]
+    private async Task LoadSyncAuditLogAsync()
+    {
+        try
+        {
+            var entries = await _sender.Send(new GetSyncAuditLogQuery());
+
+            SyncAuditLog.Clear();
+            foreach (var entry in entries)
+            {
+                SyncAuditLog.Add(new SyncAuditLogRowOption(entry, _localizer));
+            }
+        }
+        catch (Exception)
+        {
+            SyncAuditLog.Clear();
+        }
+
+        OnPropertyChanged(nameof(HasSyncAuditLog));
+    }
+
+    /// <summary>
+    /// One logged sync attempt, as the list shows it (`14-Synchronization` §12).
+    /// </summary>
+    public sealed class SyncAuditLogRowOption
+    {
+        public SyncAuditLogRowOption(SyncRunAuditEntry entry, ILocalizer localizer)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+            ArgumentNullException.ThrowIfNull(localizer);
+
+            Source = entry;
+
+            // The localizer's own culture, not the process's (TD-21): this is the language a later
+            // switch re-renders every row into, through OnLanguageChanged below.
+            When = entry.RanAtUtc.ToLocalTime().ToString("f", localizer.CurrentCulture);
+            Provider = entry.Provider;
+            Counts = localizer.Format(
+                "Settings.SyncAuditLog.Counts",
+                entry.EnvelopesDown.ToString(localizer.CurrentCulture),
+                entry.EnvelopesUp.ToString(localizer.CurrentCulture),
+                entry.ConflictsDetected.ToString(localizer.CurrentCulture));
+
+            Succeeded = entry.Outcome == SyncRunAuditOutcome.Completed;
+
+            Outcome = entry.Outcome switch
+            {
+                SyncRunAuditOutcome.Completed => localizer["Settings.SyncAuditLog.Outcome.Completed"],
+                SyncRunAuditOutcome.Refused => localizer.Format(
+                    "Settings.SyncAuditLog.Outcome.Refused", ReasonText(localizer, entry.FailureReason)),
+                SyncRunAuditOutcome.Failed => localizer["Settings.SyncAuditLog.Outcome.Failed"],
+                _ => localizer["Settings.SyncAuditLog.Outcome.Failed"],
+            };
+        }
+
+        /// <summary>What this option was built from, so a language change can build it again.</summary>
+        public SyncRunAuditEntry Source { get; }
+
+        /// <summary>When the attempt was made, in the user's culture.</summary>
+        public string When { get; }
+
+        /// <summary>The provider used.</summary>
+        public string Provider { get; }
+
+        /// <summary>Envelopes down, up and conflicts detected, as one sentence.</summary>
+        public string Counts { get; }
+
+        /// <summary>What happened, in the user's language.</summary>
+        public string Outcome { get; }
+
+        /// <summary>Whether the attempt completed, for styling only — <see cref="Outcome"/> already says which in words.</summary>
+        public bool Succeeded { get; }
+
+        /// <summary>
+        /// A refusal reason in the user's language, falling back to the raw <see cref="SyncRunRefusal"/> name
+        /// for a value this build does not recognise — an older log row read by a newer build, say.
+        /// </summary>
+        private static string ReasonText(ILocalizer localizer, string? reason) =>
+            Enum.TryParse<SyncRunRefusal>(reason, out var refusal)
+                ? localizer[SyncRunRefusedException.Describe(refusal).Key]
+                : reason ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Records the opening balance the user typed for an account that has none, and reports what that
+    /// did to the balance (TD-70).
+    /// </summary>
+    /// <param name="account">The account to set it on.</param>
+    [RelayCommand]
+    private async Task SetOpeningBalanceAsync(Account? account)
+    {
+        if (account is null || IsRecalculating) return;
+
+        if (!decimal.TryParse(
+                OpeningBalanceInput?.Trim(),
+                System.Globalization.NumberStyles.Number | System.Globalization.NumberStyles.AllowLeadingSign,
+                System.Globalization.CultureInfo.CurrentCulture,
+                out var amount)
+            && !decimal.TryParse(
+                OpeningBalanceInput?.Trim(),
+                System.Globalization.NumberStyles.Number | System.Globalization.NumberStyles.AllowLeadingSign,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out amount))
+        {
+            RecalculationNeedsAttention = true;
+            _recalculationReport.Set("Settings.Recalculation.OpeningBalanceNotANumber");
+            return;
+        }
+
+        IsRecalculating = true;
+        _recalculationReport.Clear();
+        try
+        {
+            var result = await _sender.Send(new SetOpeningBalanceCommand(account.Id, amount));
+
+            var counted = result.TransactionsCounted;
+            var rows = new UserFacingMessage(
+                counted == 1 ? "Settings.Recalculation.TransactionCountOne" : "Settings.Recalculation.TransactionCountMany",
+                counted);
+
+            if (result.Drift == 0m)
+            {
+                RecalculationNeedsAttention = false;
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceSet",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows);
+            }
+            else
+            {
+                RecalculationNeedsAttention = true;
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceSetRepaired",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows,
+                    result.PreviousBalance, result.NewBalance, result.Drift);
+                WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            }
+
+            OpeningBalanceInput = string.Empty;
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex)
+        {
+            RecalculationNeedsAttention = true;
+            _recalculationReport.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "set-opening-balance",
+                new UserFacingMessage("Settings.Recalculation.Failure")));
+        }
+        finally
+        {
+            IsRecalculating = false;
         }
     }
 
@@ -161,36 +592,38 @@ public partial class SettingsViewModel : ObservableObject
         if (account is null || IsRecalculating) return;
 
         IsRecalculating = true;
-        RecalculationReport = null;
+        _recalculationReport.Clear();
         try
         {
             var result = await _sender.Send(new RecalculateAccountBalanceCommand(account.Id));
 
+            // The count is its own message, one key per grammatical number, because which word agrees
+            // with it is a rule of each language rather than of this code (TD-139).
             var counted = result.TransactionsCounted;
-            var rows = counted == 1 ? "1 transaction" : $"{counted} transactions";
+            var rows = new UserFacingMessage(
+                counted == 1 ? "Settings.Recalculation.TransactionCountOne" : "Settings.Recalculation.TransactionCountMany",
+                counted);
 
             if (result.OpeningBalanceWasInferred)
             {
                 RecalculationNeedsAttention = true;
-                RecalculationReport =
-                    $"'{account.Name}' had no opening balance on record, so one was inferred from its "
-                    + $"current balance ({result.OpeningBalance} {result.CurrencyCode}) and {rows}. "
-                    + "This first check could not detect drift; run it again from now on and it will.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceInferred",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows);
             }
             else if (result.Drift == 0m)
             {
                 RecalculationNeedsAttention = false;
-                RecalculationReport =
-                    $"'{account.Name}' agrees with its ledger: {result.RecalculatedBalance} "
-                    + $"{result.CurrencyCode} across {rows}.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.Agrees",
+                    account.Name, result.RecalculatedBalance, result.CurrencyCode, rows);
             }
             else
             {
                 RecalculationNeedsAttention = true;
-                RecalculationReport =
-                    $"'{account.Name}' did not agree with its ledger and was repaired: "
-                    + $"{result.PreviousBalance} → {result.RecalculatedBalance} {result.CurrencyCode} "
-                    + $"(off by {result.Drift}), recomputed from {rows}.";
+                _recalculationReport.Set(
+                    "Settings.Recalculation.Repaired",
+                    account.Name, result.PreviousBalance, result.RecalculatedBalance, result.CurrencyCode, result.Drift, rows);
 
                 // The dashboard and the balance widget are showing the old figure.
                 WeakReferenceMessenger.Default.Send(new DataChangedMessage());
@@ -207,11 +640,11 @@ public partial class SettingsViewModel : ObservableObject
             // their own instructions through it now, where before both were flattened into "The
             // balance could not be checked" and the user was never told to reload or unlock (TD-98).
             RecalculationNeedsAttention = true;
-            RecalculationReport = UserFacingError.Report(
+            _recalculationReport.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "recalculate-balance",
-                "The balance could not be checked. Nothing was changed.");
+                new UserFacingMessage("Settings.Recalculation.Failure")));
         }
         finally
         {
@@ -223,7 +656,40 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_isInitializing) return;
         ThemeManager.ApplyVariant(value);
-        _ = SaveSettingAsync(ThemeManager.VariantSettingKey, value.ToString(CultureInfo.InvariantCulture));
+        ObservedTask.Run(
+            () => SaveSettingAsync(ThemeManager.VariantSettingKey, value.ToString(CultureInfo.InvariantCulture)),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            _error.Set);
+    }
+
+    private void OnBaseCurrencyPickerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isInitializing || e.PropertyName != nameof(CurrencyPickerViewModel.SelectedCode)) return;
+
+        var code = BaseCurrencyPicker.SelectedCode;
+        if (string.IsNullOrEmpty(code)) return;
+
+        ObservedTask.Run(
+            () => SaveSettingAsync(BaseCurrency.SettingKey, code),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            OnBaseCurrencySaveFailed);
+    }
+
+    partial void OnTrainingConsentChanged(bool value)
+    {
+        if (_isInitializing) return;
+        ObservedTask.Run(
+            () => SaveSettingAsync(
+                CategorizationTrainingBackgroundService.TrainingConsentSettingKey,
+                value ? CategorizationTrainingBackgroundService.TrainingConsentGranted : "false"),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            _error.Set);
     }
 
     partial void OnSelectedPaletteIndexChanged(int value)
@@ -231,13 +697,132 @@ public partial class SettingsViewModel : ObservableObject
         if (_isInitializing) return;
         if (value < 0 || value >= ThemeManager.Palettes.Count) return;
         ThemeManager.ApplyPaletteIndex(value);
-        _ = SaveSettingAsync(ThemeManager.PaletteSettingKey, ThemeManager.Palettes[value].Key);
+        ObservedTask.Run(
+            () => SaveSettingAsync(ThemeManager.PaletteSettingKey, ThemeManager.Palettes[value].Key),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            _error.Set);
     }
 
-    partial void OnSelectedLanguageIndexChanged(int value)
+    /// <summary>
+    /// Applies the chosen language, then persists it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// APPLY FIRST, PERSIST SECOND, MATCHING <c>ThemeManager</c> (§6.2). A failed write must not
+    /// leave the user looking at a language they did not choose; and since the write goes to a
+    /// plain file rather than through the vault's command pipeline, it cannot be awaited into the
+    /// UI thread's way.
+    /// </para>
+    /// <para>
+    /// THIS METHOD IS THE DEFECT'S FIX, IN ONE LINE. Before TD-45 this handler had exactly one leg
+    /// -- persist -- while its two siblings on the same panel had two. <c>SetLanguage</c> is the
+    /// missing leg, and <c>SettingsLanguageTests</c> is the assertion that never existed.
+    /// </para>
+    /// </remarks>
+    partial void OnSelectedLanguageChanged(LanguageOption? value)
     {
-        if (_isInitializing) return;
-        _ = SaveSettingAsync(LanguageSettingKey, value.ToString(CultureInfo.InvariantCulture));
+        if (value is null)
+        {
+            return;
+        }
+
+        _localizer.SetLanguage(value.Code);
+
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        if (!_languageStore.Write(value.Code))
+        {
+            // §8: the language HAS changed on screen. A preference that will not survive a restart
+            // is not worth interrupting anyone over, so this is a log line and not an ErrorMessage.
+            _logger?.LogWarning(
+                "The UI language preference could not be written; it applies to this session only.");
+        }
+    }
+
+    /// <summary>
+    /// Re-renders what this page formatted once, because this is the page the language is changed on
+    /// (TD-21).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EVERY OTHER PAGE IS REBUILT WHEN IT IS NEXT VISITED, SO THIS ONE IS THE CASE THAT MATTERS. The
+    /// backup list's date, size and reason, and each account's balance in the integrity section, were
+    /// formatted when they were loaded. Switching the language here left them in the old language and the
+    /// old notation — beside a picker that had just changed — until the user left and came back.
+    /// </para>
+    /// <para>
+    /// The balances are re-added, the same objects in the same order, because an item template only
+    /// re-reads a <c>Money</c> it is handed again. The backups are rebuilt from what they were built from,
+    /// and the selection is kept by path, since the restore panel may be open on one of them.
+    /// </para>
+    /// </remarks>
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        var accounts = Accounts.ToList();
+        Accounts.Clear();
+        foreach (var account in accounts)
+        {
+            Accounts.Add(account);
+        }
+
+        var selectedPath = SelectedBackup?.Path;
+        var backups = Backups.Select(option => option.Source).ToList();
+        Backups.Clear();
+        foreach (var backup in backups)
+        {
+            Backups.Add(new VaultBackupOption(backup, _localizer));
+        }
+
+        if (selectedPath is not null)
+        {
+            SelectedBackup = Backups.FirstOrDefault(option => string.Equals(option.Path, selectedPath, StringComparison.Ordinal));
+        }
+
+        var auditRows = SyncAuditLog.Select(row => row.Source).ToList();
+        SyncAuditLog.Clear();
+        foreach (var row in auditRows)
+        {
+            SyncAuditLog.Add(new SyncAuditLogRowOption(row, _localizer));
+        }
+    }
+
+    /// <summary>
+    /// Moves a pre-TD-45 in-vault language choice to the out-of-vault store, once (D5).
+    /// </summary>
+    /// <remarks>
+    /// ONE-WAY AND IDEMPOTENT. A populated store is never overwritten from a vault, so a user who
+    /// has chosen a language since upgrading keeps that choice even when they open an older vault
+    /// carrying a different one. The legacy value is an INDEX -- "0" or "1" -- which is exactly the
+    /// fragility D6 replaced; it is mapped positionally because that is what it meant when it was
+    /// written, and then never read again.
+    /// </remarks>
+    private async Task MigrateLegacyLanguageSettingAsync()
+    {
+        if (_languageStore.Read() is not null)
+        {
+            return;
+        }
+
+        var legacy = await _sender.Send(new GetSettingQuery(LanguageSettingKey));
+
+        if (legacy is null || !int.TryParse(legacy, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+        {
+            return;
+        }
+
+        if (index < 0 || index >= _localizer.Available.Count)
+        {
+            return;
+        }
+
+        var code = _localizer.Available[index].Code;
+        _localizer.SetLanguage(code);
+        _languageStore.Write(code);
     }
 
     /// <summary>
@@ -374,8 +959,8 @@ public partial class SettingsViewModel : ObservableObject
             : Math.Clamp(result.EstimatedBits / result.RequiredBits, 0d, 1d);
         NewPasswordMeetsFloor = result.MeetsFloor;
         NewPasswordStrengthLevelValue = result.Level;
-        NewPasswordStrengthStatusText = BuildPasswordStatusText(result);
-        NewPasswordAdviceText = BuildPasswordAdviceText(result);
+        SetOrClear(_newPasswordStatus, PasswordFeedbackText.Status(result));
+        SetOrClear(_newPasswordAdvice, PasswordFeedbackText.Advice(result));
 
         UpdateNewPasswordsMatch();
     }
@@ -386,63 +971,6 @@ public partial class SettingsViewModel : ObservableObject
     {
         NewPasswordsMatch = string.IsNullOrEmpty(ConfirmNewPassword) || ConfirmNewPassword == NewPassword;
     }
-
-    /// <summary>Word-for-word the same banding sentence SetupViewModel produces; see the note above on the duplication.</summary>
-    private static string BuildPasswordStatusText(PasswordStrengthResult result)
-    {
-        if (result.Weaknesses.Contains(PasswordWeakness.Empty))
-        {
-            return string.Empty;
-        }
-
-        var band = result.Level switch
-        {
-            PasswordStrengthLevel.VeryWeak => "Very weak",
-            PasswordStrengthLevel.Weak => "Weak",
-            PasswordStrengthLevel.Moderate => "Moderate",
-            PasswordStrengthLevel.Strong => "Strong",
-            PasswordStrengthLevel.VeryStrong => "Very strong",
-            _ => "Unusable",
-        };
-
-        return result.MeetsFloor
-            ? $"{band} -- meets Pine's minimum for a vault password."
-            : $"{band} -- does not yet meet Pine's minimum for a vault password.";
-    }
-
-    /// <summary>
-    /// One actionable sentence per reason the estimator gave, skipping the two reasons that are
-    /// already said by <see cref="BuildPasswordStatusText"/> (<see cref="PasswordWeakness.Empty"/>
-    /// and <see cref="PasswordWeakness.BelowEntropyFloor"/>, which is only ever a restatement of
-    /// "does not meet the minimum").
-    /// </summary>
-    private static string BuildPasswordAdviceText(PasswordStrengthResult result)
-    {
-        var sentences = result.Weaknesses
-            .Select(AdviceForPasswordWeakness)
-            .Where(static s => s is not null);
-
-        return string.Join(" ", sentences);
-    }
-
-    private static string? AdviceForPasswordWeakness(PasswordWeakness weakness) => weakness switch
-    {
-        PasswordWeakness.Empty => null,
-        PasswordWeakness.BelowEntropyFloor => null,
-        PasswordWeakness.TooShort =>
-            $"Use at least {PasswordStrengthPolicy.MinimumLength} characters.",
-        PasswordWeakness.CommonPassword =>
-            "Part of this password is a commonly used one (even disguised with capitals or numbers) -- pick something less guessable.",
-        PasswordWeakness.RepeatedPattern =>
-            "Avoid repeating characters or blocks, like \"aaaa\" or \"abcabcabc\".",
-        PasswordWeakness.SequentialRun =>
-            "Avoid sequential runs, like \"abcdef\" or \"123456\".",
-        PasswordWeakness.KeyboardPattern =>
-            "Avoid keyboard walks, like \"qwerty\" or \"asdfgh\".",
-        PasswordWeakness.LimitedCharacterVariety =>
-            "Add more length or mix in more variety -- length is the cheapest way to gain strength.",
-        _ => null,
-    };
 
     /// <summary>
     /// Re-wraps the vault's data key under a new master password.
@@ -475,7 +1003,7 @@ public partial class SettingsViewModel : ObservableObject
         if (string.IsNullOrEmpty(CurrentPassword))
         {
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "Enter your current master password.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.CurrentRequired");
             return;
         }
 
@@ -484,7 +1012,7 @@ public partial class SettingsViewModel : ObservableObject
         if (NewPassword != ConfirmNewPassword)
         {
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "The new passwords do not match. Re-enter both so a typo cannot lock you out permanently.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.Mismatch");
             return;
         }
 
@@ -492,21 +1020,21 @@ public partial class SettingsViewModel : ObservableObject
         var strength = PasswordStrengthPolicy.Evaluate(NewPassword);
         if (!strength.MeetsFloor)
         {
-            var advice = BuildPasswordAdviceText(strength);
             PasswordChangeFailed = true;
-            PasswordChangeMessage = string.IsNullOrEmpty(advice)
-                ? "This password does not meet Pine's minimum strength for a vault password."
-                : $"This password does not meet Pine's minimum strength for a vault password. {advice}";
+            _passwordChangeMessage.Set([new UserFacingMessage("Password.BelowMinimum"), .. PasswordFeedbackText.Advice(strength)]);
             return;
         }
 
         IsChangingPassword = true;
-        PasswordChangeMessage = null;
+        _passwordChangeMessage.Clear();
         PasswordChangeFailed = false;
 
         try
         {
             await _sender.Send(new ChangeVaultPasswordCommand(CurrentPassword, NewPassword));
+
+            // The handler destroys the platform wrap (TD-87); the toggle must show that.
+            LoadPlatformUnlockState();
 
             // Cleared the instant they are no longer needed, so the new password does not sit in a
             // bound text box for the rest of the session (TD-11). The finally block clears the
@@ -518,9 +1046,7 @@ public partial class SettingsViewModel : ObservableObject
             ConfirmNewPassword = string.Empty;
 
             PasswordChangeFailed = false;
-            PasswordChangeMessage =
-                "Your master password was changed. Your vault stayed open and none of your data was re-encrypted -- "
-                + "only the key that protects it was re-wrapped. Use the new password the next time you unlock.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Changed");
         }
         catch (VaultKeyUnwrapException)
         {
@@ -528,7 +1054,7 @@ public partial class SettingsViewModel : ObservableObject
             // open, so whoever is typing has demonstrably passed authentication once. Being vague
             // here would only make a mistyped current password look like a broken feature.
             PasswordChangeFailed = true;
-            PasswordChangeMessage = "The current password is incorrect. Your master password was not changed.";
+            _passwordChangeMessage.Set("Settings.MasterPassword.Failure.CurrentIncorrect");
         }
         catch (Exception ex)
         {
@@ -545,11 +1071,11 @@ public partial class SettingsViewModel : ObservableObject
             // here it would produce the generic sentence and a mistyped current password would look
             // like a broken feature.
             PasswordChangeFailed = true;
-            PasswordChangeMessage = UserFacingError.Report(
+            _passwordChangeMessage.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "change-vault-password",
-                "Your master password could not be changed. Your vault is unchanged and your current password still works.");
+                new UserFacingMessage("Settings.MasterPassword.Failure.Change")));
         }
         finally
         {
@@ -563,18 +1089,492 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-#pragma warning disable CA1822
+    // ----------------------------------------------------------------------------------------
+    // Vault backup, and the lock button (TD-56).
+    //
+    // WHAT THESE TWO USED TO BE. `ExportVault` was an empty method body carrying the comment "To
+    // be implemented via DialogService/FilePicker", and `LockVault` was an empty method body
+    // carrying "Restart the app or navigate to UnlockAccountViewModel". Both are bound to real,
+    // enabled, visible buttons in SettingsView -- so the shipped Security section offered two
+    // actions that did nothing at all, gave no error and left no trace. That is worse than
+    // offering nothing: a user who presses "Lock Vault" and walks away believes the vault is
+    // locked.
+    //
+    // NO FILE PICKER, AND THAT IS A DECISION RATHER THAN A SHORTCUT. The destination is not the
+    // user's to choose. The copy is produced by SQLite VACUUM INTO executed on the vault's OWN
+    // keyed SQLCipher connection (see VaultBackupService), which is what makes it encrypted with
+    // the same key and transactionally consistent -- so it is written into the vault's `backups`
+    // directory and nowhere else. A folder picker would imply the user could drop a readable copy
+    // on a USB stick, which is not what this produces. The honest UI is therefore: make the
+    // backup, then say exactly which file was written, so the user can copy that file wherever
+    // they like.
+    // ----------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Where the last backup was written, or why one was not. <see langword="null"/> until asked.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? VaultExportMessage { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="VaultExportMessage"/> reports a failure. Styling only: as on the password
+    /// card, the sentence itself says which it is, so nothing depends on colour alone.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool VaultExportFailed { get; set; }
+
+    /// <summary>Whether a backup is being written. The button is disabled while it is.</summary>
+    [ObservableProperty]
+    public partial bool IsExportingVault { get; set; }
+
+    /// <summary>
+    /// Writes an encrypted, point-in-time copy of the open vault and reports where it went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE PATH IS SHOWN DELIBERATELY, and it is not the leak TD-24 is about. That rule is about
+    /// internals reaching the screen because some layer below happened to name them in an
+    /// exception. This is the one fact the user asked for: they pressed a button called "Export
+    /// Vault", and the answer to "where did it go?" is the file. It comes from
+    /// <c>VaultBackupInfo.Path</c>, which the handler returns on success -- never from
+    /// <see cref="Exception.Message"/>.
+    /// </para>
+    /// <para>
+    /// A locked vault arrives here as <c>VaultLockedException</c>, which implements
+    /// <c>IUserFacingFailure</c> and therefore reaches the user in its own words. Everything else
+    /// gets the fallback sentence, which is true because <c>VaultBackupService</c> deletes a
+    /// partially written destination before it throws: a failed export leaves no half-backup
+    /// behind to be mistaken for one.
+    /// </para>
+    /// </remarks>
     [RelayCommand]
-    private void ExportVault()
+    private async Task ExportVaultAsync()
     {
-        // To be implemented via DialogService/FilePicker
+        if (IsExportingVault) return;
+
+        IsExportingVault = true;
+        VaultExportFailed = false;
+        _exportMessage.Clear();
+
+        try
+        {
+            var backup = await _sender.Send(new ExportVaultBackupCommand());
+
+            VaultExportFailed = false;
+            _exportMessage.Set("Settings.Security.ExportVault.Success", backup.Path);
+        }
+        catch (Exception ex)
+        {
+            VaultExportFailed = true;
+            _exportMessage.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "export-vault-backup",
+                new UserFacingMessage("Settings.Security.ExportVault.Failed")));
+        }
+        finally
+        {
+            IsExportingVault = false;
+        }
     }
 
+    // ----------------------------------------------------------------------------------------
+    // Restoring a backup (TD-56's remaining half, plan item 1.1).
+    //
+    // WHY THIS SCREEN AND NOT A FILE PICKER. The export half deliberately has no picker, because
+    // the destination is not the user's to choose. The same reasoning inverts here and lands in the
+    // same place: the SOURCE is not the user's to choose either. A restore accepts this vault's own
+    // backups and nothing else -- the service refuses a path outside the backups directory rather
+    // than copy an arbitrary file over a ledger -- so offering a picker would offer a choice that is
+    // then rejected. The honest control is a list of what can actually be restored.
+    //
+    // WHY A CONFIRMATION AND NOT A BUTTON. This is the only operation in Pine that destroys data on
+    // purpose. The confirmation is the scrim-and-panel shape the void dialog already uses, and it
+    // names the moment being restored to, because "restore backup" and "throw away everything since
+    // 26 August" are the same sentence and only the second one is honest.
+    //
+    // WHAT THE USER IS TOLD AFTERWARDS: that the vault was locked, and where the copy of what they
+    // replaced now sits. The second is the whole reason this is not a one-way door.
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>The backups of this vault, newest first, as the list the user chooses from.</summary>
+    public ObservableCollection<VaultBackupOption> Backups { get; } = [];
+
+    /// <summary>The backup the user has selected, or <see langword="null"/>.</summary>
+    [ObservableProperty]
+    public partial VaultBackupOption? SelectedBackup { get; set; }
+
+    /// <summary>Whether the confirmation panel is up.</summary>
+    [ObservableProperty]
+    public partial bool IsRestoreDialogVisible { get; set; }
+
+    /// <summary>
+    /// The backup the confirmation is about, captured when the panel opened.
+    /// </summary>
+    /// <remarks>
+    /// SEPARATE FROM <see cref="SelectedBackup"/> ON PURPOSE, and the same shape the void dialog
+    /// uses for the same reason. The list underneath the scrim keeps its keyboard focus, so an arrow
+    /// key can move the selection while the panel is up; a confirmation must act on what the user
+    /// was shown when they asked for it, not on what the list happens to be pointing at a keystroke
+    /// later. The panel binds to this, so the two can never disagree.
+    /// </remarks>
+    [ObservableProperty]
+    public partial VaultBackupOption? RestoreTarget { get; set; }
+
+    /// <summary>Whether a restore is running. Every control on the card is disabled while it is.</summary>
+    [ObservableProperty]
+    public partial bool IsRestoringVault { get; set; }
+
+    /// <summary>What the last restore did, or why one did not happen.</summary>
+    [ObservableProperty]
+    public partial string? VaultRestoreMessage { get; set; }
+
+    /// <summary>Whether <see cref="VaultRestoreMessage"/> reports a failure. Styling only.</summary>
+    [ObservableProperty]
+    public partial bool VaultRestoreFailed { get; set; }
+
+    /// <summary>Whether there is anything to restore. Drives the empty state rather than a blank list.</summary>
+    public bool HasBackups => Backups.Count > 0;
+
+    /// <summary>
+    /// Reloads the list of backups.
+    /// </summary>
+    /// <remarks>
+    /// A LOCKED VAULT IS NOT AN ERROR HERE. The settings page can be constructed by the designer and
+    /// by tests with no session at all, and the query refuses a locked vault by design. Either way
+    /// the honest result is an empty list and no message: the user has not asked for anything yet,
+    /// and a red sentence on arrival would be reporting a failure that did not happen.
+    /// </remarks>
+    [RelayCommand]
+    private async Task LoadBackupsAsync()
+    {
+        try
+        {
+            var backups = await _sender.Send(new ListVaultBackupsQuery());
+
+            Backups.Clear();
+
+            foreach (var backup in backups)
+            {
+                Backups.Add(new VaultBackupOption(backup, _localizer));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogBackupsUnavailable(_logger, ex);
+            Backups.Clear();
+        }
+
+        OnPropertyChanged(nameof(HasBackups));
+        SelectedBackup = null;
+    }
+
+    /// <summary>Puts the confirmation panel up for the selected backup.</summary>
+    [RelayCommand]
+    private void BeginRestore()
+    {
+        if (SelectedBackup is null || IsRestoringVault)
+        {
+            return;
+        }
+
+        _restoreMessage.Clear();
+        VaultRestoreFailed = false;
+        RestoreTarget = SelectedBackup;
+        IsRestoreDialogVisible = true;
+    }
+
+    /// <summary>Closes the confirmation without restoring anything.</summary>
+    [RelayCommand]
+    private void CancelRestore()
+    {
+        IsRestoreDialogVisible = false;
+        RestoreTarget = null;
+    }
+
+    /// <summary>
+    /// Replaces the vault with the selected backup and reports what happened.
+    /// </summary>
+    /// <remarks>
+    /// THE TWO PATHS ARE DELIBERATELY ASYMMETRIC. On success the vault is locked by the handler, so
+    /// this view model is about to be navigated away from and the sentence it writes is the last
+    /// thing shown before the unlock screen -- it names the safety copy, because that is the only
+    /// thing the user needs from this screen afterwards. On failure nothing changed and the vault is
+    /// still open, so the sentence stays on the card and the list is left alone.
+    /// </remarks>
+    [RelayCommand]
+    private async Task ConfirmRestoreAsync()
+    {
+        var selected = RestoreTarget;
+
+        if (selected is null || IsRestoringVault)
+        {
+            return;
+        }
+
+        IsRestoreDialogVisible = false;
+        IsRestoringVault = true;
+        VaultRestoreFailed = false;
+        _restoreMessage.Clear();
+
+        try
+        {
+            var result = await _sender.Send(new RestoreVaultBackupCommand(selected.Path));
+            LoadPlatformUnlockState();
+
+            VaultRestoreFailed = false;
+            _restoreMessage.Set("Settings.Security.RestoreVault.Success", result.SafetyBackupPath);
+        }
+        catch (VaultBackupKeyMismatchException mismatch)
+        {
+            // The backup predates a data-key rotation: ask for the password from back then (nothing changed).
+            ShowBackupPasswordPrompt(mismatch.BackupPath);
+        }
+        catch (Exception ex)
+        {
+            VaultRestoreFailed = true;
+            _restoreMessage.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "restore-vault-backup",
+                new UserFacingMessage("Settings.Security.RestoreVault.Failed")));
+        }
+        finally
+        {
+            IsRestoringVault = false;
+            RestoreTarget = null;
+        }
+    }
+
+    /// <summary>
+    /// One backup, as the list shows it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IT DOES NOT SHOW <c>SchemaVersionBefore</c>, AND THAT IS NOT AN OVERSIGHT. Listing backups
+    /// cannot recover it -- doing so would mean opening each file with the vault key -- so it is
+    /// null for every row here. A column that is blank for every row is worse than no column: it
+    /// reads as "this backup has no schema version" rather than "this screen cannot tell you".
+    /// </para>
+    /// <para>
+    /// The date is rendered in the user's own culture and the size in whole units, because the two
+    /// questions a person actually asks of a backup list are "how far back does this go" and "is
+    /// this the real one or an empty one".
+    /// </para>
+    /// </remarks>
+    public sealed class VaultBackupOption
+    {
+        public VaultBackupOption(VaultBackupInfo backup, ILocalizer localizer)
+        {
+            ArgumentNullException.ThrowIfNull(backup);
+            ArgumentNullException.ThrowIfNull(localizer);
+
+            Source = backup;
+            Path = backup.Path;
+            CreatedAtUtc = backup.CreatedAtUtc;
+
+            // The localizer's culture, not the process's: they are the same object's decision in a running
+            // head, and only this one is the language this option's Reason is worded in (TD-21).
+            Taken = backup.CreatedAtUtc.ToLocalTime().ToString("f", localizer.CurrentCulture);
+
+            var reasonKey = backup.Reason switch
+            {
+                VaultBackupReason.Manual => "Settings.Security.RestoreVault.Reason.Manual",
+                VaultBackupReason.PreMigration => "Settings.Security.RestoreVault.Reason.PreMigration",
+                VaultBackupReason.PreRestore => "Settings.Security.RestoreVault.Reason.PreRestore",
+                _ => "Settings.Security.RestoreVault.Reason.Manual",
+            };
+
+            Reason = localizer[reasonKey];
+            Size = string.Format(
+                localizer.CurrentCulture,
+                "{0:N0} KB",
+                Math.Max(1, backup.SizeBytes / 1024));
+        }
+
+        /// <summary>What this option was built from, so a language change can build it again.</summary>
+        public VaultBackupInfo Source { get; }
+
+        /// <summary>Absolute path, which is what the command needs and what the list does not show.</summary>
+        public string Path { get; }
+
+        /// <summary>When the backup was taken.</summary>
+        public DateTimeOffset CreatedAtUtc { get; }
+
+        /// <summary>The moment, in the user's culture.</summary>
+        public string Taken { get; }
+
+        /// <summary>Why it was taken, in the user's language.</summary>
+        public string Reason { get; }
+
+        /// <summary>Its size, rounded to whole kilobytes and never to zero.</summary>
+        public string Size { get; }
+    }
+
+    // Source-generated, because CA1848 is an error in this repository. Debug rather than Error: the
+    // commonest reason the list is unavailable is a locked vault, which is a state and not a fault.
+    [LoggerMessage(
+        EventId = 2,
+        EventName = "vault.backups_unavailable",
+        Level = LogLevel.Debug,
+        Message = "Vault backups could not be listed; the restore list is shown empty.")]
+    private static partial void LogBackupsUnavailableCore(ILogger logger, Exception exception);
+
+    private static void LogBackupsUnavailable(ILogger? logger, Exception exception)
+    {
+        if (logger is not null)
+        {
+            LogBackupsUnavailableCore(logger, exception);
+        }
+    }
+
+    /// <summary>
+    /// Locks the vault, by exactly the path <c>ShellViewModel.LockVaultCommand</c> uses.
+    /// </summary>
+    /// <remarks>
+    /// ONE LOCK PATH, TWO BUTTONS. <c>MainViewModel</c> owns reacting to <c>IVaultSession.Locked</c>
+    /// -- navigating out of the shell and explaining why -- so asking for the lock is the whole job
+    /// here, as it is in the shell. The two buttons must not diverge: a settings-page "lock" that
+    /// merely navigated somewhere would leave the data key in memory with the screen claiming
+    /// otherwise.
+    /// </remarks>
     [RelayCommand]
     private void LockVault()
     {
-        // Restart the app or navigate to UnlockAccountViewModel
+        // Null only in the designer and in tests that construct this view model without a session;
+        // the container always supplies one. A null session cannot lock anything, and pretending
+        // otherwise is the defect this ticket is about.
+        _vaultSession?.Lock(VaultLockReason.UserRequested);
     }
-#pragma warning restore CA1822
+
+    // ----------------------------------------------------------------------------------------
+    // §11's "delete all envelopes from a provider" — the right to erasure (post-audit plan item 3.1h).
+    //
+    // NOT GATED ON THE "ENABLE OR DISABLE SYNC" TOGGLE ON THE SYNC NOW PAGE. The right to erasure is
+    // not conditional on sync being currently turned on; see EraseSyncDataCommand's remarks.
+    //
+    // WHY A CONFIRMATION, AND THE SAME SHAPE AS THE RESTORE DIALOG ABOVE. This deletes files a paired
+    // copy may not have taken yet, permanently, from a folder this page does not own. The confirmation
+    // names the folder and exactly what will be removed, rather than a generic "are you sure?".
+    // ----------------------------------------------------------------------------------------
+
+    /// <summary>The shared folder to erase this copy's data from, as the user typed it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanErase))]
+    public partial string EraseFolderPath { get; set; } = string.Empty;
+
+    /// <summary>Whether an erasure is running. Every control on the card is disabled while it is.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanErase))]
+    public partial bool IsErasing { get; set; }
+
+    /// <summary>Whether the confirmation panel is up.</summary>
+    [ObservableProperty]
+    public partial bool IsEraseDialogVisible { get; set; }
+
+    /// <summary>What the last erasure did, or why one did not happen.</summary>
+    [ObservableProperty]
+    public partial string? EraseMessage { get; set; }
+
+    /// <summary>Whether <see cref="EraseMessage"/> reports a failure. Styling only.</summary>
+    [ObservableProperty]
+    public partial bool EraseFailed { get; set; }
+
+    /// <summary>Whether the button is enabled: a folder typed, and nothing in flight. The validator checks again.</summary>
+    public bool CanErase => !IsErasing && !string.IsNullOrWhiteSpace(EraseFolderPath);
+
+    /// <summary>Puts the confirmation panel up.</summary>
+    [RelayCommand]
+    private void BeginErase()
+    {
+        if (!CanErase)
+        {
+            return;
+        }
+
+        _eraseMessage.Clear();
+        EraseFailed = false;
+        IsEraseDialogVisible = true;
+    }
+
+    /// <summary>Closes the confirmation without erasing anything.</summary>
+    [RelayCommand]
+    private void CancelErase() => IsEraseDialogVisible = false;
+
+    /// <summary>
+    /// Erases this copy's envelopes and announcement from the folder, and reports what was actually there.
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfirmEraseAsync()
+    {
+        if (!CanErase)
+        {
+            return;
+        }
+
+        IsEraseDialogVisible = false;
+        IsErasing = true;
+        EraseFailed = false;
+        _eraseMessage.Clear();
+
+        try
+        {
+            var result = await _sender.Send(new EraseSyncDataCommand(EraseFolderPath.Trim()));
+
+            var countKey = result.EnvelopesDeleted switch
+            {
+                0 => "Settings.SyncErase.Success.CountZero",
+                1 => "Settings.SyncErase.Success.CountOne",
+                _ => "Settings.SyncErase.Success.CountMany",
+            };
+            var countMessage = result.EnvelopesDeleted <= 1
+                ? new UserFacingMessage(countKey)
+                : new UserFacingMessage(countKey, result.EnvelopesDeleted);
+            var announcementMessage = new UserFacingMessage(
+                result.AnnouncementRemoved ? "Settings.SyncErase.Success.AnnouncementRemoved" : "Settings.SyncErase.Success.NoAnnouncement");
+
+            EraseFailed = false;
+            _eraseMessage.Set("Settings.SyncErase.Success", countMessage, announcementMessage);
+        }
+        catch (Exception ex)
+        {
+            EraseFailed = true;
+            _eraseMessage.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "erase-sync-data",
+                new UserFacingMessage("Settings.SyncErase.Failed")));
+        }
+        finally
+        {
+            IsErasing = false;
+        }
+    }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// Same reason as every other page that owns one (CA1001): the slot subscribes to
+    /// <c>ILocalizer.LanguageChanged</c> and the localizer lives for the whole process, so an
+    /// unreleased slot keeps this view model -- and the accounts it has loaded -- alive for the
+    /// life of the application. <c>PageActivation.Deactivate</c> calls this on navigation away.
+    /// </remarks>
+    public void Dispose()
+    {
+        _localizer.LanguageChanged -= OnLanguageChanged;
+        _exchangeRateSlot?.Dispose();
+        _exportMessage.Dispose();
+        _restoreMessage.Dispose();
+        _backupPasswordError?.Dispose();
+        _error.Dispose();
+        _diagnosticBundleMessage.Dispose();
+        _recalculationReport.Dispose();
+        _passwordChangeMessage.Dispose();
+        _newPasswordStatus.Dispose();
+        _newPasswordAdvice.Dispose();
+        _eraseMessage.Dispose();
+        DisposePreferences();
+        GC.SuppressFinalize(this);
+    }
 }

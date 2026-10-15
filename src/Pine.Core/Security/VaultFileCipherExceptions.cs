@@ -44,8 +44,8 @@ public sealed class VaultLockedException : Exception, Pine.Core.Common.IUserFaci
     /// "The transaction could not be saved" would send the user hunting for a defect that is not
     /// there instead of to the unlock screen.
     /// </remarks>
-    public string UserFacingMessage =>
-        "Your vault is locked, so this could not be completed and nothing was changed. Unlock the vault and try again.";
+    public System.Collections.Generic.IReadOnlyList<Pine.Core.Common.UserFacingMessage> UserFacingMessages { get; } =
+        [Pine.Core.Common.UserFacingText.VaultLocked()];
 
     public VaultLockedException()
         : base("The vault is locked. Unlock it before performing this operation.")

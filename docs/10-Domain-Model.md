@@ -3,8 +3,8 @@
 | Field            | Value                                                                                |
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-10-DOMAIN-MODEL`                                                           |
-| Status           | Partially implemented — the money aggregates are real; three entities are shells     |
-| Reconciled       | 2026-08-31 · `Account`, `Transaction`, `Money`, `Budget` and their invariants are implemented and tested. `Attachment`, `Rule` and `Tag` exist as entities with no behaviour and no consumer (TD-36). |
+| Status           | Partially implemented — the money aggregates are real; several contexts are unbuilt  |
+| Reconciled       | 2026-09-09 · `Account`, `Transaction`, `Money`, `Budget`, `Attachment` and their invariants are implemented and tested. **`Attachment` is built as of the Phase 3 attachment work**: §7's "Hash MUST be set" is a SHA-256 the aggregate computes and verifies on read, and §6.2's "Attachments MUST be stored encrypted at rest" is satisfied by SQLCipher, because the bytes are a BLOB in `pine.db` rather than a file beside it — see `60-Production-Readiness-Audit` §12.68 for why. `Rule` and `Tag` still do not exist (TD-37), so §6.14 and the `Tag` row in §7 describe a design that is not built. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -271,7 +271,13 @@ another context reads from a projection or subscribes to its events.
   - A profile MUST NOT execute code from the source file.
 - **Behaviours.** create, edit, run, schedule, replay, archive.
 
-### 6.14 Rule Engine
+### 6.14 Rule Engine *(not built)*
+
+> This section specifies a design, not code. The `Rule` entity and its table
+> were dropped in TD-37: what existed was a shell with an unconstrained
+> `TargetCategoryId` `Guid`, no evaluator and no consumer. The engine described
+> in `31-Rule-Engine` is Phase 3 work and is expected to be built on a real
+> `CategoryId` relationship rather than on that shell.
 
 - **Aggregate root.** `Rule`.
 - **Identity.** `RuleId`.
@@ -301,9 +307,9 @@ another context reads from a projection or subscribes to its events.
 | `Currency`    | An ISO 4217 code or a crypto asset symbol.                                                   | Non-empty; valid per the active registry.                                 |
 | `ExchangeRate`| A rate at a specific timestamp.                                                              | Positive; timestamped.                                                   |
 | `DateRange`   | A pair of instants in a specific timezone.                                                   | `from <= to`.                                                            |
-| `Category`    | A hierarchical label (e.g. `Food / Restaurants`).                                            | Non-empty; tree depth ≤ 5 (configurable).                                |
-| `Tag`         | A free-form label.                                                                            | Non-empty; case-insensitive.                                              |
-| `Attachment`  | A reference to an encrypted blob with a content hash.                                        | Hash MUST be set.                                                        |
+| `Category`    | A hierarchical label (e.g. `Food / Restaurants`). **As built (2026-09-13, TD-132):** a flat string on `TransactionSplit`, `Rule` and `Budget`. `Budget` and `Rule` refuse a blank one and `Budget` stores it trimmed; `TransactionSplit` does **neither** — a split may carry an empty or untrimmed category, and comparisons trim it. The `Category` *aggregate* that once existed in code — never listed in §6 — was deleted to match this row. The hierarchy is not built: `Food / Restaurants` is one label, not a parent and a child. | Non-empty — **enforced on creation** by `Budget` and `Rule` (a row read back from a vault bypasses the constructor, so the budget query treats a blank label as unmeasurable); **not enforced** on `TransactionSplit`; tree depth ≤ 5 — **not built**. |
+| `Tag` *(not built)* | A free-form label.                                                                      | Non-empty; case-insensitive.                                              |
+| `Attachment` | The file itself, stored encrypted, with a content hash. | Hash MUST be set — and IS: SHA-256, computed by the aggregate from the content and verified on every read. Content is non-empty and at most 25 MB; the row is bound to its transaction by a real foreign key. |
 | `Locale`      | A language-and-region identifier.                                                            | Conforms to BCP 47.                                                      |
 | `Timezone`    | An IANA TZ identifier.                                                                       | Conforms to IANA.                                                        |
 | `Confidence`  | A value in [0, 1].                                                                            | In range.                                                                 |

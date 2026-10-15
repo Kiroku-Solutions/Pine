@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-04-STAKEHOLDERS`                                                           |
 | Status           | Non-normative — stakeholder and RACI register                                        |
-| Reconciled       | 2026-08-31 · Describes people and accountability, not software. Note that the roles it assigns (Engineering Review Board, Trust team, Maintainer Council) are aspirational for a project with one contributor; see the note in `24-Contributing`. |
+| Reconciled       | 2026-08-31 · Describes people and accountability, not software. Note that the roles it assigns (Engineering Review Board, Trust team, Maintainer Council) are aspirational for a project with one contributor; see the note in `24-Contributing`. **2026-10-05 · `SH-PLUGIN-AUTHOR` (§5.2) is retired, not re-aimed, to match `05-Personas` PERS-07: ADR-0021 means there is no plugin SDK or marketplace for this stakeholder's interest to attach to. `SH-THEME-AUTHOR`'s marketplace visibility and `SH-POWER-USER`'s plugin SDK line are corrected for the same reason. §7, §8, §9 and the diagram in §10 are not individually rewritten; this note covers every remaining mention (TD-147).** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -90,7 +90,7 @@ in §6.
 | ID         | Stakeholder         | Interest                                                                                   | Influence | Engagement strategy                                        |
 |------------|---------------------|---------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------|
 | `SH-END-USER` | End user (privacy-conscious) | A working, private, multi-platform finance app that never sells their data.                  | High      | Public roadmap, public changelog, in-product opt-in telemetry, public issue tracker. |
-| `SH-POWER-USER` | Power user             | A plugin SDK, swappable AI, custom rules, multiple storage backends, scripting.              | High      | Stable Plugin SDK, public ADR process, RFC-style proposals. |
+| `SH-POWER-USER` | Power user             | ~~A plugin SDK~~, swappable AI, custom rules, multiple storage backends, scripting.              | High      | ~~Stable Plugin SDK~~ (withdrawn, ADR-0021), public ADR process, RFC-style proposals. |
 | `SH-MULTI-PLATFORM-USER` | Multi-platform user | One dataset, identical UX on Windows, Linux, macOS, Android, iOS.                            | High      | Cross-platform release matrix, public parity dashboard.    |
 | `SH-INTL-USER` | International user   | Full i18n, RTL, regional formats, multi-currency, timezones.                                | High      | Public locale coverage dashboard, translation platform, RTL conformance tests. |
 | `SH-AI-CURIOUS-USER` | AI-curious user     | On-device OCR, categorisation, anomaly detection, forecasting, recommendations.             | High      | Local-AI by default, model swap documented, AI transparency page. |
@@ -103,11 +103,11 @@ personas; full personas live in `05-Personas`.
 
 | ID         | Stakeholder         | Interest                                                                                   | Influence | Engagement strategy                                        |
 |------------|---------------------|---------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------|
-| `SH-PLUGIN-AUTHOR` | Plugin author       | Stable Plugin SDK, predictable release cadence, fair marketplace visibility.                | High      | SemVer Plugin SDK, deprecation policy, public SDK changelog, marketplace analytics. |
+| ~~`SH-PLUGIN-AUTHOR`~~ **Retired, ADR-0021 (TD-147)** | ~~Plugin author~~ | ~~Stable Plugin SDK, predictable release cadence, fair marketplace visibility.~~ | — | ~~SemVer Plugin SDK, deprecation policy, public SDK changelog, marketplace analytics.~~ |
 | `SH-CONTRIBUTOR` | Contributor (code, docs, design) | A clear contribution process, public roadmap, recognition.                                  | Medium    | `24-Contributing`, public maintainers list, public CoC (deferred BR-D-5). |
 | `SH-TRANSLATOR` | Translator / localiser | A well-maintained i18n pipeline, clear locale ownership, glossary.                          | Medium    | Public translation platform, locale-ownership policy, machine-translation review. |
 | `SH-DOCS-CONTRIBUTOR` | Documentation contributor | An authoritative SSoT, a clear style guide, low-friction PRs.                              | Medium    | Markdown style guide, SSoT authoring rules, linter for terminology. |
-| `SH-THEME-AUTHOR` | Theme author        | A documented theming contract, marketplace visibility.                                       | Low       | Theming contract, marketplace, sample theme.                |
+| `SH-THEME-AUTHOR` | Theme author        | A documented theming contract, ~~marketplace visibility~~ (no marketplace, ADR-0021).         | Low       | Theming contract, ~~marketplace~~, sample theme.             |
 | `SH-SECURITY-RESEARCHER` | Security researcher | Public threat model, responsible disclosure, fair credit.                                   | High      | `38-Threat-Model`, security.txt, public advisories.         |
 | `SH-ACCESSIBILITY-AUDITOR` | Accessibility auditor | Conformance evidence, regression protection, public roadmap.                                | High      | `40-Accessibility`, conformance report, public issue tracker tag. |
 | `SH-PERF-ENGINEER` | Performance engineer | Benchmarks, regression tests, hardware coverage matrix.                                      | Medium    | `39-Performance`, benchmark dashboards, public numbers.     |
@@ -173,7 +173,7 @@ primary and secondary stakeholder. The full external matrix is in
 | `SH-MULTI-PLATFORM-USER`       | High       | High      | Manage closely                 |
 | `SH-INTL-USER`                 | High       | High      | Manage closely                 |
 | `SH-AI-CURIOUS-USER`           | High       | High      | Manage closely                 |
-| `SH-PLUGIN-AUTHOR`             | High       | High      | Manage closely                 |
+| ~~`SH-PLUGIN-AUTHOR`~~ (retired, ADR-0021) | — | — | —                 |
 | `SH-MAINTAINER`                | High       | High      | Manage closely                 |
 | `SH-SECURITY-RESEARCHER`       | High       | High      | Manage closely                 |
 | `SH-ACCESSIBILITY-AUDITOR`     | High       | High      | Manage closely                 |
@@ -210,7 +210,7 @@ each artefact is set in `24-Contributing` and the runbook in
 | Stakeholder group                  | Channel(s)                            | Cadence        | Artefact(s)                                            |
 |------------------------------------|---------------------------------------|----------------|--------------------------------------------------------|
 | End users (all five types)         | Public website, in-product release notes, public changelog, in-product opt-in telemetry review. | Per release, plus monthly digest. | Release notes, changelog, opt-in telemetry summary, public roadmap. |
-| Plugin authors                     | Public SDK changelog, public ADR feed, plugin-dev mailing list, plugin marketplace. | Per SDK release, plus monthly digest. | SemVer-tagged SDK releases, deprecation policy, marketplace analytics. |
+| ~~Plugin authors~~ (retired, ADR-0021; TD-147) | ~~Public SDK changelog, public ADR feed, plugin-dev mailing list, plugin marketplace.~~ | — | — |
 | Contributors                       | Public issue tracker, public discussions, public maintainers list, contributor guide. | Daily triage, weekly maintainer sync. | `24-Contributing`, public CoC (when approved), public good-first-issues. |
 | Translators                        | Public translation platform, locale-ownership page. | Weekly.       | Public locale coverage dashboard, glossary updates, style guide. |
 | Documentation contributors         | Public docs repository, SSoT authoring rules, public style guide. | Continuous.    | SSoT linter, public style guide, "good first doc" tags. |
@@ -249,7 +249,7 @@ the project. R = Responsible, A = Accountable, C = Consulted, I = Informed.
 | Add or remove a SCOPE-* item                         | A                         | R           | C             | C               | I            | I       | I         | I                                    |
 | Add a new glossary term                              | A                         | R           | C             | I               | C            | I       | I         | I                                    |
 | Add a new locale                                     | I                         | R           | C             | I               | A (locale lead) | I   | I         | I                                    |
-| Accept a new plugin in the marketplace              | I                         | A           | C             | R (author)       | I            | I       | I         | C (security)                         |
+| ~~Accept a new plugin in the marketplace~~ (no marketplace, ADR-0021; TD-147) | — | — | — | — | — | — | — | — |
 | Accept a donation / sponsor                          | A                         | C           | I             | I               | I            | R       | I         | C (legal for conflict-of-interest)   |
 | Cut a public release                                 | A                         | R           | I             | I               | I            | I       | I         | I                                    |
 | Respond to a security advisory (P0/P1)              | A                         | R           | C             | I               | I            | I       | I (post-fix) | C (security researchers)        |
@@ -354,7 +354,7 @@ graph TB
     end
 
     subgraph Secondary["Secondary stakeholders"]
-        S1["SH-PLUGIN-AUTHOR"]
+        S1["SH-PLUGIN-AUTHOR (retired, ADR-0021)"]
         S2["SH-CONTRIBUTOR"]
         S3["SH-TRANSLATOR"]
         S4["SH-DOCS-CONTRIBUTOR"]

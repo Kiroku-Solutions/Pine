@@ -19,7 +19,14 @@ public partial class LiveScannerView : UserControl
     {
         base.OnUnloaded(e);
 
-        // Guarantee camera resources are freed when this view leaves the visual tree
+        // BELT AND BRACES SINCE TD-34, AND KEPT ON PURPOSE. Navigation now disposes the outgoing
+        // page itself (see PageActivation.Deactivate), so in the ordinary "user clicks another
+        // sidebar button" path the view model is already disposed by the time this runs -- and
+        // LiveScannerViewModel.Dispose is idempotent (_isDisposed), so calling it twice costs
+        // nothing. This stays because unloading is not always a navigation: the window closing, the
+        // shell's ContentControl being re-templated, or a view swapped out by anything that does
+        // not go through the shell's navigator (IShellNavigator) would otherwise leave the camera open. The cheap call
+        // is worth more than the deleted line.
         if (DataContext is LiveScannerViewModel vm)
         {
             vm.Dispose();

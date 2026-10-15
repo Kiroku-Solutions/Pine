@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Pine.Core.Common;
 
 namespace Pine.Core.Ai;
 
@@ -57,18 +58,39 @@ public record ReceiptExtractionResult(
 /// <summary>
 /// Contains the categorisation prediction.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <paramref name="Category"/> IS A NAME, AND AN EMPTY STRING MEANS "NO SUGGESTION" (TD-32). This
+/// record used to carry a <see cref="System.Guid"/> <c>CategoryId</c>, which every caller then had
+/// to resolve back to a name through <c>ICategoryRepository</c> — against a <c>Categories</c> table
+/// that no code path in this application has ever written a row to. Both call sites therefore
+/// discarded every prediction the model made, and neither could report why.
+/// </para>
+/// <para>
+/// The empty string is the "no suggestion" value rather than <c>null</c> so that a caller cannot
+/// dereference it by accident, and it is checked with the same
+/// <c>string.IsNullOrWhiteSpace</c> guard the ledger already uses for a split's category.
+/// </para>
+/// </remarks>
 public record CategorisationResult(
-    System.Guid CategoryId,
+    string Category,
     double ConfidenceScore
 );
 
 /// <summary>
 /// Result of analyzing and optionally cropping a receipt.
 /// </summary>
+/// <remarks>
+/// <see cref="StatusMessage"/> IS A KEY, AND WAS A SPANISH SENTENCE (TD-139). The detector wrote
+/// "Acércate más a la factura" and eight siblings as literals, and the live scanner put them on screen
+/// whatever the active language — so an English screen showed Spanish, and "factura" broke the
+/// glossary besides. The item that turned every other sentence below the UI into a key did not count
+/// these, and its independent review found them.
+/// </remarks>
 public record ReceiptAnalysisResult(
     float Confidence,
     bool PassedFilters,
-    string? StatusMessage,
+    UserFacingMessage? StatusMessage,
     Stream? CroppedImageStream,
     Stream? OcrImageStream = null
 );

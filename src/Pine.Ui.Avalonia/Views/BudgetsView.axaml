@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Pine.Ui.Avalonia.Views.BudgetsView"
              x:DataType="vm:BudgetsViewModel">
@@ -11,19 +12,99 @@
         <vm:BudgetsViewModel/>
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,*">
-        
-        <StackPanel Grid.Row="0" Margin="0,0,0,24">
-            <TextBlock Text="Budgets" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
-            <TextBlock Text="Keep your spending in check" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="{loc:Tr Budgets.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr Budgets.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+            </StackPanel>
+            <!-- TD-152: until this button, nothing in the product could create a budget. -->
+            <Button Grid.Column="1" VerticalAlignment="Center" Classes="pine-accent"
+                    Content="{loc:Tr Budgets.Create.Button}"
+                    Command="{Binding BeginCreateCommand}"
+                    IsVisible="{Binding !IsCreating}"/>
+        </Grid>
+
+        <!-- Why the form did not open, or why a load failed: both were silent before. -->
+        <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding CreateMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
+                       IsVisible="{Binding CreateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         </StackPanel>
 
+        <!-- The new-budget form. The period list omits "every two weeks": see BudgetsViewModel.PeriodOptions. -->
+        <Border Grid.Row="2" IsVisible="{Binding IsCreating}"
+                Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,16">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Tr Budgets.Create.Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Tr Budgets.Create.CategoryLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding NewCategory}" PlaceholderText="{loc:Tr Budgets.Create.CategoryPlaceholder}" IsEnabled="{Binding !IsSaving}"
+                             AutomationProperties.Name="{loc:Tr Budgets.Create.CategoryLabel}"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,12,Auto">
+                    <StackPanel Grid.Column="0" Spacing="5">
+                        <TextBlock Text="{loc:Tr Budgets.Create.LimitLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                        <NumericUpDown Value="{Binding NewLimit}" Minimum="0" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                       AutomationProperties.Name="{loc:Tr Budgets.Create.LimitLabel}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="5">
+                        <TextBlock Text="{loc:Tr Budgets.Create.CurrencyLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                        <TextBlock Text="{Binding BaseCurrency}" MinWidth="100" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   AutomationProperties.Name="{loc:Tr Budgets.Create.CurrencyLabel}"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Tr Budgets.Create.PeriodLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                    <ComboBox ItemsSource="{Binding PeriodOptions}" SelectedItem="{Binding NewPeriod}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                              AutomationProperties.Name="{loc:Tr Budgets.Create.PeriodLabel}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BudgetPeriodOption">
+                                <TextBlock Text="{Binding Label}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- Stacked: the Fluent DatePicker's MinWidth overflows a narrow column. -->
+                <StackPanel Spacing="12" IsVisible="{Binding NeedsDates}">
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="{loc:Tr Budgets.Create.StartLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                        <DatePicker SelectedDate="{Binding NewStartDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                    AutomationProperties.Name="{loc:Tr Budgets.Create.StartLabel}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="{loc:Tr Budgets.Create.LastLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                        <DatePicker SelectedDate="{Binding NewLastDate}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                    AutomationProperties.Name="{loc:Tr Budgets.Create.LastLabel}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,10,*">
+                    <Button Grid.Column="0" Content="{loc:Tr Budgets.Create.Cancel}" Command="{Binding CancelCreateCommand}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsSaving}"/>
+                    <Button Grid.Column="2" Content="{loc:Tr Budgets.Create.Save}" Command="{Binding SaveBudgetCommand}" Classes="pine-accent"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsSaving}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- Loading state -->
-        <ProgressBar Grid.Row="1" IsIndeterminate="True" 
-                     IsVisible="{Binding IsLoading}" 
+        <ProgressBar Grid.Row="3" IsIndeterminate="True"
+                     IsVisible="{Binding IsLoading}"
                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-        <ScrollViewer Grid.Row="1" IsVisible="{Binding !IsLoading}">
+        <TextBlock Grid.Row="3" Text="{loc:Tr Budgets.Empty}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource PineTextMuted}" IsVisible="{Binding IsEmpty}"/>
+
+        <ScrollViewer Grid.Row="3" IsVisible="{Binding !IsLoading}">
             <ItemsControl ItemsSource="{Binding Budgets}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:BudgetProgressViewModel">
@@ -49,13 +130,13 @@
                             <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
                                 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                                    <Ellipse Width="16" Height="16" Fill="{Binding CategoryColorHex}"/>
                                     <TextBlock Text="{Binding CategoryName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding PeriodText}" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center"/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="{Binding SpentAmountText}" FontWeight="Bold"/>
-                                    <TextBlock Text="of" Foreground="{DynamicResource PineTextMuted}"/>
+                                    <TextBlock Text="{loc:Tr Budgets.Progress.Of}" Foreground="{DynamicResource PineTextMuted}"/>
                                     <TextBlock Text="{Binding LimitAmountText}" Foreground="{DynamicResource PineTextMuted}"/>
                                     <TextBlock Text="{Binding CurrencyCode}" Foreground="{DynamicResource PineTextMuted}"/>
                                 </StackPanel>
@@ -77,7 +158,7 @@
                                 </ProgressBar>
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                                           Text="You've exceeded your monthly limit for this category, reducing your real available balance."
+                                           Text="{loc:Tr Budgets.Progress.ExceededWarning}"
                                            Foreground="{DynamicResource PineDanger}"
                                            TextWrapping="Wrap"
                                            FontSize="12"

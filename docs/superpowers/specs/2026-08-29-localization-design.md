@@ -3,7 +3,7 @@
 | Field                  | Value                                                              |
 |------------------------|--------------------------------------------------------------------|
 | Document ID            | `PINE-SPEC-2026-08-29-LOCALIZATION`                                 |
-| Status                 | Approved — pending implementation                                   |
+| Status                 | **Implemented, 2026-09-08.** Phases 1–4 complete; TD-45 closed      |
 | Closes                 | TD-45                                                               |
 | Normative parent       | `docs/41-Localization.md`                                           |
 | Related                | `docs/60-Production-Readiness-Audit.md` §237, §530 · `docs/38-Threat-Model.md` · `docs/20-Coding-Standards.md` |
@@ -97,12 +97,14 @@ string IDs, and §5.1 requires ICU MessageFormat.
 suggestion; §5 is the standard. Two further reasons reinforce that
 conclusion rather than motivate it:
 
-- `.resx` ships translations as satellite assemblies. `Pine.Ui.Web`
-  builds on `Microsoft.NET.Sdk.WebAssembly`, which trims on publish, and
-  the Android and iOS heads are AOT targets. Satellite assemblies are a
-  well-known silent casualty of trimming, and TD-07 records that those
-  three heads **have never compiled in CI**. Adding a failure mode nobody
-  can currently observe is a poor trade.
+- `.resx` ships translations as satellite assemblies, and the Android
+  and iOS heads are AOT targets. Satellite assemblies are a well-known
+  silent casualty of trimming, and TD-07 records that those heads
+  **have never compiled in CI**. Adding a failure mode nobody can
+  currently observe is a poor trade. (This argument originally led with
+  `Pine.Ui.Web` on `Microsoft.NET.Sdk.WebAssembly`, which trims on
+  publish; that head was deleted in the Phase 3 platform review and the
+  point stands on the two AOT heads alone.)
 - JSON is reviewable in a pull request. `.resx` XML is not.
 
 **Action:** TD-45's *Fix* column is amended to point at
@@ -270,12 +272,12 @@ Tests land in `tests/Pine.Tests.Unit`, alongside the existing 423.
 
 ## 10. Phases
 
-| # | Deliverable | Exit condition |
-|---|---|---|
-| 1 | Infrastructure: localizer, markup extension, preference store, migration, DI in five roots, picker rewired | The switch changes something real. Tests 1 and 3-7 green. |
-| 2 | The 202-plus XAML literals extracted to `en.json` and translated into `es.json`, view by view | Guard test 2 green with an empty or justified allow-list. |
-| 3 | The ~58 ViewModel strings converted to key plus arguments, re-rendering on `LanguageChanged` | No user-facing literal left in `ViewModels/`. |
-| 4 | `STATUS.md` and audit updated: TD-45 closed, §3.3 conflict recorded | The audit no longer points the next reader at `.resx`. |
+| # | Deliverable | Exit condition | Outcome |
+|---|---|---|---|
+| 1 | Infrastructure: localizer, markup extension, preference store, migration, DI, picker rewired | The switch changes something real. Tests 1 and 3-7 green. | **Done.** |
+| 2 | The XAML literals extracted to `en.json` and translated into `es.json`, view by view | Guard test 2 green with an empty or justified allow-list. | **Done — 210 measured, and the guard then found 9 more the count had missed** (`AutomationProperties.Name`, which a screen reader reads aloud). Allow-list holds 5 entries, each with a reason. |
+| 3 | The ViewModel strings converted to key plus arguments, re-rendering on `LanguageChanged` | No user-facing literal left in `ViewModels/`. | **Done for the 34 status and error messages.** The `UserFacingError.Report` fallbacks and the `IUserFacingFailure` sentences in `Pine.Application`/`Pine.Core` are NOT done — they live outside `ViewModels/` and are tracked separately. |
+| 4 | `STATUS.md` and audit updated: TD-45 closed, §3.3 conflict recorded | The audit no longer points the next reader at `.resx`. | **Done.** |
 
 Phase 1 answers the original complaint. Phases 2 to 4 are what make the
 answer true across the whole product.
@@ -316,12 +318,50 @@ decision from an omission.
 
 Stated as unverified, because they are.
 
-| Risk | Verification | Fallback |
-|---|---|---|
-| Avalonia's binding-path parser may not accept dots inside an indexer expression | Test 7, written first | Keys switch to `/` as separator |
-| The asset-loading API may have moved in Avalonia 12 (the codebase is on 12.0.5; the pattern is familiar from 11) | Load a JSON in phase 1 | `EmbeddedResource` plus `Assembly.GetManifestResourceStream`, which is BCL-only and version-proof |
-| `TreatWarningsAsErrors=true` in `Directory.Build.props` | The build is the check | — |
-| The five composition roots drift, as they did in §12.25 | D12's shared extension, plus a test asserting the localizer resolves from a built container | — |
+| Risk | What actually happened |
+|---|---|
+| Avalonia's binding-path parser may not accept dots inside an indexer expression | **It accepts them.** But the first attempt at test 7 failed, and for a completely different reason — see §13.1. The dotted keys stayed. |
+| The asset-loading API may have moved in Avalonia 12 | **Routed around, not resolved.** `AssetLoader` does still exist in 12.0.5, but it resolves through `AvaloniaLocator`, so reading the string table would require a configured Avalonia platform. `EmbeddedResource` + `Assembly.GetManifestResourceStream` was taken instead — the fallback this table already named. Recorded as a deviation from §5. |
+| `TreatWarningsAsErrors=true` | Held, and earned its keep: `CA1001` refused every view model that took a `LocalizedMessageSlot` without becoming `IDisposable`, which is exactly the TD-34 leak shape reappearing through a different event. |
+| The five composition roots drift | Moot. Iteration 22 collapsed them into `PineCompositionRoot`, so `AddPineLocalization()` is called once (D12's reasoning now points at the shared root rather than at five heads). |
+
+### 13.1 The risk that was real, and it was not in this table
+
+Test 7 was written first, as §9 requires, and it failed. So did a `TextBlock` bound to a plain POCO
+property, and so did one bound through a `DataContext`. **No binding in this test suite had ever
+been evaluated**, and the failure mode is silence: `control.Bind(...)` succeeds and the bound
+property then reads back `null`.
+
+The cause is `TestAppInitializer`, which calls `SetupWithoutStarting()` from a module initializer.
+That is correct for what it was written for — giving Skia a headless surface so `new Bitmap(stream)`
+works — and it starts no dispatcher loop. Avalonia schedules binding evaluation onto its UI thread,
+so with nothing pumping, every binding evaluates to nothing. `Dispatcher.UIThread.RunJobs()` threw
+"the calling thread cannot access this object"; `InvokeAsync` from the test thread timed out after
+15 seconds.
+
+Every one of those looked like confirmation of the dotted-key risk. None of them was.
+
+The fix is `AvaloniaUiThread`, a wrapper over `HeadlessUnitTestSession` — which lives in
+`Avalonia.Headless` itself, so it needs no new dependency. `Avalonia.Headless.XUnit`, the package
+built for exactly this, was tried first and **cannot be used**: its 12.0.5 release depends on
+xunit **v3**, and this suite is on 2.9.3, so adding it produces `CS0433` on every `[Fact]`,
+`[Theory]` and `[Collection]` in the suite.
+
+### 13.2 Avalonia does not listen for `Item[]`
+
+With bindings finally observable, the live-switch test still failed. `Item[]` is what
+`System.Windows.Data.Binding.IndexerName` is defined as and what §4 of this document assumed.
+Measured against a bound `TextBlock` over a notifying indexer:
+
+```
+notify 'Item[]'    : before -> before   (ignored)
+notify 'Item'      : before -> after    (re-evaluated)
+notify 'Item[a.b]' : before -> before   (ignored)
+notify ''          : before -> before   (ignored)
+```
+
+The last row is the surprising one: an empty name means "everything changed" under INPC and does
+not reach an indexer binding either. `Localizer` now raises both, `Item[]` first.
 
 ## 14. Revision history
 

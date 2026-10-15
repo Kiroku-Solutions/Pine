@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using FluentAssertions;
 using Pine.Core.Common.ValueObjects;
-using Pine.Core.Events;
 using Pine.Core.Transactions;
 using Xunit;
 
@@ -41,6 +40,30 @@ public class TransactionVoidTests
     private static readonly DateTimeOffset VoidInstant = new(2026, 5, 17, 11, 42, 3, TimeSpan.Zero);
 
     private readonly TimeProvider _timeProvider = TimeProvider.System;
+
+    [Fact]
+    public void Unvoid_ClearsTheVoidAndKeepsEverythingElse()
+    {
+        var transaction = NewHundredEuroIncome();
+        transaction.AssignImportKey("k1");
+        transaction.Void(Reason, _timeProvider);
+
+        transaction.Unvoid();
+
+        transaction.IsVoided.Should().BeFalse();
+        transaction.VoidedAt.Should().BeNull();
+        transaction.VoidReason.Should().BeNull();
+        transaction.ImportKey.Should().Be("k1");
+        transaction.TotalAmount.Amount.Should().Be(100m);
+    }
+
+    [Fact]
+    public void Unvoid_OfATransactionInForce_Throws()
+    {
+        var act = () => NewHundredEuroIncome().Unvoid();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not been voided*");
+    }
 
     private Transaction NewHundredEuroIncome()
         => Transaction.Create(
@@ -203,7 +226,6 @@ public class TransactionVoidTests
     public void Void_ShouldLeaveTheAggregateUnmutated_WhenTheReasonIsRejected()
     {
         var transaction = NewHundredEuroIncome();
-        var eventsBefore = transaction.DomainEvents.Count;
 
         Action blank = () => transaction.Void("   ", _timeProvider);
         blank.Should().Throw<ArgumentException>();
@@ -214,43 +236,6 @@ public class TransactionVoidTests
         transaction.VoidedAt.Should().BeNull("a refused void must not stamp a time");
         transaction.VoidReason.Should().BeNull("a refused void must not record a reason");
         transaction.IsVoided.Should().BeFalse();
-        transaction.DomainEvents.Should().HaveCount(eventsBefore,
-            "a refused void must not announce something that did not happen");
-    }
-
-    /// <summary>
-    /// Voiding raises exactly one <see cref="TransactionVoidedEvent"/>, carrying the ORIGINAL signed
-    /// amount rather than its inverse.
-    /// </summary>
-    /// <remarks>
-    /// The sign convention is the part worth pinning. The event describes what was voided; it is the
-    /// consumer that decides to reverse it. Publishing the inverse here would bake one consumer's
-    /// interpretation into the event, and the day a second consumer appears -- a report, an export --
-    /// it would read every voided expense as income. Nothing dispatches domain events yet (TD-33), so
-    /// this test is the only thing standing between that decision and a silent flip.
-    /// </remarks>
-    [Fact]
-    public void Void_ShouldRaiseExactlyOneVoidedEvent_CarryingTheOriginalSignedAmount()
-    {
-        var transaction = Transaction.Create(
-            Guid.NewGuid(),
-            DateTimeOffset.UtcNow.AddDays(-1),
-            "Supermarket",
-            new Money(-42.50m, Eur),
-            TransactionType.Expense,
-            _timeProvider);
-
-        transaction.Void("  Refunded in full  ", new FixedTimeProvider(VoidInstant));
-
-        var voided = transaction.DomainEvents.OfType<TransactionVoidedEvent>().Should().ContainSingle().Subject;
-
-        voided.TransactionId.Should().Be(transaction.Id);
-        voided.AccountId.Should().Be(transaction.AccountId);
-        voided.Amount.Amount.Should().Be(-42.50m,
-            "the event carries the amount as recorded; inverting it here would decide for every future consumer");
-        voided.Amount.Currency.Value.Should().Be("EUR");
-        voided.Reason.Should().Be("Refunded in full", "the event must carry the reason as stored, trimmed");
-        voided.Timestamp.Should().Be(VoidInstant);
     }
 
     /// <summary>

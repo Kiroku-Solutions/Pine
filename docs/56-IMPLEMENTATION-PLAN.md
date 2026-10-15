@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-56-IMPLEMENTATION-PLAN`                                                    |
 | Status           | Non-normative — historical plan, substantially overtaken                            |
-| Reconciled       | 2026-08-31 · A plan written before implementation. Its claim at :1097 that "the 15 gates of `16-Quality-Attributes` §4 are not aspirational - they are CI-enforced" is false: `.github/workflows/dotnet-ci.yml` has build and test jobs only, and runs on `workflow_dispatch` alone (:20-21, TD-07). |
+| Reconciled       | 2026-09-07 · A plan written before implementation. **Its repository-layout tree (:208-211, :222-224) and its SDK gate (:562) name seven projects that were created empty, never filled in, and deleted in iteration 27 (TD-38).** The tree is deliberately left as written: this document is a historical plan, and editing it to match the outcome would destroy the only record of what was intended. Read it as intent, not inventory. Its claim at :1097 that "the 15 gates of `16-Quality-Attributes` §4 are not aspirational - they are CI-enforced" is still false, though less so than it was: `.github/workflows/dotnet-ci.yml` has build, test, coverage and packaging jobs — not fifteen gates — and since 2026-09-10 it does at least fire automatically on `pull_request` and `push` to `main` (TD-07 closed). |
 | Owner            | Engineering Review Board                                                             |
 | Author           | Mavis (MiniMax), commissioned by the project team                                    |
 | Created          | 2026-07-08                                                                           |
@@ -214,7 +214,6 @@ pine/
 │   ├── Pine.Ui.Android/           # Android shell (backed by Avalonia)
 │   ├── Pine.Ui.Macos/             # macOS shell (backed by Avalonia)
 │   ├── Pine.Ui.Windows/           # Windows shell (backed by Avalonia)
-│   ├── Pine.Ui.Web/               # Web/PWA shell (backed by Avalonia)
 │   └── Pine.Docs/                 # docs site (Astro + Mermaid CLI)
 ├── tests/
 │   ├── Pine.Tests.Unit/           # xUnit + FsCheck + NSubstitute
@@ -233,11 +232,15 @@ pine/
 └── CODEOWNERS
 ```
 
-> **Note on Avalonia.** `27-Development-Guidelines` §5 lists `Pine.Ui.Web` as part of
-> the Web shell. Pine is not "web only" (`00-Vision` §9.2); the Web shell is a
-> *secondary* distribution channel (`29-Deployment` §4) and ships at v1.0 only.
-> Phase 0 creates *scaffolds* for every UI shell; only desktop shells are wired in
-> Phase 1.
+> **Note on the Web shell, which no longer exists.** This plan and
+> `27-Development-Guidelines` §5 both listed a `Pine.Ui.Web` scaffold as a *secondary*
+> distribution channel shipping at v1.0. The scaffold was built, and the Phase 3 platform
+> review deleted it: the browser runtime provides no AES-GCM, so it could not open a vault,
+> and OpenCV and PaddleInference publish no WebAssembly build, so it could not scan a
+> receipt. `02-Product-Scope` had already listed browser-only distribution as a non-goal,
+> so the scaffold contradicted the scope document it was built under. Phase 0 creates
+> *scaffolds* for every remaining UI shell; only desktop shells are wired in Phase 1. See
+> `60-Production-Readiness-Audit` §12.64.
 
 ### 4.3 CI pipeline (matches `28-CI-CD` §4.1)
 

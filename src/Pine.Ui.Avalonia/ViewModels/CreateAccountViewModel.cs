@@ -8,15 +8,18 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Core.Accounts;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class CreateAccountViewModel : ObservableObject
+public partial class CreateAccountViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly LocalizedMessageSlot _message;
     
     // Action to call when creation is complete (to close the dialog/return)
     private readonly Action _onComplete;
@@ -43,38 +46,52 @@ public partial class CreateAccountViewModel : ObservableObject
 
     public ObservableCollection<AccountType> AccountTypes { get; } = new(Enum.GetValues<AccountType>());
     /// <summary>
-    /// The currencies offered when creating an account.
+    /// The searchable currency picker (TD-76): every ISO 4217 code, filtered as the user types.
     /// </summary>
     /// <remarks>
-    /// "BTC" was in this list and has been removed. It is not an ISO 4217 code, and since TD-18 gave
-    /// <c>CurrencyCode</c> membership validation, picking it would have thrown out of the handler —
-    /// a shipped UI affordance that cannot succeed. Pine has no crypto-asset model (no divisibility,
-    /// no rate source), so offering one was always a promise the domain could not keep. Widening
-    /// this to the full ISO table with a searchable picker is TD-76.
+    /// Replaces the seven-item hard-coded list ("BTC" was removed from it earlier: not an ISO 4217 code).
+    /// The picker's <see cref="CurrencyPickerViewModel.SelectedCode"/> and <see cref="SelectedCurrency"/>
+    /// are kept in step both ways, so the command and everything else keep using the plain string.
     /// </remarks>
-    public ObservableCollection<string> Currencies { get; } = new(new[] { "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD" });
+    public CurrencyPickerViewModel CurrencyPicker { get; }
 
     public CreateAccountViewModel(
         IMediator mediator,
+        ILocalizer localizer,
         Action onComplete,
         ILogger<CreateAccountViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
+        _message = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
         _onComplete = onComplete;
         _logger = logger;
+
+        CurrencyPicker = new CurrencyPickerViewModel(SelectedCurrency);
+        CurrencyPicker.PropertyChanged += (_, e) =>
+        {
+            // Only a real pick moves the string: half-typed text never reaches the command.
+            if (e.PropertyName == nameof(CurrencyPickerViewModel.SelectedCode) &&
+                !string.IsNullOrEmpty(CurrencyPicker.SelectedCode))
+            {
+                SelectedCurrency = CurrencyPicker.SelectedCode;
+            }
+        };
     }
+
+    partial void OnSelectedCurrencyChanged(string value) => CurrencyPicker.SelectedCode = value;
 
     [RelayCommand]
     private async Task CreateAsync()
     {
         if (string.IsNullOrWhiteSpace(AccountName))
         {
-            ErrorMessage = "Account name is required.";
+            _message.Set("CreateAccount.Error.NameRequired");
             return;
         }
 
         IsBusy = true;
-        ErrorMessage = string.Empty;
+        _message.Clear();
 
         try
         {
@@ -89,15 +106,14 @@ public partial class CreateAccountViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            // WAS: $"Error: {ex.Message}" (TD-24). CreateAccountCommand still has no validator
-            // (TD-78), so an unknown currency arrives here as a raw ArgumentException from inside
-            // CurrencyCode naming its own parameter. That is exactly the class of text this stops
-            // showing; giving the command a validator is TD-78 and would turn it into a sentence.
-            ErrorMessage = UserFacingError.Report(
+            // WAS: $"Error: {ex.Message}" (TD-24). CreateAccountCommand validates the currency and
+            // name itself (TD-78), so an expected refusal never reaches here; this is the generic
+            // fallback for the unexpected, shown as a localised sentence and never the exception text.
+            _message.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "create-account",
-                "The account could not be created. Nothing was changed.");
+                new UserFacingMessage("CreateAccount.Failure.Create")));
         }
         finally
         {
@@ -110,4 +126,21 @@ public partial class CreateAccountViewModel : ObservableObject
     {
         _onComplete?.Invoke();
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

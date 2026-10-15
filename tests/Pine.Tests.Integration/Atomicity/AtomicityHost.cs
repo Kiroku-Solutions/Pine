@@ -7,12 +7,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Budgets;
-using Pine.Core.Categories;
 using Pine.Core.Common;
 using Pine.Core.Configuration;
 using Pine.Core.Importing;
@@ -104,6 +104,18 @@ internal sealed class AtomicityHost : IAsyncDisposable
             services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
             services.AddSingleton(TimeProvider.System);
 
+            // Configuration, at its defaults (TD-27). This host mirrors production wiring by hand,
+            // so every registration the real root gained has to be mirrored here too -- and the
+            // first thing this line did was fail four import tests with "unable to resolve
+            // IOptions<PineAiOptions>", which is TD-29's whole argument reappearing inside a test
+            // fixture. It is registered at the DEFAULTS deliberately: these tests are about
+            // atomicity and deduplication, not about thresholds, and a fixture that quietly
+            // configures something is a fixture that hides what it is testing.
+            services.AddSingleton<IOptions<PineAiOptions>>(Options.Create(new PineAiOptions()));
+            services.AddSingleton<IOptions<PineSecurityOptions>>(Options.Create(new PineSecurityOptions()));
+            services.AddSingleton<IOptions<PineUiOptions>>(Options.Create(new PineUiOptions()));
+            services.AddSingleton<IOptions<PineStorageOptions>>(Options.Create(new PineStorageOptions()));
+
             services.AddPineApplication();
 
             services.AddSingleton<UnitOfWorkLog>();
@@ -124,9 +136,11 @@ internal sealed class AtomicityHost : IAsyncDisposable
 
             services.AddScoped<IAccountRepository, SqliteAccountRepository>();
             services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
-            services.AddScoped<ICategoryRepository, SqliteCategoryRepository>();
+            services.AddScoped<Pine.Core.Attachments.IAttachmentRepository, SqliteAttachmentRepository>();
+            services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
             services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
             services.AddScoped<ISettingRepository, SqliteSettingRepository>();
+            services.AddScoped<Pine.Core.ExchangeRates.IExchangeRateRepository, SqliteExchangeRateRepository>();
             services.AddScoped<IImportProfileRepository, Pine.Infrastructure.Importing.SqliteImportProfileRepository>();
 
             services.AddScoped<IVaultBackupService, VaultBackupService>();
@@ -278,7 +292,7 @@ internal sealed class AtomicityHost : IAsyncDisposable
         using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText =
-            @"SELECT ""Balance_Amount"", ""OpeningBalanceAmount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
+            @"SELECT ""Balance_Amount"", ""OpeningBalance_Amount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
         command.Parameters.AddWithValue("$id", accountId.ToString());
 
         using var reader = command.ExecuteReader();
@@ -434,5 +448,5 @@ internal sealed class NonPersistingAiProvider : IAIProvider
         => throw new NotSupportedException("No transactional command performs receipt extraction.");
 
     public Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)
-        => Task.FromResult(new CategorisationResult(Guid.Empty, 0d));
+        => Task.FromResult(new CategorisationResult(string.Empty, 0d));
 }

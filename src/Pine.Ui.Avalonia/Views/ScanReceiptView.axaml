@@ -6,6 +6,7 @@
              xmlns:core="using:Pine.Core.Accounts"
              xmlns:controls="using:Pine.Ui.Avalonia.Controls"
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.ScanReceiptView"
              x:DataType="vm:ScanReceiptViewModel">
@@ -23,8 +24,8 @@
         <Grid ColumnDefinitions="*, 30, 400">
             <!-- Left Side: Image Preview & Actions -->
             <StackPanel Grid.Column="0" Spacing="15">
-                <TextBlock Text="Receipt Scanner" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="Upload a photo or document to automatically extract transaction details." 
+                <TextBlock Text="{loc:Tr ScanReceipt.Title}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr ScanReceipt.Description}"
                            TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
                 
                 <Border CornerRadius="8" Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
@@ -34,7 +35,7 @@
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" 
                                     IsVisible="{Binding ReceiptImage, Converter={x:Static ObjectConverters.IsNull}}">
                             <PathIcon Data="{StaticResource image_regular}" Width="48" Height="48" Foreground="{DynamicResource PineTextMuted}" />
-                            <TextBlock Text="No Image Selected" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Image.Empty}" Foreground="{DynamicResource PineTextMuted}" />
                         </StackPanel>
                         
                         <!-- Image Preview (click to enlarge) -->
@@ -46,15 +47,15 @@
                                 Background="{DynamicResource PineScrim}" CornerRadius="6" Padding="8,4"
                                 IsHitTestVisible="False"
                                 IsVisible="{Binding ReceiptImage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                            <TextBlock Text="⤢  Click to enlarge" Foreground="White" FontSize="12" FontWeight="Medium" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Image.EnlargeHint}" Foreground="White" FontSize="12" FontWeight="Medium" />
                         </Border>
                     </Grid>
                 </Border>
                 
                 <Grid ColumnDefinitions="*, 10, *">
-                    <Button Grid.Column="0" Content="Select Image..." x:Name="SelectImageButton" Click="OnSelectImageClicked"
+                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.SelectImage}" x:Name="SelectImageButton" Click="OnSelectImageClicked"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                    <Button Grid.Column="2" Content="Retake Photo" Command="{Binding RetakeCommand}" 
+                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                 </Grid>
             </StackPanel>
@@ -67,7 +68,7 @@
                     <StackPanel Spacing="16">
 
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Extracted Details" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.ExtractedDetails}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                             <Border IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                     Background="{DynamicResource PineDangerContainer}" CornerRadius="8" Padding="12,8">
                                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" TextWrapping="Wrap" FontSize="13" />
@@ -80,7 +81,7 @@
                         </StackPanel>
 
                         <StackPanel Spacing="5">
-                            <TextBlock Text="Account" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Account}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="core:Account">
@@ -91,24 +92,36 @@
                         </StackPanel>
 
                         <StackPanel Spacing="5">
-                            <TextBlock Text="Merchant" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                            <TextBox Text="{Binding Merchant}" PlaceholderText="Extracted merchant..." IsEnabled="{Binding !IsBusy}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Merchant}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBox Text="{Binding Merchant}" PlaceholderText="{loc:Tr ScanReceipt.Field.MerchantPlaceholder}" IsEnabled="{Binding !IsBusy}" />
                             <!-- Weak-read hint (TD-22): shown for Low and NotFound alike, but worded
                                  differently by ConfidenceHintText, one asks the user to check a
                                  value, the other to supply one. -->
-                            <TextBlock Text="{Binding MerchantConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding MerchantConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding MerchantConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="MerchantConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
 
                         <!-- Stacked vertically: the Fluent DatePicker has a 296px MinWidth
                              that overflows (and overlaps) a narrow star column. -->
                         <StackPanel Spacing="5">
-                            <TextBlock Text="Date" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Date}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <DatePicker SelectedDate="{Binding Date}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
-                            <TextBlock Text="{Binding DateConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding DateConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding DateConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="DateConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
 
                             <!-- Date ambiguity (TD-21). A locale-ambiguous date like 05/03/2026 is
                                  never resolved on the user's behalf: both readings are shown, and
@@ -122,7 +135,7 @@
                                     <TextBlock Grid.Column="0" Text="{Binding DateAmbiguityMessage}"
                                                TextWrapping="Wrap" FontSize="12"
                                                Foreground="{DynamicResource PineText}" />
-                                    <Button Grid.Column="2" Content="Use this date instead"
+                                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.UseAlternativeDate}"
                                             Command="{Binding UseAlternativeDateCommand}"
                                             Padding="8,4" FontSize="12"
                                             IsEnabled="{Binding !IsBusy}" />
@@ -131,23 +144,29 @@
                         </StackPanel>
 
                         <StackPanel Spacing="5">
-                            <TextBlock Text="Amount" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Amount}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <NumericUpDown Value="{Binding Amount}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
-                            <TextBlock Text="{Binding TotalConfidence, Converter={x:Static conv:Converters.ConfidenceHintText}}"
-                                       IsVisible="{Binding TotalConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
-                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap" />
+                            <TextBlock IsVisible="{Binding TotalConfidence, Converter={x:Static conv:Converters.IsWeakConfidence}}"
+                                       FontSize="12" Foreground="{DynamicResource PineWarning}" TextWrapping="Wrap">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:Converters.ConfidenceHintText}">
+                                        <Binding Path="TotalConfidence" />
+                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
 
                         <StackPanel Spacing="5">
-                            <TextBlock Text="Category" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
-                            <TextBox Text="{Binding Category}" PlaceholderText="Optional category..." IsEnabled="{Binding !IsBusy}" />
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Category}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <TextBox Text="{Binding Category}" PlaceholderText="{loc:Tr ScanReceipt.Field.CategoryPlaceholder}" IsEnabled="{Binding !IsBusy}" />
                         </StackPanel>
 
                         <!-- Line Items DataGrid -->
                         <StackPanel Spacing="6">
                             <Grid ColumnDefinitions="*, Auto">
-                                <TextBlock Grid.Column="0" Text="Line Items" FontSize="14" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
-                                <Button Grid.Column="1" Content="+ Add Item" Command="{Binding AddLineItemCommand}" Padding="8,3" FontSize="12" IsEnabled="{Binding !IsBusy}" />
+                                <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.LineItems.Title}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{loc:Tr ScanReceipt.LineItems.Add}" Command="{Binding AddLineItemCommand}" Padding="8,3" FontSize="12" IsEnabled="{Binding !IsBusy}" />
                             </Grid>
 
                             <DataGrid ItemsSource="{Binding LineItems}" AutoGenerateColumns="False"
@@ -156,22 +175,31 @@
                                       CanUserSortColumns="False" CanUserResizeColumns="True"
                                       MinHeight="80" MaxHeight="240">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="50" />
-                                    <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice}" Width="70" />
-                                    <DataGridTextColumn Header="Item" Binding="{Binding Description}" Width="*" />
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnQty}" Binding="{Binding Quantity}" Width="50" />
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnPrice}" Binding="{Binding UnitPrice}" Width="70" />
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnItem}" Binding="{Binding Description}" Width="*" />
                                     <!-- Read-only: a row changes kind through the reconciliation
                                          panel below, which also fixes the amount, so editing the
                                          label alone could only ever make the two disagree. -->
-                                    <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="72" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="Total" Binding="{Binding TotalPrice}" Width="70" IsReadOnly="True" />
+                                    <!-- TD-150: a bare Binding over Kind rendered the enum's raw
+                                         member name ("Tax", "Product", ...) instead of a word. -->
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnKind}" Width="72" IsReadOnly="True">
+                                        <DataGridTextColumn.Binding>
+                                            <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
+                                                <Binding Path="Kind" />
+                                                <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                            </MultiBinding>
+                                        </DataGridTextColumn.Binding>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnTotal}" Binding="{Binding TotalPrice}" Width="70" IsReadOnly="True" />
                                     <DataGridTemplateColumn Width="40">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate x:DataType="vm:ReceiptLineItemViewModel">
                                                 <Button Command="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).RemoveLineItemCommand}"
                                                         CommandParameter="{Binding}"
                                                         Background="Transparent" Padding="2"
-                                                        ToolTip.Tip="Remove Item"
-                                                        AutomationProperties.Name="Remove line item"
+                                                        ToolTip.Tip="{loc:Tr ScanReceipt.LineItems.RemoveTooltip}"
+                                                        AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.RemoveAutomationName}"
                                                         Content="&#x2715;"
                                                         Foreground="{DynamicResource PineError}" FontWeight="Bold"
                                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -192,13 +220,13 @@
                                     BorderBrush="{DynamicResource PineBorder}" BorderThickness="1">
                                 <StackPanel Spacing="8">
                                     <Grid ColumnDefinitions="*, Auto">
-                                        <TextBlock Grid.Column="0" Text="Items total" FontSize="13"
+                                        <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.ItemsTotal}" FontSize="13"
                                                    Foreground="{DynamicResource PineTextMuted}" />
                                         <TextBlock Grid.Column="1" Text="{Binding LineItemsTotal}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Grid>
                                     <Grid ColumnDefinitions="*, Auto">
-                                        <TextBlock Grid.Column="0" Text="Unexplained difference" FontSize="13"
+                                        <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.UnexplainedDifference}" FontSize="13"
                                                    Foreground="{DynamicResource PineTextMuted}" />
                                         <TextBlock Grid.Column="1" Text="{Binding UnreconciledDifference}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
@@ -208,16 +236,31 @@
                                             Background="{DynamicResource PineDangerContainer}"
                                             CornerRadius="6" Padding="10,8">
                                         <StackPanel Spacing="8">
-                                            <TextBlock Text="These items do not add up to the total. Attribute the difference before saving."
+                                            <TextBlock Text="{loc:Tr ScanReceipt.Reconciliation.Warning}"
                                                        TextWrapping="Wrap" FontSize="12"
                                                        Foreground="{DynamicResource PineError}" />
                                             <Grid ColumnDefinitions="*, 8, Auto">
+                                                <!-- TD-150: a bare ItemsSource over this enum
+                                                     rendered its raw member name. -->
                                                 <ComboBox Grid.Column="0" ItemsSource="{Binding AdjustmentKinds}"
                                                           SelectedItem="{Binding SelectedAdjustmentKind}"
                                                           HorizontalAlignment="Stretch"
-                                                          AutomationProperties.Name="Kind of adjustment"
-                                                          IsEnabled="{Binding !IsBusy}" />
-                                                <Button Grid.Column="2" Content="Record difference"
+                                                          AutomationProperties.Name="{loc:Tr ScanReceipt.Reconciliation.AdjustmentKindAutomationName}"
+                                                          IsEnabled="{Binding !IsBusy}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock>
+                                                                <TextBlock.Text>
+                                                                    <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
+                                                                        <Binding />
+                                                                        <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                                                    </MultiBinding>
+                                                                </TextBlock.Text>
+                                                            </TextBlock>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Reconciliation.RecordDifference}"
                                                         Command="{Binding RecordDifferenceAsAdjustmentCommand}"
                                                         Padding="10,4" FontSize="12"
                                                         IsEnabled="{Binding !IsBusy}" />
@@ -233,8 +276,8 @@
                 <!-- Pinned action bar — Save/Cancel always visible -->
                 <StackPanel Grid.Row="1" Margin="0,16,0,0" Spacing="10">
                     <Grid ColumnDefinitions="*, 10, *">
-                        <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCommand}" Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                        <Button Grid.Column="2" Content="Save Transaction" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Cancel}" Command="{Binding CancelCommand}" Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.SaveTransaction}" Command="{Binding SaveTransactionCommand}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                     </Grid>
                 </StackPanel>
             </Grid>
@@ -281,7 +324,7 @@
           <!-- Sets the expectation. The complaint this whole change answers was not "it is slow",
                it was "it looks broken" — and saying up front that seconds are normal is what
                separates the two. -->
-          <TextBlock Text="This can take a few seconds on large photos."
+          <TextBlock Text="{loc:Tr ScanReceipt.Busy.LargePhotoHint}"
                      FontSize="12"
                      Foreground="{DynamicResource PineTextMuted}"
                      HorizontalAlignment="Center"

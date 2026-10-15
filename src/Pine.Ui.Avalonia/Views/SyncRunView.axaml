@@ -1,0 +1,132 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.SyncRunView"
+             x:DataType="vm:SyncRunViewModel">
+
+    <!-- Post-audit plan item 3.1f: one exchange with every paired copy, through a folder they share. -->
+    <Grid>
+    <ScrollViewer>
+        <StackPanel Spacing="16">
+
+            <StackPanel>
+                <TextBlock Text="{loc:Tr SyncRun.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr SyncRun.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- §11: enable or disable sync (post-audit plan item 3.1h). The only such control, because there is
+                 only ever one provider to turn on or off, and no background run for a separate "pause" to differ
+                 from. See SyncRunViewModel.OnIsSyncEnabledChanged's remarks. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <Grid ColumnDefinitions="*, Auto">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="{loc:Tr SyncRun.Enabled.Label}" FontWeight="Medium" Foreground="{DynamicResource PineText}"/>
+                        <TextBlock Text="{loc:Tr SyncRun.Enabled.Help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsSyncEnabled}"
+                                  OnContent="" OffContent=""
+                                  AutomationProperties.Name="{loc:Tr SyncRun.Enabled.Label}"/>
+                </Grid>
+            </Border>
+
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncRun.Folder.Label}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding FolderPath}"
+                             PlaceholderText="{loc:Tr SyncRun.Folder.Label}"
+                             AutomationProperties.Name="{loc:Tr SyncRun.Folder.Label}"
+                             IsEnabled="{Binding !IsRunning}"/>
+                    <TextBlock Text="{loc:Tr SyncRun.Folder.Help}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource PineTextMuted}"/>
+
+                    <TextBlock Text="{loc:Tr SyncRun.Enabled.Off}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource PineDanger}" IsVisible="{Binding !IsSyncEnabled}"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="{loc:Tr SyncRun.Run}" Classes="pine-accent"
+                                HorizontalAlignment="Left"
+                                Command="{Binding RunCommand}"
+                                IsEnabled="{Binding CanRun}"
+                                AutomationProperties.Name="{loc:Tr SyncRun.Run}"/>
+
+                        <!-- §11's "force a full re-sync" (post-audit plan item 3.1h): always confirmed first,
+                             never run directly from this button. -->
+                        <Button Content="{loc:Tr SyncRun.ForceResync.Button}" Classes="pine-outline"
+                                HorizontalAlignment="Left"
+                                Command="{Binding BeginForceResyncCommand}"
+                                IsEnabled="{Binding CanRun}"
+                                AutomationProperties.Name="{loc:Tr SyncRun.ForceResync.Button}"/>
+                    </StackPanel>
+
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsRunning}" HorizontalAlignment="Left"/>
+
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- What the last run did. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16"
+                    IsVisible="{Binding HasReport}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncRun.Result.Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                    <ItemsControl ItemsSource="{Binding Summary}" AutomationProperties.LiveSetting="Polite">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{loc:Tr SyncRun.Result.NoPeers}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource PineTextMuted}" IsVisible="{Binding FoundNoPeers}"/>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding HasProblems}">
+                        <TextBlock Text="{loc:Tr SyncRun.Problems.Title}" FontWeight="SemiBold" Foreground="{DynamicResource PineDanger}"/>
+                        <ItemsControl ItemsSource="{Binding Problems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+
+        <!-- Force-resync confirmation (post-audit plan item 3.1h). Same scrim-and-panel shape as the restore and
+             void dialogs: it names the actual consequence (every row re-sent, not generic danger) and its button
+             reaches only ConfirmForceResyncCommand, never the plain RunCommand. -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsForceResyncDialogVisible}">
+            <Border Width="460" Padding="28" CornerRadius="14"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 32 0 #30000000">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{loc:Tr SyncRun.ForceResync.Dialog.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr SyncRun.ForceResync.Dialog.Explanation}" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                        <Button Content="{loc:Tr SyncRun.ForceResync.Dialog.Cancel}" Classes="pine-outline" Padding="16,9"
+                                Command="{Binding CancelForceResyncCommand}" IsEnabled="{Binding !IsRunning}" />
+                        <Button Content="{loc:Tr SyncRun.ForceResync.Dialog.Confirm}" Classes="pine-danger" Padding="16,9"
+                                Command="{Binding ConfirmForceResyncCommand}" IsEnabled="{Binding !IsRunning}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</UserControl>

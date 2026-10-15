@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Pine.Ui.Avalonia.Views.UnlockView"
              x:DataType="vm:UnlockViewModel">
@@ -30,12 +31,12 @@
                 <StackPanel Spacing="24">
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Master Password" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
+                        <TextBlock Text="{loc:Tr Unlock.Password.Label}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" />
                         <!-- PasswordBox with masking -->
-                        <TextBox PasswordChar="●" 
-                                 Text="{Binding MasterPassword}" 
+                        <TextBox PasswordChar="●"
+                                 Text="{Binding MasterPassword}"
                                  IsEnabled="{Binding !IsBusy}"
-                                 PlaceholderText="Enter your password..."
+                                 PlaceholderText="{loc:Tr Unlock.Password.Placeholder}"
                                  FontSize="16"
                                  Padding="12" />
                     </StackPanel>
@@ -49,7 +50,7 @@
                                TextAlignment="Center" />
 
                     <!-- Unlock Button -->
-                    <Button Content="Unlock Vault"
+                    <Button Content="{loc:Tr Unlock.UnlockButton}"
                             Command="{Binding UnlockVaultCommand}"
                             Classes="pine-accent"
                             IsDefault="True"
@@ -60,8 +61,20 @@
                             FontWeight="SemiBold"
                             IsEnabled="{Binding !IsBusy}" />
 
+                    <!-- Opt-in OS-credential unlock (TD-87). Only offered when this vault has a platform
+                         wrap; it never replaces the password above. -->
+                    <Button Content="{loc:Tr Unlock.PlatformButton}"
+                            Command="{Binding UnlockWithPlatformCommand}"
+                            IsVisible="{Binding CanUnlockWithPlatform}"
+                            Classes="pine-outline"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="0,12"
+                            FontSize="14"
+                            IsEnabled="{Binding !IsBusy}" />
+
                     <!-- Go Back Button -->
-                    <Button Content="Go Back" 
+                    <Button Content="{loc:Tr Unlock.GoBackButton}"
                             Command="{Binding GoBackCommand}" 
                             Background="Transparent"
                             Foreground="{DynamicResource PineTextMuted}"

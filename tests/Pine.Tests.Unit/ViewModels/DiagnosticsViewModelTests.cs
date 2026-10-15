@@ -2,6 +2,7 @@ using FluentAssertions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Pine.Core.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -40,9 +41,15 @@ public class DiagnosticsViewModelTests
     private readonly IDatabaseHealthProbe _databaseHealthProbe = Substitute.For<IDatabaseHealthProbe>();
     private readonly IRuntimeInfoProvider _runtimeInfoProvider = Substitute.For<IRuntimeInfoProvider>();
 
+    // A real, private Localizer -- not Localizer.Instance, which another test class switches the
+    // language of -- so EmptyLogMessage can be asserted by VALUE against the same table the view
+    // model renders through (TD-150), the way BudgetsPageCreateTests and SyncConflictsPageTests
+    // assert their own localized text.
+    private readonly Localizer _localizer = new();
+
     private DiagnosticsViewModel CreateViewModel()
     {
-        return new DiagnosticsViewModel(_logTailReader, _databaseHealthProbe, _runtimeInfoProvider);
+        return new DiagnosticsViewModel(_logTailReader, _databaseHealthProbe, _runtimeInfoProvider, localizer: _localizer);
     }
 
     private static LogTailEntry Entry(string message, string level = "info")
@@ -88,10 +95,10 @@ public class DiagnosticsViewModelTests
 
         // Assert
         vm.LogEntries.Should().BeEmpty("the seven fabricated constructor log lines are the whole of TD-15");
-        vm.AppVersion.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.OsDescription.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.DatabaseStatus.Should().Be(DiagnosticsViewModel.NotMeasuredText);
-        vm.ManagedMemory.Should().Be(DiagnosticsViewModel.NotMeasuredText);
+        vm.AppVersion.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.OsDescription.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.DatabaseStatus.Should().Be(_localizer["Diagnostics.NotMeasured"]);
+        vm.ManagedMemory.Should().Be(_localizer["Diagnostics.NotMeasured"]);
 
         // Not "no records yet" either: the panel has not looked, and saying the log is empty would
         // be an invention of exactly the same kind as saying it is full.
@@ -174,7 +181,7 @@ public class DiagnosticsViewModelTests
         // is precisely the behaviour TD-15 removed.
         vm.LogEntries.Should().BeEmpty();
         vm.HasNoLogRecords.Should().BeTrue();
-        vm.EmptyLogMessage.Should().Be(DiagnosticsViewModel.NoRecordsText);
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.Empty"]);
     }
 
     [Fact]
@@ -223,7 +230,7 @@ public class DiagnosticsViewModelTests
         // through to an empty string would render as a blank card, which a user reads as "fine" --
         // the same failure as the literal "Connected (Healthy)" it replaced.
         vm.DatabaseStatus.Should().NotBeNullOrWhiteSpace();
-        vm.DatabaseStatus.Should().NotBe(DiagnosticsViewModel.NotMeasuredText);
+        vm.DatabaseStatus.Should().NotBe(_localizer["Diagnostics.NotMeasured"]);
     }
 
     [Fact]
@@ -277,7 +284,7 @@ public class DiagnosticsViewModelTests
         await vm.RefreshAsync();
 
         // Assert
-        vm.DatabaseStatus.Should().Be(DiagnosticsViewModel.DatabaseUnavailableText);
+        vm.DatabaseStatus.Should().Be(_localizer["Diagnostics.Database.Unavailable"]);
         vm.DatabaseStatus.Should().NotContain("Exception");
         vm.DatabaseStatus.Should().NotContain("SQLite");
         vm.DatabaseStatus.Should().NotContain("\\");
@@ -340,10 +347,54 @@ public class DiagnosticsViewModelTests
         // while it had in fact deleted nothing and then fabricated one more record to say so.
         vm.LogEntries.Should().BeEmpty();
         vm.HasNoLogRecords.Should().BeTrue();
-        vm.EmptyLogMessage.Should().Be(DiagnosticsViewModel.ViewClearedText);
-        vm.EmptyLogMessage.Should().NotBe(DiagnosticsViewModel.NoRecordsText,
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.ViewCleared"]);
+        vm.EmptyLogMessage.Should().NotBe(_localizer["Diagnostics.Log.Empty"],
             "a cleared view is not evidence that the log is empty");
         _ = _logTailReader.DidNotReceiveWithAnyArgs().ReadTailAsync(default, default);
+    }
+
+    /// <summary>
+    /// The empty-state line is a key, not a frozen sentence (TD-150): a language switch re-words
+    /// whichever empty state is showing, the same guarantee <c>LocalizedMessageSlot</c> already gives
+    /// <see cref="DiagnosticsViewModel.ErrorMessage"/>.
+    /// </summary>
+    [Fact]
+    public async Task EmptyLogMessage_IsWordedAgain_WhenTheLanguageChanges()
+    {
+        GivenHealth(DatabaseHealth.Healthy);
+        GivenTail();
+        var vm = CreateViewModel();
+        await vm.RefreshAsync();
+
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.Empty"]);
+
+        _localizer.SetLanguage("es");
+
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.Empty"]);
+        vm.EmptyLogMessage.Should().NotBe("No log records yet.");
+
+        vm.ClearViewCommand.Execute(null);
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.ViewCleared"]);
+
+        _localizer.SetLanguage("en");
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.ViewCleared"]);
+
+        vm.Dispose();
+    }
+
+    /// <summary>A disposed panel stops reacting to the process-lifetime localizer (TD-150, mirroring TD-34).</summary>
+    [Fact]
+    public void ADisposedDiagnosticsViewModel_StopsListeningToTheLanguage()
+    {
+        var vm = CreateViewModel();
+        vm.Dispose();
+
+        var notified = false;
+        vm.PropertyChanged += (_, e) => notified |= e.PropertyName == nameof(DiagnosticsViewModel.EmptyLogMessage);
+        _localizer.SetLanguage("es");
+
+        notified.Should().BeFalse("the localizer lives for the whole process and would keep a disposed view model alive");
+        _localizer.SetLanguage("en");
     }
 
     [Fact]
@@ -360,7 +411,7 @@ public class DiagnosticsViewModelTests
 
         vm.LogEntries.Should().ContainSingle();
         vm.HasNoLogRecords.Should().BeFalse();
-        vm.EmptyLogMessage.Should().Be(DiagnosticsViewModel.NoRecordsText);
+        vm.EmptyLogMessage.Should().Be(_localizer["Diagnostics.Log.Empty"]);
     }
 
     [Fact]

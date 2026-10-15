@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Pine.Core.Transactions;
 
 namespace Pine.Infrastructure.Data;
@@ -48,9 +50,65 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<int> CountPossiblyCategorisedAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Splits.Any(s => s.Category != null && s.Category.Trim() != ""))
+            .CountAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Transaction>> GetCategorisedPageAsync(int skip, int take, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(skip);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(take);
+
+        return await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Splits.Any(s => s.Category != null && s.Category.Trim() != ""))
+            .OrderBy(t => t.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TransferLinkRow>> GetTransferLinkRowsAsync(CancellationToken cancellationToken = default)
+    {
+        // One query with correlated sub-selects, so neither the ledger nor the partners are
+        // materialised: only the linked rows come back, as plain scalars. Nothing is tracked or written.
+        var rows = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.LinkedTransactionId != null)
+            .Select(t => new
+            {
+                t.Id,
+                t.AccountId,
+                Linked = t.LinkedTransactionId!.Value,
+                IsVoided = t.VoidedAt != null,
+                PartnerExists = _dbContext.Transactions.Any(p => p.Id == t.LinkedTransactionId),
+                PartnerLink = _dbContext.Transactions
+                    .Where(p => p.Id == t.LinkedTransactionId)
+                    .Select(p => p.LinkedTransactionId)
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new TransferLinkRow(r.Id, r.AccountId, r.Linked, r.IsVoided, r.PartnerExists, r.PartnerLink))
+            .ToList();
+    }
+
+    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default)
     {
         var query = _dbContext.Transactions.AsNoTracking();
+        if (!includeVoided)
+        {
+            query = query.Where(t => t.VoidedAt == null);
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
         
         var items = await query
@@ -109,15 +167,19 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             // and the TotalAmount complex property but never touches owned collections (TD-13), so
             // both collections are replaced explicitly, through the domain, on the tracked instance.
             _dbContext.Entry(existing).CurrentValues.SetValues(transaction);
+
+            // The ids travel with the definitions (TD-60). Without them every child here would be a
+            // new child, and the merge below would delete and re-insert the whole collection on a
+            // save that changed one word of one note.
             existing.ReplaceSplits(transaction.Splits
-                .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes)));
+                .Select(s => new SplitDefinition(s.Amount, s.Category, s.Notes, s.Id)));
             existing.ReplaceLineItems(transaction.LineItems
-                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind)));
+                .Select(li => new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind, li.Id)));
         }
 
         // Runs for the already-tracked case too: the caller mutated the very instance this context
         // tracks, and its new owned children still need their state corrected.
-        ReconcileOwnedChildren(existing);
+        await ReconcileOwnedChildrenAsync(existing, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -129,33 +191,95 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
     /// <see cref="TransactionLineItem"/> carry a client-assigned <see cref="Guid"/> key, which is
     /// never the default, so EF always guesses <see cref="EntityState.Modified"/> and emits an
     /// UPDATE against a row that does not exist yet — the flush then fails with a zero-rows-affected
-    /// concurrency error. Neither type exposes a mutator, so a child that came from the database can
-    /// never legitimately be modified: every Modified child here is a new one EF mis-classified, and
-    /// promoting it to <see cref="EntityState.Added"/> is the only correct reading. Removed children
-    /// are orphaned owned dependents and are deleted by EF without help.
+    /// concurrency error.
+    /// <para>
+    /// THE RULE THIS METHOD USED TO APPLY IS NO LONGER TRUE, AND THAT IS WHY IT ASKS THE DATABASE.
+    /// It used to promote EVERY Modified child, on the stated grounds that "neither type exposes a
+    /// mutator, so a child that came from the database can never legitimately be modified". TD-60's
+    /// fix gives both types a mutator, so a Modified child is now genuinely ambiguous: it is either
+    /// a new child EF mis-classified or an existing one that was actually edited, and promoting the
+    /// second kind would INSERT a row whose primary key is already taken. The only thing that
+    /// distinguishes them is whether the row exists, so that is what gets asked — once per
+    /// collection, on the update path only, never on an insert.
+    /// </para>
+    /// Removed children are orphaned owned dependents and are deleted by EF without help.
     /// </remarks>
-    private void ReconcileOwnedChildren(Transaction transaction)
+    private async Task ReconcileOwnedChildrenAsync(Transaction transaction, CancellationToken cancellationToken)
     {
         // Attach the children the caller added to the navigation collections before inspecting them.
         _dbContext.ChangeTracker.DetectChanges();
 
-        foreach (var split in transaction.Splits)
+        var persistedSplitIds = await PersistedChildIdsAsync(
+            transaction.Id, t => t.Splits.Select(s => s.Id), cancellationToken).ConfigureAwait(false);
+
+        var persistedLineItemIds = await PersistedChildIdsAsync(
+            transaction.Id, t => t.LineItems.Select(li => li.Id), cancellationToken).ConfigureAwait(false);
+
+        // TD-59: the state of every owned child is SET from what the database holds, never inferred
+        // from EF's guess about a client-assigned key (or from an assumption that the owned types are
+        // immutable). Not persisted -> Added; persisted and still present -> never Added;
+        // persisted and gone from the collection -> Deleted.
+        SetStates(transaction.Splits, s => s.Id, persistedSplitIds);
+        SetStates(transaction.LineItems, li => li.Id, persistedLineItemIds);
+    }
+
+    private void SetStates<TChild>(
+        IEnumerable<TChild> current, Func<TChild, Guid> idOf, HashSet<Guid> persistedIds)
+        where TChild : class
+    {
+        var currentIds = new HashSet<Guid>();
+
+        foreach (var child in current)
         {
-            var entry = _dbContext.Entry(split);
-            if (entry.State == EntityState.Modified)
+            var id = idOf(child);
+            currentIds.Add(id);
+            var entry = _dbContext.Entry(child);
+
+            if (!persistedIds.Contains(id))
             {
                 entry.State = EntityState.Added;
+            }
+            else if (entry.State is EntityState.Added or EntityState.Detached or EntityState.Deleted)
+            {
+                // An existing row can never be inserted. Modified (not Unchanged) because the caller
+                // has re-described it; an untouched child keeps EF's Unchanged and costs no UPDATE.
+                entry.State = EntityState.Modified;
             }
         }
 
-        foreach (var lineItem in transaction.LineItems)
+        // Tracked children whose row exists but which are no longer in the collection. The persisted
+        // set is scoped to this transaction, so membership also proves ownership.
+        foreach (var entry in _dbContext.ChangeTracker.Entries<TChild>().ToList())
         {
-            var entry = _dbContext.Entry(lineItem);
-            if (entry.State == EntityState.Modified)
+            var id = idOf(entry.Entity);
+            if (persistedIds.Contains(id) && !currentIds.Contains(id) && entry.State != EntityState.Deleted)
             {
-                entry.State = EntityState.Added;
+                entry.State = EntityState.Deleted;
             }
         }
+    }
+
+    /// <summary>
+    /// The ids of one owned collection as the database currently holds them.
+    /// </summary>
+    /// <remarks>
+    /// <c>AsNoTracking</c> is not an optimisation here, it is a requirement: this reads the very
+    /// rows whose in-memory counterparts the change tracker is holding, and tracking the result
+    /// would attach a second instance of each under a key already taken.
+    /// </remarks>
+    private async Task<HashSet<Guid>> PersistedChildIdsAsync(
+        Guid transactionId,
+        Expression<Func<Transaction, IEnumerable<Guid>>> childIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Id == transactionId)
+            .SelectMany(childIds)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new HashSet<Guid>(ids);
     }
 
     /// <summary>

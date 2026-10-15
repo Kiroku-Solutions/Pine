@@ -164,6 +164,23 @@ The flow in `00-Vision` §11 is normative. The pipeline is:
 to a saved transaction. It is observable, replaceable, and always
 under the user's control.
 
+### 7.1 Tuned-constants boundary (TD-118)
+
+The receipt pipeline contains roughly twenty numeric constants that are **not** configuration:
+the detection confidence and area/aspect cutoffs, letterbox size and anchor count in
+`ReceiptDetector`; the geometry and OCR kernel parameters in `OpenCvImageProcessor`; and the
+zone-detection ratios in `HeuristicFieldExtractor`. They stay literals, on purpose.
+
+- They are the algorithm, tuned together with the shipped model version. Changing one in isolation
+  changes what counts as a receipt.
+- They are not in `PineOptions`. Exposing them would let a user break detection and report the
+  result as a bug. Limits a user can reasonably own (paths, sizes, timeouts, thresholds that do not
+  encode model behaviour) are options; these are not.
+- Each of the three classes carries a `TUNED-CONSTANTS BOUNDARY (TD-118)` remark pointing back to
+  this section, and `TunedConstantsBoundaryTests` fails if a marker or this section disappears.
+- A change to any of these constants requires re-evaluating the whole pipeline against the
+  fixtures, in the same change that updates the model or its version.
+
 ## 8. Assistant Architecture (high level)
 
 - The assistant is a *chat* model with a tool-use interface.

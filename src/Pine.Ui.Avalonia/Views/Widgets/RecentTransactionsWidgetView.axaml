@@ -3,11 +3,15 @@
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:core="using:Pine.Core.Transactions"
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              x:Class="Pine.Ui.Avalonia.Views.Widgets.RecentTransactionsWidgetView"
              x:DataType="vm:RecentTransactionsWidgetViewModel">
     
-    <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid RowDefinitions="Auto, *">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="10,0,10,6" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Transactions}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="core:Transaction">
@@ -21,7 +25,7 @@
                                 <!-- Tx Info -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Payee}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Date, StringFormat=\{0:MMM dd\, yyyy\}}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                    <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
                                 </StackPanel>
                                 
                                 <!-- Amount -->
@@ -38,8 +42,10 @@
             </ItemsControl>
         </ScrollViewer>
             
-        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding !Transactions.Count}">
-            <TextBlock Text="No transactions yet." Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
+        <!-- Bound to IsEmpty, not to the count (item 1.3): an empty list before the first read, or after
+             a failed one, is not "you have none". -->
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding IsEmpty}">
+            <TextBlock Text="{loc:Tr RecentTransactionsWidget.EmptyState}" Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
         </StackPanel>
     </Grid>
 </UserControl>

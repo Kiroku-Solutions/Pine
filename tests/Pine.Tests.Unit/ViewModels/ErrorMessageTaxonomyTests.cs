@@ -16,6 +16,8 @@ using Pine.Core.Common.ValueObjects;
 using Pine.Core.Security;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Composition;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels;
 using Xunit;
 
@@ -72,7 +74,7 @@ public class ErrorMessageTaxonomyTests
 
     private static AddTransactionViewModel BuildAddTransaction(IMediator mediator, Account account)
     {
-        var vm = new AddTransactionViewModel(mediator, () => { });
+        var vm = new AddTransactionViewModel(mediator, new Localizer(), () => { });
         vm.SelectedAccount = account;
         vm.Amount = 10m;
         vm.Payee = "Corner shop";
@@ -118,7 +120,7 @@ public class ErrorMessageTaxonomyTests
         mediator.Send(Arg.Any<AddTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(new[]
             {
-                new ValidationError("Currency", "Transaction currency EUR does not match account currency USD."),
+                new ValidationError("Currency", "Transaction currency EUR does not match account currency USD.", ValidationText.CurrencyMismatch("EUR", "USD")),
             }));
         var vm = BuildAddTransaction(mediator, account);
 
@@ -153,7 +155,7 @@ public class ErrorMessageTaxonomyTests
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<CreateAccountCommand>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new CreateAccountViewModel(mediator, () => { }) { AccountName = "Current" };
+        var vm = new CreateAccountViewModel(mediator, new Localizer(), () => { }) { AccountName = "Current" };
 
         await vm.CreateCommand.ExecuteAsync(null);
 
@@ -169,7 +171,7 @@ public class ErrorMessageTaxonomyTests
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<VoidTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(ConcurrencyConflictException.From(new InvalidOperationException("store detail")));
-        var vm = new TransactionsViewModel(mediator);
+        var vm = new TransactionsViewModel(mediator, Substitute.For<IViewModelFactory>());
         vm.BeginVoidCommand.Execute(SomeTransaction());
         vm.VoidReason = "Duplicate";
 
@@ -184,7 +186,7 @@ public class ErrorMessageTaxonomyTests
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<VoidTransactionCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(Leak());
-        var vm = new TransactionsViewModel(mediator);
+        var vm = new TransactionsViewModel(mediator, Substitute.For<IViewModelFactory>());
         vm.BeginVoidCommand.Execute(SomeTransaction());
         vm.VoidReason = "Duplicate";
 
@@ -211,7 +213,7 @@ public class ErrorMessageTaxonomyTests
         var sender = Substitute.For<ISender>();
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(ConcurrencyConflictException.From(new InvalidOperationException("store detail")));
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
@@ -225,7 +227,7 @@ public class ErrorMessageTaxonomyTests
         var sender = Substitute.For<ISender>();
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(Leak());
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
@@ -243,28 +245,44 @@ public class ErrorMessageTaxonomyTests
         sender.Send(Arg.Any<RecalculateAccountBalanceCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(new[]
             {
-                new ValidationError("AccountId", "That account no longer exists."),
+                new ValidationError("AccountId", "Account 3f2a was not found.", ValidationText.AccountNotFound()),
             }));
-        var vm = new SettingsViewModel(sender);
+        var vm = new SettingsViewModel(sender, new Localizer(), new LanguagePreferenceStore(path: null));
 
         await vm.RecalculateBalanceCommand.ExecuteAsync(SomeAccount());
 
-        vm.RecalculationReport.Should().Be("That account no longer exists.");
+        vm.RecalculationReport.Should().Be(new Localizer()["Validation.AccountNotFound"]);
+        vm.RecalculationReport.Should().NotContain("3f2a", "the id is the log's half, not the screen's");
     }
 
-    // ---- DashboardViewModel (a read path) ----------------------------------------------------
+    // ---- The dashboard's tiles (a read path) -------------------------------------------------
 
+    /// <remarks>
+    /// This used to drive <c>DashboardViewModel.LoadDataCommand</c> and read the greeting. That read
+    /// was deleted in post-audit plan item 1.3 -- it filled a collection no view bound -- and each
+    /// tile now reports its own failure, so the same rule is asserted where the sentence now lands.
+    /// </remarks>
     [Fact]
-    public async Task LoadingTheDashboard_DoesNotPutTheVaultPathInTheGreeting()
+    public async Task ADashboardTileThatFailsToLoad_DoesNotPutTheVaultPathOnScreen()
     {
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(Leak());
-        var vm = new DashboardViewModel(mediator);
+        var vm = new DashboardViewModel(
+            mediator,
+            Substitute.For<IViewModelFactory>(),
+            Substitute.For<IShellNavigator>(),
+            PineHeadCapabilities.For(PineHeadProfile.Windows),
+            localizer: new Localizer());
+        var accounts = vm.Widgets.OfType<Pine.Ui.Avalonia.ViewModels.Widgets.BalanceWidgetViewModel>().Single();
 
-        await vm.LoadDataCommand.ExecuteAsync(null);
+        await vm.InitializeAsync(CancellationToken.None);
+        for (var attempt = 0; attempt < 100 && !accounts.HasFailed; attempt++)
+        {
+            await Task.Delay(20);
+        }
 
+        accounts.FailureMessage.Should().NotBeNullOrWhiteSpace();
+        accounts.FailureMessage.Should().NotContain(VaultPath);
         vm.Greeting.Should().NotContain(VaultPath);
-        vm.Greeting.Should().NotContain("Error loading data");
-        vm.Greeting.Should().Contain("could not be loaded");
     }
 }

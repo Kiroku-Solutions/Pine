@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CsvHelper;
@@ -13,7 +14,7 @@ using Pine.Core.Accounts;
 
 namespace Pine.Infrastructure.Importing;
 
-public sealed class CsvImporter : IImporter
+public sealed class CsvImporter : IImporter, IImportHeaderReader
 {
     private readonly TimeProvider _timeProvider;
 
@@ -54,11 +55,16 @@ public sealed class CsvImporter : IImporter
         // schema change or migration is involved.
         string? referenceCol = profile.ColumnMappings.GetValueOrDefault("Reference");
 
-        // The only source identifier reachable from inside ImportAsync. The honest consequence: keys are
-        // stable only while the profile NAME is stable — re-importing the same bank file under a renamed
-        // or duplicated profile derives different keys, so every row will look new. Renaming a profile is
-        // therefore a data event, not a cosmetic one.
-        var source = profile.Name;
+        // TD-66: the source identifier used to be profile.Name, the only thing reachable inside
+        // ImportAsync at the time — stable only by accident, because the wizard minted a throwaway
+        // profile with a constant literal name on every run. Now that profiles are saved, reused and
+        // user-named (TD-151), a DISPLAY name is not a safe key component: nothing stops two profiles
+        // sharing one, and nothing should force a user's naming choice to double as a stability
+        // guarantee. The profile's id is structural, immutable once created, and never shown to the
+        // user to edit, so it is what the key is built from instead. Re-importing the same file under
+        // the SAME saved profile reproduces the same keys; two different profiles — even sharing a
+        // name — do not collide.
+        var source = profile.Id.ToString("D", CultureInfo.InvariantCulture);
 
         // Counts the row's position in the FILE, incremented for every record CsvHelper yields, including
         // the ones rejected below. Deliberately not the index into `transactions`: an output index shifts
@@ -150,14 +156,42 @@ public sealed class CsvImporter : IImporter
             // row's file position and whether the source supplied a reference of its own. The key
             // describes the transaction as CREATED — the inverted amount, the parsed date and payee —
             // so re-parsing the same row under the same profile reproduces it exactly.
+            // TD-102: a file imported before the h2 scheme carries scale-sensitive h1 keys. The row's
+            // h1 key is remembered (probed, never stored) so such a file is still recognised.
             transaction.AssignImportKey(
                 reference.Length > 0
                     ? ImportKeyFactory.FromReference(source, reference)
-                    : ImportKeyFactory.Derive(date, amount.Amount, currency.Value, payee, source, rowIndex));
+                    : ImportKeyFactory.Derive(date, amount.Amount, currency.Value, payee, source, rowIndex),
+                reference.Length > 0
+                    ? null
+                    : ImportKeyFactory.DeriveLegacyV1(date, amount.Amount, currency.Value, payee, source, rowIndex));
 
             transactions.Add(transaction);
         }
 
         return transactions;
+    }
+
+    /// <summary>
+    /// Reads the first line of the file and splits it on a comma -- exactly what
+    /// <c>ImportWizardViewModel.ReadCsvHeaders</c> did inline before TD-123 moved it here so the
+    /// wizard's mapping step and this importer share one idea of "the header row".
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="ImportProfile.Delimiter"/>-aware: the caller has no profile yet
+    /// -- this runs before the user has mapped anything -- and a comma is what the wizard's own
+    /// logic always assumed here. Widening it to the chosen delimiter is a separate, later change,
+    /// not a silent behaviour shift smuggled into this one.
+    /// </remarks>
+    public IReadOnlyList<string> ReadHeaders(Stream fileStream)
+    {
+        ArgumentNullException.ThrowIfNull(fileStream);
+
+        using var reader = new StreamReader(fileStream);
+        var headerLine = reader.ReadLine();
+
+        return headerLine is null
+            ? Array.Empty<string>()
+            : headerLine.Split(',').Select(h => h.Trim()).ToArray();
     }
 }

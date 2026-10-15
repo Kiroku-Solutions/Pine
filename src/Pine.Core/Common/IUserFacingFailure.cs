@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Pine.Core.Common;
 
@@ -18,7 +19,7 @@ namespace Pine.Core.Common;
 /// only if its author opted in by implementing this interface and writing the sentence.
 /// </para>
 /// <para>
-/// WHAT AN IMPLEMENTER OWES. <see cref="UserFacingMessage"/> must be a complete sentence, addressed
+/// WHAT AN IMPLEMENTER OWES. <see cref="UserFacingMessages"/> must name complete sentences, addressed
 /// to a person, saying what did not happen and — where there is one — what to do about it. It must
 /// name no file path, no connection string, no entity id, no row value, no stack frame and no
 /// exception type. If a message cannot be written under those constraints, the exception does not
@@ -29,8 +30,16 @@ namespace Pine.Core.Common;
 /// SEPARATE FROM <see cref="Exception.Message"/> ON PURPOSE. <c>Message</c> is read by logs,
 /// debuggers and <c>ToString</c>, and its audience is an engineer; making it double as the on-screen
 /// text would mean every future edit to a diagnostic string silently edits the UI. An implementer is
-/// free to return <c>Message</c> from <see cref="UserFacingMessage"/> when the two genuinely coincide,
-/// but that is then a stated decision rather than an accident.
+/// no longer able to return <c>Message</c> for both: since TD-139 the on-screen half is a key, and
+/// <c>Message</c> stays English for the log whatever language the screen is in.
+/// </para>
+/// <para>
+/// A KEY, NOT A SENTENCE (TD-139). This interface used to carry the finished English sentence, which
+/// meant the layers with no string table chose the wording of the screen — and chose it in English,
+/// on the one line of a Spanish screen that says what went wrong. It carries
+/// <see cref="UserFacingMessage"/>s now: the domain names the message, the presentation layer words
+/// it in the active language, and re-words it when the language changes. That inversion is the
+/// decision TD-139's Fix column asked for.
 /// </para>
 /// <para>
 /// NOT IMPLEMENTED BY THE VAULT EXCEPTIONS, DELIBERATELY. <c>VaultKeyUnwrapException</c> and its
@@ -43,8 +52,9 @@ namespace Pine.Core.Common;
 public interface IUserFacingFailure
 {
     /// <summary>
-    /// Gets the sentence to show the user. Never empty, never whitespace, and never carrying data
-    /// the user did not already have.
+    /// Gets the messages to show the user, in order; the presentation layer renders each one and joins
+    /// them. Several only where several independent things were wrong at once, as a validation refusal
+    /// reports every problem rather than the first. Never carrying data the user did not already have.
     /// </summary>
-    string UserFacingMessage { get; }
+    IReadOnlyList<UserFacingMessage> UserFacingMessages { get; }
 }

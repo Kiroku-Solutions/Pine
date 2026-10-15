@@ -1,90 +1,52 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Transactions;
+using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels.Widgets;
 
-public partial class GoalsWidgetViewModel : DashboardWidgetViewModelBase
+/// <summary>The ten most recent transactions.</summary>
+public partial class RecentTransactionsWidgetViewModel : DashboardWidgetViewModelBase, IRecipient<DataChangedMessage>
 {
-    public GoalsWidgetViewModel()
-    {
-        Title = "Goals";
-        ColumnSpan = 1;
-        RowSpan = 1;
-    }
-}
-
-public partial class ChartsWidgetViewModel : DashboardWidgetViewModelBase
-{
-    public ChartsWidgetViewModel()
-    {
-        Title = "Charts";
-        ColumnSpan = 2;
-        RowSpan = 2;
-    }
-}
-
-public partial class RecentTransactionsWidgetViewModel : DashboardWidgetViewModelBase
-{
-    private readonly IMediator? _mediator;
+    private readonly IMediator _mediator;
 
     public ObservableCollection<Transaction> Transactions { get; } = new();
 
-    public RecentTransactionsWidgetViewModel()
-    {
-        // For designer
-        Title = "Recent Transactions";
-    }
-
-    public RecentTransactionsWidgetViewModel(IMediator mediator)
+    public RecentTransactionsWidgetViewModel(IMediator mediator, ILocalizer localizer)
+        : base(localizer, "Dashboard.Tile.RecentTransactions")
     {
         _mediator = mediator;
-        Title = "Recent Transactions";
-        ColumnSpan = 2;
-        RowSpan = 2;
-        
-        WeakReferenceMessenger.Default.Register<DataChangedMessage>(this, (r, m) => ((RecentTransactionsWidgetViewModel)r).Receive(m));
-        
-        _ = LoadDataAsync();
+        Width = 560;
+        Height = 320;
+
+        // TD-34: this tile declares IRecipient<DataChangedMessage>, which is what ObservableRecipient's
+        // activation looks for. TD-35: no load here; the dashboard calls InitializeAsync.
     }
 
-    public void Receive(DataChangedMessage message)
+    /// <summary>Reads the ten most recent transactions.</summary>
+    /// <remarks>
+    /// The bare <c>catch (Exception) { /* Ignore */ }</c> that was here is gone (TD-35): a failed read
+    /// now reaches the log and the tile's own failure message, instead of looking exactly like a vault
+    /// with no transactions.
+    /// </remarks>
+    public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        _ = LoadDataAsync();
-    }
-
-    private async Task LoadDataAsync()
-    {
-        if (_mediator == null) return;
-        
-        try
+        var pagedResult = await _mediator.Send(new GetTransactionsQuery(1, 10), cancellationToken);
+        Transactions.Clear();
+        foreach (var tx in pagedResult.Items)
         {
-            var pagedResult = await _mediator.Send(new GetTransactionsQuery(1, 10));
-            Transactions.Clear();
-            foreach (var tx in pagedResult.Items)
-            {
-                Transactions.Add(tx);
-            }
+            Transactions.Add(tx);
         }
-        catch (Exception)
-        {
-            // Ignore
-        }
-    }
-}
 
-public partial class AiSuggestionsWidgetViewModel : DashboardWidgetViewModelBase
-{
-    public AiSuggestionsWidgetViewModel()
-    {
-        Title = "AI Suggestions";
-        ColumnSpan = 1;
-        RowSpan = 1;
+        MarkLoaded(Transactions.Count == 0);
     }
+
+    /// <summary>Re-reads the latest transactions when something elsewhere changed them.</summary>
+    /// <param name="message">The broadcast. It carries no payload.</param>
+    public void Receive(DataChangedMessage message) => Reload("widget-recent-transactions-reload");
 }

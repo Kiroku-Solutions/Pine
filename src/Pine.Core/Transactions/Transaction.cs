@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
-using Pine.Core.Events;
 
 namespace Pine.Core.Transactions;
 
@@ -84,6 +83,13 @@ public sealed class Transaction : AggregateRoot
     public string? ImportKey { get; private set; }
 
     /// <summary>
+    /// Gets the key the pre-h2 derivation (scale-sensitive, TD-102) would have given this row, so a
+    /// file imported before that fix is still recognised as already imported. Never persisted; only
+    /// set by importers, only read by the import de-duplication probe.
+    /// </summary>
+    public string? LegacyImportKey { get; private set; }
+
+    /// <summary>
     /// When this transaction was voided, or <see langword="null"/> while it is still in force.
     /// </summary>
     /// <remarks>
@@ -122,6 +128,38 @@ public sealed class Transaction : AggregateRoot
     /// </summary>
     public bool IsVoided => VoidedAt.HasValue;
 
+    /// <summary>
+    /// Whether this transaction was brought in by a file import with an amount of zero and has not been
+    /// dealt with (TD-62, owner decision).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A zero-amount row is almost always a bank "authorization" line. The import neither drops nor rejects
+    /// it -- the user decides -- so it is saved and TAGGED here, and the import review list shows it with
+    /// the option to hide it (void it). The tag is persisted (<c>IsZeroAmountImport</c>), not derived from
+    /// the amount, so it records that the row ARRIVED as a zero import: a later edit to a non-zero amount
+    /// does not need to clear it for the review list to stay truthful about how the row got there.
+    /// </para>
+    /// <para>
+    /// MANUAL ENTRY OF ZERO STAYS REJECTED. Nothing but <see cref="FlagAsZeroAmountImport"/> sets this, and
+    /// the only caller is the import handler; <c>AddTransactionCommandValidator</c> is untouched and still
+    /// refuses a zero amount. Such a row has no effect on a balance, so the handler skips
+    /// <c>Account.Deposit</c>/<c>Withdraw</c> (which stay strictly positive) rather than weakening them.
+    /// It keeps its <see cref="ImportKey"/>, so re-importing the same file still deduplicates it.
+    /// </para>
+    /// </remarks>
+    public bool IsZeroAmountImport { get; private set; }
+
+    /// <summary>Tags this transaction as a zero-amount import. Only a transaction whose amount is zero may be.</summary>
+    /// <exception cref="InvalidOperationException">The amount is not zero.</exception>
+    public void FlagAsZeroAmountImport()
+    {
+        if (TotalAmount.Amount != 0m)
+            throw new InvalidOperationException("Only a zero-amount transaction can be flagged as a zero-amount import.");
+
+        IsZeroAmountImport = true;
+    }
+
     private readonly List<TransactionSplit> _splits = new();
     public IReadOnlyCollection<TransactionSplit> Splits => _splits.AsReadOnly();
 
@@ -157,16 +195,130 @@ public sealed class Transaction : AggregateRoot
         LinkedTransactionId = linkedTransactionId;
         Notes = notes;
         CreatedAt = now;
-
-        AddDomainEvent(new TransactionRegisteredEvent(Id, AccountId, TotalAmount, CreatedAt));
     }
 
-    public static Transaction Create(Guid accountId, DateTimeOffset date, string payee, Money totalAmount, TransactionType type, TimeProvider timeProvider, string notes = "", Guid? linkedTransactionId = null)
+    /// <summary>
+    /// Creates a single, unlinked transaction.
+    /// </summary>
+    /// <remarks>
+    /// THERE IS DELIBERATELY NO <c>linkedTransactionId</c> PARAMETER (TD-26). A link is only ever
+    /// meaningful in pairs -- a transaction that points at a partner which does not point back is not
+    /// a transfer, it is a half-transfer, and <c>VoidTransactionCommandHandler</c> follows the link
+    /// to decide what else has to be voided. This factory used to accept the identifier of the other
+    /// leg, which meant a caller could establish one direction and forget the other. The only
+    /// legitimate use of that parameter was building a transfer, and building a transfer now has its
+    /// own operation: <see cref="CreateTransferPair"/>, which cannot produce a one-way link because
+    /// it writes both directions itself. Removing the parameter is what turns "please remember to
+    /// link both ways" into something the compiler enforces.
+    /// </remarks>
+    /// <param name="accountId">The account the transaction belongs to. Required.</param>
+    /// <param name="date">When the money moved, as the user understands it.</param>
+    /// <param name="payee">Who the money was paid to, or received from.</param>
+    /// <param name="totalAmount">The signed amount, whose sign must agree with <paramref name="type"/>.</param>
+    /// <param name="type">Expense, income or transfer.</param>
+    /// <param name="timeProvider">Clock used to stamp <see cref="CreatedAt"/> and to reject a future date.</param>
+    /// <param name="notes">Free text the user attached to the transaction.</param>
+    /// <returns>The new transaction, with a freshly generated identifier.</returns>
+    /// <exception cref="ArgumentException"><paramref name="accountId"/> is empty.</exception>
+    public static Transaction Create(Guid accountId, DateTimeOffset date, string payee, Money totalAmount, TransactionType type, TimeProvider timeProvider, string notes = "")
     {
         if (accountId == Guid.Empty)
             throw new ArgumentException("Account ID is required", nameof(accountId));
 
-        return new Transaction(Guid.NewGuid(), accountId, date, payee, totalAmount, type, linkedTransactionId, notes, timeProvider);
+        return new Transaction(Guid.NewGuid(), accountId, date, payee, totalAmount, type, null, notes, timeProvider);
+    }
+
+    /// <summary>
+    /// Creates both legs of a transfer in one operation, each already linked to the other.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY THIS EXISTS AT ALL (TD-26). A transfer is two transactions that must know about each
+    /// other, and the handler that built them used to establish the two directions by two DIFFERENT
+    /// mechanisms: the receiving leg was linked through the creating factory's
+    /// <c>linkedTransactionId</c> parameter, and the sending leg was linked afterwards by reaching
+    /// through <see cref="LinkedTransactionId"/>'s private setter with reflection, because at the
+    /// point the first leg was constructed the second one did not yet have an identifier. Two
+    /// mechanisms means two things that can break independently, and they are not equally harmless
+    /// when they do.
+    /// </para>
+    /// <para>
+    /// WHY LOSING THE SOURCE-TO-DESTINATION DIRECTION IS THE EXPENSIVE ONE.
+    /// <c>VoidTransactionCommandHandler</c> follows <see cref="LinkedTransactionId"/> to find the far
+    /// leg. A user voids the transfer from the account it left -- the sending leg -- so it is that
+    /// leg's link the void depends on. Delete the reflection line and everything still compiles,
+    /// every transfer still shows two rows and both balances still move; the damage only appears
+    /// later, when voiding that transfer takes the money back out of one account and leaves it in
+    /// the other. That is a silent rows-versus-balances disagreement produced by a missing line
+    /// nothing was watching.
+    /// </para>
+    /// <para>
+    /// WHY A PAIR FACTORY RATHER THAN A TIDIER SETTER. Making the link publicly settable, or adding
+    /// a <c>LinkTo</c> method, would replace reflection with a supported call and change nothing
+    /// about the failure: both directions would still be two separate steps a caller can half
+    /// perform. Constructing both legs here -- inside the class, where the private setter is simply
+    /// in scope -- makes a half-linked transfer UNCONSTRUCTIBLE rather than merely discouraged. With
+    /// <see cref="Create"/> no longer accepting a link, this is the only way to produce a linked
+    /// transaction at all, so there is no second path left to forget.
+    /// </para>
+    /// <para>
+    /// The guards below duplicate rules <c>TransferFundsCommandValidator</c> already applies, and
+    /// that is intended: the validator exists to turn them into messages a UI can bind to before any
+    /// work starts, while these exist so the invariant holds for every caller, including one that
+    /// does not go through the command pipeline.
+    /// </para>
+    /// </remarks>
+    /// <param name="sourceAccountId">The account the money leaves. Must differ from <paramref name="destinationAccountId"/>.</param>
+    /// <param name="destinationAccountId">The account the money arrives on.</param>
+    /// <param name="date">When the transfer happened, applied identically to both legs.</param>
+    /// <param name="sourcePayee">The payee recorded on the sending leg -- conventionally "Transfer to {destination}".</param>
+    /// <param name="destinationPayee">The payee recorded on the receiving leg -- conventionally "Transfer from {source}".</param>
+    /// <param name="amount">The amount transferred, strictly positive. The sending leg is given its negation.</param>
+    /// <param name="timeProvider">Clock used to stamp <see cref="CreatedAt"/> and to reject a future date.</param>
+    /// <param name="notes">Free text applied identically to both legs.</param>
+    /// <returns>The two legs, each carrying the other's identifier in <see cref="LinkedTransactionId"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="amount"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="sourceAccountId"/> or <paramref name="destinationAccountId"/> is empty, the two
+    /// account identifiers are equal, or <paramref name="amount"/> is not strictly positive.
+    /// </exception>
+    public static TransferLegs CreateTransferPair(
+        Guid sourceAccountId,
+        Guid destinationAccountId,
+        DateTimeOffset date,
+        string sourcePayee,
+        string destinationPayee,
+        Money amount,
+        TimeProvider timeProvider,
+        string notes = "")
+    {
+        if (sourceAccountId == Guid.Empty)
+            throw new ArgumentException("Account ID is required", nameof(sourceAccountId));
+
+        if (destinationAccountId == Guid.Empty)
+            throw new ArgumentException("Account ID is required", nameof(destinationAccountId));
+
+        if (sourceAccountId == destinationAccountId)
+            throw new ArgumentException("A transfer must move money between two different accounts.", nameof(destinationAccountId));
+
+        ArgumentNullException.ThrowIfNull(amount);
+
+        if (amount.Amount <= 0)
+            throw new ArgumentException("Transfer amount must be greater than zero.", nameof(amount));
+
+        // Both identifiers are generated up front so each leg can be constructed already knowing the
+        // other one. That is the whole trick: it is the reason the second link no longer has to be
+        // written after the fact, and therefore the reason it can no longer be omitted.
+        var sourceId = Guid.NewGuid();
+        var destinationId = Guid.NewGuid();
+
+        var source = new Transaction(
+            sourceId, sourceAccountId, date, sourcePayee, -amount, TransactionType.Transfer, destinationId, notes, timeProvider);
+
+        var destination = new Transaction(
+            destinationId, destinationAccountId, date, destinationPayee, amount, TransactionType.Transfer, sourceId, notes, timeProvider);
+
+        return new TransferLegs(source, destination);
     }
 
     /// <summary>
@@ -179,10 +331,11 @@ public sealed class Transaction : AggregateRoot
     /// matching a different row.
     /// </remarks>
     /// <param name="key">The import key, as produced by <c>Pine.Core.Importing.ImportKeyFactory</c>.</param>
+    /// <param name="legacyKey">The pre-h2 key, probed (never stored) by import de-duplication (TD-102).</param>
     /// <exception cref="ArgumentException">
     /// <paramref name="key"/> is null, empty, whitespace, or longer than 128 characters once trimmed.
     /// </exception>
-    public void AssignImportKey(string key)
+    public void AssignImportKey(string key, string? legacyKey = null)
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Import key cannot be empty.", nameof(key));
@@ -192,6 +345,7 @@ public sealed class Transaction : AggregateRoot
             throw new ArgumentException($"Import key cannot exceed {MaxImportKeyLength} characters.", nameof(key));
 
         ImportKey = trimmed;
+        LegacyImportKey = string.IsNullOrWhiteSpace(legacyKey) ? null : legacyKey.Trim();
     }
 
     /// <summary>
@@ -217,9 +371,21 @@ public sealed class Transaction : AggregateRoot
     /// validated first, so a rejected set leaves the aggregate completely unmutated.
     /// An empty (or null) sequence clears the splits, which is a valid state.
     /// </summary>
+    /// <remarks>
+    /// A DEFINITION CARRYING AN ID THAT IS ALREADY HERE UPDATES THAT SPLIT INSTEAD OF REPLACING IT
+    /// (TD-60). The set is still replaced wholesale as far as the caller is concerned — anything not
+    /// named is gone — but a split that survives the replacement keeps the identity it had, rather
+    /// than being deleted and re-inserted under a new <see cref="Guid"/> on every save.
+    /// <para>
+    /// The staging is now over DEFINITIONS rather than over freshly built splits, and that is what
+    /// preserves this method's stated guarantee: the sum is checked before a single existing child
+    /// is touched, so a rejected set still leaves the aggregate completely unmutated. Building the
+    /// children first and validating them afterwards would have been a mutation before a throw.
+    /// </para>
+    /// </remarks>
     public void ReplaceSplits(IEnumerable<SplitDefinition> splits)
     {
-        var staged = new List<TransactionSplit>();
+        var staged = new List<SplitDefinition>();
 
         if (splits is not null)
         {
@@ -231,14 +397,38 @@ public sealed class Transaction : AggregateRoot
                 if (definition.Amount.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Split currency must match transaction currency.", nameof(splits));
 
-                staged.Add(new TransactionSplit(Id, definition.Amount, definition.Category, definition.Notes));
+                staged.Add(definition);
             }
         }
 
-        ValidateSplitSum(staged);
+        ValidateAmountsSumToTotal(
+            staged.ConvertAll(definition => definition.Amount),
+            "The sum of splits must equal the total transaction amount.");
+
+        var survivors = new Dictionary<Guid, TransactionSplit>();
+        foreach (var split in _splits)
+        {
+            survivors[split.Id] = split;
+        }
+
+        var applied = new List<TransactionSplit>(staged.Count);
+        foreach (var definition in staged)
+        {
+            // Remove on match, so a set naming the same id twice produces two rows rather than one
+            // instance tracked under one key twice — which EF Core refuses outright.
+            if (definition.Id != Guid.Empty && survivors.Remove(definition.Id, out var existing))
+            {
+                existing.Update(definition.Amount, definition.Category, definition.Notes);
+                applied.Add(existing);
+            }
+            else
+            {
+                applied.Add(new TransactionSplit(Id, definition.Amount, definition.Category, definition.Notes));
+            }
+        }
 
         _splits.Clear();
-        _splits.AddRange(staged);
+        _splits.AddRange(applied);
     }
 
     /// <summary>
@@ -280,7 +470,7 @@ public sealed class Transaction : AggregateRoot
     /// </remarks>
     public void ReplaceLineItems(IEnumerable<LineItemDefinition> lineItems)
     {
-        var staged = new List<TransactionLineItem>();
+        var staged = new List<LineItemDefinition>();
 
         if (lineItems is not null)
         {
@@ -292,14 +482,105 @@ public sealed class Transaction : AggregateRoot
                 if (definition.UnitPrice.Currency != TotalAmount.Currency || definition.TotalPrice.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Line item currency must match transaction currency.", nameof(lineItems));
 
-                staged.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind));
+                // Before anything is touched: a rejected set must leave the aggregate unmutated (TD-95).
+                LineQuantity.EnsureValid(definition.Quantity);
+
+                staged.Add(definition);
             }
         }
 
-        ValidateLineItemSum(staged);
+        ValidateStagedLineItemSum(staged);
+
+        var survivors = new Dictionary<Guid, TransactionLineItem>();
+        foreach (var lineItem in _lineItems)
+        {
+            survivors[lineItem.Id] = lineItem;
+        }
+
+        var applied = new List<TransactionLineItem>(staged.Count);
+        foreach (var definition in staged)
+        {
+            if (definition.Id != Guid.Empty && survivors.Remove(definition.Id, out var existing))
+            {
+                existing.Update(definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind);
+                applied.Add(existing);
+            }
+            else
+            {
+                applied.Add(new TransactionLineItem(Id, definition.Description, definition.Quantity, definition.UnitPrice, definition.TotalPrice, definition.Kind));
+            }
+        }
 
         _lineItems.Clear();
-        _lineItems.AddRange(staged);
+        _lineItems.AddRange(applied);
+    }
+
+    /// <summary>
+    /// Updates the mutable recording details of this transaction: when it happened, who it was paid
+    /// to or received from, its signed amount, and any notes -- without touching its identity, its
+    /// <see cref="ImportKey"/>, its <see cref="AccountId"/>, or its linked leg.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// REFUSED ON A VOIDED TRANSACTION, ON PURPOSE (TD-68, closing against TD-02). <see cref="Void"/>'s
+    /// own contract is a cancellation that deliberately KEEPS the row -- the row stops counting but its
+    /// last true values stay on it as the record of what was cancelled. Letting an edit change a voided
+    /// row's amount, date or payee would silently rewrite the thing the void exists to preserve, through
+    /// a door that has nothing to do with un-voiding it. Unvoiding is TD-69, a separate and still-open
+    /// ticket; this method does not reach for it, and refuses cleanly instead of reaching past it.
+    /// </para>
+    /// <para>
+    /// REFUSED ON A TRANSFER LEG, ON PURPOSE. A transfer is two linked transactions on two accounts,
+    /// constructed together so neither can exist without the other (<see cref="CreateTransferPair"/>).
+    /// Editing one leg's amount here would leave the other leg -- and the account on its far side --
+    /// silently out of step, with no caller pairing the edit the way
+    /// <c>VoidTransactionCommandHandler</c> pairs a void. Editing a transfer is out of scope for this
+    /// close of TD-68; it would need the same both-legs choreography void already has.
+    /// </para>
+    /// <para>
+    /// TYPE IS RE-DERIVED FROM THE NEW AMOUNT'S SIGN, exactly as the add-transaction handler derives it
+    /// on create: Income for a non-negative total, Expense for a negative one. A caller that edits an
+    /// expense into a positive figure is describing a correction into income, not a different
+    /// operation, and "forbid crossing the line" is a rule no screen has ever asked for.
+    /// </para>
+    /// <para>
+    /// SPLITS ARE DELIBERATELY NOT TOUCHED HERE. A caller that is also changing the split set calls
+    /// <see cref="ReplaceSplits"/> afterwards, in the same unit of work -- this method only changes the
+    /// header fields, so a currency change does not have to simultaneously describe every split for the
+    /// currency check inside <see cref="ReplaceSplits"/> to make sense of what just happened.
+    /// </para>
+    /// </remarks>
+    /// <param name="date">When the money moved, as the user now understands it.</param>
+    /// <param name="payee">Who the money was paid to, or received from.</param>
+    /// <param name="totalAmount">The new signed amount.</param>
+    /// <param name="notes">Free text the user attached to the transaction.</param>
+    /// <param name="timeProvider">Clock used to reject a future date.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="totalAmount"/> or <paramref name="timeProvider"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="date"/> is more than a day in the future.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// This transaction is voided, or is one leg of a transfer.
+    /// </exception>
+    public void Update(DateTimeOffset date, string payee, Money totalAmount, string notes, TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(totalAmount);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        if (IsVoided)
+            throw new InvalidOperationException("A voided transaction cannot be edited. Unvoid it first.");
+
+        if (Type == TransactionType.Transfer)
+            throw new InvalidOperationException("A transfer leg cannot be edited directly.");
+
+        var now = timeProvider.GetUtcNow();
+        if (date > now.AddDays(1))
+            throw new ArgumentException("Transaction date cannot be in the future.", nameof(date));
+
+        Date = date;
+        DateUtc = date.UtcDateTime;
+        Payee = payee;
+        TotalAmount = totalAmount;
+        Type = totalAmount.Amount >= 0 ? TransactionType.Income : TransactionType.Expense;
+        Notes = notes;
     }
 
     /// <summary>
@@ -348,8 +629,26 @@ public sealed class Transaction : AggregateRoot
 
         VoidedAt = timeProvider.GetUtcNow();
         VoidReason = trimmed;
+    }
 
-        AddDomainEvent(new TransactionVoidedEvent(Id, AccountId, TotalAmount, trimmed, VoidedAt.Value));
+    /// <summary>
+    /// Puts a voided transaction back in force (TD-69), the inverse of <see cref="Void"/>.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="Void"/>, this changes the transaction ONLY: re-applying its amount to the account
+    /// balance is the caller's job, inside the same database transaction. The row keeps its id and its
+    /// <see cref="ImportKey"/> throughout (a void never cleared either), so unvoiding restores exactly
+    /// the row that was cancelled. Not idempotent on purpose: a second call means the caller believed
+    /// the transaction was void, and accepting it would let a double-unvoid apply the balance twice.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The transaction is not void.</exception>
+    public void Unvoid()
+    {
+        if (!IsVoided)
+            throw new InvalidOperationException("This transaction has not been voided.");
+
+        VoidedAt = null;
+        VoidReason = null;
     }
 
     /// <summary>
@@ -391,15 +690,30 @@ public sealed class Transaction : AggregateRoot
     /// </summary>
     public bool HasLineItemsPredatingKinds => _lineItems.Exists(li => li.Kind is null);
 
-    private void ValidateSplitSum(List<TransactionSplit> splits)
+    private void ValidateSplitSum(List<TransactionSplit> splits) =>
+        ValidateAmountsSumToTotal(
+            splits.ConvertAll(split => split.Amount),
+            "The sum of splits must equal the total transaction amount.");
+
+    /// <summary>
+    /// The shared core of both sum invariants, over amounts rather than over children.
+    /// </summary>
+    /// <remarks>
+    /// Taking amounts is what lets <see cref="ReplaceSplits"/> check a candidate set before it has
+    /// built anything, which is how "a rejected set leaves the aggregate unmutated" survived the
+    /// TD-60 change from building children to updating them.
+    /// </remarks>
+    private void ValidateAmountsSumToTotal(List<Money> amounts, string message)
     {
-        if (splits.Count > 0)
+        if (amounts.Count == 0)
         {
-            var sum = splits.Aggregate(Money.Zero(TotalAmount.Currency), (current, split) => current + split.Amount);
-            if (sum != TotalAmount)
-            {
-                throw new InvalidOperationException("The sum of splits must equal the total transaction amount.");
-            }
+            return;
+        }
+
+        var sum = amounts.Aggregate(Money.Zero(TotalAmount.Currency), (current, amount) => current + amount);
+        if (sum != TotalAmount)
+        {
+            throw new InvalidOperationException(message);
         }
     }
 
@@ -452,12 +766,46 @@ public sealed class Transaction : AggregateRoot
         var sum = SumOfLineItems(lineItems, TotalAmount.Currency);
         if (sum != TotalAmount)
         {
-            throw new InvalidOperationException(
-                $"The sum of the line items ({sum}) must equal the total transaction amount ({TotalAmount}). " +
-                $"Record the {TotalAmount - sum} difference as an adjustment line — tax, tip, discount, " +
-                "deposit, rounding or unattributed — rather than leaving it unexplained.");
+            throw LineItemSumFailure(sum);
         }
     }
+
+    /// <summary>
+    /// The TD-19 invariant checked over a candidate set, before any child has been touched.
+    /// </summary>
+    /// <remarks>
+    /// The null-kind escape hatch is repeated here rather than shared, and it has to be: a legacy
+    /// row whose kind is absent still suspends the invariant, and a staged set is where a legacy
+    /// row's kind arrives — the repository's detached path re-describes materialised children and
+    /// carries a null kind through deliberately. Losing the check here would reconcile a set the
+    /// data has never reconciled.
+    /// </remarks>
+    private void ValidateStagedLineItemSum(List<LineItemDefinition> staged)
+    {
+        if (staged.Count == 0)
+        {
+            return;
+        }
+
+        if (staged.Exists(definition => definition.Kind is null))
+        {
+            return;
+        }
+
+        var sum = staged.Aggregate(
+            Money.Zero(TotalAmount.Currency),
+            (current, definition) => current + definition.TotalPrice);
+
+        if (sum != TotalAmount)
+        {
+            throw LineItemSumFailure(sum);
+        }
+    }
+
+    private InvalidOperationException LineItemSumFailure(Money sum) =>
+        new($"The sum of the line items ({sum}) must equal the total transaction amount ({TotalAmount}). " +
+            $"Record the {TotalAmount - sum} difference as an adjustment line — tax, tip, discount, " +
+            "deposit, rounding or unattributed — rather than leaving it unexplained.");
 
     private static Money SumOfLineItems(List<TransactionLineItem> lineItems, CurrencyCode currency) =>
         lineItems.Aggregate(Money.Zero(currency), (current, lineItem) => current + lineItem.TotalPrice);

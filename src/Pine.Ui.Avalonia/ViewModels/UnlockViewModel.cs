@@ -4,19 +4,41 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MediatR;
-using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
 using Pine.Core.Security;
-using Pine.Infrastructure.Data;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class UnlockViewModel : ObservableObject
+public partial class UnlockViewModel : ObservableObject, IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    /// <summary>
+    /// Reads this vault's persisted accent theme once the vault is open.
+    /// </summary>
+    /// <remarks>
+    /// INJECTED, NOT RESOLVED (TD-28). It was pulled out of the container at the point of use;
+    /// taking it in the constructor is the same singleton, obtained where the type system can see
+    /// it. The reason the read goes through the MEDIATOR at all is unchanged, and is written at the
+    /// call site.
+    /// </remarks>
+    private readonly ISender _sender;
+    private readonly LocalizedMessageSlot _message;
+
+    /// <summary>
+    /// Renders <see cref="VaultName"/> through the same mechanism <see cref="_message"/> uses for
+    /// <see cref="StatusMessage"/>, so the card's title re-words itself on a language change instead
+    /// of being frozen at whichever language was active when <see cref="Initialize"/> ran (TD-150).
+    /// </summary>
+    private readonly LocalizedMessageSlot _title;
+
     private readonly IVaultSession _vaultSession;
     private readonly INavigationService _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen hands over to -- the shell on success, the picker on Back (TD-28).
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly IVaultHeaderStore _vaultHeaderStore;
 
     /// <summary>
@@ -26,13 +48,22 @@ public partial class UnlockViewModel : ObservableObject
     /// </summary>
     private readonly IVaultKeyService _vaultKeyService;
 
+    /// <summary>
+    /// The database half of opening a vault (TD-28). This screen no longer creates a DI scope or
+    /// resolves a DbContext of its own: it hands the work to this port, which owns the scope, the
+    /// probe that proves the unwrapped key opens THIS database, and the schema migration -- in that
+    /// order, and as two separate phases, so a failed schema upgrade can still be told apart from a
+    /// wrong password by the catch blocks below.
+    /// </summary>
+    private readonly IVaultDatabaseOpener _vaultDatabaseOpener;
+
     private VaultProfile? _profile;
 
     [ObservableProperty]
     public partial string MasterPassword { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string VaultName { get; set; } = "Unlock Vault";
+    public partial string VaultName { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = string.Empty;
@@ -41,23 +72,114 @@ public partial class UnlockViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     public UnlockViewModel(
-        IServiceProvider serviceProvider,
+        ISender sender,
         IVaultSession vaultSession,
         INavigationService navigationService,
+        IViewModelFactory viewModels,
         IVaultHeaderStore vaultHeaderStore,
-        IVaultKeyService vaultKeyService)
+        IVaultKeyService vaultKeyService,
+        IVaultDatabaseOpener vaultDatabaseOpener,
+        ILocalizer localizer,
+        IPlatformUnlock? platformUnlock = null,
+        IVaultKeyRotationService? keyRotation = null)
     {
-        _serviceProvider = serviceProvider;
+        _platformUnlock = platformUnlock;
+        _keyRotation = keyRotation;
+        ArgumentNullException.ThrowIfNull(localizer);
+        _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _title = new LocalizedMessageSlot(localizer, text => VaultName = text ?? string.Empty);
+        _title.Set("Unlock.Title.Generic");
+        _sender = sender;
         _vaultSession = vaultSession;
         _navigationService = navigationService;
+        _viewModels = viewModels;
         _vaultHeaderStore = vaultHeaderStore;
         _vaultKeyService = vaultKeyService;
+        _vaultDatabaseOpener = vaultDatabaseOpener;
     }
 
     public void Initialize(VaultProfile profile)
     {
         _profile = profile;
-        VaultName = $"Unlock {profile.Name}";
+        _title.Set("Unlock.Title.Named", profile.Name);
+        CanUnlockWithPlatform = IsPlatformUnlockOffered(profile.Path);
+    }
+
+    private readonly IPlatformUnlock? _platformUnlock;
+    private readonly IVaultKeyRotationService? _keyRotation;
+
+    /// <summary>True when this vault has an opt-in platform wrap that this machine can use (TD-87).</summary>
+    [ObservableProperty]
+    public partial bool CanUnlockWithPlatform { get; set; }
+
+    private bool IsPlatformUnlockOffered(string vaultDirectory)
+    {
+        try
+        {
+            return _platformUnlock is { IsAvailable: true } unlock && unlock.IsEnabled(vaultDirectory);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Opt-in OS-credential unlock (TD-87). It never replaces the password: ANY failure -- no wrap,
+    /// wrong Windows user, tampered blob, a key that does not open this database -- leaves the screen
+    /// exactly as it was, with no message (a message would tell a bystander that a wrap exists and
+    /// failed), and the password path unchanged. The key is accepted only after the SQLCipher
+    /// database has been opened with it.
+    /// </summary>
+    [RelayCommand]
+    private async Task UnlockWithPlatformAsync()
+    {
+        if (_profile == null || _platformUnlock is null || IsBusy) return;
+
+        IsBusy = true;
+        try
+        {
+            var vaultDir = _profile.Path;
+            var opened = await Task.Run(async () =>
+            {
+                var key = _platformUnlock.TryUnlock(vaultDir);
+                if (key is null) return false;
+
+                try
+                {
+                    _vaultSession.Unlock(vaultDir, key);
+                }
+                finally
+                {
+                    Array.Clear(key, 0, key.Length);
+                }
+
+                try
+                {
+                    // The confirmation: the unwrapped key must actually decrypt THIS database.
+                    await _vaultDatabaseOpener.OpenExistingAsync(CancellationToken.None).ConfigureAwait(false);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    _vaultSession.Lock();
+                    return false;
+                }
+            });
+
+            if (!opened) return;
+
+            await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(_sender);
+            _navigationService.NavigateTo(_viewModels.CreateShell());
+        }
+        catch (Exception)
+        {
+            _vaultSession.Lock();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -65,16 +187,16 @@ public partial class UnlockViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(MasterPassword))
         {
-            StatusMessage = "Password cannot be empty.";
+            _message.Set("Unlock.Status.PasswordEmpty");
             return;
         }
 
         IsBusy = true;
-        StatusMessage = "Decrypting vault...";
+        _message.Set("Unlock.Status.Decrypting");
 
         if (_profile == null)
         {
-            StatusMessage = "No vault profile selected.";
+            _message.Set("Unlock.Status.NoProfileSelected");
             IsBusy = false;
             return;
         }
@@ -96,7 +218,11 @@ public partial class UnlockViewModel : ObservableObject
                 // stored wrap, so a wrong password fails HERE, before any file is opened, and it
                 // fails as one specific exception type instead of as whatever error SQLCipher
                 // happens to raise when handed a bad key.
-                var key = _vaultKeyService.UnwrapDataKey(MasterPassword, header);
+                // TD-86: an interrupted password change leaves a journal. Resolve it first (it accepts the old
+                // or the new password and rolls forward), so a crash at any step never leaves the vault unopenable.
+                var key = _keyRotation is not null && _keyRotation.HasPendingRekey(vaultDir)
+                    ? _keyRotation.RecoverAndUnwrap(vaultDir, MasterPassword)
+                    : _vaultKeyService.UnwrapDataKey(MasterPassword, header);
 
                 // Unlock session. Unlock() COPIES the key into the session's own buffer, and it is
                 // that copy which Lock() zeroes -- so this local is a second, independent copy of
@@ -108,55 +234,23 @@ public partial class UnlockViewModel : ObservableObject
                 _vaultSession.Unlock(vaultDir, key);
                 Array.Clear(key, 0, key.Length);
 
-                // PineDbContext and IVaultMigrator are both Scoped (TD-01). Resolving either from
-                // the ROOT provider silently creates a root-scoped instance that never dies, so the
-                // context built here - carrying THIS vault's file path and encryption key - would
-                // still be handed out after the user locks the vault and unlocks a different one.
-                // One explicit scope covers both the auth probe and the migration, and is disposed
-                // only after MigrateAsync has completed.
-                using var vaultScope = _serviceProvider.CreateScope();
-
-                // THE PROBE IS NO LONGER THE PASSWORD CHECK, AND THE DIFFERENCE MATTERS (TD-06).
-                // Before the envelope, this query WAS the authentication: the password derived the
-                // database key directly, so "SQLCipher refused to read a page" was the only signal
-                // that the password had been wrong. Now UnwrapDataKey has already answered that
-                // question above, with an authentication tag rather than an inference.
-                //
-                // What the probe still proves is a different proposition: that the data key we just
-                // unwrapped actually opens THIS database file. Those can diverge -- a header paired
-                // with a database from another vault, a restored backup, a half-finished copy -- and
-                // that mismatch is not a wrong password and would otherwise only surface later, on
-                // some arbitrary first query deep inside the app. It is checked here, once, up front.
-                var dbContext = vaultScope.ServiceProvider.GetRequiredService<PineDbContext>();
-
-                bool canConnect = dbContext.Database.CanConnect();
-                if (!canConnect)
-                {
-                    throw new InvalidOperationException("Cannot connect to database.");
-                }
-
-                // CanConnect alone is too weak: it can succeed without ever decrypting a page. One
-                // real read forces SQLCipher to actually use the key.
-                _ = System.Linq.Queryable.Any(dbContext.Accounts);
-
-                // Schema phase, kept distinct from the auth phase above so its failures are not
-                // reported as a wrong password. Resolved only after Unlock, because the migrator
-                // depends on PineDbContext, which refuses to be built while the session is locked.
-                // No-op (and no backup) when the schema is already current.
-                var migrator = vaultScope.ServiceProvider.GetRequiredService<IVaultMigrator>();
-                await migrator.MigrateAsync(CancellationToken.None).ConfigureAwait(false);
+                // The database phase (TD-28). Everything this used to do inline -- the explicit
+                // DI scope, the probe that the unwrapped key really opens THIS database file, and
+                // the schema migration afterwards -- now lives behind IVaultDatabaseOpener, in the
+                // persistence adapter that owns those concepts. The auth phase above and the schema
+                // phase in there stay distinct: a schema failure arrives as VaultMigrationException
+                // and is caught below on its own terms, never as a wrong password.
+                await _vaultDatabaseOpener.OpenExistingAsync(CancellationToken.None).ConfigureAwait(false);
             });
 
             // Vault is open: apply this vault's persisted accent theme before showing the shell.
             // Read through the mediator, not through the Scoped ISettingRepository: the mediator is
             // a singleton that opens its own scope per request, so nothing scoped escapes into this
             // long-lived view model and the read always targets the vault unlocked right now.
-            var sender = _serviceProvider.GetService<ISender>();
-            if (sender != null)
-                await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(sender);
+            await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(_sender);
 
             // Transition to Dashboard
-            _navigationService.NavigateTo<ShellViewModel>();
+            _navigationService.NavigateTo(_viewModels.CreateShell());
         }
         catch (VaultMigrationException ex)
         {
@@ -164,30 +258,38 @@ public partial class UnlockViewModel : ObservableObject
             // auth failure would send the user to reset a password that is not the problem.
             // The path itself is deliberately not shown (TD-24), only where to look.
             _vaultSession.Lock();
-            StatusMessage = ex.BackupPath is null
-                ? "Your password was accepted, but Pine could not update the vault database. Your data was not modified. Please try again or reinstall the latest version of Pine."
-                : "Your password was accepted, but Pine could not update the vault database. An encrypted backup of your data was saved in the 'backups' folder inside your vault before the update was attempted, so nothing is lost.";
+            _message.Set(ex.BackupPath is null
+                ? "Unlock.Status.MigrationFailedNoBackup"
+                : "Unlock.Status.MigrationFailedBackupKept");
         }
         catch (VaultBackupFailedException)
         {
             // The safety backup could not be written, so the migration was never attempted.
             _vaultSession.Lock();
-            StatusMessage = "Pine could not create a safety backup before updating the vault database, so the update was cancelled and your data is unchanged. Free up disk space and try again.";
+            _message.Set("Unlock.Status.BackupFailed");
         }
         catch (UnsupportedVaultHeaderException)
         {
             _vaultSession.Lock();
-            StatusMessage = "This vault was created by a newer version of Pine and cannot be opened by this one. Please update Pine.";
+            _message.Set("Unlock.Status.NewerVersion");
         }
         catch (VaultHeaderCorruptException)
         {
             _vaultSession.Lock();
-            StatusMessage = "This vault's header file is damaged, so Pine cannot tell how to unlock it. Restore the vault folder from a backup.";
+            _message.Set("Unlock.Status.HeaderDamaged");
         }
         catch (VaultHeaderNotFoundException)
         {
             _vaultSession.Lock();
-            StatusMessage = "No Pine vault was found in this folder.";
+            _message.Set("Unlock.Status.NoVaultFound");
+        }
+        catch (VaultRekeyRecoveryException)
+        {
+            // The password was right but an interrupted password change could not be finished or
+            // undone; the vault was left as found. Not an authentication failure, and the password
+            // having been accepted is not an oracle (it is only reached after a successful unwrap).
+            _vaultSession.Lock();
+            _message.Set("Unlock.Status.RekeyRecoveryFailed");
         }
         catch (VaultKeyUnwrapException)
         {
@@ -199,7 +301,7 @@ public partial class UnlockViewModel : ObservableObject
             // Exception itself carries no detail for the same reason; this block must not undo that
             // by saying more than the generic path does.
             _vaultSession.Lock();
-            StatusMessage = "Incorrect password or corrupted vault.";
+            _message.Set("Unlock.Status.IncorrectPassword");
         }
         catch (LegacyVaultFormatException)
         {
@@ -208,21 +310,24 @@ public partial class UnlockViewModel : ObservableObject
             // the password would send the user to retype a password that was very possibly right.
             // The vault directory is deliberately not named (TD-24).
             _vaultSession.Lock();
-            StatusMessage = "This vault was created by a pre-release build of Pine, before encrypted key storage, and cannot be opened by this version. Please create a new vault.";
+            _message.Set("Unlock.Status.PreReleaseVault");
         }
         catch (VaultKeyWrapUnavailableException)
         {
             // The header is valid and another build could open it; this platform simply does not
-            // provide the AEAD the wrap needs (AesGcm.IsSupported is false on the browser runtime).
-            // Not an authentication failure, and must not be reported as one.
+            // provide the AEAD the wrap needs. Unreachable on the four shipped heads since the
+            // Phase 3 platform review deleted the Browser one -- kept for the same reason the
+            // cipher's own guard is kept: it is a statement about AesGcm.IsSupported, which is a
+            // runtime question on any target. Not an authentication failure, and must not be
+            // reported as one.
             _vaultSession.Lock();
-            StatusMessage = "This build of Pine cannot open vaults on this platform, because the encryption it requires is not available here. Your vault is undamaged -- open it with the desktop version of Pine.";
+            _message.Set("Unlock.Status.PlatformUnsupported");
         }
         catch (Exception)
         {
             // Genuine authentication failure: the actual exception is deliberately collapsed so it
             // cannot be used as an oracle. Usually a CryptographicException or SqliteException.
-            StatusMessage = "Incorrect password or corrupted vault.";
+            _message.Set("Unlock.Status.IncorrectPassword");
             
             // Re-lock the session just in case
             _vaultSession.Lock();
@@ -236,6 +341,24 @@ public partial class UnlockViewModel : ObservableObject
     [RelayCommand]
     private void GoBack()
     {
-        _navigationService.NavigateTo<VaultSelectionViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateVaultSelection());
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _message.Dispose();
+        _title.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

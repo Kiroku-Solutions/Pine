@@ -211,9 +211,12 @@ public sealed class AesGcmVaultFileCipher : IVaultFileCipher
 
         if (!AesGcm.IsSupported)
         {
-            // The Browser head reaches this (TD-88). Reporting it as "this platform has no AES-GCM"
-            // rather than as a corrupt file is the difference between a diagnosable build and a
-            // mystery.
+            // No head reaches this today: the Browser head did (TD-88) and was deleted in the
+            // Phase 3 platform review. The check stays because it is a claim about the PRIMITIVE,
+            // not about that head -- AesGcm.IsSupported is a runtime question on any target, and a
+            // future head is exactly the situation where the answer matters. Reporting it as "this
+            // platform has no AES-GCM" rather than as a corrupt file is the difference between a
+            // diagnosable build and a mystery.
             throw new VaultKeyWrapUnavailableException(VaultKeyWrapAlgorithms.Aes256Gcm);
         }
     }

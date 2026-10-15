@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Pine.Ui.Avalonia.Views.SyncPairingView"
+             x:DataType="vm:SyncPairingViewModel">
+
+    <!-- Post-audit plan item 3.1e: one device shows a code, the other types it, and both hold the same sync key. -->
+    <ScrollViewer>
+        <StackPanel Spacing="16">
+
+            <StackPanel>
+                <TextBlock Text="{loc:Tr SyncPairing.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+                <TextBlock Text="{loc:Tr SyncPairing.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Left"/>
+
+            <!-- What this vault holds now, and the fingerprint both devices must end up reading. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncPairing.Key.Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Text="{loc:Tr SyncPairing.Key.None}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource PineTextMuted}" IsVisible="{Binding HasNoKey}"/>
+                    <StackPanel Spacing="4" IsVisible="{Binding HasKey}">
+                        <TextBlock Text="{loc:Tr SyncPairing.Key.FingerprintLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                        <SelectableTextBlock Text="{Binding Fingerprint}" FontFamily="Consolas,Menlo,monospace" FontSize="18"
+                                             Foreground="{DynamicResource PineText}"
+                                             AutomationProperties.Name="{loc:Tr SyncPairing.Key.FingerprintLabel}"/>
+                        <TextBlock Text="{loc:Tr SyncPairing.Key.FingerprintHelp}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource PineTextMuted}"/>
+                    </StackPanel>
+                    <Button Content="{loc:Tr SyncPairing.Refresh}" Command="{Binding LoadCommand}"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="{loc:Tr SyncPairing.Refresh}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Half one: this device shows a code. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncPairing.Offer.Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Text="{loc:Tr SyncPairing.Offer.Explanation}" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}"/>
+
+                    <TextBlock Text="{loc:Tr SyncPairing.Offer.PathLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding OfferFilePath}"
+                             PlaceholderText="{loc:Tr SyncPairing.Offer.PathLabel}"
+                             AutomationProperties.Name="{loc:Tr SyncPairing.Offer.PathLabel}"
+                             IsEnabled="{Binding !IsCreatingOffer}"/>
+
+                    <Button Content="{loc:Tr SyncPairing.Offer.Create}" Classes="pine-accent"
+                            HorizontalAlignment="Left"
+                            Command="{Binding CreateOfferCommand}"
+                            IsEnabled="{Binding !IsCreatingOffer}"
+                            AutomationProperties.Name="{loc:Tr SyncPairing.Offer.Create}"/>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding HasCode}">
+                        <TextBlock Text="{loc:Tr SyncPairing.Offer.CodeLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                        <SelectableTextBlock Text="{Binding Code}" FontFamily="Consolas,Menlo,monospace" FontSize="20"
+                                             TextWrapping="Wrap" Foreground="{DynamicResource PineText}"
+                                             AutomationProperties.Name="{loc:Tr SyncPairing.Offer.CodeLabel}"/>
+                        <TextBlock Text="{Binding OfferExpiresText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{loc:Tr SyncPairing.Offer.Warning}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource PineTextMuted}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding OfferMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding OfferMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Half two: this device types the code. -->
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Tr SyncPairing.Accept.Title}" FontWeight="SemiBold" FontSize="16" Foreground="{DynamicResource PineText}"/>
+                    <TextBlock Text="{loc:Tr SyncPairing.Accept.Explanation}" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}"/>
+
+                    <TextBlock Text="{loc:Tr SyncPairing.Accept.PathLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding AcceptOfferFilePath}"
+                             PlaceholderText="{loc:Tr SyncPairing.Accept.PathLabel}"
+                             AutomationProperties.Name="{loc:Tr SyncPairing.Accept.PathLabel}"
+                             IsEnabled="{Binding !IsAccepting}"/>
+
+                    <TextBlock Text="{loc:Tr SyncPairing.Accept.CodeLabel}" FontSize="12" Foreground="{DynamicResource PineTextMuted}"/>
+                    <TextBox Text="{Binding TypedCode}"
+                             FontFamily="Consolas,Menlo,monospace"
+                             PlaceholderText="{loc:Tr SyncPairing.Accept.CodeWatermark}"
+                             AutomationProperties.Name="{loc:Tr SyncPairing.Accept.CodeLabel}"
+                             IsEnabled="{Binding !IsAccepting}"/>
+
+                    <Button Content="{loc:Tr SyncPairing.Accept.Pair}" Classes="pine-accent"
+                            HorizontalAlignment="Left"
+                            Command="{Binding AcceptOfferCommand}"
+                            IsEnabled="{Binding CanPressAccept}"
+                            AutomationProperties.Name="{loc:Tr SyncPairing.Accept.Pair}"/>
+
+                    <TextBlock Text="{Binding PairedMessage}" TextWrapping="Wrap" Foreground="{DynamicResource PineText}"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding HasPaired}"/>
+
+                    <TextBlock Text="{Binding AcceptMessage}" Foreground="{DynamicResource PineDanger}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding AcceptMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

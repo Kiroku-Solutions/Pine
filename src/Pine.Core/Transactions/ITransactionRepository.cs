@@ -10,7 +10,11 @@ public interface ITransactionRepository
     Task<Transaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IEnumerable<Transaction>> GetByAccountIdAsync(Guid accountId, CancellationToken cancellationToken = default);
     Task<IEnumerable<Transaction>> GetAllAsync(CancellationToken cancellationToken = default);
-    Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// One page of transactions, newest first. When <paramref name="includeVoided"/> is false, voided
+    /// rows are excluded from both the page and the total count, so paging stays dense (TD-71).
+    /// </summary>
+    Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default);
     Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -116,4 +120,29 @@ public interface ITransactionRepository
     Task<IReadOnlyCollection<string>> GetDistinctCurrenciesInForceAsync(
         Guid accountId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts, in the store, the transactions with at least one split whose category is non-empty (TD-133).
+    /// </summary>
+    /// <remarks>
+    /// The store trims only the space character, .NET trims every Unicode whitespace character, so
+    /// this count can exceed the exact one by rows whose category is only a tab or newline. It is a
+    /// cheap upper bound for gating; callers needing the exact figure re-check each row they page.
+    /// </remarks>
+    Task<int> CountPossiblyCategorisedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One page of the transactions that have at least one split with a non-empty category, in a
+    /// stable order (by identifier), so the whole set can be walked page by page (TD-133).
+    /// </summary>
+    /// <param name="skip">Rows to skip. Not negative.</param>
+    /// <param name="take">Page size. Positive.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<Transaction>> GetCategorisedPageAsync(int skip, int take, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every transaction that carries a link to another, with the state of the row it points at
+    /// (TD-124). Read-only; it exists so the shape of pre-existing transfer data can be measured.
+    /// </summary>
+    Task<IReadOnlyList<TransferLinkRow>> GetTransferLinkRowsAsync(CancellationToken cancellationToken = default);
 }

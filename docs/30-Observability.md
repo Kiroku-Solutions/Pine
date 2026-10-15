@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-30-OBSERVABILITY`                                                          |
 | Status           | Partially implemented — logging is real; metrics, traces and the DIB are not         |
-| Reconciled       | 2026-08-31 · The JSONL sink, the record shape, the level vocabulary, redaction, rotation and retention are implemented (TD-14, TD-15). §4.4 (log encryption), §5, §7, §8 and §9 are already annotated aspirational in place (TD-82, TD-84). |
+| Reconciled       | 2026-10-12 · §4.4: log encryption at rest is stated as the honest ceiling, not a gap — pre-unlock logs stay plaintext and strictly redacted, by value shape and by field name (TD-82). Earlier: 2026-08-31 · The JSONL sink, the record shape, the level vocabulary, redaction, rotation and retention are implemented (TD-14, TD-15). §4.4 (log encryption), §5, §7, §8 and §9 are already annotated aspirational in place (TD-82, TD-84). **2026-10-05 · ADR-0021 withdrew the plugin host; the DIB's plugin-inventory content in §8 and §9.2 is struck through, not carried forward as aspirational, because there is no plugin host left for it to ever describe (TD-84, `62-Post-Audit-Plan` §7 item 4.2). §9's remaining aspirational contents — sync run summaries, import summaries, the SLO budget summary and the signature — are unaffected and still wait on their own subsystems.** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -93,14 +93,26 @@ budgets → `39-Performance`; security event logging → `15-Security`
 - Logs are stored under `<profile>/logs/<date>.log.jsonl`.
 - Logs rotate by size (per default: 50 MB per file, 10 files).
 - Logs are encrypted at rest using the same key as the data store.
-  **Status: Aspirational (TD-82).** Not implemented, and deliberately so as of
+  **Status: Decided — this is the honest ceiling, not a gap (TD-82, decision of
+  2026-10-07).** Pre-unlock logs stay plaintext, because encrypting before a key
+  exists is structurally impossible, and are instead held to strict redaction of
+  personal data. Not implemented, and deliberately so as of
   iteration 11 of `60-Production-Readiness-Audit`. The records that matter most —
   startup, KDF failure, crash, every error before the vault is unlocked — exist
   precisely when no data-store key is available, so encrypting with it would
   cover the least important half of the log. The shipped posture is instead:
   redaction at the boundary (§4.3, enforced by `LogRedactor`) plus a location
-  outside the vault. Revisit as a post-unlock sink alongside the pre-unlock one,
-  or amend this clause.
+  outside the vault. The redaction is enforced at two levels, both tested
+  (`PreUnlockLogRedactionTests`): by VALUE SHAPE (paths, e-mail, amounts, long
+  digit runs) and by NAME, because a payee, an account name or a passphrase has
+  no shape — a structured field whose key names personal data (`Payee`,
+  `AccountName`, `Passphrase`, `Amount`, `Path`, …) is written as `<redacted>`,
+  a `decimal` is always `<amount>`, and `key=value` / `key: value` text with such
+  a key has its value replaced (an unquoted value runs to the next `word=` /
+  `word:` token, a `,` or `;`, or the end of the line, so
+  `payee=Starbucks Reserve Roastery` is masked whole). This clause is therefore reworded to what is
+  guaranteed: **logs are plaintext, outside the vault, and free of personal
+  data.** A post-unlock encrypted sink is not planned.
 - A log file older than the user's retention preference is deleted.
   **Status: Partially implemented.** Retention is by file COUNT (10 files, above),
   not by age, and there is no user preference to read: no such setting exists in
@@ -183,8 +195,11 @@ Requirements` §11 are:
   - SLO budget status (last 30 days). **Status: Aspirational.** §7's error
     budgets are not computed anywhere; there is no SLO subsystem to query.
   - Local metrics summary. **Status: Aspirational.** §5 is unimplemented.
-  - Plugin inventory. **Status: Aspirational.** Pine has no plugin host; the
-    plugin projects are empty (TD-37).
+  - ~~Plugin inventory.~~ **Removed, 2026-10-05 (ADR-0021; `62-Post-Audit-Plan`
+    §7 item 4.2; register: TD-84).** This was never merely unbuilt — ADR-0021
+    withdrew the plugin host Pine was going to run, so there is no inventory of
+    loaded plugins that will ever exist to show. Struck rather than left
+    "Aspirational," which would say it is still coming.
   - Sync run history. **Status: Aspirational.** Sync does not exist, and
     `60-Production-Readiness-Audit` §10 sequences it behind row versions,
     audit columns and stable natural keys.
@@ -197,15 +212,19 @@ Requirements` §11 are:
 
 ## 9. Diagnostic Information Bundle (DIB)
 
-**Status: Aspirational (TD-84).** No DIB is produced by any code path as of
-iteration 12 of `60-Production-Readiness-Audit`. Four of §9.2's contents have no
-subsystem behind them — sync run summaries, SLO budget summary and plugin
-inventory do not exist, and §9.3's signature has no signing key, no key
-distribution and no verification path. The two contents that *are* available
-today (application version and OS/runtime versions via `IRuntimeInfoProvider`,
-and the log tail via `ILogTailReader`) are surfaced directly on the Diagnostics
-panel instead. This clause is retained as the target shape, not as a description
-of the build.
+**Status: Aspirational (TD-84); re-scoped 2026-10-05 (`62-Post-Audit-Plan` §7
+item 4.2).** No DIB is produced by any code path as of iteration 12 of
+`60-Production-Readiness-Audit`. Of §9.2's original eight contents, three have
+no subsystem behind them yet but could in principle still be built — sync run
+summaries, import summaries and the SLO budget summary — and §9.3's signature
+has no signing key, no key distribution and no verification path. **A fourth,
+the plugin inventory, is not merely unbuilt: ADR-0021 removed the plugin host
+it would have described, so there is nothing for that bullet to ever report.**
+It is struck from §9.2 below rather than carried forward as aspirational. The
+two contents that *are* available today (application version and OS/runtime
+versions via `IRuntimeInfoProvider`, and the log tail via `ILogTailReader`) are
+surfaced directly on the Diagnostics panel instead. This clause is retained as
+the target shape, not as a description of the build.
 
 ### 9.1 Purpose
 
@@ -223,7 +242,10 @@ A DIB contains:
 - Last N sync run summaries (counts only; no payloads).
 - Last N import summaries (counts only).
 - SLO budget summary (last 30 days).
-- Plugin inventory (id, version, source, permissions, risk score).
+- ~~Plugin inventory (id, version, source, permissions, risk score).~~
+  **Removed, 2026-10-05 (ADR-0021; `62-Post-Audit-Plan` §7 item 4.2; register:
+  TD-84).** Pine compiles in everything it runs; there is no third-party
+  plugin and nothing loaded from outside the application to inventory.
 - Reproduction hints (e.g. "the user reproduced by importing
   a CSV with format X").
 

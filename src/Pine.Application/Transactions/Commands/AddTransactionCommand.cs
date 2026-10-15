@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using MediatR;
 using Pine.Application.Common;
 using Pine.Core.Accounts;
+using Pine.Core.Attachments;
+using Pine.Core.Rules;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
 
@@ -36,6 +38,25 @@ public record AddTransactionLineItemCommand(
     LineItemKind Kind = LineItemKind.Product
 );
 
+/// <summary>
+/// The document a transaction is being recorded from, to be kept with it as evidence.
+/// </summary>
+/// <param name="FileName">A display name for the file.</param>
+/// <param name="ContentType">The IANA media type of <paramref name="Content"/>.</param>
+/// <param name="Content">The bytes. Hashed by the domain; never trusted from here.</param>
+/// <remarks>
+/// IT RIDES ON THE TRANSACTION COMMAND RATHER THAN FOLLOWING IT, AND THAT IS THE DESIGN. A second
+/// request after this one would be a second database transaction, so a crash between them leaves a
+/// transaction whose receipt was lost or a receipt for a transaction that was rolled back. Carrying
+/// the bytes here means <c>TransactionBehavior</c> commits the ledger row and its evidence
+/// together or neither -- which is the property that made storing the blob in <c>pine.db</c> the
+/// right call in the first place.
+/// </remarks>
+public sealed record AddTransactionAttachmentCommand(
+    string FileName,
+    string ContentType,
+    byte[] Content);
+
 public record AddTransactionCommand(
     Guid AccountId,
     DateTimeOffset Date,
@@ -45,19 +66,30 @@ public record AddTransactionCommand(
     string Notes,
     string Category,
     System.Collections.Generic.IReadOnlyList<AddTransactionLineItemCommand>? LineItems = null,
-    string? ImportKey = null
+    string? ImportKey = null,
+    AddTransactionAttachmentCommand? Attachment = null
 ) : IRequest<Guid>, ITransactionalRequest;
 
 public class AddTransactionCommandHandler : IRequestHandler<AddTransactionCommand, Guid>
 {
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly IAttachmentRepository _attachmentRepository;
+    private readonly IRuleRepository _ruleRepository;
     private readonly TimeProvider _timeProvider;
 
-    public AddTransactionCommandHandler(ITransactionRepository transactionRepository, IAccountRepository accountRepository, TimeProvider timeProvider)
+    public AddTransactionCommandHandler(
+        ITransactionRepository transactionRepository,
+        IAccountRepository accountRepository,
+        IAttachmentRepository attachmentRepository,
+        IRuleRepository ruleRepository,
+        TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(ruleRepository);
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
+        _attachmentRepository = attachmentRepository;
+        _ruleRepository = ruleRepository;
         _timeProvider = timeProvider;
     }
 
@@ -65,7 +97,13 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
     {
         var account = await _accountRepository.GetByIdAsync(request.AccountId, cancellationToken);
         if (account == null)
-            throw new ArgumentException("Account not found.", nameof(request));
+            throw new RequestValidationException(new[]
+            {
+                new ValidationError(
+                    nameof(AddTransactionCommand.AccountId),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
+            });
 
         // Note: For income the amount is positive, for expense it should be negative.
         // We'll trust the UI/command passes the signed decimal.
@@ -81,8 +119,28 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
             _timeProvider, 
             request.Notes);
 
+        // The category, and the one place a rule may speak here.
+        //
+        // A RULE ONLY FILLS A BLANK; IT NEVER OVERRULES THE USER. On this path the category arrives
+        // from a person who typed it into a box, and an instruction they wrote last week must not
+        // silently rewrite what they typed thirty seconds ago. So the rules run only when the field
+        // is empty -- which is also the case the receipt scanner leaves when OCR found no category.
+        // The same precedence holds as on the import path: a matching rule wins outright and the
+        // classifier is not consulted.
+        var category = request.Category;
+        var appliedRule = (RuleMatch?)null;
+
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            appliedRule = RuleEvaluator.FirstMatch(
+                await _ruleRepository.GetEnabledAsync(cancellationToken),
+                new RuleInput(request.Payee ?? string.Empty, request.Notes ?? string.Empty, request.Amount));
+
+            category = appliedRule?.Category ?? category;
+        }
+
         // Add a single split for the whole amount to the specified category
-        transaction.AddSplit(moneyAmount, request.Category, request.Notes);
+        transaction.AddSplit(moneyAmount, category, appliedRule?.Title ?? request.Notes ?? string.Empty);
 
         // Same mechanism as the file importer (ImportTransactionsCommand): the receipt scanner is
         // just another source of an import key, and a transaction is meant to carry at most one.
@@ -110,6 +168,23 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
         }
 
         await _transactionRepository.SaveAsync(transaction, cancellationToken);
+
+        // The receipt, if one came with the request. AFTER the transaction is staged, because the
+        // attachment carries a foreign key to it; both are staged on the same DbContext and flushed
+        // by the same unit of work, so the ordering here is about the insert order SQLite sees, not
+        // about two separate writes. Attachment.Create computes the hash and enforces the size
+        // limit -- neither is the caller's to decide (10-Domain-Model §7).
+        if (request.Attachment is { } attachment)
+        {
+            await _attachmentRepository.AddAsync(
+                Pine.Core.Attachments.Attachment.Create(
+                    transaction.Id,
+                    attachment.FileName,
+                    attachment.ContentType,
+                    attachment.Content,
+                    _timeProvider),
+                cancellationToken);
+        }
         
         // Also update account balance. In a real CQRS system, this might be handled 
         // by listening to the TransactionRegisteredEvent, but for simplicity we do it here.
@@ -204,29 +279,75 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
             {
                 new ValidationError(
                     nameof(AddTransactionCommand.AccountId),
-                    $"Account {request.AccountId} was not found."),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
             };
         }
 
+        // TD-62: a zero amount is rejected here, not discovered when the handler reaches
+        // Account.Deposit/Withdraw ("... must be strictly positive."). Negative is a valid expense --
+        // the handler withdraws its absolute value -- so ONLY zero is refused. The test runs over Money
+        // so that an amount which rounds to zero in its currency (0.004 USD) is refused too, since
+        // that is what the domain would see. With an unusable currency there is no scale to round
+        // to, so the raw value is tested and the currency error is reported alongside it.
         if (!CurrencyCodeText.TryNormalise(request.Currency, out var normalised))
         {
-            return new[]
+            var invalidCurrency = new List<ValidationError>();
+            if (request.Amount == 0m)
             {
-                new ValidationError(
-                    nameof(AddTransactionCommand.Currency),
-                    $"'{request.Currency}' is not a valid ISO 4217 currency code."),
-            };
+                invalidCurrency.Add(AmountZeroError());
+            }
+
+            invalidCurrency.Add(new ValidationError(
+                nameof(AddTransactionCommand.Currency),
+                $"'{request.Currency}' is not a valid ISO 4217 currency code.",
+                ValidationText.CurrencyCodeInvalid(request.Currency)));
+            return invalidCurrency;
+        }
+
+        var errors = new List<ValidationError>();
+        if (new Money(request.Amount, new CurrencyCode(normalised)).Amount == 0m)
+        {
+            errors.Add(AmountZeroError());
         }
 
         var accountCurrency = account.Balance.Currency.Value;
         if (!string.Equals(normalised, accountCurrency, StringComparison.Ordinal))
         {
-            return new[]
+            errors.Add(new ValidationError(
+                nameof(AddTransactionCommand.Currency),
+                $"Transaction currency {normalised} does not match account currency {accountCurrency}.",
+                ValidationText.CurrencyMismatch(normalised, accountCurrency)));
+        }
+
+        // TD-95: a line quantity is strictly positive and has at most LineQuantity.Scale decimals. A
+        // person's over-precise entry is REJECTED here with a message, never silently rounded; the
+        // receipt scanner rounds what OCR recognised before it builds the command (LineQuantity).
+        if (request.LineItems is { Count: > 0 })
+        {
+            for (var i = 0; i < request.LineItems.Count; i++)
             {
-                new ValidationError(
-                    nameof(AddTransactionCommand.Currency),
-                    $"Transaction currency {normalised} does not match account currency {accountCurrency}."),
-            };
+                var quantity = request.LineItems[i].Quantity;
+                if (quantity <= 0m)
+                {
+                    errors.Add(new ValidationError(
+                        $"{nameof(AddTransactionCommand.LineItems)}[{i}].{nameof(AddTransactionLineItemCommand.Quantity)}",
+                        $"Line {i + 1}: the quantity must be greater than zero.",
+                        ValidationText.LineItemQuantityNotPositive(i + 1)));
+                }
+                else if (LineQuantity.HasExcessScale(quantity))
+                {
+                    errors.Add(new ValidationError(
+                        $"{nameof(AddTransactionCommand.LineItems)}[{i}].{nameof(AddTransactionLineItemCommand.Quantity)}",
+                        $"Line {i + 1}: the quantity cannot have more than {LineQuantity.Scale} decimal places.",
+                        ValidationText.LineItemQuantityScale(i + 1, LineQuantity.Scale)));
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return errors;
         }
 
         // TD-19, at the layer that can phrase it for a human. The aggregate enforces the same rule at
@@ -242,24 +363,30 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
         if (request.LineItems is { Count: > 0 })
         {
             var currency = new CurrencyCode(normalised);
-            var lineItemSum = request.LineItems.Aggregate(
-                Money.Zero(currency),
-                (running, lineItem) => running + Money.FromRounded(lineItem.TotalPrice, currency));
-            var total = Money.FromRounded(request.Amount, currency);
 
-            if (lineItemSum != total)
+            // Shared with UpdateTransactionCommandValidator's split-sum check via AmountSumCheck
+            // (TD-68) -- the arithmetic lives once, and each validator only supplies its own field
+            // name and user-facing message.
+            if (!AmountSumCheck.Matches(request.LineItems.Select(li => li.TotalPrice), request.Amount, currency, out var lineItemSum, out var total))
             {
+                var difference = total - lineItemSum;
                 return new[]
                 {
                     new ValidationError(
                         nameof(AddTransactionCommand.LineItems),
                         $"The line items add up to {lineItemSum.Amount} but the transaction total is " +
-                        $"{total.Amount}. The {(total - lineItemSum).Amount} difference must be recorded " +
-                        "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed)."),
+                        $"{total.Amount}. The {difference.Amount} difference must be recorded " +
+                        "as an adjustment line (tax, tip, discount, deposit, rounding or unattributed).",
+                        ValidationText.LineItemsDoNotAddUp(lineItemSum.Amount, total.Amount, difference.Amount)),
                 };
             }
         }
 
         return Array.Empty<ValidationError>();
     }
+
+    private static ValidationError AmountZeroError() => new(
+        nameof(AddTransactionCommand.Amount),
+        "Transaction amount cannot be zero.",
+        ValidationText.TransactionAmountZero());
 }

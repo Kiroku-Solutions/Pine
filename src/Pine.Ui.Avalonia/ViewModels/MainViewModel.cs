@@ -3,27 +3,46 @@ using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.Extensions.DependencyInjection;
 using Pine.Application.Security;
+using Pine.Core.Common;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.Diagnostics;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class MainViewModel : ObservableObject, INavigationService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IViewModelFactory _viewModels;
     private readonly IVaultSession _vaultSession;
     private readonly IVaultAutoLockService _autoLockService;
+    private readonly MediatR.ISender? _sender;
+
+    /// <summary>
+    /// The vault registry this screen consults at startup to decide between the picker and
+    /// first-run setup.
+    /// </summary>
+    /// <remarks>
+    /// INJECTED, NOT RESOLVED (TD-28). This used to be pulled out of the container inside
+    /// <c>InitializeAsync</c>, which is the last thing that kept a service locator in this type
+    /// once navigation stopped needing one. <c>VaultManager</c> is a singleton on every head, so
+    /// taking it in the constructor is the same object at the same time -- it is only the reach
+    /// that has gone.
+    /// </remarks>
+    private readonly IVaultManager _vaultManager;
 
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
     public MainViewModel(
-        IServiceProvider serviceProvider,
+        IViewModelFactory viewModels,
+        IVaultManager vaultManager,
         IVaultSession vaultSession,
-        IVaultAutoLockService autoLockService)
+        IVaultAutoLockService autoLockService,
+        MediatR.ISender? sender = null)
     {
-        _serviceProvider = serviceProvider;
+        _sender = sender;
+        _viewModels = viewModels;
+        _vaultManager = vaultManager;
         _vaultSession = vaultSession;
         _autoLockService = autoLockService;
 
@@ -58,107 +77,192 @@ public partial class MainViewModel : ObservableObject, INavigationService
             return;
         }
 
-        // A lock that fires while the shell isn't even showing (the defensive re-lock in the
-        // catch blocks of UnlockViewModel/SetupViewModel, for instance) is already on the right
-        // screen; forcing a fresh navigation there would just interrupt whatever the user is
-        // doing to recover.
-        if (CurrentPage is not ShellViewModel shell)
+        // A lock that fires while a PRE-VAULT screen is showing (the defensive re-lock in the catch
+        // blocks of UnlockViewModel/SetupViewModel, for instance) is already on the right screen;
+        // forcing a fresh navigation there would just interrupt whatever the user is doing to
+        // recover. Nothing showing at all (before the first navigation) has nothing to clear.
+        //
+        // THIS IS AN ALLOW-LIST OF SCREENS TO LEAVE ALONE, NOT A TEST FOR THE SHELL (TD-121). It
+        // used to read `if (CurrentPage is not ShellViewModel shell) return;` -- clear the screen
+        // only if it is the shell. That was right exactly as long as nothing holding vault data ever
+        // reached the window by another route, and something did: every page inside the shell was
+        // handed the window's navigator, so leaving the receipt page put the ledger in the window,
+        // and a lock then left it on screen with the key gone. TD-121 closed that route. This
+        // inversion closes the class: a page this handler does not recognise is cleared, so the
+        // next route to the window fails safe rather than open.
+        if (CurrentPage is null or VaultSelectionViewModel or SetupViewModel or UnlockViewModel)
         {
             return;
         }
 
         // The key is gone; nothing that was showing decrypted vault data may survive it. Dropping
         // the shell's own inner page (its Dashboard/Transactions/etc. child, which is what
-        // actually holds the loaded data) matters most on the composition roots where
-        // ShellViewModel is registered as a Singleton rather than Transient (see the DI notes in
-        // Pine.Ui.Macos/Web/Android/Ios Program.cs) -- there, nothing else would ever drop that
-        // reference for us.
-        shell.CurrentPage = null!;
+        // actually holds the loaded data) matters because it is the shell's page, not the shell,
+        // that holds the loaded data.
+        //
+        // TD-34: this assignment now does more than drop a reference. It runs the shell's own
+        // OnCurrentPageChanging hook, which unregisters that page from the messenger and disposes
+        // it if it holds anything -- so a lock that happens while the live scanner is running also
+        // puts the camera down. That is why it stays an assignment to the property and is not
+        // "optimised" into a field write. Any other page is retired by the NavigateTo below, whose
+        // own changing hook deactivates and disposes it the same way.
+        if (CurrentPage is ShellViewModel shell)
+        {
+            shell.CurrentPage = null!;
+        }
 
         var message = reason switch
         {
             VaultLockReason.IdleTimeout =>
-                $"Pine locked your vault after {FormatIdleTimeout(_autoLockService.IdleTimeout)} of inactivity.",
+                new UserFacingMessage("Shell.Lock.IdleTimeout", DescribeIdleTimeout(_autoLockService.IdleTimeout)),
             VaultLockReason.ApplicationSuspended =>
-                "Pine locked your vault because the app was moved to the background.",
+                new UserFacingMessage("Shell.Lock.ApplicationSuspended"),
             // UserRequested: the manual lock button, or a lock the user just triggered themselves.
             // Told plainly rather than left silent so this screen never reads as a crash.
-            _ => "Your vault was locked.",
+            _ => new UserFacingMessage("Shell.Lock.UserRequested"),
         };
 
-        NavigateTo<VaultSelectionViewModel>(vm => vm.LockNotice = message);
+        var picker = _viewModels.CreateVaultSelection();
+        picker.ShowLockNotice(message);
+        NavigateTo(picker);
     }
 
-    private static string FormatIdleTimeout(TimeSpan timeout)
+    // A nested message rather than a formatted string, so the duration is worded -- and pluralised --
+    // by the same language as the sentence around it, and again after a language change (TD-139).
+    private static UserFacingMessage DescribeIdleTimeout(TimeSpan timeout)
     {
         var minutes = (int)Math.Round(timeout.TotalMinutes);
 
-        return minutes >= 1
-            ? $"{minutes} minute{(minutes == 1 ? string.Empty : "s")}"
-            : $"{(int)Math.Round(timeout.TotalSeconds)} seconds";
+        if (minutes >= 1)
+        {
+            return new UserFacingMessage(minutes == 1 ? "Shell.Lock.DurationMinutesOne" : "Shell.Lock.DurationMinutesMany", minutes);
+        }
+
+        var seconds = (int)Math.Round(timeout.TotalSeconds);
+        return new UserFacingMessage(seconds == 1 ? "Shell.Lock.DurationSecondsOne" : "Shell.Lock.DurationSecondsMany", seconds);
     }
 
     /// <summary>
-    /// Synchronous entry point for the app lifetime. Kicks off the async
-    /// bootstrap without an <c>async void</c> so exceptions stay observable.
+    /// Synchronous entry point for the app lifetime, called once by <c>App</c>.
     /// </summary>
-    public void Initialize() => _ = InitializeAsync();
+    /// <remarks>
+    /// THE OLD COMMENT HERE HAD IT EXACTLY BACKWARDS, AND THE CORRECTION IS THE POINT (TD-35). It
+    /// read "kicks off the async bootstrap without an <c>async void</c> so exceptions stay
+    /// observable". A discarded <see cref="Task"/> is the LESS observable of the two: an
+    /// <c>async void</c> at least rethrows on the captured synchronisation context, where a global
+    /// handler could see it, whereas a discarded faulted task is collected in silence and this
+    /// process installs no <c>UnobservedTaskException</c> handler at all. It is routed through
+    /// <see cref="ObservedTask"/> now, which is what the old comment claimed the discard was doing.
+    /// </remarks>
+    public void Initialize() =>
+        ObservedTask.Run(
+            InitializeAsync,
+            null,
+            "app-bootstrap",
+            new UserFacingMessage("Shell.Failure.Bootstrap"));
 
     private async Task InitializeAsync()
     {
         try
         {
-            var vaultManager = _serviceProvider.GetRequiredService<Pine.Application.Security.VaultManager>();
-            var vaults = await vaultManager.GetVaultsAsync();
+            var vaults = await _vaultManager.GetVaultsAsync();
 
             if (vaults.Count > 0)
             {
-                NavigateTo<VaultSelectionViewModel>();
+                NavigateTo(_viewModels.CreateVaultSelection());
             }
             else
             {
-                NavigateTo<SetupViewModel>();
+                NavigateTo(_viewModels.CreateSetup());
             }
         }
         catch (Exception)
         {
             // Fail safe: fall back to first-run setup rather than crashing startup.
-            NavigateTo<SetupViewModel>();
+            NavigateTo(_viewModels.CreateSetup());
         }
     }
 
-    public void NavigateTo<TViewModel>() where TViewModel : ObservableObject
+    /// <inheritdoc />
+    public void NavigateTo(ObservableObject page)
     {
-        CurrentPage = _serviceProvider.GetRequiredService<TViewModel>();
-        ArmAutoLockIfEnteringShell<TViewModel>();
-    }
+        ArgumentNullException.ThrowIfNull(page);
 
-    public void NavigateTo<TViewModel>(Action<TViewModel> initialize) where TViewModel : ObservableObject
-    {
-        var vm = _serviceProvider.GetRequiredService<TViewModel>();
-        initialize?.Invoke(vm);
-        CurrentPage = vm;
-        ArmAutoLockIfEnteringShell<TViewModel>();
+        CurrentPage = page;
+        ArmAutoLockIfEnteringShell(page);
     }
 
     /// <summary>
-    /// TD-11: the shell is the only screen that can show decrypted vault data, so arriving there is
-    /// exactly the moment the idle watchdog needs to be watching. <c>typeof(TViewModel)</c> is
-    /// checked against the generic argument rather than the resolved instance so this works
-    /// identically for both <c>NavigateTo</c> overloads without inspecting <see cref="CurrentPage"/>.
+    /// Retires the page being replaced: unregisters it from the messenger and disposes it (TD-34).
     /// </summary>
     /// <remarks>
-    /// Arming here rather than in every caller of <c>NavigateTo&lt;ShellViewModel&gt;()</c>
+    /// <para>
+    /// WHY THE ONE-PARAMETER HOOK. CommunityToolkit.Mvvm 8.4.2 generates both
+    /// <c>OnCurrentPageChanging(value)</c> and <c>OnCurrentPageChanging(oldValue, newValue)</c> for
+    /// an <c>[ObservableProperty]</c> partial property, but the generated setter invokes the second
+    /// one as <c>OnCurrentPageChanging(default, value)</c>: the "old value" it hands you is always
+    /// <see langword="null"/>. The one-parameter hook runs before the backing field is assigned, so
+    /// <see cref="CurrentPage"/> read here IS the outgoing page.
+    /// </para>
+    /// <para>
+    /// This sits on the property rather than inside <see cref="NavigateTo"/> because the vault-lock
+    /// path assigns <c>shell.CurrentPage</c> directly and never comes through <c>NavigateTo</c>; a
+    /// retirement step that lived in the navigator would simply be skipped there.
+    /// </para>
+    /// </remarks>
+    partial void OnCurrentPageChanging(ObservableObject value) => PageActivation.Deactivate(CurrentPage);
+
+    /// <summary>
+    /// Registers the incoming page with the messenger before <see cref="NavigateTo"/> returns
+    /// (TD-34). See <c>PageActivation</c> for why the timing cannot be relaxed to view load.
+    /// </summary>
+    partial void OnCurrentPageChanged(ObservableObject value) => PageActivation.Activate(value);
+
+    /// <summary>
+    /// TD-11: the shell is the only screen that can show decrypted vault data, so arriving there is
+    /// exactly the moment the idle watchdog needs to be watching. The check is on the runtime
+    /// instance now (TD-28): there is one <c>NavigateTo</c> and it is handed the page itself, so
+    /// there is no generic argument left to test and no reason to want one.
+    /// </summary>
+    /// <remarks>
+    /// Arming here rather than in every caller that navigates into the shell
     /// (<c>UnlockViewModel</c>, <c>SetupViewModel</c>) means neither of those needs to know the
     /// watchdog exists. Calling <see cref="IVaultAutoLockService.StartMonitoring"/> on an
     /// already-armed watchdog is a documented no-op, so this is safe to run on every navigation,
     /// not only the first one into the shell.
     /// </remarks>
-    private void ArmAutoLockIfEnteringShell<TViewModel>()
+    private void ArmAutoLockIfEnteringShell(ObservableObject page)
     {
-        if (typeof(TViewModel) == typeof(ShellViewModel))
+        if (page is ShellViewModel)
         {
             _autoLockService.StartMonitoring();
+            _ = ApplyStoredAutoLockTimeoutAsync();
+        }
+    }
+
+    /// <summary>
+    /// TD-119: the idle timeout is an encrypted in-vault Setting, readable only once the vault is
+    /// open, so it is applied on arrival in the shell. A missing or invalid Setting leaves the
+    /// configured value in force; a failure here must never disturb navigation.
+    /// </summary>
+    private async Task ApplyStoredAutoLockTimeoutAsync()
+    {
+        if (_sender is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var preferences = await _sender.Send(new Pine.Application.Settings.GetUserPreferencesQuery());
+            if (preferences is not null)
+            {
+                _autoLockService.SetIdleTimeout(preferences.AutoLockIdleTimeout);
+            }
+        }
+        catch (Exception)
+        {
+            // Keep the configured timeout.
         }
     }
 }

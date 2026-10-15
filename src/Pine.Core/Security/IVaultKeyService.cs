@@ -79,7 +79,28 @@ public interface IVaultKeyService
     /// <exception cref="VaultKeyWrapUnavailableException">The platform does not provide the wrap algorithm.</exception>
     /// <exception cref="VaultKeyUnwrapException"><paramref name="currentPassword"/> is wrong, or the header has been tampered with.</exception>
     VaultHeader ChangePassword(string currentPassword, string newPassword, VaultHeader header);
+
+    /// <summary>
+    /// Verifies <paramref name="currentPassword"/>, mints a FRESH data key and returns everything a
+    /// write-ahead rekey needs (TD-86): the new header (new key under the new password), the new key
+    /// wrapped under the CURRENT password, and the old key wrapped under the NEW password. With either
+    /// password a recovery can therefore reach both keys. The caller owns, and must zero, both keys.
+    /// </summary>
+    /// <exception cref="VaultKeyUnwrapException">The current password does not unwrap the header.</exception>
+    VaultKeyRotation BeginDataKeyRotation(string currentPassword, string newPassword, VaultHeader header);
+
+    /// <summary>Unwraps a rotation wrap produced by <see cref="BeginDataKeyRotation"/> with the password that matches <paramref name="header"/>.</summary>
+    /// <exception cref="VaultKeyUnwrapException">Wrong password or tampered wrap.</exception>
+    byte[] UnwrapRotationKey(string password, VaultHeader header, VaultKeyWrap wrap);
 }
+
+/// <summary>Material for a write-ahead data-key rotation (TD-86). The caller zeroes both keys.</summary>
+public sealed record VaultKeyRotation(
+    VaultHeader NewHeader,
+    VaultKeyWrap NewKeyUnderCurrentPassword,
+    VaultKeyWrap CurrentKeyUnderNewPassword,
+    byte[] OldDataKey,
+    byte[] NewDataKey);
 
 /// <summary>A newly created vault's header together with the plaintext data key it wraps.</summary>
 /// <remarks>

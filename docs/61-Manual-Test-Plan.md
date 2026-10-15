@@ -9,7 +9,7 @@
 | Created | 2026-08-27 · updated 2026-08-28 (items 8 and 9) |
 | Related | `60-Production-Readiness-Audit.md`, `50-Test-Scenarios.md`, `53-Release-Checklist.md` |
 | Status | Non-normative — manual test procedures |
-| Reconciled | 2026-08-31 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. |
+| Reconciled | 2026-09-14 · Procedures for the behaviour no automated test reaches. Written, and largely not yet executed - which the audit records at each iteration. Sections 13A-13C were added by post-audit plan items 1.3-1.5 and 2.1, 13E by item 2.5, 13F by item 3.0 and 13G by item 3.1a, which also rewrote §13.6 and §13.8's expected sentences: the figure and the date in them now follow the display language, where §13.8 used to say they deliberately did not. None of these has been run on a screen yet, and §3.2 is still owed a CI run on the server. |
 
 > **How to read the markers.**
 > **[M]** — do this by hand; no automated test covers it.
@@ -149,18 +149,26 @@ open half of TD-10.
 
 ---
 
-## 3. CI — item 3, TD-07 / TD-08 (regressed)
+## 3. CI — item 3, TD-07 / TD-08 (armed 2026-09-10)
 
-**3.1 [G] CI is manual-only.**
+**3.1 [G] CI is armed.**
 Open `.github/workflows/dotnet-ci.yml`.
-*Expected:* `on: workflow_dispatch:` and nothing else. The `push` / `pull_request` triggers were
-removed in `79c5364` to save compute minutes, so the regression net exists but is never armed.
-This item was ticked in iteration 1 and regressed afterwards — see §12.12 of the audit.
+*Expected:* the `on:` block carries `pull_request: branches: [main]`, `push: branches: [main]` and
+`workflow_dispatch:`. The first two were removed in `79c5364` and restored by plan item 0.1; a
+regression here is not a matter of taste, and `BuildHygieneTests.CiIsArmedOnPullRequestAndPushToMain`
+fails the suite if either goes missing.
 
-**3.2 [M] Dispatch it once by hand.**
-Run the workflow manually from the Actions tab.
-*Expected:* unknown — **it has never executed.** Whatever happens is new information worth
-recording in the audit.
+**3.2 [M] Open a pull request that must fail, and watch it be rejected.**
+Branch from `main`, add a test that asserts something false, push, open a pull request into `main`.
+*Expected:* the `test` job goes red without anyone starting it, and the pull request shows the
+failure. This is the step that distinguishes an armed workflow from a YAML diff — the trigger block
+can be right while the run never happens (a disabled workflow, a fork's default permissions, a
+branch-protection rule that was never configured). `package` is expected NOT to appear on the pull
+request: it is held back by an `if:`, deliberately.
+
+**3.3 [M] Then check the same commit on `main`.**
+After the pull request merges, open the Actions tab.
+*Expected:* a second run, from the `push` trigger, this time including `package`.
 
 ---
 
@@ -851,11 +859,14 @@ The defect this replaced showed a number that was not a quantity of anything.
 
 ### Known gaps — confirm, do not report
 
-- **The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
-  hardcoded to zero. The *formatting* of those figures is what §13.4 checks; the figures themselves
-  are not yet real.
-- **The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
-  identifier, not a name.
+- ~~**The budgets progress bar never moves and never flags an exceeded budget** (TD-99). Spend is
+  hardcoded to zero.~~ Spend is measured from the ledger now. ~~**What remains:** no budget can be
+  created from the screen (TD-99), so on a fresh vault the list is empty.~~ A budget can be created since
+  plan item 3.0 (TD-152) — §13F. It still cannot be edited or deleted.
+- ~~**The budgets screen shows category names like `Category 3f2a`** (TD-99) — a fragment of an
+  identifier, not a name.~~ Fixed twice over: first by showing the category's name, then — since
+  plan item 2.3 (TD-132) — by making the category the budget's own label. There is no colour dot
+  beside it any more, deliberately.
 - **The difference shown before an account is selected** may differ slightly from the one shown after
   (TD-100). Only the second decides whether a save is allowed.
 
@@ -866,7 +877,14 @@ Scan a receipt whose date is printed as an ambiguous `dd/MM` vs `MM/dd` string, 
 
 **Expect:** the date field is filled with the reading your machine's locale implies — day-first on
 `es-EC` or `en-GB`, month-first on `en-US` — and a warning row appears beneath it reading *"This could
-also be 3 May 2026. Check the receipt."* with a **Use this date instead** button.
+also be Sunday, May 3, 2026. Check the receipt."* (English, US conventions) or *"También podría ser el
+domingo, 3 de mayo de 2026. Revisa el recibo."* (Spanish) with a **Use this date instead** button. The
+weekday is there on purpose: this is the one sentence whose job is to make you compare two dates.
+
+**Switch the display language in Settings and come back** while the warning is showing, or before
+scanning. **Expect:** the sentence, including the month name, is in the language you chose — not the
+one your operating system uses. Until plan item 2.5 an English screen on a Spanish machine read *"This
+could also be 3 mayo 2026"* (TD-21).
 
 **Then press the button.** The two readings swap. The warning stays on screen, and pressing the button
 again swaps them back.
@@ -906,7 +924,9 @@ A well-lit, flat receipt should show **no hints at all**.
 Scan a receipt and save it. Then scan the same receipt again, against the same account.
 
 **Expect:** on pressing Save, the transaction is **not** written. A warning appears reading *"This looks
-like a duplicate of 24.50 to ACME on 2026-03-05. Save again to add it anyway."*
+like a duplicate of 24.50 USD to ACME on Thursday, March 5, 2026. Save again to add it anyway."* in
+English, or *"Parece un duplicado de 24,50 USD a ACME del jueves, 5 de marzo de 2026. Guarda de nuevo
+para agregarlo de todos modos."* in Spanish.
 
 **Press Save a second time without changing anything.** The transaction **is** written and you are
 taken to the transaction list.
@@ -922,9 +942,11 @@ warning — it is genuinely a different transaction now.
 **And the reverse.** Get the warning, change the date, change it *back*, then press Save. Expect the
 warning again, because you are once more about to write the duplicate.
 
-Finally, confirm the amount in the warning is shown as `24.50` and not `24,50`, whatever your machine's
-locale — the figure is deliberately not localised, so that a support conversation and this document
-describe the same string.
+Finally, **switch the display language while the warning is showing.** Expect the whole sentence to
+change, the figure included: `24.50` in English, `24,50` in Spanish. **This reverses what this step used
+to say.** The figure was deliberately left in invariant notation while nothing else on the screen was
+localised; once the total above it followed the language (plan item 2.5, TD-21), an invariant `24.50`
+beside a `24,50` total would have been the one figure on the screen in a different notation.
 
 ### Known gaps for §13.6–13.8 — confirm, do not report
 
@@ -935,6 +957,355 @@ describe the same string.
 - **The duplicate check compares merchant, calendar date, signed amount, currency and account.** Two
   genuinely different purchases identical in all five will warn. That is the intended trade: a false
   warning is visible and dismissible, a false "not a duplicate" double-counts money.
+
+## 13A. The dashboard shows only what it can measure — post-audit plan item 1.3
+
+**Read this before running it.** The tiles are rendered by an automated headless test, at their real
+size, and it reads back what is visible — but a headless window is not a screen, has no real fonts,
+and no user's time zone. These rows are the part only a person can do. (Lettered rather than numbered
+so the sections after it keep the numbers other documents cite.)
+
+### 13A.1 Five tiles, none of them empty furniture
+
+1. Open a vault with at least two accounts, one budget, and a transaction this month.
+2. **Expected:** exactly five tiles — Total balance, This month, Accounts, Budgets, Recent transactions.
+   **No tile reads "No data yet".** There is no Calendar, Goals, Investments, Charts or AI Suggestions.
+3. **Expected:** every tile heading is in the language chosen in Settings. Switch the language there
+   and come back: the headings, the greeting, and the budget rows' "Not known" all follow.
+
+### 13A.2 Two currencies stay two figures
+
+1. Give one account a USD balance and another a EUR balance.
+2. **Expected:** Total balance shows two figures, one per currency, and never their sum. The sentence
+   under them says it is a sum of balances, and that a debt lowers it only if entered as negative.
+
+### 13A.3 "This month" is your month — the case the automated suite found late
+
+1. Set the machine's time zone to one west of UTC (for example Ecuador, UTC−5).
+2. Near the end of a month, after 19:00 local time, add an expense dated today.
+3. **Expected:** it counts in *this* month's "Out". Before the fix, the tile had already moved on to
+   UTC's next month and showed an almost empty one.
+4. ~~**Known and registered, not a failure of this row:** the *budgets* screen still measures the UTC month
+   (TD-149), so for a few hours at a month boundary the two can disagree.~~ Since plan item 3.0 the budgets
+   screen measures the same local month; after 19:00 on the last day of a month the two must agree (§13F.3).
+
+### 13A.4 An import updates the tiles
+
+1. With the dashboard open, import a statement containing this month's transactions.
+2. **Expected:** when the wizard closes, "This month", "Recent transactions", "Accounts" and "Total
+   balance" already show the imported rows, without leaving the dashboard. Before the fix nothing
+   changed until you navigated away and back.
+
+### 13A.5 The Scan Receipt button — post-audit plan item 1.4
+
+1. On the Windows head, press **Scan Receipt** in the dashboard's header.
+2. **Expected:** the receipt page opens *beside the sidebar*, and the sidebar's "Scan Receipt" entry
+   lights. The shell does not disappear. Until this item the button did nothing at all.
+3. On a macOS, Android or iOS build: **expected:** there is no Scan Receipt button in the header, exactly
+   as there is none in the sidebar.
+
+## 13B. The live scanner uses your default camera — post-audit plan item 1.5
+
+**Read this before running it.** No automated test opens a camera; everything below is the only check
+there is. The picker that used to sit here offered "Camera 0" to "Camera 3" whatever was attached.
+
+1. Open the live scanner on the Windows head.
+2. **Expected:** there is no camera picker anywhere on the screen.
+3. Press **Start Camera**. **Expected:** your default camera opens and the feed appears.
+4. With the camera already in use by another application, press Start again. **Expected:** the sentence
+   names your *default camera* and says to check that nothing else is using it — not the old bare
+   "Failed to open camera."
+5. **Known limitation, deliberate:** with two cameras attached you cannot choose the second one any
+   more. The camera seam now exists (plan item 2.5, TD-120), but its only implementation is OpenCV's,
+   which cannot enumerate devices, so choosing a camera is still TD-153.
+6. **Since plan item 2.5 the camera is opened behind `ICameraSource`.** Repeat steps 3 and 4, then press
+   **Stop**, and confirm the camera's indicator light goes off; start again and confirm it comes back.
+   The fake-camera tests prove the scanner releases what it opens; only this proves the real device is
+   released by the real implementation.
+
+## 13C. Pine lets go of a backup after you restore from it — post-audit plan item 2.1
+
+**Read this before running it.** This one is automated (`ARestoreLeavesTheBackupFileDeletable`),
+and it is here because the automated version proves the file handle is released, not that the
+*application* behaves well when it is. Restoring opens the backup to verify it first, and Pine used
+to keep that file open for the rest of the session — so it could not delete it when tidying up old
+backups. A restore Pine REFUSED was enough to cause it, which is the case to run.
+
+1. Create at least two backups from **Settings**, so there is something to tidy up.
+2. Attempt a restore from a file Pine will refuse — the quickest is a backup from a *different*
+   vault, or any file renamed to `.db`. **Expected:** a sentence saying nothing was restored and
+   your vault is unchanged.
+3. Now restore from a real backup of this vault. **Expected:** it succeeds and the vault locks.
+4. Unlock, and delete a backup from the backups folder in Explorer while Pine is still running.
+   **Expected:** the file deletes. Before this fix Windows refused, saying the file was in use by
+   another process, and that process was Pine.
+5. **What a failure here means:** the connection pool is holding a file the application has
+   finished with. Report it against TD-140, which is the row that class of defect belongs to.
+
+## 13D. The release artefact says whether it is signed — post-audit plan item 2.2
+
+**Read this before running it.** Signing is automated end to end
+(`packaging/selftest-signing.sh`, thirteen cases, run by CI in the `test` job on the windows leg,
+on every pull request) and this is here for the part no script can check: whether a person looking
+at what the pipeline produced can tell signed from unsigned without reading any of it. It needs a
+Windows machine with a Windows SDK.
+
+1. Run `bash packaging/selftest-signing.sh`. **Expected:** thirteen passes, nothing failed, in
+   under a minute. It creates its own throwaway certificate and deletes it afterwards; it needs no
+   network.
+2. Run `bash packaging/package.sh --out artifacts` with no signing variables set. **Expected:** a
+   block of `!! UNSIGNED BUILD` warnings naming the consequence, and a successful build.
+3. Open `artifacts/*.release.json`. **Expected:** `"signed": false`, `"signature": null`, and a
+   `signing_note` that says no certificate was configured.
+4. Run it again with `--require-signature`. **Expected:** it refuses and exits non-zero
+   IMMEDIATELY — within a second, before anything is built. If it publishes first and refuses ten
+   minutes later, the fail-fast check at the top of `packaging/package.sh` has been removed.
+5. **On CI, after a push to `main`:** open the Actions run and look at the `package` job's uploaded
+   artefact. **Expected:** it is named `pine-win-x64-UNSIGNED`, and the job log carries a warning
+   naming TD-108. If it is ever named `pine-win-x64` while the manifest says `"signed": false`, the
+   two statements that are supposed to agree have stopped agreeing — report it against TD-108.
+6. **What a failure here means:** an artefact that does not say what it is. That is the whole of
+   TD-108's impact — a user cannot tell this build from one a third party modified — and a
+   mislabelled one is worse than an honestly unsigned one.
+
+---
+
+## 13E. Configuration, and figures in the language you chose — post-audit plan item 2.5
+
+**Read this before running it.** The behaviour is unit-tested against in-memory configuration and
+explicit cultures. What no test does is run the real heads against a real file and a real operating
+system locale.
+
+### 13E.1 A misspelled configuration key stops Pine and says which one — TD-117
+
+1. Copy `packaging/appsettings.example.json` to Pine's data directory as `appsettings.json`
+   (`%LOCALAPPDATA%\Pine\appsettings.json` on Windows). **Expected:** Pine starts normally — the example
+   is every setting at its default.
+2. Change `"CategorisationConfidenceThreshold"` to `"ConfidenceThreshold"` and start Pine. **Expected:**
+   Pine does not start; the crash log names `Pine:Ai:ConfidenceThreshold` and asks *"Did you mean
+   Pine:Ai:CategorisationConfidenceThreshold?"* Before this item Pine started and ignored the key.
+3. Put the key back and set the environment variable `PINE_Ui__TransactionsPageSize=10` (the `Pine__`
+   is missing). **Expected:** refused, and the message spells out `PINE_Pine__Ui__<setting>`.
+4. Remove that variable and set `PINE_SIGNTOOL=C:\anything.exe`. **Expected:** Pine starts. The packaging
+   scripts share the prefix, and a machine that has built a release must still run Pine.
+5. Delete `appsettings.json` afterwards.
+
+### 13E.2 Figures and dates follow the display language — TD-21
+
+On a machine whose regional format is **not** Spanish (English – United States is the clearest):
+
+1. Open a vault with a transaction of more than a thousand, and choose **Español** in Settings.
+2. **Expected, on the transactions list:** amounts read `1.500,00 USD` and dates `3 de mayo de 2026`.
+   Before this item they read `1,500.00 USD` and `May 03, 2026` under Spanish headings.
+3. **Expected, on the same Settings page, without leaving it:** the backup list's dates and sizes change
+   notation the moment the language changes.
+4. Open **Add transaction**. **Expected:** the amount box takes and shows a decimal comma.
+5. Switch back to English. **Expected:** `1,500.00 USD` and `May 3, 2026`.
+
+On a machine set to **Spanish (Ecuador)** with the display language **Español**: dates and figures follow
+Ecuador's own conventions. With the display language **English**, they follow the United States', not
+Ecuador's — a sentence in English does not carry Spanish month names.
+
+### Known gaps for §13E — confirm, do not report
+
+- **A page other than Settings keeps the notation it was drawn in** until you navigate to it again. Only
+  the Settings page is visible when the language changes, which is why only it re-renders.
+- **The import wizard's own mapping text, the confidence hints and a few labels are still English**
+  (TD-150).
+
+## 13F. Creating a budget — post-audit plan item 3.0
+
+**Read this before running it.** The form, the validator and the window are tested, including a rendered
+view in a headless window. What no test does is type into the real controls: the date pickers, the limit
+box being cleared, and a screen reader reading the fields.
+
+### 13F.1 The first budget
+
+1. On a vault with no budgets, open **Budgets**. **Expected:** a sentence saying you have no budgets yet,
+   and a **New budget** button. Before this item: an empty page and no way to add one.
+2. On a vault with **no accounts**, press **New budget**. **Expected:** the form does not open; a sentence
+   says to create an account first.
+3. With a USD account, press **New budget**. **Expected:** Category, Limit, Currency (only your accounts'
+   currencies, each once), Period (Monthly, Weekly, Yearly, Custom dates — **no "every two weeks"**). No
+   date pickers until you choose Custom dates.
+4. Enter *Groceries*, 200, Monthly, **Create budget**. **Expected:** the form closes and a *Groceries —
+   Monthly* row appears, measuring this month's Groceries spending.
+5. Try the same again. **Expected:** refused — there is already a budget for 'Groceries' in USD over that
+   period — and the form stays open with what you typed.
+
+### 13F.2 Refusals, and the limit box
+
+1. Leave Category empty and press Create. **Expected:** a sentence asking you to name the category.
+2. Type a limit, then **clear the box** and press Create. **Expected:** refused as not greater than zero —
+   not saved with the number you deleted.
+3. Choose Custom dates with only a start date. **Expected:** a sentence asking for both dates.
+4. Switch the language to Español with a refusal showing. **Expected:** the sentence, the row's period and
+   the period list all change language, and your chosen period stays chosen.
+
+### 13F.3 The month is yours — TD-149
+
+1. On a machine in a time zone west of Greenwich (Ecuador, UTC−5), on the **last day of a month after
+   19:00**, add an expense in a category with a monthly budget.
+2. **Expected:** it counts in **this** month's budget, and the dashboard's "This month" agrees. Before this
+   item the budget had already moved to UTC's next month.
+3. Create a **Custom dates** budget for this month, first to last day. **Expected:** it shows the same spend
+   as the monthly budget for the same category.
+
+### 13F.4 Accessibility
+
+With a screen reader, tab through the form. **Expected:** each field announces its label, and a refusal is
+announced when it appears.
+
+### Known gaps for §13F — confirm, do not report
+
+- **A budget cannot be edited or deleted** from the screen.
+- **"Every two weeks" budgets created elsewhere still show "Not known"** without explicit dates.
+
+## 13G. Every write is stamped for a future merge — post-audit plan item 3.1a
+
+**Read this before running it.** Nothing here is visible in the application; it is checked with a file
+browser and by opening an existing vault. The stamping itself is covered by integration tests against real
+encrypted vaults.
+
+1. On a machine that has run an older build, open an **existing vault**. **Expected:** it opens and every
+   screen shows the same data. The upgrade adds columns and two tables and changes no value.
+2. **Expected:** a file `device-id` exists in Pine's data directory (`%LOCALAPPDATA%\Pine` on Windows) holding
+   one GUID, and it is the same after restarting Pine.
+3. Replace its contents with `nonsense` and start Pine, then open a vault. **Expected:** the vault does not
+   open and the log names the file; Pine does **not** write a new id over it. **What the screen says in this
+   case has not been observed** — the refusal is tested below the UI only; record what appears. Delete the file: **expected** the
+   vault opens without restarting Pine, and a new id is written.
+4. Delete a transaction. **Expected:** it is gone from every screen, exactly as before this item.
+
+### Known gaps for §13G — confirm, do not report
+
+- **Restoring an older backup rewinds the vault's logical clock** (TD-144). Harmless until sync exists.
+- **Tombstones are never pruned** (TD-145).
+
+## 13H. Screens built and never rendered, and two gaps no test can reach — TD-111, TD-92 / TD-93
+
+**Read this before running it.** Every screen in 13H.3 to 13H.7 is covered by view-model and headless tests,
+and none of them has been seen on a real window. 13H.1 and 13H.2 cannot be automated at all: the first needs
+the packaged app and a firewall, the second needs a real dispatcher painting real frames.
+
+### 13H.1 The packaged app under a firewall deny-all — TD-111
+
+`NetworkEgressTests` is a text scan of Pine's own source and an in-process check of the container; it cannot
+see a socket opened by PaddleInference, ONNX Runtime or OpenCV, or by a child process. This is the only check
+of that claim for the shipped binaries.
+
+1. Build the packaged app (`scripts/package.sh`) and install it on a machine you can firewall. Do not run it
+   from `dotnet run`: the point is the files a user would receive.
+2. Add Windows Firewall rules that block **all outbound** traffic for the installed `Pine.exe` and for every
+   executable beside it (or run it in a Windows Sandbox with networking disabled). Confirm the block works:
+   a browser on the same profile cannot load a page.
+3. Create a vault, add an account and a transaction, scan a receipt photo, import a CSV, open Rules, Budgets
+   and Settings, lock and unlock. **Expected:** every one of these works exactly as it does with the network
+   on. No dialog, no spinner that never ends, no error sentence that mentions the network.
+4. While doing step 3, watch outbound attempts (Windows Firewall log with dropped packets enabled, or
+   `netstat -ano` filtered to Pine's process id and its children). **Expected:** **no dropped outbound
+   packet** from Pine or any process it started. A dropped packet is a failure of ADR-0012's claim; record the
+   remote address and which step caused it.
+5. Receipt scanning in step 3 is the row that matters most: the native OCR and detection libraries are the
+   code the automated tests cannot see.
+
+### 13H.2 Receipt-photo decode stays off the UI thread — TD-92 / TD-93 gap
+
+TD-92 moved the CPU-bound halves of the receipt pipeline onto the thread pool. TD-93, a test that notices the
+UI thread blocking, does not exist; this row is the only check that the move still holds.
+
+1. Open **Receipt Scanner**, choose **Select Image...** and pick a **large** phone photo (4000x3000 or more).
+2. Immediately drag the window across the screen and move the pointer over its buttons.
+   **Expected:** the window follows the pointer and keeps redrawing for the whole decode; the title bar never
+   greys out and Windows never adds "(Not Responding)".
+3. Watch the progress bar. **Expected:** it animates continuously. A frozen bar means the UI thread is blocked
+   again.
+4. Repeat with a second large photo straight after the first. **Expected:** the same; the second does not
+   queue behind a frozen window.
+5. This repeats 11.1 and 11.2 on purpose: run it after **any** change to `ReceiptDetector`,
+   `OpenCvImageProcessor` or `PaddleOcrEngine`.
+
+### 13H.3 Settings: the diagnostic bundle
+
+1. Open **Settings** and find **Diagnostic bundle**. **Expected:** a sentence saying it holds redacted logs and
+   basic app information and no transactions, accounts, amounts, passwords or file paths, and an **Export...**
+   button.
+2. Press **Export...**. **Expected:** a save dialog titled *Save diagnostic bundle*. Choose a place and save.
+   **Expected:** *The diagnostic bundle was saved.*
+3. Open the zip. **Expected:** log text and app information only. Search it for one of your payee names, an
+   account name, a path under `C:\Users\` and your vault's name. **Expected:** none appears.
+4. Press **Export...** and cancel the dialog. **Expected:** no file is written and no failure sentence shows.
+5. Save to a folder you cannot write to (a read-only folder). **Expected:** *The diagnostic bundle could not be
+   created. No file was written.* and no partial zip left behind.
+
+### 13H.4 Attach file, on a transaction
+
+1. In **Transactions**, open a transaction and press **Attach file**. **Expected:** a file dialog titled
+   *Choose a file to attach*.
+2. Choose a photo. **Expected:** it attaches and can be viewed through the receipt control.
+3. Choose a PDF. **Expected:** it attaches; viewing it says it is a document and cannot be previewed here.
+4. Choose an empty file. **Expected:** refused, saying the file is empty. Cancel the dialog. **Expected:** nothing
+   changes and no failure sentence shows.
+5. With a screen reader, tab to the button. **Expected:** it announces *Attach a receipt, contract or photo to
+   this transaction*.
+
+### 13H.5 Rules: the multi-condition form
+
+1. Open **Rules**. **Expected:** an empty state sentence if you have none, and the **New rule** form.
+2. Fill Name, Category to apply, and one condition (Field, Comparison, Value). Press **Add condition** and
+   fill a second one. **Expected:** the two read joined by "and"; **Remove** on either removes only that one.
+3. Press **Create rule**. **Expected:** the rule appears in **Your rules** with both conditions, and its
+   on/off switch works.
+4. With the form half-filled and an empty value, press **Create rule**. **Expected:** refused with a sentence;
+   what you typed stays.
+5. Switch the language to Español with the form open. **Expected:** labels, operators and the "and" change.
+
+### 13H.6 Rules: preview and apply to existing transactions
+
+1. With at least one enabled rule and a few uncategorised transactions that match it, press **Preview rules on
+   existing transactions**. **Expected:** a list of changes, each reading *old -> new category*, and a summary
+   saying how many would be categorised and that nothing has changed yet.
+2. Check the transactions page. **Expected:** nothing has changed yet.
+3. Press **Discard preview**. **Expected:** the list goes away and nothing changes.
+4. Preview again and press **Apply to these transactions**. **Expected:** *Done. N transaction(s) were
+   categorised.* and the transactions page shows those categories.
+5. **Expected:** a transaction that already had a category is **not** in the preview and is not overwritten.
+6. With no match, press the preview button. **Expected:** *No existing uncategorised transaction matches an
+   enabled rule.*
+
+### 13H.7 The currency picker
+
+1. Open **Create account**. **Expected:** a Currency box with the placeholder *Search code or name*.
+2. Type `eur`, then `peso`, then `zzz`. **Expected:** the list narrows by code or name; `zzz` shows nothing to
+   choose and the account cannot be created with it.
+3. Pick one with the keyboard only (arrows and Enter), then with the mouse. **Expected:** both choose it, and
+   the account is created in that currency.
+4. With a screen reader, **Expected:** the box is announced as *Currency*.
+
+### 13H.8 Windows sign-in unlock — [G] built, never rendered
+
+**[G]** Settings has a toggle "Unlock with Windows sign-in", shown only on the Windows head. The unlock screen
+shows an "Unlock with Windows sign-in" button only when this vault has a wrap and the machine can use it. The
+data key comes from the unlocked session, and a key is accepted only after the SQLCipher database opens with it.
+
+1. Unlock with the password, open Settings and turn the toggle on. **Expected:** the toggle stays on and no error
+   appears. The vault folder now contains `pine.platform-unlock.json`.
+2. Lock the app. **Expected:** the unlock screen shows the Windows sign-in button next to the password box.
+3. Click it. **Expected:** the shell opens without the password. Lock again and enter the password.
+   **Expected:** the password path still works.
+4. Copy `pine.platform-unlock.json` into another vault's folder and open that vault. **Expected:** either no
+   button or, if clicked, the screen stays as it was with no message.
+5. Sign in as a different Windows user and try the button. **Expected:** the same silent fall-back.
+6. Turn the toggle off. **Expected:** the file is deleted and the button no longer appears.
+
+Known gaps: the wrap is not removed on a password change or a vault restore, so a stale wrap only fails
+confirmation; DPAPI is bound to the Windows logon and gives no per-unlock Windows Hello prompt.
+
+### Known gaps for §13H — confirm, do not report
+
+- **The firewall run covers the build you install, on the day you run it.** A later dependency update needs it
+  again.
+- **13H.2 is a stopwatch and an eye, not a measurement.** TD-93 (a UI-thread blocking test) is still open.
 
 ## 14. What a failure means
 

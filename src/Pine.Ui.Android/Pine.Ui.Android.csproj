@@ -1,12 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- TD-129: no lock file; the workload this head needs is absent on a bare runner (NETSDK1147). -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-android</TargetFramework>
     <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
-    <ApplicationId>com.CompanyName.TempApp</ApplicationId>
+    <!--
+      REAL APPLICATION IDENTITY, iteration 31 (TD-109, first half).
+
+      This read `com.CompanyName.TempApp` with `android:label="TempApp"` beside it: the identity
+      `dotnet new avalonia.app` writes, still here after every other head had been named. An
+      application id is not cosmetic on Android: it is the package's primary key on the device
+      and in the store, it cannot be changed after a first publish without shipping a different
+      application, and `CompanyName.TempApp` is a name thousands of unrelated templates share.
+
+      The reverse-DNS root is `org.pine`, matching the download host `29-Deployment` already
+      names (`https://pine.org/dl/...`). ApplicationDisplayVersion tracks VersionPrefix in
+      Directory.Build.props rather than restating `1.0`, which was a version this project has
+      never had.
+    -->
+    <ApplicationId>org.pine.app</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
@@ -18,9 +34,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia.Android" Version="12.0.5" />
-    <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Include="Avalonia.Android" />
+    <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>

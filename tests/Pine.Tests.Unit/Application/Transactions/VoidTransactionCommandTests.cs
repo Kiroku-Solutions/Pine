@@ -419,19 +419,52 @@ public class VoidTransactionCommandTests
             return account;
         }
 
+        /// <summary>
+        /// A transaction on one account, optionally pointing at another transaction.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// WHY <paramref name="linkedTo"/> IS APPLIED BY REFLECTION RATHER THAN BY A FACTORY
+        /// ARGUMENT (TD-26). <c>Transaction.Create</c> no longer accepts a link at all, and
+        /// <c>Transaction.CreateTransferPair</c> — the one production path that produces one — always
+        /// links BOTH directions between two distinct accounts with equal and opposite amounts. That
+        /// is exactly the point of it, and it is also why it cannot build what these tests need: the
+        /// void handler has to be exercised against a link that points at nothing, a link whose far
+        /// leg is already void, and a pair whose amounts do not mirror each other. Those are shapes
+        /// only pre-TD-26 data can have, in the same sense as
+        /// <see cref="AddForeignCurrencyTransaction"/> below — and they are the rows most likely to
+        /// need correcting, so the handler's behaviour on them is worth pinning.
+        /// </para>
+        /// <para>
+        /// The reflection is therefore deliberate and confined to this fixture: it is how a test
+        /// materialises legacy state, not a way for production code to write a one-way link. That the
+        /// application assembly contains no such call is asserted separately, by
+        /// <c>TheOnlyTypeInTheApplicationLayer_ThatUsesReflection_IsTheValidatorRegistration</c> in <c>ArchitectureTests</c>.
+        /// </para>
+        /// </remarks>
         public Transaction AddTransaction(
             decimal amount,
             TransactionType type,
             Account? account = null,
             Guid? linkedTo = null)
-            => Add(Transaction.Create(
+        {
+            var transaction = Transaction.Create(
                 (account ?? Account).Id,
                 DateTimeOffset.UtcNow.AddDays(-1),
                 "Payee",
                 new Money(amount, Usd),
                 type,
-                Clock,
-                linkedTransactionId: linkedTo));
+                Clock);
+
+            if (linkedTo is not null)
+            {
+                typeof(Transaction)
+                    .GetProperty(nameof(Transaction.LinkedTransactionId))!
+                    .SetValue(transaction, linkedTo);
+            }
+
+            return Add(transaction);
+        }
 
         /// <summary>
         /// A transaction whose currency does not match its account's — a shape no current write path

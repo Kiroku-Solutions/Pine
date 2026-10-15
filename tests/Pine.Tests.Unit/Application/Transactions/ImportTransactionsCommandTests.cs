@@ -6,10 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using NSubstitute;
+using Pine.Application.Common;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
-using Pine.Core.Categories;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
@@ -97,8 +97,8 @@ public class ImportTransactionsCommandTests
         var skipped = result.Rows[0];
         skipped.Disposition.Should().Be(ImportRowDisposition.SkippedAlreadyInAccount);
         skipped.WasImported.Should().BeFalse();
-        skipped.Reason.Should().NotBeNullOrWhiteSpace();
-        skipped.Reason.Should().Contain(Scenario.AccountName,
+        skipped.Reason.Key.Should().Be(ImportReviewText.SkippedAlreadyInAccount("x").Key);
+        skipped.Reason.Arguments.Should().Contain(Scenario.AccountName,
             "the explanation must name the account the row is already in, not merely say 'duplicate'");
 
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.Imported);
@@ -130,8 +130,7 @@ public class ImportTransactionsCommandTests
 
         result.Rows[0].Disposition.Should().Be(ImportRowDisposition.Imported);
         result.Rows[1].Disposition.Should().Be(ImportRowDisposition.SkippedDuplicateInFile);
-        result.Rows[1].Reason.Should().NotBeNullOrWhiteSpace();
-        result.Rows[1].Reason.Should().Contain("earlier row",
+        result.Rows[1].Reason.Key.Should().Be(ImportReviewText.SkippedDuplicateInFile().Key,
             "the user needs to know the twin is in the same file, not already in the account");
 
         result.Imported.Should().ContainSingle().Which.Should().BeSameAs(first);
@@ -159,7 +158,7 @@ public class ImportTransactionsCommandTests
         var row = result.Rows.Should().ContainSingle().Subject;
         row.Disposition.Should().Be(ImportRowDisposition.ImportedWithoutKeyCheck);
         row.WasImported.Should().BeTrue("an unverifiable row is still the user's data");
-        row.Reason.Should().Contain("no import key");
+        row.Reason.Key.Should().Be(ImportReviewText.ImportedWithoutKeyCheck().Key);
 
         result.Imported.Should().ContainSingle().Which.Should().BeSameAs(keyless);
         result.Skipped.Should().BeEmpty("a saved row is not a skipped row, whatever its key");
@@ -242,6 +241,29 @@ public class ImportTransactionsCommandTests
         await scenario.Transactions.DidNotReceive().SaveAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// TD-64: a row that dedup would skip is still checked for currency, so a bad file is rejected on
+    /// re-import exactly as it was on the first import.
+    /// </summary>
+    [Fact]
+    public async Task Handle_RejectsAForeignCurrencyRow_EvenWhenItIsASkippedDuplicate()
+    {
+        var date = new DateTimeOffset(2026, 3, 4, 9, 0, 0, TimeSpan.Zero);
+        var euro = Transaction.Create(
+            Guid.NewGuid(), date, "Bakery", new Money(-3m, new CurrencyCode("EUR")), TransactionType.Expense, TimeProvider.System);
+        euro.AssignImportKey("already-there");
+
+        var scenario = new Scenario(euro);
+        scenario.AccountAlreadyHolds("already-there");
+
+        var act = () => scenario.RunAsync();
+
+        var thrown = await act.Should().ThrowAsync<RequestValidationException>();
+        thrown.Which.Errors.Should().ContainSingle()
+            .Which.UserFacingMessage.Key.Should().Be("Validation.ImportedCurrencyMismatch");
+        await scenario.Transactions.DidNotReceive().SaveAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>());
+    }
+
     private static Money Usd(decimal amount) => new(amount, new CurrencyCode(AccountCurrency));
 
     /// <summary>
@@ -292,10 +314,11 @@ public class ImportTransactionsCommandTests
 
             var ai = Substitute.For<IAIProvider>();
             ai.CategorizeTransactionAsync(Arg.Any<string>(), Arg.Any<decimal>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(new CategorisationResult(Guid.Empty, 0d)));
+                .Returns(Task.FromResult(new CategorisationResult(string.Empty, 0d)));
 
             Handler = new ImportTransactionsCommandHandler(
-                Transactions, Accounts, TimeProvider.System, ai, Substitute.For<ICategoryRepository>());
+                Transactions, Accounts, TimeProvider.System, ai, NoRules(),
+                Microsoft.Extensions.Options.Options.Create(new Pine.Core.Configuration.PineAiOptions()));
 
             Command = new ImportTransactionsCommand(
                 AccountId,
@@ -337,5 +360,23 @@ public class ImportTransactionsCommandTests
 
         public Task<ImportTransactionsResult> RunAsync()
             => Handler.Handle(Command, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A rule repository with nothing in it.
+    /// </summary>
+    /// <remarks>
+    /// These tests are about the CLASSIFIER's behaviour, so the rule engine must be silent: an
+    /// empty rule set means <c>RuleEvaluator</c> returns no match and the handler falls through to
+    /// the AI path, which is exactly what they assert on. Rules taking precedence over the model is
+    /// asserted in <c>ImportRuleCategorisationTests</c>.
+    /// </remarks>
+    private static Pine.Core.Rules.IRuleRepository NoRules()
+    {
+        var rules = NSubstitute.Substitute.For<Pine.Core.Rules.IRuleRepository>();
+        rules.GetEnabledAsync(Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult<IReadOnlyList<Pine.Core.Rules.Rule>>(
+                System.Array.Empty<Pine.Core.Rules.Rule>()));
+        return rules;
     }
 }

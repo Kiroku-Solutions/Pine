@@ -49,7 +49,9 @@ public class ReceiptAdjustmentExtractionTests
 
     private static ReceiptExtractionResult Extract(params IEnumerable<OcrWord>[] lines)
     {
-        using var extractor = new HeuristicFieldExtractor();
+        // Not `using` any more: the extractor stopped being IDisposable when its unused
+        // InferenceSession was deleted (TD-36). It holds nothing that needs releasing.
+        var extractor = new HeuristicFieldExtractor();
         return extractor.ExtractFields(lines.SelectMany(l => l).ToList());
     }
 
@@ -75,6 +77,29 @@ public class ReceiptAdjustmentExtractionTests
         // And the whole set now accounts for the printed total, which is what makes the receipt
         // saveable without the user having to attribute anything by hand.
         result.LineItems!.Sum(li => li.TotalPrice).Should().Be(121.00m);
+    }
+
+    [Fact]
+    public void LineItemConfidences_StayIndexAlignedWithLineItems_IncludingAdjustmentRows()
+    {
+        // TD-101: the confidences used to be built before adjustment rows were appended, so a taxed
+        // receipt had fewer confidences than lines and any positional consumer read the wrong band.
+        var lowTaxLine = Line(100, "IVA", "21.00").Select(w => { w.Confidence = 0.30f; return w; });
+        var result = Extract(
+            Line(0, "SUPERMERCADO", "CENTRAL"),
+            Line(20, "DESCRIPCION", "CANT", "PRECIO"),
+            Line(40, "PAN", "2", "25.00", "50.00"),
+            Line(60, "LECHE", "1", "50.00", "50.00"),
+            Line(80, "SUBTOTAL", "100.00"),
+            lowTaxLine,
+            Line(120, "TOTAL", "121.00"));
+
+        result.Confidence.LineItems.Should().HaveCount(result.LineItems!.Count);
+
+        var taxIndex = result.LineItems!.ToList().FindIndex(li => li.Kind == LineItemKind.Tax);
+        taxIndex.Should().BeGreaterThan(0);
+        result.Confidence.LineItems[taxIndex].Band.Should().Be(ConfidenceBand.Low);
+        result.Confidence.LineItems[0].Band.Should().Be(ConfidenceBand.High);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -92,9 +92,107 @@ public class VoidAndOpeningBalanceMigrationTests
     /// </summary>
     private const string ConcurrencyTokenSchemaVersion = "20260830200447_AddConcurrencyTokens";
 
+    /// <summary>
+    /// TD-37's migration: the three dead entities' tables, dropped. Listed for the same reason as
+    /// every constant above it.
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a fourth time, and this one needed only a short check. The migration drops
+    /// <c>Attachments</c>, <c>Rules</c> and <c>Tags</c>. This class plants nothing in those tables
+    /// and reads nothing from them, and there were no foreign keys in either direction — the columns
+    /// that looked like references were unconstrained <c>Guid</c>s — so nothing it does touch is
+    /// orphaned or rewritten. The premise of this class is unaffected: the void columns and the
+    /// opening balance are still added by the migration under test, and still left NULL.
+    /// </remarks>
+    private const string DropDeadEntitiesSchemaVersion = "20260908040007_DropAttachmentRuleAndTagTables";
+
+    /// <summary>
+    /// The self-referencing foreign key on <c>Categories.ParentCategoryId</c> (TD-32).
+    /// </summary>
+    /// <remarks>
+    /// The tripwire fired a fifth time, and this firing was worth more than a name change. SQLite
+    /// cannot add a foreign key to an existing table, so EF REBUILDS <c>Categories</c>: new table,
+    /// copy, drop, rename. The rebuild is generated from the model, and the model does not carry the
+    /// <c>defaultValue</c> that <c>AddConcurrencyTokens</c> gave <c>Categories.Version</c> — so the
+    /// rebuilt column is still <c>NOT NULL</c> but no longer has a default behind it. Existing rows
+    /// are copied with their values and are unaffected; what breaks is an INSERT that omits the
+    /// column and relied on the default, which is why <c>LegacyMoneyToleranceTests.InsertCategory</c>
+    /// had to start naming <c>Version</c> explicitly. Production never inserts a category by raw SQL
+    /// — <c>PineDbContext.BumpConcurrencyTokens</c> assigns the token — so no shipped path depends on
+    /// that default.
+    /// </remarks>
+    private const string CategoryParentForeignKeySchemaVersion = "20260908152526_AddCategoryParentForeignKey";
+
+    /// <summary>The head of the migration list: the Phase 3 attachment table.</summary>
+    private const string AttachmentsSchemaVersion = "20260909155223_AddTransactionAttachments";
+
+    /// <summary>The Phase 3 rule engine.</summary>
+    private const string RulesSchemaVersion = "20260909165749_AddCategorisationRules";
+
+    /// <summary>The row audit columns that gate sync.</summary>
+    private const string RowAuditSchemaVersion = "20260909210212_AddRowAuditColumns";
+
+    /// <summary>TD-132: the budget's category becomes a label (post-audit plan item 2.3).</summary>
+    private const string DropCategoryAggregateSchemaVersion = "20260913025137_DropCategoryAggregate";
+
+    /// <summary>The head of the migration list: the now-unreferenced <c>Categories</c> table goes.</summary>
+    private const string DropCategoriesTableSchemaVersion = "20260913030000_DropCategoriesTable";
+
+    /// <summary>The head of the migration list: the sync clock, device column and tombstones (TD-144, TD-145).</summary>
+    private const string SyncBookkeepingSchemaVersion = "20260914224324_AddSyncClockDeviceAndTombstones";
+
+    /// <summary>The head of the migration list: the merge's peer, conflict and alias tables (item 3.1b, TD-144).</summary>
+    private const string SyncMergeStateSchemaVersion = "20260918145142_AddSyncMergeState";
+
+    /// <summary>The head of the migration list: a sync conflict can be marked resolved (item 3.1c).</summary>
+    private const string SyncConflictResolutionSchemaVersion = "20260919035113_AddSyncConflictResolution";
+
+    /// <summary>The head of the migration list: the local sync audit log (`14-Synchronization` §12).</summary>
+    private const string SyncRunAuditLogSchemaVersion = "20261005153926_AddSyncRunAuditLog";
+
+    /// <summary>The head of the migration list: Budget start/end as UTC instants (TD-96).</summary>
+    private const string BudgetUtcDatesSchemaVersion = "20261011190857_AddBudgetUtcDates";
+
+    /// <summary>File-import keys become unique per account (TD-65).</summary>
+    private const string ImportKeyUniqueIndexSchemaVersion = "20261011214839_AddImportKeyUniqueIndex";
+
+    /// <summary>The transfer link becomes a foreign key (TD-125).</summary>
+    private const string TransferLinkForeignKeySchemaVersion = "20261012011314_AddTransferLinkForeignKey";
+
+    /// <summary>The head of the migration list: the opening balance gets a currency column (TD-77).</summary>
+    private const string OpeningBalanceCurrencySchemaVersion = "20261014120000_AddAccountOpeningBalanceCurrency";
+
+    /// <summary>The head of the migration list: line quantity scaled, zero-amount import flag (TD-95, TD-62).</summary>
+    private const string LineQuantitySchemaVersion = "20261014180000_AddLineQuantityScaleAndZeroAmountImportFlag";
+
+    /// <summary>The head of the migration list: manual exchange rates and the budget conversion audit columns.</summary>
+    private const string ExchangeRatesSchemaVersion = "20261014200000_AddExchangeRatesAndBudgetConversionAudit";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
-        [VoidAndOpeningBalanceSchemaVersion, LineItemKindSchemaVersion, ScaledMoneySchemaVersion, ConcurrencyTokenSchemaVersion];
+    [
+        VoidAndOpeningBalanceSchemaVersion,
+        LineItemKindSchemaVersion,
+        ScaledMoneySchemaVersion,
+        ConcurrencyTokenSchemaVersion,
+        DropDeadEntitiesSchemaVersion,
+        CategoryParentForeignKeySchemaVersion,
+        AttachmentsSchemaVersion,
+        RulesSchemaVersion,
+        RowAuditSchemaVersion,
+        DropCategoryAggregateSchemaVersion,
+        DropCategoriesTableSchemaVersion,
+        SyncBookkeepingSchemaVersion,
+        SyncMergeStateSchemaVersion,
+        SyncConflictResolutionSchemaVersion,
+        SyncRunAuditLogSchemaVersion,
+        BudgetUtcDatesSchemaVersion,
+        ImportKeyUniqueIndexSchemaVersion,
+        TransferLinkForeignKeySchemaVersion,
+        OpeningBalanceCurrencySchemaVersion,
+        LineQuantitySchemaVersion,
+        ExchangeRatesSchemaVersion,
+    ];
 
     private const decimal LegacyBalance = 1000.00m;
     private const decimal LegacyRent = -750.00m;
@@ -137,7 +235,7 @@ public class VoidAndOpeningBalanceMigrationTests
 
         ColumnNames(vault, "Transactions").Should().Contain("VoidedAt");
         ColumnNames(vault, "Transactions").Should().Contain("VoidReason");
-        ColumnNames(vault, "Accounts").Should().Contain("OpeningBalanceAmount");
+        ColumnNames(vault, "Accounts").Should().Contain("OpeningBalance_Amount");
 
         // Read raw: "NULL" and "materialised as a default" are different facts that EF renders
         // identically, and for OpeningBalanceAmount the difference is the whole design decision.
@@ -284,7 +382,7 @@ public class VoidAndOpeningBalanceMigrationTests
     private static async Task<VaultMigrationResult> MigrateThroughTheProductionPathAsync(TempVault vault)
     {
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
-        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context));
+        var migrator = new EfCoreVaultMigrator(context, new VaultBackupService(context), PineTestOptions.Security);
         return await migrator.MigrateAsync(CancellationToken.None);
     }
 
@@ -453,7 +551,7 @@ public class VoidAndOpeningBalanceMigrationTests
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
-        command.CommandText = @"SELECT ""OpeningBalanceAmount"" FROM ""Accounts"" ORDER BY rowid;";
+        command.CommandText = @"SELECT ""OpeningBalance_Amount"" FROM ""Accounts"" ORDER BY rowid;";
         return command.ExecuteScalar() as long?;
     }
 

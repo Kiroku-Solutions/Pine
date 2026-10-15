@@ -4,15 +4,31 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
              xmlns:controls="using:Pine.Ui.Avalonia.Controls"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.CropReceiptView"
              x:DataType="vm:CropReceiptViewModel">
   
-  <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource PineBackground}">
+  <Grid RowDefinitions="Auto,*,Auto,Auto" Background="{DynamicResource PineBackground}">
+    <!-- TD-35: this handler was `async void` with no try/catch, so a crop failure
+         rethrew on the UI thread. It now reports here. -->
+    <Border Grid.Row="3"
+            Background="{DynamicResource PineSurfaceElevated}"
+            BorderBrush="{DynamicResource PineDanger}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="12,8"
+            Margin="0,8,0,0"
+            IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Foreground="{DynamicResource PineText}"
+                 TextWrapping="Wrap" />
+    </Border>
+
     
     <!-- Header -->
     <Border Grid.Row="0" Padding="20,15" Background="{DynamicResource PineSurface}">
-      <TextBlock Text="Adjust Receipt" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}"/>
+      <TextBlock Text="{loc:Tr CropReceipt.Title}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource PineText}"/>
     </Border>
 
     <!-- Cropper Area -->
@@ -25,7 +41,7 @@
       <Border Background="#88000000" IsVisible="{Binding IsProcessing}">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
           <ProgressBar IsIndeterminate="True" Width="200" Foreground="{DynamicResource PinePrimary}"/>
-          <TextBlock Text="Processing Image..." Foreground="White" HorizontalAlignment="Center"/>
+          <TextBlock Text="{loc:Tr CropReceipt.ProcessingOverlay.Message}" Foreground="White" HorizontalAlignment="Center"/>
         </StackPanel>
       </Border>
     </Grid>
@@ -33,11 +49,11 @@
     <!-- Footer Actions -->
     <Border Grid.Row="2" Padding="20" Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="*,10,*">
-        <Button Grid.Column="0" Content="Retake" Command="{Binding CancelCommand}" 
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" 
+        <Button Grid.Column="0" Content="{loc:Tr CropReceipt.RetakeButton}" Command="{Binding CancelCommand}"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                 Classes="pine-nav" Height="45"/>
-        <Button Grid.Column="2" Content="Confirm" Click="OnConfirmClicked" 
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" 
+        <Button Grid.Column="2" Content="{loc:Tr CropReceipt.ConfirmButton}" Click="OnConfirmClicked"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                 Classes="pine-accent" Height="45"/>
       </Grid>
     </Border>

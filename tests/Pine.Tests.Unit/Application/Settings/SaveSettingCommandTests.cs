@@ -22,7 +22,7 @@ public class SaveSettingCommandTests
     {
         // Arrange
         var repository = Substitute.For<ISettingRepository>();
-        var handler = new SaveSettingCommandHandler(repository);
+        var handler = new SaveSettingCommandHandler(repository, NSubstitute.Substitute.For<Pine.Core.Budgets.IBudgetRepository>(), NSubstitute.Substitute.For<Pine.Core.ExchangeRates.IExchangeRateRepository>(), NSubstitute.Substitute.For<Pine.Core.Accounts.IAccountRepository>(), System.TimeProvider.System);
         var command = new SaveSettingCommand("Appearance.Theme", "1");
 
         // Act
@@ -39,7 +39,7 @@ public class SaveSettingCommandTests
     {
         // Arrange
         var repository = Substitute.For<ISettingRepository>();
-        var handler = new SaveSettingCommandHandler(repository);
+        var handler = new SaveSettingCommandHandler(repository, NSubstitute.Substitute.For<Pine.Core.Budgets.IBudgetRepository>(), NSubstitute.Substitute.For<Pine.Core.ExchangeRates.IExchangeRateRepository>(), NSubstitute.Substitute.For<Pine.Core.Accounts.IAccountRepository>(), System.TimeProvider.System);
         using var cts = new CancellationTokenSource();
 
         // Act

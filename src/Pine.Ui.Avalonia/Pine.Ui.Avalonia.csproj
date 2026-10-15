@@ -8,14 +8,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="FluentAvaloniaUI" Version="3.0.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="FluentAvaloniaUI" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,6 +30,26 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <!--
+    THE STRING TABLES (TD-45).
+
+    EmbeddedResource, not AvaloniaResource, and the design's §5 named the latter. §13 recorded the
+    Avalonia 12 asset API as an unverified risk and named Assembly.GetManifestResourceStream as the
+    fallback; the risk was routed around rather than resolved. AssetLoader does exist in 12.0.5, but
+    it resolves through AvaloniaLocator, so reading the string table would require an Avalonia
+    platform to have been configured first. "Can this application read its own words" must not
+    depend on the rendering platform being up: §8 says nothing in localisation may take down a
+    screen. A manifest stream is BCL-only, needs no platform and no satellite assembly, which also
+    keeps it clear of the trimming failure mode that ruled out .resx in §3.3.
+
+    The logical name is the default (namespace + path), which Localizer.Load reconstructs as
+    Pine.Ui.Avalonia.Localization.Resources.{code}.json.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\Resources\*.json" />
+    <EmbeddedResource Include="ViewModels\currency-names-english.txt" LogicalName="Pine.Ui.Avalonia.currency-names-english.txt" />
   </ItemGroup>
 
 </Project>

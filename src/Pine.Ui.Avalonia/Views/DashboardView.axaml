@@ -10,6 +10,7 @@
              xmlns:idd="using:Avalonia.Xaml.Interactions.DragAndDrop"
              xmlns:wvm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:wv="using:Pine.Ui.Avalonia.Views.Widgets"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.DashboardView"
              x:DataType="vm:DashboardViewModel"
@@ -23,13 +24,26 @@
             <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="Here's your financial overview for today." FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+                    <TextBlock Text="{loc:Tr Dashboard.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+                    <!-- TD-105: a failed load's sentence, in its own slot. Used to overwrite Greeting
+                         itself, leaving the header reading an error where it should still say
+                         "Welcome to Pine". Same pattern as AddTransactionView's ErrorMessage. -->
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Button Content="Scan Receipt" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
-                    <Button Content="Import Data" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
-                    <Button Content="+ New Account" Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <!-- It had no Command at all: rendered, clickable, did nothing (post-audit plan item 1.4).
+                         Hidden on a head without receipt vision, like the sidebar's receipt buttons (TD-85). -->
+                    <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Command="{Binding OpenScanReceiptCommand}"
+                            IsVisible="{Binding HasReceiptVision}"
+                            Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Dashboard.Actions.ImportData}" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="+" />
+                            <TextBlock Text="{loc:Tr Dashboard.Actions.NewAccount}" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
 
@@ -59,8 +73,8 @@
                                 <Grid RowDefinitions="Auto, *, Auto">
                                     
                                     <!-- Header / Drag Handle -->
-                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="Drag to reorder"
-                                            AutomationProperties.Name="Widget drag handle">
+                                    <Border Grid.Row="0" Padding="15,10" Cursor="Hand" ToolTip.Tip="{loc:Tr Dashboard.Widget.DragToReorder}"
+                                            AutomationProperties.Name="{loc:Tr Dashboard.Widget.DragHandleAutomationName}">
                                         <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Border>
                                     
@@ -73,12 +87,20 @@
                                             <DataTemplate DataType="wvm:RecentTransactionsWidgetViewModel">
                                                 <wv:RecentTransactionsWidgetView />
                                             </DataTemplate>
-                                            <DataTemplate DataType="wvm:IDashboardWidgetViewModel">
-                                                <!-- Fallback for empty widgets -->
-                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
-                                                    <TextBlock Text="No data yet" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
-                                                </StackPanel>
+                                            <DataTemplate DataType="wvm:TotalBalanceWidgetViewModel">
+                                                <wv:TotalBalanceWidgetView />
                                             </DataTemplate>
+                                            <DataTemplate DataType="wvm:CashFlowWidgetViewModel">
+                                                <wv:CashFlowWidgetView />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="wvm:BudgetWidgetViewModel">
+                                                <wv:BudgetWidgetView />
+                                            </DataTemplate>
+                                            <!-- NO FALLBACK TEMPLATE, DELIBERATELY (post-audit plan item 1.3). There was one,
+                                                 rendering "No data yet" for any tile without a view, which is how ten tiles
+                                                 sat here saying nothing for thirty-nine iterations while looking finished.
+                                                 DashboardTilesTests pins that every tile type has a live (uncommented)
+                                                 template above. -->
                                         </ContentControl.DataTemplates>
                                     </ContentControl>
 
@@ -86,8 +108,8 @@
                                     <Thumb Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                            Width="15" Height="15" Cursor="BottomRightCorner"
                                            DragDelta="ResizeThumb_DragDelta"
-                                           ToolTip.Tip="Drag to resize"
-                                           AutomationProperties.Name="Resize widget">
+                                           ToolTip.Tip="{loc:Tr Dashboard.Widget.DragToResize}"
+                                           AutomationProperties.Name="{loc:Tr Dashboard.Widget.ResizeAutomationName}">
                                         <Thumb.Template>
                                             <ControlTemplate>
                                                 <Path Data="M 10,10 L 15,10 L 15,15 Z" Fill="{DynamicResource PineTextMuted}" />

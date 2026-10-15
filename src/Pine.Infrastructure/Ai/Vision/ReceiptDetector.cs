@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
+using Pine.Core.Common;
 
 namespace Pine.Infrastructure.Ai.Vision;
 
@@ -16,6 +17,16 @@ public interface IReceiptDetector : IDisposable
     Task<Pine.Core.Ai.ReceiptAnalysisResult> AnalyzeAndCropReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default);
 }
 
+/// <remarks>
+/// <para>
+/// TUNED-CONSTANTS BOUNDARY (TD-118). The numeric thresholds, geometry and kernel parameters in this class are the
+/// algorithm, tuned together with the model version (yolo-receipt-nano.onnx: input 640, 8400 anchors, detection cutoffs). They are deliberately NOT in
+/// <c>PineOptions</c>: exposing them would let a user break receipt detection and report it as a
+/// bug. Configurable limits (paths, sizes, timeouts) belong in options; these do not. Change one
+/// only with a model or fixture change that re-evaluates the whole pipeline. See
+/// <c>docs/13-AI-Architecture.md</c> section 7.1.
+/// </para>
+/// </remarks>
 public sealed class ReceiptDetector : IReceiptDetector
 {
     private static readonly string YoloModelPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Ai", "yolo-receipt-nano.onnx");
@@ -198,7 +209,7 @@ public sealed class ReceiptDetector : IReceiptDetector
 
         if (!_isInitialized || _session == null)
         {
-            return new Pine.Core.Ai.ReceiptAnalysisResult(0f, false, "AI not initialized", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(0f, false, UserFacingText.ScanNotReady(), null);
         }
 
         // 1. Load stream into memory and decode to Mat (OpenCV)
@@ -213,7 +224,7 @@ public sealed class ReceiptDetector : IReceiptDetector
     private static Pine.Core.Ai.ReceiptAnalysisResult AnalyzeAndCrop(InferenceSession session, byte[] bytes)
     {
         using var mat = Cv2.ImDecode(bytes, ImreadModes.Color);
-        if (mat.Empty()) return new Pine.Core.Ai.ReceiptAnalysisResult(0f, false, "Invalid image format", null);
+        if (mat.Empty()) return new Pine.Core.Ai.ReceiptAnalysisResult(0f, false, UserFacingText.ScanUnreadableFrame(), null);
 
         // 2. State-of-the-art preprocessing for YOLO (Letterbox 640x640, BGR -> RGB, Float Normalize 0-1)
         int targetSize = 640;
@@ -299,12 +310,12 @@ public sealed class ReceiptDetector : IReceiptDetector
 
         if (maxConfidence < 0.85f || bestAnchor == -1)
         {
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "Buscando factura...", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanSearching(), null);
         }
 
         if (!isSegmentation)
         {
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "El modelo cargado no es de segmentación", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanWrongModel(), null);
         }
 
         // 5. MASK EXTRACTION
@@ -357,7 +368,7 @@ public sealed class ReceiptDetector : IReceiptDetector
         Cv2.FindContours(finalMask, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
         if (contours == null || contours.Length == 0)
         {
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "No se pudo delimitar la factura", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanCannotOutline(), null);
         }
 
         // Get largest contour
@@ -378,7 +389,7 @@ public sealed class ReceiptDetector : IReceiptDetector
 
         if (bestCorners == null)
         {
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "Silueta demasiado irregular (Alinea la factura)", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanIrregularOutline(), null);
         }
 
         // Order corners: TL, TR, BR, BL
@@ -413,11 +424,11 @@ public sealed class ReceiptDetector : IReceiptDetector
         }
 
         if (tocaBorde)
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "Aleja la cámara (toca los bordes)", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanMoveBack(), null);
         if (aspectRatio < 1.15)
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "Forma no rectangular (cuadrada)", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanNotRectangular(), null);
         if (areaFactura < areaPantalla * 0.10)
-            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, "Acércate más a la factura", null);
+            return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, false, UserFacingText.ScanMoveCloser(), null);
 
         // 8. WARP PERSPECTIVE
         var srcPts = new[] { new Point2f(tl.X, tl.Y), new Point2f(tr.X, tr.Y), new Point2f(br.X, br.Y), new Point2f(bl.X, bl.Y) };
@@ -459,7 +470,7 @@ public sealed class ReceiptDetector : IReceiptDetector
         byte[] ocrJpg = enhancedForOcr.ImEncode(".jpg");
         var ocrStream = new MemoryStream(ocrJpg);
 
-        return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, true, "¡Captura perfecta!", resultStream, ocrStream);
+        return new Pine.Core.Ai.ReceiptAnalysisResult(maxConfidence, true, UserFacingText.ScanCaptured(), resultStream, ocrStream);
     }
 
     public void Dispose()

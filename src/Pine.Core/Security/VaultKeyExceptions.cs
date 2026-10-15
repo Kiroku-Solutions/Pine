@@ -32,7 +32,9 @@ public sealed class VaultKeyUnwrapException : Exception
 /// <remarks>
 /// Not a corruption and not an authentication failure: the header is perfectly valid and some other
 /// build could open it. <c>AesGcm.IsSupported</c> is false on the browser/WASM runtime in
-/// particular, which is why this is a named type rather than a bare
+/// particular — the head that ran there was deleted in the Phase 3 platform review, and this type
+/// deliberately outlives it, because it describes the PRIMITIVE and not the head — which is why
+/// this is a named type rather than a bare
 /// <see cref="PlatformNotSupportedException"/> - the UI has to say "this build cannot open vaults"
 /// and not "wrong password".
 /// </remarks>

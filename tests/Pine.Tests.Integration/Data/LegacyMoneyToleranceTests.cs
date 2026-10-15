@@ -149,10 +149,8 @@ public class LegacyMoneyToleranceTests
         using var vault = new TempVault();
         await MigrateAsync(vault);
 
-        var categoryId = Guid.NewGuid();
         var budgetId = Guid.NewGuid();
-        InsertCategory(vault, categoryId, "Legacy category");
-        InsertBudget(vault, budgetId, categoryId, 500.005m, "ZZZ");
+        InsertBudget(vault, budgetId, "Legacy category", 500.005m, "ZZZ");
 
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var budget = await context.Budgets.AsNoTracking().SingleAsync(b => b.Id == budgetId);
@@ -205,7 +203,7 @@ public class LegacyMoneyToleranceTests
         command.CommandText =
             """
             INSERT INTO "Accounts"
-                ("Id", "Name", "Type", "CreatedAt", "UpdatedAt", "OpeningBalanceAmount",
+                ("Id", "Name", "Type", "CreatedAt", "UpdatedAt", "OpeningBalance_Amount",
                  "Balance_Amount", "Balance_Currency")
             VALUES ($id, $name, $type, $date, $date, NULL, $balance, $currency);
             """;
@@ -243,33 +241,39 @@ public class LegacyMoneyToleranceTests
         command.ExecuteNonQuery();
     }
 
-    private static void InsertCategory(TempVault vault, Guid categoryId, string name)
-    {
-        using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO "Categories" ("Id", "Name", "ColorHex", "ParentCategoryId")
-            VALUES ($id, $name, '#FFFFFF', NULL);
-            """;
-        command.Parameters.AddWithValue("$id", Text(categoryId));
-        command.Parameters.AddWithValue("$name", name);
-        command.ExecuteNonQuery();
-    }
-
+    /// <summary>
+    /// Plants a category over a raw connection, as a previous build would have.
+    /// </summary>
+    /// <remarks>
+    /// THE <c>Categories</c> HELPER THAT STOOD HERE IS GONE (TD-132, post-audit plan item 2.3).
+    /// It inserted a category row so that a budget had something to point at, and carried a long
+    /// note about <c>Version</c> and the self-referencing foreign key TD-32 added. The table no
+    /// longer exists: a budget names its category directly, so there is nothing to insert first.
+    ///
+    /// THAT NOTE'S POINT SURVIVED THE TABLE IT WAS ABOUT, AND NOW APPLIES HERE. Dropping the
+    /// foreign key makes SQLite rebuild <c>Budgets</c>, and the rebuild is generated from the model,
+    /// which does not carry the <c>defaultValue</c> that <c>AddConcurrencyTokens</c> and
+    /// <c>AddRowAuditColumns</c> attached to <c>Version</c>, <c>RowCreatedAtUtc</c> and
+    /// <c>RowUpdatedAtUtc</c>. The columns are still <c>NOT NULL</c>; they simply no longer fill
+    /// themselves in for a writer that ignores them, and this helper is such a writer. Production
+    /// writes budgets through EF, which supplies all three. Found by this test failing with
+    /// <c>NOT NULL constraint failed: Budgets.RowCreatedAtUtc</c> rather than by reasoning.
+    /// </remarks>
     private static void InsertBudget(
-        TempVault vault, Guid budgetId, Guid categoryId, decimal limit, string currency)
+        TempVault vault, Guid budgetId, string category, decimal limit, string currency)
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
             INSERT INTO "Budgets"
-                ("Id", "CategoryId", "Period", "StartDate", "EndDate", "LimitAmount", "LimitCurrency")
-            VALUES ($id, $categoryId, $period, $date, NULL, $limit, $currency);
+                ("Id", "Category", "Period", "StartDate", "EndDate", "LimitAmount", "LimitCurrency",
+                 "Version", "RowCreatedAtUtc", "RowUpdatedAtUtc")
+            VALUES ($id, $category, $period, $date, NULL, $limit, $currency,
+                    '00000000-0000-0000-0000-000000000000', '0001-01-01 00:00:00', '0001-01-01 00:00:00');
             """;
         command.Parameters.AddWithValue("$id", Text(budgetId));
-        command.Parameters.AddWithValue("$categoryId", Text(categoryId));
+        command.Parameters.AddWithValue("$category", category);
         command.Parameters.AddWithValue("$period", "Monthly");
         command.Parameters.AddWithValue("$date", Text(LegacyDate));
         command.Parameters.AddWithValue("$limit", Scaled(limit));

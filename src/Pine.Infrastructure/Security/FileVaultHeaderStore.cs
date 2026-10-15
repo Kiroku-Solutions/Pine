@@ -63,8 +63,11 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
         // IOException / UnauthorizedAccessException are deliberately allowed to propagate: a
         // locked or unreadable file is an environment problem, NOT header corruption, and
         // conflating the two would push the caller towards "recreate the vault".
-        var json = File.ReadAllText(path);
+        return Parse(File.ReadAllText(path), path, vaultDirectory);
+    }
 
+    internal static VaultHeader Parse(string json, string path, string vaultDirectory)
+    {
         VaultHeaderDto? dto;
         try
         {
@@ -75,6 +78,11 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
             throw new VaultHeaderCorruptException(path, "The vault header is not valid JSON.", ex);
         }
 
+        return FromDto(dto, path, vaultDirectory);
+    }
+
+    internal static VaultHeader FromDto(VaultHeaderDto? dto, string path, string vaultDirectory)
+    {
         if (dto is null)
         {
             throw new VaultHeaderCorruptException(path, "The vault header is empty.");
@@ -193,34 +201,7 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
         var path = GetHeaderPath(vaultDirectory);
         var tempPath = path + TempFileSuffix;
 
-        var dto = new VaultHeaderDto
-        {
-            Magic = VaultHeader.Magic,
-            HeaderVersion = header.HeaderVersion,
-            VaultId = header.VaultId.ToString("D"),
-            CreatedAtUtc = header.CreatedAtUtc,
-            Kdf = new KdfParametersDto
-            {
-                KdfId = header.KdfParameters.KdfId,
-                MemoryKib = header.KdfParameters.MemoryKib,
-                Iterations = header.KdfParameters.Iterations,
-                Parallelism = header.KdfParameters.Parallelism,
-                KeyLengthBytes = header.KdfParameters.KeyLengthBytes,
-                SaltLengthBytes = header.KdfParameters.SaltLengthBytes,
-            },
-            SaltBase64 = Convert.ToBase64String(header.Salt),
-
-            // The wrapped data key is written as plain Base64 next to everything it is bound to.
-            // It is safe here precisely because it is a ciphertext: without the auth key that
-            // Argon2id derives from the master password, these bytes are inert.
-            KeyWrap = new VaultKeyWrapDto
-            {
-                Algorithm = header.KeyWrap.Algorithm,
-                NonceBase64 = Convert.ToBase64String(header.KeyWrap.Nonce),
-                CiphertextBase64 = Convert.ToBase64String(header.KeyWrap.Ciphertext),
-                TagBase64 = Convert.ToBase64String(header.KeyWrap.Tag),
-            },
-        };
+        var dto = ToDto(header);
 
         try
         {
@@ -264,6 +245,38 @@ public sealed class FileVaultHeaderStore : IVaultHeaderStore
     /// cannot be the wrap this vault was sealed with. Each gets its own message so a support log says
     /// which field failed, but none of them is recoverable - there is no defaulting a ciphertext.
     /// </remarks>
+    internal static VaultHeaderDto ToDto(VaultHeader header)
+    {
+        return new VaultHeaderDto
+        {
+            Magic = VaultHeader.Magic,
+            HeaderVersion = header.HeaderVersion,
+            VaultId = header.VaultId.ToString("D"),
+            CreatedAtUtc = header.CreatedAtUtc,
+            Kdf = new KdfParametersDto
+            {
+                KdfId = header.KdfParameters.KdfId,
+                MemoryKib = header.KdfParameters.MemoryKib,
+                Iterations = header.KdfParameters.Iterations,
+                Parallelism = header.KdfParameters.Parallelism,
+                KeyLengthBytes = header.KdfParameters.KeyLengthBytes,
+                SaltLengthBytes = header.KdfParameters.SaltLengthBytes,
+            },
+            SaltBase64 = Convert.ToBase64String(header.Salt),
+
+            // The wrapped data key is written as plain Base64 next to everything it is bound to.
+            // It is safe here precisely because it is a ciphertext: without the auth key that
+            // Argon2id derives from the master password, these bytes are inert.
+            KeyWrap = new VaultKeyWrapDto
+            {
+                Algorithm = header.KeyWrap.Algorithm,
+                NonceBase64 = Convert.ToBase64String(header.KeyWrap.Nonce),
+                CiphertextBase64 = Convert.ToBase64String(header.KeyWrap.Ciphertext),
+                TagBase64 = Convert.ToBase64String(header.KeyWrap.Tag),
+            },
+        };
+    }
+
     private static VaultKeyWrap ReadKeyWrap(string path, VaultKeyWrapDto? dto)
     {
         if (dto is null)
@@ -394,6 +407,7 @@ internal sealed class VaultKeyWrapDto
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(VaultHeaderDto))]
 [JsonSerializable(typeof(VaultKeyWrapDto))]
+[JsonSerializable(typeof(RekeyJournalDto))]
 internal sealed partial class VaultHeaderJsonContext : JsonSerializerContext
 {
 }

@@ -4,7 +4,7 @@
 |------------------|----------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-00-VISION`                                                 |
 | Status           | Non-normative — product vision and principles                        |
-| Reconciled       | 2026-08-31 · It states direction and non-negotiables, not behaviour. Its scope boundary is normative only through `02-Product-Scope` and `07-Functional-Requirements`, which carry their own status. |
+| Reconciled       | 2026-08-31 · It states direction and non-negotiables, not behaviour. Its scope boundary is normative only through `02-Product-Scope` and `07-Functional-Requirements`, which carry their own status. **2026-10-05 · ADR-0021 withdrew the plugin host and the `33-Plugin-SDK` it promised; Pine will not load third-party code, so the plugin/marketplace/SDK language in §5, §8 (Pillar F), §9.1, §12, §14 (OD-01), §15, §16, §17 and §18 is struck through below rather than deleted. This is a correction to match a decision already taken (TD-147), not a new one — the ecosystem will not form because there will not be one for third parties to extend.** |
 | Owner            | Engineering Review Board (acting on behalf of Project Lead)          |
 | Created          | 2026-07-08                                                           |
 | Last Updated     | 2026-07-08                                                           |
@@ -83,21 +83,31 @@ ecosystem reach to what GnuPG, Nextcloud or Godot are in their domains.
 
 Concretely, the vision is:
 
-1. A **modular core** that can be extended via a public, stable plugin
-   SDK.
+1. ~~A **modular core** that can be extended via a public, stable plugin
+   SDK.~~ **Amended by ADR-0021.** The core stays modular; the extension
+   seams are compiled in and shipped with the application, not loaded
+   from a public SDK, because there will not be one.
 2. A **local AI layer** for OCR, receipt understanding, categorisation,
    anomaly detection, forecasting and recommendations, replaceable by the
    user.
 3. A **trustless sync model** that lets the user choose where encrypted
    data lives, including a Git-backed, WebDAV, or fully self-hosted path.
-4. A **community-driven ecosystem** of plugins, themes, importers,
-   exporters, financial providers and languages.
+4. ~~A **community-driven ecosystem** of plugins, themes, importers,
+   exporters, financial providers and languages.~~ **Amended by
+   ADR-0021 (TD-147).** Pine will not load third-party code; there is no
+   plugin host and will not be one, so there is no ecosystem for
+   external plugins, themes, importers, exporters, providers or
+   languages to form around. Importers, exporters and providers remain
+   part of the vision as compiled-in implementations maintained by the
+   project itself.
 5. **Multi-platform parity** on Windows, Linux, macOS, Android and iOS.
 
 **Rationale.** A 5–10 year horizon forces us to design for replacement
 (models, providers, storage backends) rather than for a single vendor
-relationship. This directly motivates plugin boundaries, swappable AI
-models, and an extensible sync layer.
+relationship. ~~This directly motivates plugin boundaries, swappable AI
+models, and an extensible sync layer.~~ It motivates swappable AI models
+and an extensible sync layer; the plugin boundary named here is
+withdrawn (ADR-0021).
 
 ## 6. Guiding Principles (Non-Negotiable)
 
@@ -155,11 +165,11 @@ maps to dedicated downstream documents.
 | Pillar                  | What it means                                                                           | Owning document(s)              |
 |-------------------------|------------------------------------------------------------------------------------------|---------------------------------|
 | Pillar A — Data Sovereignty | Storage mode selection, encrypted sync, local-first storage.                          | `14-Synchronization`, `15-Security` |
-| Pillar B — Modular Core     | Clean Architecture, DDD, plugin host, public contracts.                              | `09-System-Architecture`, `12-Plugin-Architecture`, `25-ADR` |
+| Pillar B — Modular Core     | Clean Architecture, DDD, ~~plugin host~~ (withdrawn, ADR-0021; compiled-in extension seams instead), public contracts. | `09-System-Architecture`, `12-Plugin-Architecture`, `25-ADR` |
 | Pillar C — Local AI          | Swappable, on-device models for OCR, categorisation, forecasting.                    | `13-AI-Architecture`, `32-AI-Training` |
 | Pillar D — Financial Domain  | Rich, well-modelled domain: accounts, transactions, budgets, investments, rules.     | `10-Domain-Model`, `11-Data-Model`, `31-Rule-Engine` |
 | Pillar E — Quality           | Testability, observability, accessibility, security, performance.                     | `16-Quality-Attributes`, `18-Test-Strategy`, `30-Observability`, `38-Threat-Model`, `39-Performance`, `40-Accessibility` |
-| Pillar F — Ecosystem         | Plugin marketplace, themes, importers, exporters, providers, languages.              | `12-Plugin-Architecture`, `33-Plugin-SDK`, `34-API-Guidelines` |
+| Pillar F — Ecosystem         | ~~Plugin marketplace, themes, importers, exporters, providers, languages.~~ **Withdrawn, ADR-0021 (TD-147):** no marketplace and no third-party plugins; themes, importers, exporters, providers and languages remain as compiled-in features. | `12-Plugin-Architecture` (Withdrawn), ~~`33-Plugin-SDK`~~ (Withdrawn), `34-API-Guidelines` |
 | Pillar G — Community         | Contribution model, governance, code of conduct, public roadmap.                     | `24-Contributing`, `22-Release-Plan`, `23-Roadmap` |
 
 ## 9. Scope Boundary (What Pine Is / Is Not)
@@ -168,7 +178,7 @@ maps to dedicated downstream documents.
 
 - A local-first personal finance application.
 - Cross-platform (desktop + mobile).
-- Extensible through a public plugin SDK.
+- ~~Extensible through a public plugin SDK.~~ **Withdrawn, ADR-0021 (TD-147):** extensible through compiled-in seams, not a public SDK loaded from outside the application.
 - Capable of running entirely offline.
 - Capable of running entirely on-device AI.
 - Distributed as open source under GPL v3.
@@ -191,7 +201,9 @@ Per user feedback during the Engineering Review Board gate, the following
 rule is **approved** and binding for all downstream documents:
 
 - **Local Only (SQLite)** — the default.
-- **Local + Cloud Sync** — user opts in to a sync provider plugin.
+- **Local + Cloud Sync** — user opts in to a sync provider. ~~plugin~~
+  **(ADR-0021):** the provider is compiled in (`14-Synchronization` §8),
+  not a loaded plugin.
 - **Cloud Only** — *requires* an encrypted local cache so the app remains
   usable offline. The local cache is part of the product, not an
   implementation detail.
@@ -224,9 +236,11 @@ provider outages, deprecations and price changes.
 - The project name and logo are subject to **trademark protection**; the
   full trademark policy will be defined in `24-Contributing` and a
   dedicated `TRADEMARK.md` (to be produced).
-- Plugins distributed through official channels are expected to declare
-  their own licence; a plugin licence baseline will be defined in
-  `33-Plugin-SDK`.
+- ~~Plugins distributed through official channels are expected to
+  declare their own licence; a plugin licence baseline will be defined
+  in `33-Plugin-SDK`.~~ **Withdrawn, ADR-0021 (TD-147):** there are no
+  third-party plugins and `33-Plugin-SDK` is itself Withdrawn, so no
+  plugin licence baseline will be produced.
 
 **Rationale.** GPL v3 protects user freedom and prevents proprietary
 re-licensing of the core. Trademark protection is necessary to prevent
@@ -252,10 +266,10 @@ but must be resolved before their owning documents are produced.
 
 | ID     | Open decision                                                              | Owning document(s)         |
 |--------|----------------------------------------------------------------------------|----------------------------|
-| OD-01  | Plugin trust model (signed plugins, allowlist, sandbox, code review rules) | `12-Plugin-Architecture`, `33-Plugin-SDK` |
+| OD-01  | ~~Plugin trust model (signed plugins, allowlist, sandbox, code review rules)~~ **Closed by ADR-0021:** there is no plugin host, so there is no trust model to design. | `12-Plugin-Architecture` (Withdrawn), `33-Plugin-SDK` (Withdrawn) |
 | OD-02  | Sync conflict resolution strategy (CRDT vs. last-writer-wins vs. domain-aware merge) | `14-Synchronization`       |
 | OD-03  | Encryption at rest standard (SQLCipher vs. application-level envelope)     | `15-Security`              |
-| OD-04  | Exchange rate provider (plugin-only, local snapshot, hybrid)               | `07-Functional-Requirements`, `14-Synchronization` |
+| OD-04  | Exchange rate provider (~~plugin-only~~ compiled-in only, per ADR-0021, local snapshot, hybrid) | `07-Functional-Requirements`, `14-Synchronization` |
 | OD-05  | MVP feature set and target release window                                  | `22-Release-Plan`, `23-Roadmap` |
 | OD-06  | Local AI model packaging and on-device update strategy                     | `13-AI-Architecture`, `32-AI-Training` |
 | OD-07  | Governance model for community contributions and conflict resolution       | `24-Contributing`          |
@@ -275,8 +289,11 @@ The vision is considered delivered when, **simultaneously**:
 - All core financial modules listed in §16 are functional.
 - Local AI for OCR and categorisation is functional on a mainstream
   consumer laptop and phone.
-- At least one sync provider plugin and one AI provider plugin are
-  published by the community (proving the plugin SDK works).
+- ~~At least one sync provider plugin and one AI provider plugin are
+  published by the community (proving the plugin SDK works).~~
+  **Withdrawn, ADR-0021 (TD-147):** there is no plugin SDK for the
+  community to publish against; sync and AI providers are compiled in
+  and maintained by the project.
 - A published ADR index exists (`25-ADR`) covering all decisions taken
   to date.
 - Test strategy, traceability matrix and quality gates are met
@@ -292,7 +309,8 @@ behaviour, acceptance criteria and test cases will be defined in
 Dashboard, Accounts, Transactions, Budgets, Savings Goals, Investments,
 Stocks, ETFs, Crypto, Mutual Funds, Net Worth, Cash Flow, Recurring
 Expenses, Subscriptions, Financial Calendar, Reports, Analytics,
-Forecasting, Import, Export, AI Assistant, Plugin Marketplace, Settings.
+Forecasting, Import, Export, AI Assistant, ~~Plugin Marketplace~~
+(withdrawn, ADR-0021), Settings.
 
 **Rationale.** The catalogue is intentionally broad to express the
 *full* product. Whether an item ships in MVP, v1.0 or later is the
@@ -307,7 +325,8 @@ Detailed rules live in their own documents.
 - Clean Architecture, DDD (strategic + tactical), MVVM.
 - Dependency Injection, Repository, Specification, Factory, Strategy,
   Mediator (where beneficial), Domain Events, CQRS where appropriate.
-- Plugin Host Architecture, Hexagonal boundaries where useful.
+- ~~Plugin Host Architecture~~ (withdrawn, ADR-0021; compiled-in
+  extension seams instead), Hexagonal boundaries where useful.
 - SOLID, GRASP, KISS, YAGNI, DRY, composition over inheritance.
 - Architecture Decision Records for every significant decision.
 - ISTQB-aligned testing (unit, integration, system, component,
@@ -330,7 +349,7 @@ summary is:
 | Stakeholder       | Interest in Pine                                                |
 |-------------------|------------------------------------------------------------------|
 | End users         | Private, working, multi-platform finance management.             |
-| Plugin authors    | Stable, well-documented SDK and marketplace.                     |
+| ~~Plugin authors~~ (no longer a served persona, ADR-0021; TD-147) | ~~Stable, well-documented SDK and marketplace.~~ |
 | Contributors      | Clear contribution process, public roadmap, recognition.         |
 | Local community   | Governance, translation, support, advocacy.                      |
 | Security auditors | Threat model, public security posture, responsible disclosure.  |

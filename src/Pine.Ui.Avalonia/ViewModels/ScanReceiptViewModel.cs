@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -13,10 +14,12 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Budgets.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
+using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Importing;
 using Pine.Core.Transactions;
@@ -24,13 +27,38 @@ using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.Services;
 using Microsoft.Extensions.Logging;
 using Pine.Ui.Avalonia.Diagnostics;
+using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
-public partial class ScanReceiptViewModel : ObservableObject
+public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<ReceiptCapturedMessage>, IAsyncInitializable, IDisposable
 {
     private readonly IMediator _mediator;
-    private readonly INavigationService _navigationService;
+    private readonly LocalizedMessageSlot _status;
+    private readonly LocalizedMessageSlot _error;
+
+    /// <summary>
+    /// Words <see cref="DuplicateWarning"/>, and words it again on a language change (TD-21). The figure
+    /// and the date inside it are arguments, so they are written in the sentence's own culture.
+    /// </summary>
+    private readonly LocalizedMessageSlot _duplicate;
+
+    /// <summary>Words <see cref="DateAmbiguityMessage"/>, which is computed on read.</summary>
+    private readonly ILocalizer _localizer;
+    /// <summary>
+    /// The shell this page is shown in (TD-121). It was the window's navigator, so Save and Cancel
+    /// replaced the whole shell with a bare transactions page -- which a vault lock then failed to
+    /// clear, because the lock handler, at the time, cleared only a page inside the shell. (It now
+    /// clears anything that is not a pre-vault screen.)
+    /// </summary>
+    private readonly IShellNavigator _navigationService;
+
+    /// <summary>
+    /// Builds the pages this screen navigates to (TD-28). Named methods rather than a generic
+    /// resolve, so a page this head cannot serve is a compile-time surface a test can enumerate
+    /// instead of a throw on the user's click.
+    /// </summary>
+    private readonly IViewModelFactory _viewModels;
     private readonly ILogger<ScanReceiptViewModel>? _logger;
 
     [ObservableProperty]
@@ -45,6 +73,22 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     [ObservableProperty]
     public partial Bitmap? ReceiptImage { get; set; }
+
+    /// <summary>
+    /// The scanned image as stored bytes, kept until the transaction is saved.
+    /// </summary>
+    /// <remarks>
+    /// A byte array rather than the <see cref="Stream"/> that arrived: the streams carried by
+    /// <c>ReceiptCapturedMessage</c> are disposed as soon as the scan is done (TD-126), so none can be
+    /// held here. Copying costs one buffer on a path that has already decoded a bitmap.
+    /// </remarks>
+    private byte[]? _receiptBytes;
+
+    /// <summary>
+    /// The vault's base currency, whose scale the reconciliation uses while no account is selected
+    /// (TD-100). Null until loaded, or in a vault with no account and no explicit setting.
+    /// </summary>
+    private CurrencyCode? _baseCurrency;
 
     [ObservableProperty]
     public partial string Merchant { get; set; } = string.Empty;
@@ -137,9 +181,18 @@ public partial class ScanReceiptViewModel : ObservableObject
     /// The sentence shown next to the date field while it is ambiguous, or null otherwise. Notified
     /// from both halves of the ambiguity state so the binding tracks either one changing.
     /// </summary>
+    /// <remarks>
+    /// IT WAS AN ENGLISH SENTENCE WITH A FORMAT PATTERN IN IT, <c>d MMMM yyyy</c>, and the pattern was the
+    /// harder half (TD-21, TD-150). Month names came from the operating system's culture, so an English
+    /// screen on a Spanish machine read "This could also be 3 mayo 2026"; and the pattern's day-month-year
+    /// order was fixed, where Spanish needs "3 de mayo de 2026" and American English "May 3, 2026". The
+    /// sentence is a key now and the date a <c>{0:D}</c> argument: the culture's own long date, in the
+    /// language of the sentence around it. For a warning whose whole job is to make a reader compare two
+    /// dates, the unambiguous long form with the weekday is the right one.
+    /// </remarks>
     public string? DateAmbiguityMessage =>
         IsDateAmbiguous && AlternativeDate.HasValue
-            ? $"This could also be {AlternativeDate:d MMMM yyyy}. Check the receipt."
+            ? _localizer.Format("ScanReceipt.DateAmbiguity", AlternativeDate.Value)
             : null;
 
     partial void OnIsDateAmbiguousChanged(bool value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
@@ -192,24 +245,121 @@ public partial class ScanReceiptViewModel : ObservableObject
 
     public ScanReceiptViewModel(
         IMediator mediator,
-        INavigationService navigationService,
+        IShellNavigator navigationService,
+        IViewModelFactory viewModels,
+        ILocalizer localizer,
         ILogger<ScanReceiptViewModel>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _navigationService = navigationService;
+        _viewModels = viewModels;
+        _localizer = localizer;
+        _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
+        _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
+        _duplicate = new LocalizedMessageSlot(localizer, text => DuplicateWarning = text ?? string.Empty);
+        _localizer.LanguageChanged += OnLanguageChanged;
         _logger = logger;
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
         // fixes a mistyped price and the difference must move with it. CollectionChanged catches
         // rows appearing and disappearing; the per-row handler catches the amounts inside them.
         LineItems.CollectionChanged += OnLineItemsChanged;
+    }
 
-        _ = LoadAccountsAsync();
+    /// <inheritdoc />
+    public Task InitializeAsync(CancellationToken cancellationToken) => LoadAccountsAsync();
 
-        WeakReferenceMessenger.Default.Register<ReceiptCapturedMessage>(this, async (r, m) =>
+    /// <inheritdoc />
+    public InitializationFailurePolicy InitializationFailurePolicy => new(
+        _logger,
+        "scan-accounts-load",
+        AccountsUnavailable,
+        _error.Set);
+
+    /// <summary>What the user reads when the account list behind the Save button cannot load.</summary>
+    /// <remarks>
+    /// Loading the accounts used to be a discarded task in the constructor, and
+    /// <c>LoadAccountsAsync</c> has no <c>catch</c> (TD-35). The failure was therefore invisible
+    /// until the user had scanned a receipt, filled the form and pressed Save, at which point the
+    /// screen said "Please select an account." about a list that had never loaded.
+    /// </remarks>
+    private static readonly UserFacingMessage AccountsUnavailable = new("ScanReceipt.Failure.AccountsLoad");
+
+    /// <summary>
+    /// The view model's logger, for the code-behind that reports a failure through it (TD-127). A view is built by the XAML loader with no container reach, so it borrows the logger of the view model it is the face of.
+    /// </summary>
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _logger;
+
+    /// <summary>
+    /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
+    /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
+    /// </summary>
+    /// <param name="messages">What <c>ObservedTask</c> produced.</param>
+    public void ReportFailure(IReadOnlyList<UserFacingMessage> messages) => _error.Set(messages);
+
+    /// <summary>
+    /// Starts the scan for a receipt captured elsewhere (the live scanner, or the crop screen).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE HANDLER THIS REPLACED WAS <c>async void</c> IN EVERYTHING BUT NAME (TD-34). It was
+    /// registered as <c>async (r, m) =&gt; await ProcessReceiptImageAsync(...)</c>; the messenger
+    /// invokes handlers synchronously and discards whatever they return, so the <c>Task</c> was
+    /// never observed and any exception inside it reached the runtime as an unobserved fault rather
+    /// than the user as a message. It also captured <c>this</c>, which kept every instance the user
+    /// ever navigated to alive and subscribed -- three visits to the scanner meant one captured
+    /// receipt was processed three times.
+    /// </para>
+    /// <para>
+    /// <see cref="Receive"/> must stay <c>void</c> -- that is the <c>IRecipient&lt;T&gt;</c>
+    /// contract -- so the work still has to be started rather than awaited. It is started through
+    /// <see cref="ProcessCapturedReceiptAsync"/> instead of a bare discard because
+    /// <see cref="ProcessReceiptImageAsync"/>'s own try/catch does not open until after several
+    /// property assignments; a throw from those (a disposed stream, say) would otherwise escape
+    /// into the same nowhere the old handler sent it.
+    /// </para>
+    /// </remarks>
+    /// <param name="message">The captured image, and optionally an OCR-enhanced copy of it.</param>
+    public void Receive(ReceiptCapturedMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        _ = ProcessCapturedReceiptAsync(message);
+    }
+
+    /// <summary>
+    /// The try/catch wrapper that makes the discard in <see cref="Receive"/> survivable.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately small and local. A general "start this and never lose the exception" helper is
+    /// TD-35's subject and would be the wrong thing to invent here; this only has to guarantee that
+    /// nothing thrown while handling a message leaves the view model, and that whatever went wrong
+    /// reaches the user through the same <see cref="ErrorMessage"/> the rest of the screen uses.
+    /// </remarks>
+    private async Task ProcessCapturedReceiptAsync(ReceiptCapturedMessage message)
+    {
+        try
         {
-            await ProcessReceiptImageAsync(m.ImageStream, m.OcrImageStream);
-        });
+            await ProcessReceiptImageAsync(message.ImageStream, message.OcrImageStream);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-process",
+                new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+            IsBusy = false;
+        }
+        finally
+        {
+            // THE STREAMS ARE OURS (TD-126): ownership travelled with the message. Nothing below this
+            // point keeps either one -- the bitmap is decoded and the bytes are copied -- so this is the
+            // one place they are released, on success and on failure alike.
+            message.ImageStream.Dispose();
+            message.OcrImageStream?.Dispose();
+        }
     }
 
     private async Task LoadAccountsAsync()
@@ -219,6 +369,12 @@ public partial class ScanReceiptViewModel : ObservableObject
         {
             Accounts.Add(acc);
         }
+
+        // THE SCALE FOR THE NO-ACCOUNT CASE (TD-100, decided 2026-10-07): the vault's base currency.
+        var baseCode = await _mediator.Send(new GetBaseCurrencyQuery());
+        _baseCurrency = !string.IsNullOrWhiteSpace(baseCode) && CurrencyCode.TryCreate(baseCode, out var parsed)
+            ? parsed
+            : null;
 
         if (Accounts.Any())
             SelectedAccount = Accounts.First();
@@ -244,11 +400,42 @@ public partial class ScanReceiptViewModel : ObservableObject
     /// pool and only the ASSIGNMENT happens here, back on the UI thread where the await resumes.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The scanned receipt as an attachment for the save command, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// The file name carries the merchant and the date because that is what makes an exported or
+    /// restored file identifiable without the database beside it. It is sanitised: a merchant name
+    /// is OCR output and can contain anything.
+    /// </remarks>
+    private AddTransactionAttachmentCommand? BuildAttachment()
+    {
+        if (_receiptBytes is not { Length: > 0 } bytes)
+        {
+            return null;
+        }
+
+        var merchant = string.Concat((Merchant ?? string.Empty)
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '_'))
+            .Trim();
+
+        if (merchant.Length == 0)
+        {
+            merchant = "receipt";
+        }
+
+        var name = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{merchant}-{Date:yyyy-MM-dd}.png");
+
+        return new AddTransactionAttachmentCommand(name, "image/png", bytes);
+    }
+
     public async Task ProcessReceiptImageAsync(Stream imageStream, Stream? ocrImageStream = null)
     {
         IsBusy = true;
-        ErrorMessage = string.Empty;
-        StatusMessage = "Loading the image...";
+        _error.Clear();
+        _status.Set("ScanReceipt.Status.LoadingImage");
 
         // A second scan must not inherit the first scan's confidence bands or ambiguity: without
         // this reset, a clean re-scan after a weak one would keep showing the old warnings until
@@ -265,6 +452,21 @@ public partial class ScanReceiptViewModel : ObservableObject
             imageStream.Position = 0;
             ReceiptImage = await Task.Run(() => new Bitmap(imageStream));
 
+            // KEEP THE BYTES, WHICH IS THE HALF OF THIS FEATURE THAT NEVER EXISTED. Until now the
+            // image was decoded into a Bitmap for the screen and then dropped: scanning a receipt
+            // produced a transaction and threw the document away, which is what §10 Phase 3 meant
+            // by "the missing half of the OCR feature's audit value". The DISPLAY image is kept
+            // rather than the OCR one, because the OCR image is a deskewed, thresholded derivative
+            // produced for a machine -- what belongs in an audit trail is the document a person
+            // would recognise.
+            imageStream.Position = 0;
+            _receiptBytes = await Task.Run(() =>
+            {
+                using var buffer = new MemoryStream();
+                imageStream.CopyTo(buffer);
+                return buffer.ToArray();
+            });
+
             // Use the OCR optimized image if available, else fallback to standard image
             var streamForOcr = ocrImageStream ?? imageStream;
             streamForOcr.Position = 0;
@@ -272,11 +474,11 @@ public partial class ScanReceiptViewModel : ObservableObject
             // Progress arrives on the UI thread: MediatR reports it from whichever thread the
             // pipeline happens to be on, and Progress<T> captures the SynchronizationContext at
             // construction -- which is this one, because the view model is built on the UI thread.
-            var progress = new Progress<ScanReceiptStage>(stage => StatusMessage = Describe(stage));
+            var progress = new Progress<ScanReceiptStage>(stage => _status.Set(Describe(stage)));
 
             var result = await _mediator.Send(new ScanReceiptCommand(streamForOcr, progress));
 
-            StatusMessage = "Filling in the details...";
+            _status.Set("ScanReceipt.Status.FillingDetails");
 
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
@@ -300,7 +502,9 @@ public partial class ScanReceiptViewModel : ObservableObject
                         // amount out of existence.
                         Kind = li.Kind,
                         Description = li.Description,
-                        Quantity = li.Quantity,
+                        // OCR input is ROUNDED to the store's scale; a person's own entry is rejected by the
+                        // validator instead (LineQuantity, TD-95).
+                        Quantity = Pine.Core.Transactions.LineQuantity.RoundRecognised(li.Quantity),
                         UnitPrice = li.UnitPrice,
                         TotalPrice = li.TotalPrice
                     });
@@ -310,8 +514,8 @@ public partial class ScanReceiptViewModel : ObservableObject
             // Suggest category if merchant is known
             if (!string.IsNullOrWhiteSpace(Merchant))
             {
-                StatusMessage = "Suggesting a category...";
-                var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Merchant, Amount));
+                _status.Set("ScanReceipt.Status.SuggestingCategory");
+                var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Pine.Application.Services.CategorisationText.Build(Merchant, null), Amount));
                 if (!string.IsNullOrWhiteSpace(categoryName))
                 {
                     Category = categoryName;
@@ -322,16 +526,16 @@ public partial class ScanReceiptViewModel : ObservableObject
         {
             // WAS: $"Failed to process receipt: {ex.Message}" (TD-24). The OCR stack throws through
             // PaddleInference and Skia, whose messages name native library paths and model files.
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "receipt-process",
-                "The receipt could not be read. Try a clearer photo, or enter the transaction manually.");
+                new UserFacingMessage("ScanReceipt.Failure.Process")));
         }
         finally
         {
             IsBusy = false;
-            StatusMessage = string.Empty;
+            _status.Clear();
         }
     }
 
@@ -347,9 +551,9 @@ public partial class ScanReceiptViewModel : ObservableObject
     /// </remarks>
     private static string Describe(ScanReceiptStage stage) => stage switch
     {
-        ScanReceiptStage.DetectingReceipt => "Looking for the receipt...",
-        ScanReceiptStage.ExtractingText => "Reading the text...",
-        _ => "Working...",
+        ScanReceiptStage.DetectingReceipt => "ScanReceipt.Status.DetectingReceipt",
+        ScanReceiptStage.ExtractingText => "ScanReceipt.Status.ExtractingText",
+        _ => "ScanReceipt.Status.Working",
     };
 
     [RelayCommand]
@@ -357,19 +561,19 @@ public partial class ScanReceiptViewModel : ObservableObject
     {
         if (SelectedAccount == null)
         {
-            ErrorMessage = "Please select an account.";
+            _error.Set("ScanReceipt.Error.NoAccount");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Merchant))
         {
-            ErrorMessage = "Merchant is required.";
+            _error.Set("ScanReceipt.Error.MerchantRequired");
             return;
         }
 
         if (Amount <= 0)
         {
-            ErrorMessage = "Amount must be greater than zero.";
+            _error.Set("ScanReceipt.Error.AmountPositive");
             return;
         }
 
@@ -378,18 +582,16 @@ public partial class ScanReceiptViewModel : ObservableObject
         // that fixes it already on screen, is the difference between an invariant and an obstacle.
         if (!IsReconciled)
         {
-            ErrorMessage =
-                $"The line items add up to {LineItemsTotal}, which is {UnreconciledDifference} short of the " +
-                $"{Amount} total. Record the difference as an adjustment, or correct the items.";
+            _error.Set("ScanReceipt.Error.Unreconciled", LineItemsTotal, UnreconciledDifference, Amount);
             return;
         }
 
         IsBusy = true;
-        ErrorMessage = string.Empty;
-        DuplicateWarning = string.Empty;
+        _error.Clear();
+        _duplicate.Clear();
         // The overlay is shared with the scan, so the save has to name itself too -- otherwise the
         // user gets a scrim with no sentence under it.
-        StatusMessage = "Saving the transaction...";
+        _status.Set("ScanReceipt.Status.Saving");
 
         try
         {
@@ -416,14 +618,20 @@ public partial class ScanReceiptViewModel : ObservableObject
 
                 if (duplicate is not null)
                 {
-                    // Invariant culture: the figure has to contain "24.50", not a locale-dependent
-                    // "24,50", both because that is what tests (and support conversations) can rely
-                    // on, and because the receipt total shown elsewhere on this screen is never
-                    // localised either.
-                    DuplicateWarning = string.Format(
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        "This looks like a duplicate of {0:0.00} to {1} on {2:yyyy-MM-dd}. Save again to add it anyway.",
-                        Math.Abs(duplicate.Amount), duplicate.Payee, duplicate.Date);
+                    // IN THE SCREEN'S CULTURE, AND IT WAS DELIBERATELY NOT (TD-21). This used invariant
+                    // culture on the grounds that the rest of the screen was not localised either --
+                    // true then, and the reason this row existed. With the whole screen following the
+                    // language, an invariant "24.50" and "2026-05-03" beside a total the NumericUpDown
+                    // writes as "24,50" would be the one figure on the screen in a different notation.
+                    // The amount carries its currency, so its scale is the currency's rather than an
+                    // assumed two decimals. The non-throwing factories on purpose: `new Money` and
+                    // `new CurrencyCode` refuse an out-of-scale amount or a malformed stored code, and a
+                    // WARNING must not turn a save into a failure.
+                    _duplicate.Set(
+                        "ScanReceipt.DuplicateWarning",
+                        Money.FromRounded(Math.Abs(duplicate.Amount), CurrencyCode.FromStoredValue(currency)),
+                        duplicate.Payee,
+                        duplicate.Date);
                     _acknowledgedDuplicateKey = importKey;
                     return;
                 }
@@ -450,11 +658,20 @@ public partial class ScanReceiptViewModel : ObservableObject
                 Notes,
                 Category,
                 lineItemsCommands,
-                importKey
+                importKey,
+                BuildAttachment()
             ));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
-            _navigationService.NavigateTo<TransactionsViewModel>();
+
+            // Only if the user is still here (TD-121). The save is awaited, and the sidebar is beside
+            // this page, so the user can have gone elsewhere by the time it lands; pulling them onto
+            // Transactions then would be a navigation they never asked for. The broadcast above still
+            // goes out either way -- the transaction WAS written.
+            if (IsActive)
+            {
+                _navigationService.NavigateTo(_viewModels.CreateTransactions());
+            }
         }
         catch (Exception ex)
         {
@@ -462,29 +679,29 @@ public partial class ScanReceiptViewModel : ObservableObject
             // the same guarantee: ScanReceiptCommand runs inside TransactionBehavior's transaction,
             // and a ConcurrencyConflictException now arrives with its "Reload and try again."
             // instruction intact instead of being flattened (TD-98).
-            ErrorMessage = UserFacingError.Report(
+            _error.Set(UserFacingError.Report(
                 _logger,
                 ex,
                 "receipt-save-transaction",
-                "The transaction could not be saved. Nothing was changed.");
+                new UserFacingMessage("ScanReceipt.Failure.Save")));
         }
         finally
         {
             IsBusy = false;
-            StatusMessage = string.Empty;
+            _status.Clear();
         }
     }
 
     [RelayCommand]
     private void Cancel()
     {
-        _navigationService.NavigateTo<TransactionsViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateTransactions());
     }
 
     [RelayCommand]
     private void Retake()
     {
-        _navigationService.NavigateTo<LiveScannerViewModel>();
+        _navigationService.NavigateTo(_viewModels.CreateLiveScanner(_navigationService));
         WeakReferenceMessenger.Default.Send(new RetakeRequestedMessage());
     }
 
@@ -552,7 +769,11 @@ public partial class ScanReceiptViewModel : ObservableObject
         LineItems.Add(new ReceiptLineItemViewModel
         {
             Kind = SelectedAdjustmentKind,
-            Description = SelectedAdjustmentKind.ToString(),
+            // Was SelectedAdjustmentKind.ToString(), the raw enum member name ("Tax", "Rounding",
+            // ...) written straight into the row the user then saves (TD-150). Now the same
+            // LineItemKind.* keys Converters.LineItemKindDisplay uses for the picker, so the saved
+            // row reads in the active language instead of always in English.
+            Description = _localizer[$"LineItemKind.{SelectedAdjustmentKind}"],
             Quantity = 1m,
             UnitPrice = difference,
             TotalPrice = difference,
@@ -596,26 +817,21 @@ public partial class ScanReceiptViewModel : ObservableObject
     /// the command validator both compare figures that have been normalised to the minor units of
     /// the account currency (TD-18), so comparing raw decimals here could show the user a
     /// reconciled receipt that the validator then refuses -- or, worse, an unreconciled one they
-    /// cannot clear. Falling back to plain decimals before an account is chosen is safe because
-    /// nothing can be saved in that state anyway.
+    /// cannot clear. Before an account is chosen the vault's base currency supplies the scale (TD-100);
+    /// plain decimals remain only for a vault with neither an account nor a base currency.
     /// </remarks>
     private void RecomputeReconciliation()
     {
         HasLineItems = LineItems.Count > 0;
 
-        var currency = SelectedAccount?.Balance.Currency;
+        // The selected account's currency, else the vault's base currency (TD-100): so the figure shown
+        // before an account is chosen is rounded to a real scale, the one an account in the base
+        // currency would use, rather than summed exactly.
+        var currency = SelectedAccount?.Balance.Currency ?? _baseCurrency;
         if (currency is null)
         {
-            // NO ACCOUNT YET, SO NO SCALE TO ROUND TO — and this branch is deliberately NOT unified
-            // with the one below. Rounding needs a currency, and the only way to have one here would
-            // be to guess, which would show the user a difference computed against a scale their
-            // account may not have.
-            //
-            // It is safe because the verdict is not load-bearing until an account exists:
-            // SaveTransactionAsync refuses with "Please select an account" before it ever consults
-            // IsReconciled, so every save is judged by the Money path below. What this branch feeds
-            // is the figure on screen while the user is still filling the form, and computing that
-            // exactly — no rounding at all — is the most honest thing to show without a currency.
+            // NO ACCOUNT AND NO BASE CURRENCY (an empty vault): there is genuinely no scale to round to,
+            // and nothing can be saved in that state anyway, so the exact figure is the honest one.
             LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
             UnreconciledDifference = Amount - LineItemsTotal;
         }
@@ -632,4 +848,26 @@ public partial class ScanReceiptViewModel : ObservableObject
 
         IsReconciled = !HasLineItems || UnreconciledDifference == 0m;
     }
+
+    /// <summary>
+    /// Releases the localized message slot.
+    /// </summary>
+    /// <remarks>
+    /// THE ANALYZER ASKED FOR THIS AND IT WAS RIGHT (CA1001). A
+    /// <see cref="LocalizedMessageSlot"/> subscribes to <c>ILocalizer.LanguageChanged</c>, and the
+    /// localizer is a singleton for the life of the process -- so a slot that is never released
+    /// keeps this view model reachable forever. That is precisely the leak shape TD-34 removed
+    /// from the messenger, and it would have come back through a different event.
+    /// </remarks>
+    public void Dispose()
+    {
+        _localizer.LanguageChanged -= OnLanguageChanged;
+        _status.Dispose();
+        _error.Dispose();
+        _duplicate.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(DateAmbiguityMessage));
+
 }

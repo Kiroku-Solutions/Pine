@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-02-PRODUCT-SCOPE`                                                          |
 | Status           | Partially implemented — several in-scope capabilities are not built                  |
-| Reconciled       | 2026-08-31 · Accounts, transactions, imports, budgets and receipt scanning exist. Sync, plugins, the rule engine, localisation and attachments do not (TD-36, TD-37, TD-45). |
+| Reconciled       | 2026-08-31 · Accounts, transactions, imports, budgets and receipt scanning exist. Sync, plugins, the rule engine, localisation and attachments do not (TD-36, TD-37, TD-45). **AMENDED 2026-09-09 (ADR-0021):** §7.3 Plugin Scope is **withdrawn** and §7.2's "via plugins" is struck — the sync targets are unchanged and their providers are compiled in. SCOPE-22 (Plugin Marketplace) will not be built. The extension points §7.3 lists are kept as an inventory of where this product wants to be extensible; what is withdrawn is the delivery mechanism, not the ambition. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -169,10 +169,13 @@ paid, third-party hosted service.
 
 ### 7.2 Synchronisation Scope
 
+> **Amended by ADR-0021.** "Via plugins" is struck below: Pine does not load third-party code.
+> The targets are unchanged and the providers are compiled in.
+
 In scope:
 
 - Local-only (SQLite) mode, the default.
-- Local + cloud sync via plugins (Google Drive, Dropbox, OneDrive,
+- Local + cloud sync via ~~plugins~~ **built-in providers** (Google Drive, Dropbox, OneDrive,
   NextCloud, WebDAV, Git, custom providers).
 - Cloud-only mode **with an encrypted local cache** that preserves
   Offline First (per the Vision §10 rule approved by the user).
@@ -186,10 +189,18 @@ Out of scope:
 **Rationale.** Mirrors Vision §10 and the privacy principles
 P-01, P-12, P-13.
 
-### 7.3 Plugin Scope
+### 7.3 Plugin Scope — **WITHDRAWN (ADR-0021)**
 
-In scope (as extension points, not as built-in features unless
-otherwise stated):
+> **Pine does not load third-party code.** The list below is kept because it is an accurate
+> inventory of where this product wants to be extensible, and every one of those seams still
+> deserves to exist — as a compiled-in implementation behind a port, added to Pine and shipped with
+> it, where it is reviewable and covered by the same tests as everything else. What is withdrawn is
+> the delivery mechanism, not the ambition. §7.3's closing line called the plugin surface "one of
+> Pine's strategic moats"; the moat that survives is that every line of code touching a vault is
+> code this project shipped.
+
+In scope ~~(as extension points, not as built-in features unless
+otherwise stated)~~ **as built-in capabilities, delivered by Pine**:
 
 - Synchronisation providers.
 - Dashboard widgets.

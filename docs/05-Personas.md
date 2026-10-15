@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-05-PERSONAS`                                                               |
 | Status           | Non-normative — user archetypes                                                      |
-| Reconciled       | 2026-08-31 · Personas drive use cases; they are not themselves implementable. |
+| Reconciled       | 2026-08-31 · Personas drive use cases; they are not themselves implementable. **2026-10-05 · PERS-07 (the plugin author) is retired, not re-aimed: ADR-0021 decided there is no plugin host and no SDK for a third-party author to target, so there is no compiled-in-seam equivalent of her goals to redirect her toward. §6.2 and §7's coverage row are struck through rather than deleted (TD-147). See `04-Stakeholders` for the matching `SH-PLUGIN-AUTHOR` correction.** |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-07-08                                                                           |
@@ -224,7 +224,13 @@ field; missing fields are a defect.
 
 ### 6.2 PERS-07 — Aiko, the plugin author
 
-- **Stakeholder link.** `SH-PLUGIN-AUTHOR`.
+> **Retired, ADR-0021 (TD-147).** Pine will not load third-party code; there is no
+> plugin host, no SDK and no marketplace for this persona's goals to be served by,
+> and no compiled-in-seam equivalent to re-aim her at — the seams are maintained by
+> the project, not by independent authors. The body below is kept as written rather
+> than deleted, as the record of a goal the product has declined to serve.
+
+~~- **Stakeholder link.** `SH-PLUGIN-AUTHOR`.
 - **Quote.** "I want a stable SDK and a marketplace that does not
   punish me for being independent."
 - **Demographics.** 25–50, mixed, software engineer.
@@ -239,19 +245,19 @@ field; missing fields are a defect.
   2. Permission models that are vague.
   3. Marketplaces that bury independent plugins.
 - **Anti-patterns.** Pine must not break the SDK without a deprecation
-  window, must not require paid listing.
+  window, must not require paid listing.~~
 
 ## 7. Persona Coverage Matrix
 
 | Persona ID | Stakeholder                  | Primary SCOPE-* modules exercised                                  |
 |------------|------------------------------|---------------------------------------------------------------------|
 | PERS-01    | `SH-END-USER`                | SCOPE-01..05, 23                                                  |
-| PERS-02    | `SH-POWER-USER`              | SCOPE-21, 22, 31; uses plugin SDK                                  |
+| PERS-02    | `SH-POWER-USER`              | SCOPE-21, 22, 31; ~~uses plugin SDK~~ uses compiled-in extension seams (ADR-0021) |
 | PERS-03    | `SH-MULTI-PLATFORM-USER`     | SCOPE-01, 02, 03, 23                                               |
 | PERS-04    | `SH-INTL-USER`               | SCOPE-01, 02, 03, 11, 16                                           |
 | PERS-05    | `SH-AI-CURIOUS-USER`         | SCOPE-19, 21, plus the receipt scanning flow                       |
 | PERS-06    | `SH-CONTRIBUTOR`             | All, via the SSoT and the contribution flow                        |
-| PERS-07    | `SH-PLUGIN-AUTHOR`           | SCOPE-22; uses the Plugin SDK                                      |
+| ~~PERS-07~~ | ~~`SH-PLUGIN-AUTHOR`~~ | ~~SCOPE-22; uses the Plugin SDK~~ **Retired, ADR-0021 (TD-147)** |
 
 **Rationale.** Each persona must map to at least one SCOPE-* module.
 This prevents personas from becoming decorative.
@@ -275,7 +281,7 @@ This prevents personas from becoming decorative.
 ## 10. Quality Checklist
 
 - [x] Five primary personas, one per primary stakeholder.
-- [x] One contributor and one plugin-author persona.
+- [x] One contributor and one plugin-author persona. **(The plugin-author persona, PERS-07, is retired — ADR-0021, TD-147.)**
 - [x] Every persona uses the full template; no empty fields.
 - [x] Anti-patterns are present and trace to principles.
 - [x] Coverage matrix maps personas to SCOPE-* modules.
