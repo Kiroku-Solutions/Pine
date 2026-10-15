@@ -39,7 +39,12 @@ public partial class EveryRequestHasASenderTests
     /// than deleted, so the next request that genuinely needs the escape hatch has somewhere to add
     /// it without re-deriving the ratchet's shape.
     /// </remarks>
-    private static readonly Dictionary<string, string> KnownUnsent = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string> KnownUnsent = new(StringComparer.Ordinal)
+    {
+        // TD-124: a read-only diagnostic whose output is the input to TD-125's migration design;
+        // no screen shows it. Comes off this list when something sends it, or is deleted with TD-125.
+        ["FindLegacyTransferLinksQuery"] = "TD-124",
+    };
 
     [Fact]
     public void EveryRequest_IsConstructedByTheProduct_NotOnlyByTests()

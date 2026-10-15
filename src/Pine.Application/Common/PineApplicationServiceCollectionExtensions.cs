@@ -61,6 +61,10 @@ public static class PineApplicationServiceCollectionExtensions
         //    MediatR interfaces, it can never resolve back to the decorator below.
         services.AddScoped<Mediator>();
 
+        // TD-119: operative preferences (auto-lock timeout, confidence gate, page size) are in-vault
+        // Settings with the old configuration value as the read-fallback.
+        services.TryAddScoped<Pine.Application.Settings.IUserPreferences, Pine.Application.Settings.UserPreferences>();
+
         // 4. Replace (not merely add) all three MediatR interfaces with the singleton scoping
         //    decorator, so callers of IMediator, ISender or IPublisher all get a fresh scope per
         //    operation. ISender/IPublisher are resolved via IMediator so all three share one instance.

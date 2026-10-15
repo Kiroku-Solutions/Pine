@@ -23,48 +23,54 @@ public sealed class Account : AggregateRoot
     /// <para>
     /// WHY THIS EXISTS (TD-02). Recalculating a balance from its ledger is the only way to repair one
     /// that has drifted, and it is arithmetically impossible without this number: the balance is
-    /// <c>opening + sum(transactions)</c>, and the opening figure was previously accepted by
-    /// <see cref="Create"/> and then immediately forgotten — folded into <see cref="Balance"/> with
-    /// nothing left to separate it from the movements that followed.
+    /// <c>opening + sum(transactions)</c>.
     /// </para>
     /// <para>
-    /// WHY IT IS A BARE <see cref="decimal"/> AND NOT A SECOND MONEY COLUMN. An account can never be
-    /// re-denominated — that is the invariant
-    /// <c>Account_ShouldNot_ExposeAnyPublicMeansOfChangingItsCurrency</c> pins, and the one
-    /// <c>ValidationBehavior</c>'s TOCTOU-free currency check rests on — so an opening balance in a
-    /// currency other than <see cref="Balance"/>'s is not a state this type can reach. A second
-    /// currency column would create the possibility of the two disagreeing and buy nothing;
-    /// <see cref="OpeningBalance"/> reconstitutes the money from the one currency the account has.
+    /// TD-77 (owner decision, supersedes the earlier "bare decimal" design). The opening balance is
+    /// stored as a real <see cref="Money"/>: <c>OpeningBalance_Amount</c> plus its own
+    /// <c>OpeningBalance_Currency</c> column, so a hand-written SQL update or a sync merge cannot
+    /// silently leave a number whose currency is implied rather than recorded. The domain still
+    /// guarantees the currency equals the account's (<see cref="Balance"/>'s), which is immutable;
+    /// <see cref="OpeningBalanceCurrencyMatchesAccount"/> reports a vault where the two columns
+    /// nevertheless disagree.
     /// </para>
     /// <para>
-    /// WHY IT IS NULLABLE AND NOT BACKFILLED BY THE MIGRATION. For an account that already exists the
-    /// opening figure is genuinely unrecoverable. The only expression available is
-    /// <c>Balance - sum(transactions)</c>, which is exact ONLY IF the balance is already correct —
-    /// precisely the assumption recalculation exists to stop making. Writing that value in a migration
-    /// would silently bake any existing drift in as though it had been the opening balance all along,
-    /// and every later recalculation would then agree with the wrong number forever. Instead the value
-    /// stays null and <see cref="AdoptOpeningBalance"/> makes the inference an explicit, reportable act.
+    /// WHY IT IS NULLABLE AND NOT BACKFILLED WITH AN INFERENCE. For an account that already exists the
+    /// opening figure is genuinely unrecoverable; <c>Balance - sum(transactions)</c> would bake any
+    /// existing drift in as truth. It stays null until <see cref="AdoptOpeningBalance"/> makes the
+    /// inference an explicit act. (Where an amount already existed, the TD-77 migration backfills only
+    /// the missing CURRENCY from the account's own currency.)
     /// </para>
     /// </remarks>
     public decimal? OpeningBalanceAmount { get; private set; }
 
     /// <summary>
-    /// <see cref="OpeningBalanceAmount"/> denominated in the account's own currency, or
-    /// <see langword="null"/> when no opening balance is on record. Derived, never stored.
+    /// The currency recorded alongside <see cref="OpeningBalanceAmount"/>, or <see langword="null"/>
+    /// when there is no opening balance.
+    /// </summary>
+    public CurrencyCode? OpeningBalanceCurrency { get; private set; }
+
+    /// <summary>
+    /// The opening balance as <see cref="Money"/> in its recorded currency, or <see langword="null"/>
+    /// when none is on record. Derived from the two stored columns.
     /// </summary>
     /// <remarks>
-    /// <c>FromRounded</c>, not the plain constructor, and the difference is only visible on a legacy
-    /// vault. <see cref="OpeningBalanceAmount"/> is a bare <see cref="decimal"/> column that does NOT
-    /// pass through <see cref="Money"/> on the way out of the database, so a vault written before
-    /// TD-18 can hold a figure that is out of scale for its currency — in a zero-minor-unit currency
-    /// the validating constructor would REFUSE it, and this property would throw every time the
-    /// account was displayed. A read-path projection must not be able to break a screen, so it
-    /// rounds. Every WRITE still goes through <see cref="AdoptOpeningBalance"/>, which takes an
-    /// already-normalised <see cref="Money"/>, so nothing new can enter out of scale. The column's
-    /// lack of its own protection against a hand-written SQL update is TD-77.
+    /// <c>FromRounded</c>, not the plain constructor: a vault written before TD-18 can hold an
+    /// out-of-scale figure and a read-path projection must not throw. Every WRITE goes through
+    /// <see cref="AdoptOpeningBalance"/>, which takes an already-normalised <see cref="Money"/>. A
+    /// row with an amount but (impossibly, post-migration) no currency falls back to the account's.
     /// </remarks>
     public Money? OpeningBalance =>
-        OpeningBalanceAmount is null ? null : Money.FromRounded(OpeningBalanceAmount.Value, Balance.Currency);
+        OpeningBalanceAmount is null
+            ? null
+            : Money.FromRounded(OpeningBalanceAmount.Value, OpeningBalanceCurrency ?? Balance.Currency);
+
+    /// <summary>
+    /// Whether the recorded opening-balance currency is the account's currency (vacuously true when
+    /// no opening balance is on record).
+    /// </summary>
+    public bool OpeningBalanceCurrencyMatchesAccount =>
+        OpeningBalanceAmount is null || OpeningBalanceCurrency is null || OpeningBalanceCurrency == Balance.Currency;
 
 #pragma warning disable CS8618 // Required by Entity Framework Core
     private Account() { }
@@ -79,6 +85,7 @@ public sealed class Account : AggregateRoot
         // Kept apart from Balance and never mutated again, so a ledger sum always has a fixed figure
         // to be measured against.
         OpeningBalanceAmount = initialBalance.Amount;
+        OpeningBalanceCurrency = initialBalance.Currency;
         CreatedAt = timeProvider.GetUtcNow();
         UpdatedAt = CreatedAt;
     }
@@ -119,11 +126,9 @@ public sealed class Account : AggregateRoot
     /// away — which is the only way this method could be used to hide drift instead of exposing it.
     /// </para>
     /// <para>
-    /// IT CANNOT RE-DENOMINATE THE ACCOUNT. Only <see cref="Money.Amount"/> is stored; the currency is
-    /// checked and then discarded, and <see cref="OpeningBalance"/> is always rebuilt from
-    /// <see cref="Balance"/>'s currency. That is structural, not merely validated — there is no path,
-    /// valid or invalid, by which this method changes the account's currency. The guard below exists
-    /// to reject a confused caller, not to protect the invariant.
+    /// IT CANNOT RE-DENOMINATE THE ACCOUNT. The opening balance's currency is stored (TD-77) but taken
+    /// from <see cref="Balance"/>, never from the argument, and the argument is rejected unless it
+    /// matches. No path changes the account's own currency.
     /// </para>
     /// </remarks>
     /// <param name="openingBalance">The balance the account started from.</param>
@@ -145,6 +150,7 @@ public sealed class Account : AggregateRoot
                 $"Opening balance currency {openingBalance.Currency} does not match account currency {Balance.Currency}.");
 
         OpeningBalanceAmount = openingBalance.Amount;
+        OpeningBalanceCurrency = Balance.Currency;
         UpdatedAt = timeProvider.GetUtcNow();
     }
 

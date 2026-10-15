@@ -62,7 +62,7 @@ public class TransactionOrderingTests
         // Act
         await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
         var repository = new SqliteTransactionRepository(context);
-        var page = await repository.GetPagedAsync(1, 10, CancellationToken.None);
+        var page = await repository.GetPagedAsync(1, 10, true, CancellationToken.None);
 
         // Assert
         page.Items.Select(t => t.Payee).Should().Equal(
@@ -134,6 +134,32 @@ public class TransactionOrderingTests
         // Assert: the same two rows, opposite orders. Only one of them is chronological.
         byStoredDate.Should().Equal("earlier", "later");
         byStoredUtc.Should().Equal("later", "earlier");
+    }
+
+    /// <summary>
+    /// TD-71: excluding voided rows happens in SQL, so both the page and the total count ignore them
+    /// and paging stays dense.
+    /// </summary>
+    [Fact]
+    public async Task GetPagedAsync_WithoutVoided_ExcludesVoidedRowsFromItemsAndCount()
+    {
+        using var vault = new TempVault();
+        await SeedAsync(vault);
+
+        await using var context = new PineDbContext(vault.DatabasePath, vault.Key);
+        var later = await context.Transactions.SingleAsync(t => t.Payee == "later", CancellationToken.None);
+        later.Void("mistake", TimeProvider.System);
+        await context.SaveChangesAsync(CancellationToken.None);
+
+        var repository = new SqliteTransactionRepository(context);
+
+        var visible = await repository.GetPagedAsync(1, 10, false, CancellationToken.None);
+        visible.Items.Select(t => t.Payee).Should().Equal("earlier");
+        visible.TotalCount.Should().Be(1);
+
+        var all = await repository.GetPagedAsync(1, 10, true, CancellationToken.None);
+        all.Items.Should().HaveCount(2);
+        all.TotalCount.Should().Be(2);
     }
 
     private static List<string> ReadPayees(TempVault vault, string sql)

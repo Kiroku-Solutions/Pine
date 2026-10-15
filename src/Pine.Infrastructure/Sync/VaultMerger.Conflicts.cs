@@ -227,6 +227,7 @@ public static partial class VaultMerger
         }
 
         await run.RederiveBalancesAsync(cancellationToken).ConfigureAwait(false);
+        await UnlinkDanglingTransferLegsAsync(sql, cancellationToken).ConfigureAwait(false);
 
         var marked = await sql.ExecuteAsync(
             "UPDATE SyncConflicts SET ResolvedAtUtc = $now, Resolution = $resolution WHERE Id = $id AND ResolvedAtUtc IS NULL;",
@@ -320,6 +321,10 @@ public static partial class VaultMerger
             if (schemaChanged)
             {
                 block = SyncConflictBlock.SchemaChanged;
+            }
+            else if (local is not null && SyncMergePolicy.ImmutableColumnsDiffer(table.Name, local, remote))
+            {
+                block = SyncConflictBlock.CurrencyMismatch;
             }
             else if (kind == SyncConflictKind.AmbiguousNaturalKey)
             {
@@ -438,6 +443,7 @@ public static partial class VaultMerger
         "Budgets" => "Category",
         "Settings" => "Key",
         "Rules" => "Title",
+        "ExchangeRates" => "FromCurrency",
         "Attachments" => "FileName",
         "ImportProfiles" => "Name",
         _ => "Id",

@@ -144,4 +144,22 @@ public class RequestScopeAndRepositoryBoundaryTests
 
         (await host.QueryAsync(c => c.Accounts.AsNoTracking().CountAsync(a => a.Id == accountId))).Should().Be(1);
     }
+
+    /// <summary>
+    /// TD-78 through the real pipeline: an unknown currency on a new account is refused by the
+    /// validator with a localisable key, not by a raw domain exception, and nothing is written.
+    /// </summary>
+    /// <returns>A task representing the test.</returns>
+    [Fact]
+    public async Task CreateAccount_WithAnUnknownCurrency_IsRefusedByTheValidator_AndWritesNothing()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+        var mediator = host.Services.GetRequiredService<IMediator>();
+
+        var act = () => mediator.Send(new CreateAccountCommand("Bad", "ZZZ", AccountType.Bank, 1m));
+
+        var thrown = await act.Should().ThrowAsync<RequestValidationException>();
+        thrown.Which.Message.Should().Contain("ZZZ");
+        (await host.QueryAsync(c => c.Accounts.AsNoTracking().CountAsync(a => a.Name == "Bad"))).Should().Be(0);
+    }
 }

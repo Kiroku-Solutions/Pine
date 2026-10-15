@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Pine.Core.Accounts;
 using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
@@ -162,6 +164,91 @@ public class VaultMergerTests
 
         await MergeAsync(left, right);
         return (left, right, account);
+    }
+
+    // ---------------------------------------------------------------- transfer legs under the link foreign key (TD-125)
+
+    [Fact]
+    public async Task ATransferPair_ArrivesWithBothLegsAndTheLinkIntact_DespiteTheLinkBeingAForeignKey()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var from = NewAccount("From");
+        var to = NewAccount("To");
+        var pair = Transaction.CreateTransferPair(from.Id, to.Id, Yesterday, "out", "in", new Money(10m, Usd), TimeProvider.System);
+        await WriteAsync(left, LeftDevice, c =>
+        {
+            c.Accounts.AddRange(from, to);
+            c.Transactions.AddRange(pair.Source, pair.Destination);
+            return Task.CompletedTask;
+        });
+
+        var result = await MergeAsync(left, right);
+
+        result.IntoRight.ConflictsRecorded.Should().Be(0, "a leg that arrives before its partner is not a missing parent");
+        Scalar(right, "SELECT LinkedTransactionId FROM Transactions WHERE Id = $id;", ("$id", Id(pair.Source.Id)))
+            .Should().Be(Id(pair.Destination.Id));
+        Scalar(right, "SELECT LinkedTransactionId FROM Transactions WHERE Id = $id;", ("$id", Id(pair.Destination.Id)))
+            .Should().Be(Id(pair.Source.Id));
+    }
+
+    [Fact]
+    public async Task ADeletedLeg_ReachesThePeer_AsAnUnlinkOfItsPartner_NotAFailedMergeAndNotALostRow()
+    {
+        using var left = await MigratedVaultAsync();
+        using var right = await MigratedVaultAsync();
+        var from = NewAccount("From");
+        var to = NewAccount("To");
+        var pair = Transaction.CreateTransferPair(from.Id, to.Id, Yesterday, "out", "in", new Money(10m, Usd), TimeProvider.System);
+        await WriteAsync(left, LeftDevice, c =>
+        {
+            c.Accounts.AddRange(from, to);
+            c.Transactions.AddRange(pair.Source, pair.Destination);
+            return Task.CompletedTask;
+        });
+        await MergeAsync(left, right);
+
+        await using (var context = On(left, LeftDevice))
+        {
+            var leg = await context.Transactions.SingleAsync(t => t.Id == pair.Destination.Id, CancellationToken.None);
+            context.Transactions.Remove(leg);
+            await context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await MergeAsync(left, right);
+
+        Has(right, "Transactions", pair.Destination.Id).Should().BeFalse();
+        Has(right, "Transactions", pair.Source.Id).Should().BeTrue("a money row survives its partner's deletion");
+        Scalar(right, "SELECT LinkedTransactionId FROM Transactions WHERE Id = $id;", ("$id", Id(pair.Source.Id)))
+            .Should().BeNull("ON DELETE SET NULL un-links the survivor instead of blocking the merge");
+    }
+
+    [Fact]
+    public async Task ALegWhosePartnerCannotArrive_IsKeptUnlinked_AndTheMergeStillCommits()
+    {
+        var (left, right, from) = await TwoMergedVaultsAsync();
+        using (left)
+        using (right)
+        {
+            var to = NewAccount("To");
+            await WriteAsync(right, RightDevice, c => { c.Accounts.Add(to); return Task.CompletedTask; });
+            await MergeAsync(left, right);
+            // The peer deletes the destination account; this vault, not yet knowing, books a transfer into it.
+            await WriteAsync(right, RightDevice, async c =>
+                c.Accounts.Remove(await c.Accounts.SingleAsync(a => a.Id == to.Id, CancellationToken.None)));
+            var pair = Transaction.CreateTransferPair(from.Id, to.Id, Yesterday, "out", "in", new Money(10m, Usd), TimeProvider.System);
+            await WriteAsync(left, LeftDevice, c =>
+            {
+                c.Transactions.AddRange(pair.Source, pair.Destination);
+                return Task.CompletedTask;
+            });
+
+            var merge = async () => await MergeAsync(left, right);
+
+            await merge.Should().NotThrowAsync("a dangling link at commit would otherwise roll the whole merge back");
+            Count(right, @"SELECT COUNT(*) FROM Transactions WHERE LinkedTransactionId IS NOT NULL AND LinkedTransactionId NOT IN (SELECT Id FROM Transactions);")
+                .Should().Be(0);
+        }
     }
 
     // ---------------------------------------------------------------- inserts
@@ -664,14 +751,93 @@ public class VaultMergerTests
         var (left, right, account) = await TwoMergedVaultsAsync();
         using var l = left;
         using var r = right;
-        left.ExecuteSql("UPDATE Accounts SET OpeningBalanceAmount = NULL;");
-        right.ExecuteSql("UPDATE Accounts SET OpeningBalanceAmount = NULL;");
+        left.ExecuteSql("UPDATE Accounts SET OpeningBalance_Amount = NULL;");
+        right.ExecuteSql("UPDATE Accounts SET OpeningBalance_Amount = NULL;");
 
         await SpendAsync(left, LeftDevice, account.Id, 20m, "Grocer");
         await MergeAsync(left, right);
 
         Balance(right, account.Id).Should().Be(80_0000, "100 less the 20 the ledger gained; there is no opening figure to rebuild it from");
-        Count(right, "SELECT COUNT(*) FROM Accounts WHERE OpeningBalanceAmount IS NULL;").Should().Be(1, "and none is invented");
+        Count(right, "SELECT COUNT(*) FROM Accounts WHERE OpeningBalance_Amount IS NULL;").Should().Be(1, "and none is invented");
+    }
+
+    /// <summary>
+    /// TD-77: the opening balance travels as a pair (amount + currency) and the merge rebuilds the balance from the
+    /// renamed <c>OpeningBalance_Amount</c> column. Pointing the merger's raw SQL at the old name, or leaving the
+    /// currency column out of the copied columns, fails here.
+    /// </summary>
+    [Fact]
+    public async Task AnAccountMergedIntoAnotherVault_CarriesItsOpeningBalanceCurrency_AndItsBalanceIsRebuiltFromTheOpeningAmount()
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+
+        Scalar(right, "SELECT OpeningBalance_Currency FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("USD");
+        Scalar(right, "SELECT OpeningBalance_Amount FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be(100_0000L);
+
+        // A drifted balance on the receiving side: only a rebuild from the opening amount repairs it, whereas
+        // "move by the ledger's change" would carry the drift forward (999 - 20).
+        right.ExecuteSql("UPDATE Accounts SET Balance_Amount = 9990000;");
+
+        await SpendAsync(left, LeftDevice, account.Id, 20m, "Grocer");
+        await MergeAsync(left, right);
+
+        Balance(right, account.Id).Should().Be(80_0000, "opening 100 plus the ledger's -20, derived from OpeningBalance_Amount");
+    }
+
+    /// <summary>Changes an account's currency under the domain (which has no way to) and stamps the row as edited by a real save.</summary>
+    private static async Task ChangeCurrencyAsync(TempVault vault, Guid device, Guid accountId, string currency)
+    {
+        vault.ExecuteSql($"UPDATE Accounts SET Balance_Currency = '{currency}', OpeningBalance_Currency = '{currency}', Name = 'Renamed {currency}';");
+        await WriteAsync(vault, device, async context =>
+        {
+            var account = await context.Accounts.SingleAsync(a => a.Id == accountId, CancellationToken.None);
+            account.Deposit(new Money(1m, new CurrencyCode(currency)), TimeProvider.System);
+            context.Entry(account).State = EntityState.Modified;
+        });
+    }
+
+    /// <summary>
+    /// An account's currency is immutable. Different currencies on the two vaults reject the account row outright,
+    /// even when only one side changed it and even though the other changes (the name) would have won by recency; the
+    /// rest of the merge goes on as usual.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnAccountInADifferentCurrency_IsRejected_AndTheRestOfTheMergeStillApplies(bool bothSidesEdited)
+    {
+        var (left, right, account) = await TwoMergedVaultsAsync();
+        using var l = left;
+        using var r = right;
+        await ChangeCurrencyAsync(left, LeftDevice, account.Id, "EUR");
+        if (bothSidesEdited)
+        {
+            await WriteAsync(right, RightDevice, async c =>
+                (await c.Accounts.SingleAsync(a => a.Id == account.Id, CancellationToken.None)).Deposit(new Money(1m, Usd), TimeProvider.System));
+        }
+
+        await WriteAsync(left, LeftDevice, c => { c.Settings.Add(Setting.Create("Theme", "dark")); return Task.CompletedTask; });
+
+        var result = await MergeAsync(left, right);
+
+        Scalar(right, "SELECT Balance_Currency FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("USD", "the peer's currency is never taken");
+        Scalar(right, "SELECT OpeningBalance_Currency FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("USD");
+        Scalar(right, "SELECT Name FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("Current", "the rest of that row is not applied either");
+        result.IntoRight.ConflictsRecorded.Should().Be(1);
+        ConflictKinds(right).Should().Equal(nameof(SyncConflictKind.ConcurrentEdit));
+        SettingValue(right, "Theme").Should().Be("dark", "other rows merge by the existing rules");
+        Scalar(left, "SELECT Balance_Currency FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("EUR", "this side is not overwritten either");
+
+        await using var context = On(right, RightDevice);
+        var open = await new SqliteSyncConflictStore(context).GetOpenAsync(CancellationToken.None);
+        var conflict = open.Should().ContainSingle().Subject;
+        conflict.TakeRemoteBlockedBy.Should().Be(SyncConflictBlock.CurrencyMismatch);
+        conflict.CanTakeRemote.Should().BeFalse();
+        var take = () => new SqliteSyncConflictStore(context).ResolveAsync(conflict.Id, SyncConflictResolution.TakeRemote, false, CancellationToken.None);
+        (await take.Should().ThrowAsync<SyncConflictRefusedException>()).Which.Block.Should().Be(SyncConflictBlock.CurrencyMismatch);
+        Scalar(right, "SELECT Balance_Currency FROM Accounts WHERE Id = $id;", ("$id", Id(account.Id))).Should().Be("USD");
     }
 
     /// <summary>
@@ -880,14 +1046,18 @@ public class VaultMergerTests
         (await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None)).Should().Be(leftId, "a vault's id is created once");
     }
 
-    /// <summary>A byte copy of a vault claims to be the same vault; merging it with the original is refused.</summary>
+    /// <summary>
+    /// TD-144, byte-copied vault. A copy carries the original's vault id, so a third vault merging with both could not
+    /// tell them apart. The file remembers where it lives; opened somewhere else, it takes a new identity.
+    /// </summary>
     [Fact]
-    public async Task AByteCopyOfAVault_IsRefused_AsAPeerOfTheOriginal()
+    public async Task AByteCopyOfAVault_TakesANewIdentity_WhereverItIsOpenedFromAnotherPath()
     {
         using var left = await MigratedVaultAsync();
+        Guid originalId;
         await using (var lc = On(left, LeftDevice))
         {
-            await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None);
+            originalId = await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None);
         }
 
         left.CloseContexts();
@@ -895,13 +1065,95 @@ public class VaultMergerTests
         File.Copy(left.DatabasePath, copyPath);
 
         await using var l = On(left, LeftDevice);
-        var c = left.CreateContext(copyPath);
-        var act = () => VaultMerger.MergeAsync(l, c, CancellationToken.None);
-        (await act.Should().ThrowAsync<SyncMergeRefusedException>()).WithMessage("*byte copy*",
-            "refused up front, before either side is exported, and saying why");
+        await using var c = left.CreateContext(copyPath);
+        var copyId = await VaultMerger.GetOrCreateVaultIdAsync(c, CancellationToken.None);
+
+        copyId.Should().NotBe(originalId, "the copy is a fork of the history and must not answer to the original's name");
+        (await VaultMerger.GetOrCreateVaultIdAsync(c, CancellationToken.None)).Should().Be(copyId, "the new identity is created once");
+        (await VaultMerger.GetOrCreateVaultIdAsync(l, CancellationToken.None)).Should().Be(originalId, "the original keeps its identity where it was");
 
         var self = () => VaultMerger.MergeAsync(l, l, CancellationToken.None);
-        await self.Should().ThrowAsync<SyncMergeRefusedException>();
+        await self.Should().ThrowAsync<SyncMergeRefusedException>("a vault is still not a peer of itself");
+    }
+
+    [Fact]
+    public async Task AVaultStampedBeforeTheLocationTagExisted_IsAdoptedWhereItIs_NotRenamed()
+    {
+        using var left = await MigratedVaultAsync();
+        Guid id;
+        await using (var lc = On(left, LeftDevice))
+        {
+            id = await VaultMerger.GetOrCreateVaultIdAsync(lc, CancellationToken.None);
+        }
+
+        left.CloseContexts();
+        using (var connection = left.OpenRaw(left.DatabasePath, left.Key))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA application_id = 0;"; // as a vault written by the previous build
+            command.ExecuteNonQuery();
+        }
+
+        await using var again = On(left, LeftDevice);
+        (await VaultMerger.GetOrCreateVaultIdAsync(again, CancellationToken.None)).Should().Be(id);
+        Count(left, "PRAGMA application_id;").Should().Be(VaultMerger.LocationTag(left.DatabasePath));
+    }
+
+    // ---------------------------------------------------------------- rewind by other paths (TD-144)
+
+    /// <summary>Copying an older pine.db over the vault by hand puts the counter back; the floor beside it does not move.</summary>
+    [Fact]
+    public async Task AfterAManualCopyOfAnOlderFileOverTheVault_TheNextWrite_IsAboveEveryClockAlreadyIssued()
+    {
+        using var vault = await MigratedVaultAsync();
+        await WriteAsync(vault, LeftDevice, c => { c.Settings.Add(Setting.Create("k0", "v")); return Task.CompletedTask; });
+
+        var older = Path.Combine(vault.VaultDirectory, "older.db");
+        vault.CloseContexts();
+        File.Copy(vault.DatabasePath, older);
+        Clock(vault).Should().Be(1);
+
+        for (var i = 1; i <= 6; i++)
+        {
+            await WriteAsync(vault, LeftDevice, c => { c.Settings.Add(Setting.Create($"k{i}", "v")); return Task.CompletedTask; });
+        }
+
+        Clock(vault).Should().Be(7);
+        vault.CloseContexts();
+        File.Copy(older, vault.DatabasePath, overwrite: true);
+        Clock(vault).Should().Be(1, "the copy really did rewind the counter");
+
+        var probe = NewAccount("After the hand copy");
+        await WriteAsync(vault, LeftDevice, c => { c.Accounts.Add(probe); return Task.CompletedTask; });
+        Count(vault, "SELECT RowClock FROM Accounts WHERE Id = $id;", ("$id", Id(probe.Id))).Should().BeGreaterThan(7,
+            "a (clock, device) pair a peer may already hold must not be issued twice");
+    }
+
+    /// <summary>Migrating down past the clock table and up again reseeds the counter at zero.</summary>
+    [Fact]
+    public async Task AfterMigratingDownPastTheClockTableAndUpAgain_TheNextWrite_IsAboveEveryClockAlreadyIssued()
+    {
+        using var vault = await MigratedVaultAsync();
+        for (var i = 0; i < 5; i++)
+        {
+            await WriteAsync(vault, LeftDevice, c => { c.Settings.Add(Setting.Create($"k{i}", "v")); return Task.CompletedTask; });
+        }
+
+        Clock(vault).Should().Be(5);
+
+        await using (var context = On(vault, LeftDevice))
+        {
+            var migrator = context.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260913030000_DropCategoriesTable", CancellationToken.None);
+            await migrator.MigrateAsync(null, CancellationToken.None);
+        }
+
+        vault.CloseContexts();
+        Clock(vault).Should().Be(0, "the table was dropped and re-seeded");
+
+        var probe = NewAccount("After down and up");
+        await WriteAsync(vault, LeftDevice, c => { c.Accounts.Add(probe); return Task.CompletedTask; });
+        Count(vault, "SELECT RowClock FROM Accounts WHERE Id = $id;", ("$id", Id(probe.Id))).Should().BeGreaterThan(5);
     }
 
     [Fact]

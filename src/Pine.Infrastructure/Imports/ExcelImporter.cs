@@ -221,10 +221,15 @@ public sealed class ExcelImporter : IImporter, IImportHeaderReader
             // row's file position and whether the source supplied a reference of its own. The key
             // describes the transaction as CREATED — the inverted amount, the parsed date and payee —
             // so re-parsing the same row under the same profile reproduces it exactly.
+            // TD-102: a file imported before the h2 scheme carries scale-sensitive h1 keys. The row's
+            // h1 key is remembered (probed, never stored) so such a file is still recognised.
             transaction.AssignImportKey(
                 reference.Length > 0
                     ? ImportKeyFactory.FromReference(source, reference)
-                    : ImportKeyFactory.Derive(date, amount.Amount, currency.Value, payee, source, rowIndex));
+                    : ImportKeyFactory.Derive(date, amount.Amount, currency.Value, payee, source, rowIndex),
+                reference.Length > 0
+                    ? null
+                    : ImportKeyFactory.DeriveLegacyV1(date, amount.Amount, currency.Value, payee, source, rowIndex));
 
             transactions.Add(transaction);
         }

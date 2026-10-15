@@ -203,7 +203,7 @@ public class LegacyMoneyToleranceTests
         command.CommandText =
             """
             INSERT INTO "Accounts"
-                ("Id", "Name", "Type", "CreatedAt", "UpdatedAt", "OpeningBalanceAmount",
+                ("Id", "Name", "Type", "CreatedAt", "UpdatedAt", "OpeningBalance_Amount",
                  "Balance_Amount", "Balance_Currency")
             VALUES ($id, $name, $type, $date, $date, NULL, $balance, $currency);
             """;

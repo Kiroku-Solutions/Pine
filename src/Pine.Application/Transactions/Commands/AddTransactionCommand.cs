@@ -97,7 +97,13 @@ public class AddTransactionCommandHandler : IRequestHandler<AddTransactionComman
     {
         var account = await _accountRepository.GetByIdAsync(request.AccountId, cancellationToken);
         if (account == null)
-            throw new ArgumentException("Account not found.", nameof(request));
+            throw new RequestValidationException(new[]
+            {
+                new ValidationError(
+                    nameof(AddTransactionCommand.AccountId),
+                    $"Account {request.AccountId} was not found.",
+                    ValidationText.AccountNotFound()),
+            });
 
         // Note: For income the amount is positive, for expense it should be negative.
         // We'll trust the UI/command passes the signed decimal.
@@ -278,27 +284,70 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
             };
         }
 
+        // TD-62: a zero amount is rejected here, not discovered when the handler reaches
+        // Account.Deposit/Withdraw ("... must be strictly positive."). Negative is a valid expense --
+        // the handler withdraws its absolute value -- so ONLY zero is refused. The test runs over Money
+        // so that an amount which rounds to zero in its currency (0.004 USD) is refused too, since
+        // that is what the domain would see. With an unusable currency there is no scale to round
+        // to, so the raw value is tested and the currency error is reported alongside it.
         if (!CurrencyCodeText.TryNormalise(request.Currency, out var normalised))
         {
-            return new[]
+            var invalidCurrency = new List<ValidationError>();
+            if (request.Amount == 0m)
             {
-                new ValidationError(
-                    nameof(AddTransactionCommand.Currency),
-                    $"'{request.Currency}' is not a valid ISO 4217 currency code.",
-                    ValidationText.CurrencyCodeInvalid(request.Currency)),
-            };
+                invalidCurrency.Add(AmountZeroError());
+            }
+
+            invalidCurrency.Add(new ValidationError(
+                nameof(AddTransactionCommand.Currency),
+                $"'{request.Currency}' is not a valid ISO 4217 currency code.",
+                ValidationText.CurrencyCodeInvalid(request.Currency)));
+            return invalidCurrency;
+        }
+
+        var errors = new List<ValidationError>();
+        if (new Money(request.Amount, new CurrencyCode(normalised)).Amount == 0m)
+        {
+            errors.Add(AmountZeroError());
         }
 
         var accountCurrency = account.Balance.Currency.Value;
         if (!string.Equals(normalised, accountCurrency, StringComparison.Ordinal))
         {
-            return new[]
+            errors.Add(new ValidationError(
+                nameof(AddTransactionCommand.Currency),
+                $"Transaction currency {normalised} does not match account currency {accountCurrency}.",
+                ValidationText.CurrencyMismatch(normalised, accountCurrency)));
+        }
+
+        // TD-95: a line quantity is strictly positive and has at most LineQuantity.Scale decimals. A
+        // person's over-precise entry is REJECTED here with a message, never silently rounded; the
+        // receipt scanner rounds what OCR recognised before it builds the command (LineQuantity).
+        if (request.LineItems is { Count: > 0 })
+        {
+            for (var i = 0; i < request.LineItems.Count; i++)
             {
-                new ValidationError(
-                    nameof(AddTransactionCommand.Currency),
-                    $"Transaction currency {normalised} does not match account currency {accountCurrency}.",
-                    ValidationText.CurrencyMismatch(normalised, accountCurrency)),
-            };
+                var quantity = request.LineItems[i].Quantity;
+                if (quantity <= 0m)
+                {
+                    errors.Add(new ValidationError(
+                        $"{nameof(AddTransactionCommand.LineItems)}[{i}].{nameof(AddTransactionLineItemCommand.Quantity)}",
+                        $"Line {i + 1}: the quantity must be greater than zero.",
+                        ValidationText.LineItemQuantityNotPositive(i + 1)));
+                }
+                else if (LineQuantity.HasExcessScale(quantity))
+                {
+                    errors.Add(new ValidationError(
+                        $"{nameof(AddTransactionCommand.LineItems)}[{i}].{nameof(AddTransactionLineItemCommand.Quantity)}",
+                        $"Line {i + 1}: the quantity cannot have more than {LineQuantity.Scale} decimal places.",
+                        ValidationText.LineItemQuantityScale(i + 1, LineQuantity.Scale)));
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return errors;
         }
 
         // TD-19, at the layer that can phrase it for a human. The aggregate enforces the same rule at
@@ -335,4 +384,9 @@ public sealed class AddTransactionCommandValidator : IRequestValidator<AddTransa
 
         return Array.Empty<ValidationError>();
     }
+
+    private static ValidationError AmountZeroError() => new(
+        nameof(AddTransactionCommand.Amount),
+        "Transaction amount cannot be zero.",
+        ValidationText.TransactionAmountZero());
 }

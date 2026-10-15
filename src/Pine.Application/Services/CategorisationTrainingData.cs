@@ -46,7 +46,7 @@ namespace Pine.Application.Services;
 public static class CategorisationTrainingData
 {
     /// <summary>
-    /// One labelled example per categorised split: the payee is the text, the split's own amount
+    /// One labelled example per categorised split: the text is built by <see cref="CategorisationText.Build"/> (TD-91), the split's own amount
     /// is the amount, and the split's category is the label.
     /// </summary>
     /// <remarks>
@@ -64,7 +64,7 @@ public static class CategorisationTrainingData
             .SelectMany(transaction => transaction.Splits
                 .Where(split => !string.IsNullOrWhiteSpace(split.Category))
                 .Select(split => new TrainingExample(
-                    transaction.Payee,
+                    CategorisationText.Build(transaction.Payee, transaction.Notes),
                     split.Amount.Amount,
                     split.Category.Trim())))
             .ToList();

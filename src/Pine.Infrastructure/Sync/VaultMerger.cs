@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -293,14 +294,67 @@ public static partial class VaultMerger
                      ?? throw new InvalidOperationException("The vault has no sync clock row. Its schema is older than this build expects; it has not been migrated.");
 
         var id = Guid.Parse(stored);
+        var location = LocationTag(sql.Context.DatabasePath);
+
         if (id != Guid.Empty)
         {
-            return id;
+            if (location == 0)
+            {
+                return id; // an in-memory database has no place to be copied from
+            }
+
+            var tag = Convert.ToInt32(await sql.ScalarAsync("PRAGMA application_id;", cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
+            if (tag == 0)
+            {
+                // A vault from before the tag existed: adopt it where it is. A copy made earlier cannot be told apart.
+                await StampLocationAsync(sql, location, cancellationToken).ConfigureAwait(false);
+                return id;
+            }
+
+            if (tag == location)
+            {
+                return id;
+            }
+
+            // THE FILE IS NOT WHERE IT WAS NAMED (TD-144, byte-copied vault). A copy, or a move, carries the id of the
+            // file it came from, and a third vault merging with both could not tell them apart. A move and a copy
+            // look the same from here, so both take a new identity: the cost of a wrong guess is that peers see this
+            // vault as new and ask for everything again (applying is idempotent); the cost of the other guess is two
+            // histories under one name. The peers' cursors for what THIS vault has taken from them stay valid.
         }
 
         id = Guid.NewGuid();
         await sql.ExecuteAsync("UPDATE SyncClock SET VaultId = $id WHERE Id = 1;", cancellationToken, ("$id", SyncRow.GuidText(id))).ConfigureAwait(false);
+        if (location != 0)
+        {
+            await StampLocationAsync(sql, location, cancellationToken).ConfigureAwait(false);
+        }
+
         return id;
+    }
+
+    private static async Task StampLocationAsync(Sql sql, int location, CancellationToken cancellationToken) =>
+        await sql.ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA application_id = {location};"), cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// A 32-bit tag for where a vault file lives, kept in the file's own header (<c>application_id</c>, which travels
+    /// with the bytes and needs no schema change). Zero means "no location": an in-memory database.
+    /// </summary>
+    public static int LocationTag(string databasePath)
+    {
+        if (string.IsNullOrWhiteSpace(databasePath) || string.Equals(databasePath, ":memory:", StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        var full = Path.GetFullPath(databasePath);
+        if (OperatingSystem.IsWindows())
+        {
+            full = full.ToUpperInvariant();
+        }
+
+        var tag = BitConverter.ToInt32(SHA256.HashData(Encoding.UTF8.GetBytes(full)), 0);
+        return tag == 0 ? 1 : tag;
     }
 
     private static async Task<long> ReadPeerCursorAsync(Sql sql, Guid peer, CancellationToken cancellationToken) =>
@@ -419,6 +473,20 @@ public static partial class VaultMerger
         return children;
     }
 
+    /// <summary>
+    /// Clears a transfer link whose partner did not arrive in this apply (held by a conflict, or deleted), so the
+    /// foreign key on the link (TD-125; checked at commit, so the legs may arrive in either order) cannot fail the
+    /// whole merge at commit. No row is deleted or otherwise changed.
+    /// </summary>
+    private static Task<int> UnlinkDanglingTransferLegsAsync(Sql sql, CancellationToken cancellationToken) =>
+        sql.ExecuteAsync(
+            """
+            UPDATE "Transactions" SET "LinkedTransactionId" = NULL
+            WHERE "LinkedTransactionId" IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM "Transactions" p WHERE p."Id" = "Transactions"."LinkedTransactionId");
+            """,
+            cancellationToken);
+
     private static async Task<SyncApplyResult> ApplyCoreAsync(Sql sql, SyncChangeSet changeSet, long cursorAfter, CancellationToken cancellationToken)
     {
         if (!string.Equals(changeSet.Format, SyncChangeSet.FormatName, StringComparison.Ordinal))
@@ -478,6 +546,7 @@ public static partial class VaultMerger
         }
 
         await run.RederiveBalancesAsync(cancellationToken).ConfigureAwait(false);
+        await UnlinkDanglingTransferLegsAsync(sql, cancellationToken).ConfigureAwait(false);
 
         var clockAfter = await ReadCounterAsync(sql, cancellationToken).ConfigureAwait(false);
         await sql.ExecuteAsync(
@@ -635,6 +704,14 @@ public static partial class VaultMerger
                 return;
             }
 
+            // An account's currency is immutable: a peer's row that disagrees about it is never applied, however the
+            // stamps compare and whichever side changed, and the rest of that row is not applied either.
+            if (SyncMergePolicy.ImmutableColumnsDiffer(table.Name, local, remote))
+            {
+                await ConflictAsync(table, localId, change, SyncConflictKind.ConcurrentEdit, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             var localChanged = (local.Number(PineDbContext.LocalClockColumnName) ?? 0) > changeSet.SourceKnowsTargetUpTo;
             if (localChanged)
             {
@@ -749,7 +826,7 @@ public static partial class VaultMerger
         {
             foreach (var (account, before) in _ledgerBefore)
             {
-                var rows = await sql.RowsAsync("SELECT OpeningBalanceAmount, Balance_Amount FROM Accounts WHERE Id = $id;", cancellationToken, ("$id", account)).ConfigureAwait(false);
+                var rows = await sql.RowsAsync("SELECT OpeningBalance_Amount, Balance_Amount FROM Accounts WHERE Id = $id;", cancellationToken, ("$id", account)).ConfigureAwait(false);
                 if (rows.Count == 0)
                 {
                     continue;
@@ -759,7 +836,7 @@ public static partial class VaultMerger
                 var balance = rows[0].Number("Balance_Amount") ?? 0;
                 long derived;
 
-                if (rows[0].Number("OpeningBalanceAmount") is { } opening)
+                if (rows[0].Number("OpeningBalance_Amount") is { } opening)
                 {
                     derived = checked(opening + ledger);
                 }

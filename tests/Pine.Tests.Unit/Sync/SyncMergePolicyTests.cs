@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Pine.Core.Budgets;
@@ -81,7 +81,7 @@ public class SyncMergePolicyTests
     [Theory]
     [InlineData("Settings", "Value")]
     [InlineData("Accounts", "Name")]
-    [InlineData("Accounts", "OpeningBalanceAmount")]
+    [InlineData("Accounts", "OpeningBalance_Amount")]
     public void ALastWriterWinsColumn_GoesToTheLaterStamp(string table, string column)
     {
         SyncMergePolicy.DecideBothChanged(table, [column], childrenDiffer: false, (3, DeviceA, VaultA), (4, DeviceB, VaultB))
@@ -97,6 +97,8 @@ public class SyncMergePolicyTests
     [InlineData("Budgets", "LimitAmount")]
     [InlineData("Rules", "Title")]
     [InlineData("Accounts", "AColumnNobodyClassified")]
+    [InlineData("Accounts", "Balance_Currency")]
+    [InlineData("Accounts", "OpeningBalance_Currency")]
     public void AnyOtherColumn_IsAConflict_WhicheverStampIsLater(string table, string column)
     {
         SyncMergePolicy.DecideBothChanged(table, [column], childrenDiffer: false, (3, DeviceA, VaultA), (4, DeviceB, VaultB))
@@ -166,7 +168,24 @@ public class SyncMergePolicyTests
         SyncMergePolicy.LastWriterWinsColumns.Keys.Should().BeEquivalentTo(["Accounts", "Settings"],
             "widening this list is a decision about which edits may silently overwrite others, and deserves a failing test");
         SyncMergePolicy.LastWriterWinsColumns["Settings"].Should().BeEquivalentTo(["Value"]);
-        SyncMergePolicy.LastWriterWinsColumns["Accounts"].Should().BeEquivalentTo(["Name", "Balance_Currency", "OpeningBalanceAmount", "UpdatedAt"]);
+        SyncMergePolicy.LastWriterWinsColumns["Accounts"].Should().BeEquivalentTo(["Name", "OpeningBalance_Amount", "UpdatedAt"]);
+        SyncMergePolicy.LastWriterWinsColumns["Accounts"].Should().NotContain(["Balance_Currency", "OpeningBalance_Currency"],
+            "an account's currency is immutable, never last-writer-wins");
+    }
+
+    [Theory]
+    [InlineData("USD", "EUR", "USD", "USD", true)]
+    [InlineData("USD", "USD", "USD", "EUR", true)]
+    [InlineData("USD", "USD", "USD", "USD", false)]
+    [InlineData("USD", "USD", null, "USD", false)]
+    [InlineData("USD", "USD", "USD", null, false)]
+    public void ADifferentNonNullAccountCurrency_IsDetected(string localBalance, string remoteBalance, string? localOpening, string? remoteOpening, bool differs)
+    {
+        var local = Row(("Balance_Currency", localBalance), ("OpeningBalance_Currency", localOpening));
+        var remote = Row(("Balance_Currency", remoteBalance), ("OpeningBalance_Currency", remoteOpening));
+
+        SyncMergePolicy.ImmutableColumnsDiffer("Accounts", local, remote).Should().Be(differs);
+        SyncMergePolicy.ImmutableColumnsDiffer("Settings", local, remote).Should().BeFalse("only an account's currency is immutable");
     }
 
     [Fact]

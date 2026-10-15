@@ -30,7 +30,9 @@ internal sealed record SyncTable(
 /// <remarks>
 /// Read from the model so a new root, a new owned collection or a new foreign key reaches the merge without an edit
 /// here. The one exception is written down: <c>Transactions.LinkedTransactionId</c> points at another transaction but
-/// is not a foreign key (a transfer's two legs are written together), so the model cannot say it is a reference.
+/// is a foreign key only in the database (TD-125: checked at commit, because the legs point at each other) and is not
+/// declared in the model, so the model cannot say it is a reference. It is not a merge-time constraint either: a leg
+/// may arrive before its partner.
 /// </remarks>
 internal sealed class SyncSchema
 {
@@ -121,6 +123,9 @@ internal sealed class SyncSchema
             "Attachments" => row.GuidAt("TransactionId") is { } transaction && row.Text("Sha256") is { } hash
                 ? NaturalKeys.AttachmentKey(transaction, hash)
                 : null,
+            "ExchangeRates" => row.Text("FromCurrency") is { } from && row.Text("ToCurrency") is { } to && row.Text("EffectiveDateUtc") is { } day
+                ? NaturalKeys.ExchangeRateKey(from, to, DateTime.Parse(day, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal))
+                : null,
             "Budgets" => NaturalKeys.BudgetKey(
                 row.Text("Category") ?? string.Empty,
                 row.Text("LimitCurrency") ?? string.Empty,
@@ -141,6 +146,7 @@ internal sealed class SyncSchema
         "Transactions" => "ImportKey",
         "Attachments" => "TransactionId",
         "Budgets" => "LimitCurrency",
+        "ExchangeRates" => "FromCurrency",
         _ => null,
     };
 

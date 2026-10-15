@@ -32,7 +32,12 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("OpeningBalanceAmount")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("OpeningBalance_Amount");
+
+                    b.Property<string>("OpeningBalanceCurrency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("OpeningBalance_Currency");
 
                     b.Property<long>("RowClock")
                         .HasColumnType("INTEGER");
@@ -154,8 +159,23 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("EndDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("EndDateUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LimitConversionRate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LimitConvertedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Period")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("PreviousLimitAmount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PreviousLimitCurrency")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("RowClock")
@@ -174,6 +194,9 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartDateUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("Version")
@@ -197,6 +220,57 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Budgets");
+                });
+
+            modelBuilder.Entity("Pine.Core.ExchangeRates.ExchangeRate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("EffectiveDateUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromCurrency")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Rate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToCurrency")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromCurrency", "ToCurrency", "EffectiveDateUtc")
+                        .IsUnique();
+
+                    b.ToTable("ExchangeRates");
                 });
 
             modelBuilder.Entity("Pine.Core.Importing.ImportProfile", b =>
@@ -368,6 +442,10 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsZeroAmountImport")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("IsZeroAmountImport");
+
                     b.Property<Guid?>("LinkedTransactionId")
                         .HasColumnType("TEXT");
 
@@ -438,6 +516,10 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.HasIndex("AccountId", "ImportKey");
 
                     b.HasIndex("AccountId", "VoidedAt");
+
+                    b.HasIndex(new[] { "AccountId", "ImportKey" }, "UX_Transactions_AccountId_ImportKey_Imported")
+                        .IsUnique()
+                        .HasFilter("substr(\"ImportKey\", 1, 3) IN ('r1:', 'h1:', 'h2:')");
 
                     b.ToTable("Transactions");
                 });
@@ -699,8 +781,8 @@ namespace Pine.Infrastructure.Data.Migrations
                                 .HasColumnType("TEXT")
                                 .HasColumnName("Kind");
 
-                            b1.Property<decimal>("Quantity")
-                                .HasColumnType("TEXT");
+                            b1.Property<long>("Quantity")
+                                .HasColumnType("INTEGER");
 
                             b1.Property<Guid>("TransactionId")
                                 .HasColumnType("TEXT");

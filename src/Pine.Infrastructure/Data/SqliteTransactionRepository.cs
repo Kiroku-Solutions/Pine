@@ -50,9 +50,65 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<int> CountPossiblyCategorisedAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Splits.Any(s => s.Category != null && s.Category.Trim() != ""))
+            .CountAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Transaction>> GetCategorisedPageAsync(int skip, int take, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(skip);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(take);
+
+        return await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.Splits.Any(s => s.Category != null && s.Category.Trim() != ""))
+            .OrderBy(t => t.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TransferLinkRow>> GetTransferLinkRowsAsync(CancellationToken cancellationToken = default)
+    {
+        // One query with correlated sub-selects, so neither the ledger nor the partners are
+        // materialised: only the linked rows come back, as plain scalars. Nothing is tracked or written.
+        var rows = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(t => t.LinkedTransactionId != null)
+            .Select(t => new
+            {
+                t.Id,
+                t.AccountId,
+                Linked = t.LinkedTransactionId!.Value,
+                IsVoided = t.VoidedAt != null,
+                PartnerExists = _dbContext.Transactions.Any(p => p.Id == t.LinkedTransactionId),
+                PartnerLink = _dbContext.Transactions
+                    .Where(p => p.Id == t.LinkedTransactionId)
+                    .Select(p => p.LinkedTransactionId)
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new TransferLinkRow(r.Id, r.AccountId, r.Linked, r.IsVoided, r.PartnerExists, r.PartnerLink))
+            .ToList();
+    }
+
+    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default)
     {
         var query = _dbContext.Transactions.AsNoTracking();
+        if (!includeVoided)
+        {
+            query = query.Where(t => t.VoidedAt == null);
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
         
         var items = await query
@@ -159,22 +215,47 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
         var persistedLineItemIds = await PersistedChildIdsAsync(
             transaction.Id, t => t.LineItems.Select(li => li.Id), cancellationToken).ConfigureAwait(false);
 
-        foreach (var split in transaction.Splits)
-        {
-            PromoteIfUnwritten(_dbContext.Entry(split), split.Id, persistedSplitIds);
-        }
-
-        foreach (var lineItem in transaction.LineItems)
-        {
-            PromoteIfUnwritten(_dbContext.Entry(lineItem), lineItem.Id, persistedLineItemIds);
-        }
+        // TD-59: the state of every owned child is SET from what the database holds, never inferred
+        // from EF's guess about a client-assigned key (or from an assumption that the owned types are
+        // immutable). Not persisted -> Added; persisted and still present -> never Added;
+        // persisted and gone from the collection -> Deleted.
+        SetStates(transaction.Splits, s => s.Id, persistedSplitIds);
+        SetStates(transaction.LineItems, li => li.Id, persistedLineItemIds);
     }
 
-    private static void PromoteIfUnwritten(EntityEntry entry, Guid id, HashSet<Guid> persistedIds)
+    private void SetStates<TChild>(
+        IEnumerable<TChild> current, Func<TChild, Guid> idOf, HashSet<Guid> persistedIds)
+        where TChild : class
     {
-        if (entry.State == EntityState.Modified && !persistedIds.Contains(id))
+        var currentIds = new HashSet<Guid>();
+
+        foreach (var child in current)
         {
-            entry.State = EntityState.Added;
+            var id = idOf(child);
+            currentIds.Add(id);
+            var entry = _dbContext.Entry(child);
+
+            if (!persistedIds.Contains(id))
+            {
+                entry.State = EntityState.Added;
+            }
+            else if (entry.State is EntityState.Added or EntityState.Detached or EntityState.Deleted)
+            {
+                // An existing row can never be inserted. Modified (not Unchanged) because the caller
+                // has re-described it; an untouched child keeps EF's Unchanged and costs no UPDATE.
+                entry.State = EntityState.Modified;
+            }
+        }
+
+        // Tracked children whose row exists but which are no longer in the collection. The persisted
+        // set is scoped to this transaction, so membership also proves ownership.
+        foreach (var entry in _dbContext.ChangeTracker.Entries<TChild>().ToList())
+        {
+            var id = idOf(entry.Entity);
+            if (persistedIds.Contains(id) && !currentIds.Contains(id) && entry.State != EntityState.Deleted)
+            {
+                entry.State = EntityState.Deleted;
+            }
         }
     }
 

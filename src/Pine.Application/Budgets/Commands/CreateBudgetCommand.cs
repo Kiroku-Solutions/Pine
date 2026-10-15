@@ -5,15 +5,21 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Pine.Application.Common;
+using Pine.Core.Accounts;
 using Pine.Core.Budgets;
 using Pine.Core.Common;
 using Pine.Core.Common.ValueObjects;
+using Pine.Core.Configuration;
 using Pine.Core.Sync;
 
 namespace Pine.Application.Budgets.Commands;
 
-/// <summary>Creates a budget against a category label.</summary>
+/// <summary>Creates a budget against a category label, in the vault's base currency.</summary>
 /// <remarks>
+/// <para>
+/// NO CURRENCY PARAMETER (TD-63, decided 2026-10-07): a budget's currency is the vault's base currency
+/// (<see cref="BaseCurrency"/>), resolved by the handler and the validator, never chosen by the caller.
+/// </para>
 /// The first parameter was a <c>Guid CategoryId</c> into a table nothing in production had written
 /// to since <c>67af1f3</c> removed the Diagnostics "Test Features" button. Plan item
 /// 2.3 decided TD-132 in favour of the label, so a caller now passes the same kind of string the
@@ -23,7 +29,6 @@ namespace Pine.Application.Budgets.Commands;
 public record CreateBudgetCommand(
     string Category,
     decimal Amount,
-    string CurrencyCode,
     BudgetPeriod Period,
     DateTimeOffset? StartDate = null,
     DateTimeOffset? EndDate = null) : IRequest<Guid>, ITransactionalRequest;
@@ -31,17 +36,28 @@ public record CreateBudgetCommand(
 public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, Guid>
 {
     private readonly IBudgetRepository _budgetRepository;
+    private readonly ISettingRepository _settings;
+    private readonly IAccountRepository _accounts;
 
-    public CreateBudgetCommandHandler(IBudgetRepository budgetRepository)
+    public CreateBudgetCommandHandler(
+        IBudgetRepository budgetRepository,
+        ISettingRepository settings,
+        IAccountRepository accounts)
     {
         _budgetRepository = budgetRepository;
+        _settings = settings;
+        _accounts = accounts;
     }
 
     public async Task<Guid> Handle(CreateBudgetCommand request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var limit = new Money(request.Amount, new CurrencyCode(request.CurrencyCode));
+        // The validator has already refused a vault with no base currency; this is the backstop for a
+        // caller that bypasses the pipeline.
+        var currency = await BaseCurrency.ResolveAsync(_settings, _accounts, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The vault has no base currency, so a budget cannot be created.");
+        var limit = new Money(request.Amount, currency);
         var budget = Budget.Create(request.Category, limit, request.Period, request.StartDate, request.EndDate);
         
         await _budgetRepository.SaveAsync(budget, cancellationToken);
@@ -78,13 +94,21 @@ public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, G
 public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudgetCommand>
 {
     private readonly IBudgetRepository _budgets;
+    private readonly ISettingRepository _settings;
+    private readonly IAccountRepository _accounts;
 
     /// <summary>Creates the validator.</summary>
     /// <param name="budgets">Read for the duplicate check.</param>
-    public CreateBudgetCommandValidator(IBudgetRepository budgets)
+    /// <param name="settings">Read for the base currency.</param>
+    /// <param name="accounts">Read for the base currency.</param>
+    public CreateBudgetCommandValidator(IBudgetRepository budgets, ISettingRepository settings, IAccountRepository accounts)
     {
         ArgumentNullException.ThrowIfNull(budgets);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(accounts);
         _budgets = budgets;
+        _settings = settings;
+        _accounts = accounts;
     }
 
     /// <inheritdoc />
@@ -112,12 +136,14 @@ public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudge
                 ValidationText.BudgetLimitNotPositive()));
         }
 
-        if (!CurrencyCode.TryCreate(request.CurrencyCode, out var currency))
+        // THE CURRENCY IS THE VAULT'S, NOT THE CALLER'S (TD-63).
+        var currency = await BaseCurrency.ResolveAsync(_settings, _accounts, cancellationToken).ConfigureAwait(false);
+        if (currency is null)
         {
             errors.Add(new ValidationError(
-                nameof(CreateBudgetCommand.CurrencyCode),
-                $"'{request.CurrencyCode}' is not a valid ISO 4217 currency code.",
-                ValidationText.CurrencyCodeInvalid(request.CurrencyCode)));
+                nameof(CreateBudgetCommand.Amount),
+                "The vault has no base currency yet; create an account first.",
+                ValidationText.BudgetNoBaseCurrency()));
         }
         else if (request.Amount > 0 && Money.Round(request.Amount, currency) != request.Amount)
         {

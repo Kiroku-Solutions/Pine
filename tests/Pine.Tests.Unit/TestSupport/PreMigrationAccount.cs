@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
@@ -37,6 +37,11 @@ internal static class PreMigrationAccount
             .GetProperty(nameof(Account.OpeningBalanceAmount))!
             .GetSetMethod(nonPublic: true)!;
 
+    private static readonly MethodInfo OpeningBalanceCurrencySetter =
+        typeof(Account)
+            .GetProperty(nameof(Account.OpeningBalanceCurrency))!
+            .GetSetMethod(nonPublic: true)!;
+
     /// <summary>
     /// Hoisted because CA1861 forbids a constant array argument to a repeatedly-called method.
     /// </summary>
@@ -59,6 +64,7 @@ internal static class PreMigrationAccount
     {
         var account = Account.Create(name, type, balance, timeProvider);
         OpeningBalanceAmountSetter.Invoke(account, ClearedOpeningBalance);
+        OpeningBalanceCurrencySetter.Invoke(account, ClearedOpeningBalance);
         return account;
     }
 }

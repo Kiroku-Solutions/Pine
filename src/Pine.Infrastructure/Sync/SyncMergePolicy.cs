@@ -25,8 +25,9 @@ public enum SyncBothChangedOutcome
 /// <remarks>
 /// <para>
 /// "EVERYTHING IS LWW" IS REJECTED (§7), SO LAST-WRITER-WINS IS AN ALLOW-LIST. A row changed on both sides is
-/// resolved automatically only when every column that differs is one §7 resolves by recency: an account's name,
-/// currency and opening balance, and a setting's value. Any other difference — a transaction's amount, payee, date,
+/// resolved automatically only when every column that differs is one §7 resolves by recency: an account's name
+/// and opening balance, and a setting's value. An account's currency is immutable: a disagreement about it is never
+/// resolved here, the peer's row is rejected (<see cref="ImmutableColumns"/>). Any other difference — a transaction's amount, payee, date,
 /// splits or line items; a budget's threshold or period; a rule's definition; an attachment; an import profile; a
 /// column added next year that nobody classified — is a conflict. A new column is therefore safe by default: it
 /// makes merges ask, not guess.
@@ -71,13 +72,40 @@ public static class SyncMergePolicy
     public static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LastWriterWinsColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
         {
-            // §7: "Account name, currency, opening balance". UpdatedAt is the domain's own stamp of the same edit
-            // and follows the winner; it is never what decides.
-            ["Accounts"] = new HashSet<string>(StringComparer.Ordinal) { "Name", "Balance_Currency", "OpeningBalanceAmount", "UpdatedAt" },
+            // §7: "Account name, opening balance". An account's CURRENCY is deliberately absent: it is immutable (see
+            // ImmutableColumns), so two vaults that disagree about it are not a last-writer-wins question.
+            // UpdatedAt is the domain's own stamp of the same edit and follows the winner; it is never what decides.
+            ["Accounts"] = new HashSet<string>(StringComparer.Ordinal) { "Name", "OpeningBalance_Amount", "UpdatedAt" },
 
             // §7: "Settings — most recent wins; telemetry consent is not implicitly granted" (see WouldGrantConsent).
             ["Settings"] = new HashSet<string>(StringComparer.Ordinal) { "Value" },
         };
+
+    /// <summary>
+    /// Columns that never change once a row exists (an account's currency). If two vaults hold different non-null
+    /// values for one, the rows are not versions of the same account and the peer's row is REJECTED whatever else
+    /// changed, whichever side changed it, and whichever stamp is later. Never resolved by recency.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ImmutableColumns =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
+        {
+            ["Accounts"] = new HashSet<string>(StringComparer.Ordinal) { "Balance_Currency", "OpeningBalance_Currency" },
+        };
+
+    /// <summary>
+    /// Whether the two rows hold different non-null values in a column <see cref="ImmutableColumns"/> names. A column
+    /// null on either side (an opening balance not yet adopted) is not a disagreement about the currency.
+    /// </summary>
+    public static bool ImmutableColumnsDiffer(string table, SyncRow local, SyncRow remote)
+    {
+        ArgumentNullException.ThrowIfNull(local);
+        ArgumentNullException.ThrowIfNull(remote);
+
+        return ImmutableColumns.TryGetValue(table, out var immutable)
+               && immutable.Any(column =>
+                   local.TryGetValue(column, out var a) && remote.TryGetValue(column, out var b)
+                   && a is not null && b is not null && !SyncRow.ValuesEqual(a, b));
+    }
 
     /// <summary>Values that mean a consent is withheld. Anything else is treated as granting it.</summary>
     private static readonly HashSet<string> RefusalValues = new(StringComparer.OrdinalIgnoreCase)

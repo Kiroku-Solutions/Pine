@@ -232,6 +232,21 @@ public sealed class RecalculateAccountBalanceCommandValidator
         }
 
         var accountCurrency = account.Balance.Currency.Value;
+
+        // TD-77. The opening balance carries its own currency now; if it is not the account's (a
+        // hand-edited or sync-damaged vault) its raw amount must not be folded into the account's total.
+        if (!account.OpeningBalanceCurrencyMatchesAccount)
+        {
+            var openingCurrency = account.OpeningBalanceCurrency!.Value;
+            return new[]
+            {
+                new ValidationError(
+                    nameof(RecalculateAccountBalanceCommand.AccountId),
+                    $"'{account.Name}' has an opening balance recorded in {openingCurrency} but the account is in {accountCurrency}.",
+                    ValidationText.OpeningBalanceCurrencyMismatch(account.Name, openingCurrency, accountCurrency)),
+            };
+        }
+
         var currencies = await _transactionRepository.GetDistinctCurrenciesInForceAsync(
             request.AccountId, cancellationToken);
 

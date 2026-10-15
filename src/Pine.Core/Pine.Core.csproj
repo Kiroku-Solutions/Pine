@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- TD-73: the offline natural-language word list. Embedded, so no file lookup and no network. -->
+    <EmbeddedResource Include="Security\Resources\common-words.txt" LogicalName="Pine.Core.Security.common-words.txt" />
+  </ItemGroup>
+
 </Project>

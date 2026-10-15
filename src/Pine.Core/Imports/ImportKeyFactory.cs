@@ -26,8 +26,8 @@ namespace Pine.Core.Importing;
 /// </para>
 /// <para>
 /// VERSION PREFIXES: every key carries a scheme prefix — <c>r1:</c> for a key built from an external
-/// reference, <c>h1:</c> for a key derived from row content. If the derivation ever changes, the new
-/// scheme takes a new prefix (<c>h2:</c>, and so on). Old rows then simply fail to match the new keys
+/// reference, <c>h2:</c> for a key derived from row content (<c>h1:</c> before TD-102). If the derivation ever changes, the new
+/// scheme takes a new prefix (<c>h3:</c>, and so on). Old rows then simply fail to match the new keys
 /// instead of matching them by accident, which is the failure mode worth preventing: a silent re-match
 /// would re-introduce exactly the data loss this type was written to stop.
 /// </para>
@@ -48,7 +48,13 @@ public static class ImportKeyFactory
     public const string ReferenceSchemePrefix = "r1:";
 
     /// <summary>The scheme prefix for keys derived by hashing the content of an imported row.</summary>
-    public const string DerivedSchemePrefix = "h1:";
+    public const string DerivedSchemePrefix = "h2:";
+
+    /// <summary>
+    /// The scheme prefix of the superseded derivation, whose amount field leaked the decimal's scale
+    /// (TD-102). Keys with this prefix still exist in vaults; nothing new is written with it.
+    /// </summary>
+    public const string LegacyDerivedSchemePrefix = "h1:";
 
     /// <summary>The scheme prefix for keys derived from a scanned receipt.</summary>
     public const string ReceiptSchemePrefix = "s1:";
@@ -124,7 +130,7 @@ public static class ImportKeyFactory
     /// <param name="payee">The row's payee. Normalised; may be empty.</param>
     /// <param name="source">The importing source, for example the profile or file name. Normalised.</param>
     /// <param name="rowIndex">The row's zero-based position within the imported file.</param>
-    /// <returns>A key of the form <c>h1:</c> followed by a lowercase hex SHA-256 digest.</returns>
+    /// <returns>A key of the form <c>h2:</c> followed by a lowercase hex SHA-256 digest.</returns>
     /// <exception cref="ArgumentException">
     /// <paramref name="currencyCode"/> or <paramref name="source"/> is null, empty or whitespace.
     /// </exception>
@@ -141,12 +147,61 @@ public static class ImportKeyFactory
         if (string.IsNullOrWhiteSpace(source))
             throw new ArgumentException("Import source is required.", nameof(source));
 
+        return DerivedSchemePrefix + Hash(BuildDerivedCanonical(
+            date, CanonicalAmount(amount), currencyCode, payee, source, rowIndex));
+    }
+
+    /// <summary>
+    /// Builds the superseded <c>h1:</c> key, exactly as <see cref="Derive"/> did before TD-102, with the
+    /// amount's scale leaking into the hash. It exists only so a file imported under the old scheme is
+    /// still recognised when it is imported again; it must never be stored on a new transaction.
+    /// </summary>
+    /// <returns>A key of the form <c>h1:</c> followed by a lowercase hex SHA-256 digest.</returns>
+    public static string DeriveLegacyV1(
+        DateTimeOffset date,
+        decimal amount,
+        string currencyCode,
+        string payee,
+        string source,
+        int rowIndex)
+    {
+        if (string.IsNullOrWhiteSpace(currencyCode))
+            throw new ArgumentException("Currency code is required.", nameof(currencyCode));
+        if (string.IsNullOrWhiteSpace(source))
+            throw new ArgumentException("Import source is required.", nameof(source));
+
+        return LegacyDerivedSchemePrefix + Hash(BuildDerivedCanonical(
+            date, amount.ToString(CultureInfo.InvariantCulture), currencyCode, payee, source, rowIndex));
+    }
+
+    /// <summary>
+    /// The scale-independent text of an amount: no trailing zeros, no exponent, one spelling of zero.
+    /// <c>12.5</c> and <c>12.50</c> are the same number and must be the same key.
+    /// </summary>
+    private static string CanonicalAmount(decimal amount)
+    {
+        if (amount == 0m)
+        {
+            return "0";
+        }
+
+        return amount.ToString("0.#############################", CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildDerivedCanonical(
+        DateTimeOffset date,
+        string amountText,
+        string currencyCode,
+        string payee,
+        string source,
+        int rowIndex)
+    {
         // A missing payee is ordinary in bank exports and must not fail an import; it simply
         // contributes an empty field, which is still deterministic.
-        var canonical = new StringBuilder()
+        return new StringBuilder()
             .Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .Append(FieldSeparator)
-            .Append(amount.ToString(CultureInfo.InvariantCulture))
+            .Append(amountText)
             .Append(FieldSeparator)
             .Append(Normalise(currencyCode))
             .Append(FieldSeparator)
@@ -156,8 +211,6 @@ public static class ImportKeyFactory
             .Append(FieldSeparator)
             .Append(rowIndex.ToString(CultureInfo.InvariantCulture))
             .ToString();
-
-        return DerivedSchemePrefix + Hash(canonical);
     }
 
     /// <summary>

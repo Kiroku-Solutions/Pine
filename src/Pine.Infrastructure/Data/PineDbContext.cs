@@ -7,6 +7,7 @@ using Pine.Core.Rules;
 using Pine.Infrastructure.Data.Converters;
 using Pine.Core.Transactions;
 using Pine.Core.Budgets;
+using Pine.Core.ExchangeRates;
 using Pine.Core.Settings;
 using Pine.Core.Importing;
 using System.Text.Json;
@@ -33,6 +34,7 @@ public sealed class PineDbContext : DbContext
     public DbSet<ImportProfile> ImportProfiles => Set<ImportProfile>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
+    public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
 
     /// <summary>Deletions a merge will need to see (TD-145). Store bookkeeping, not user data.</summary>
     public DbSet<SyncTombstone> Tombstones => Set<SyncTombstone>();
@@ -112,19 +114,20 @@ public sealed class PineDbContext : DbContext
                 });
             });
 
-            // A bare nullable decimal, not a second Money column. The account's currency is
-            // immutable by construction, so an opening balance can only ever be denominated in it;
-            // a second currency column would only create the possibility of the two disagreeing.
-            // NULL means "no opening balance on record" — an account created before TD-02 — and is a
-            // state the recalculation command handles explicitly rather than guessing past.
-            //
-            // Scaled like every other money column (TD-31). EF lifts a non-nullable converter onto a
-            // nullable property, so NULL survives as NULL rather than becoming a stored zero — which
-            // would be a different claim entirely, and one the recalculation command branches on.
-            e.Property(a => a.OpeningBalanceAmount).HasConversion(new ScaledMoneyConverter());
+            // TD-77: a real Money -- amount plus its own currency column, both NULL when no opening
+            // balance is on record (an account created before TD-02; NULL is not zero, and the
+            // recalculation command branches on it). The domain keeps the currency equal to the
+            // account's immutable one. Scaled like every other money column (TD-31); EF lifts a
+            // non-nullable converter onto a nullable property so NULL survives as NULL.
+            e.Property(a => a.OpeningBalanceAmount).HasColumnName("OpeningBalance_Amount")
+                .HasConversion(new ScaledMoneyConverter());
+            e.Property(a => a.OpeningBalanceCurrency).HasColumnName("OpeningBalance_Currency")
+                .HasConversion(
+                    c => c!.Value,
+                    v => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(v));
 
-            // Derived from OpeningBalanceAmount plus Balance's currency. It has no setter and no
-            // backing field, so EF must be told not to try to map it as a complex property.
+            // Derived. No setter and no backing field, so EF must be told not to map them.
+            e.Ignore(a => a.OpeningBalanceCurrencyMatchesAccount);
             e.Ignore(a => a.OpeningBalance);
         });
 
@@ -133,6 +136,15 @@ public sealed class PineDbContext : DbContext
             e.HasKey(t => t.Id);
             e.Property(t => t.Type).HasConversion<string>(); // Store enum as string
             e.HasIndex(t => t.LinkedTransactionId); // Index for fast transfer lookups
+
+            // TD-125. LinkedTransactionId IS a foreign key in the database (Transactions.Id, ON DELETE SET
+            // NULL, DEFERRABLE INITIALLY DEFERRED -- see AddTransferLinkForeignKey) but is deliberately
+            // NOT declared in this model. The two legs of a transfer point at each other, and EF Core
+            // orders inserts by the foreign keys it knows: declaring the relationship made it refuse to
+            // save a transfer pair at all ("circular dependency"). The database checks the constraint at
+            // COMMIT instead, which is the only way a mutual pair can exist. THE COST: a later migration
+            // that makes EF rebuild the Transactions table would regenerate it without this constraint;
+            // TransferLinkForeignKeyTests.TheConstraintIsStillInTheSchema is the tripwire for that.
 
             // Nullable: every transaction created before import keys existed, and every transaction
             // the user enters by hand, legitimately has no key. The width matches
@@ -146,21 +158,36 @@ public sealed class PineDbContext : DbContext
             // numeric key would compare lexicographically, because decimals were stored as TEXT.
             // Money is scaled integers now, so that hazard is gone; the reasoning above is not.)
             //
-            // DELIBERATELY NOT UNIQUE, and this is a trade-off worth knowing about. A unique
-            // constraint would read as the stronger guarantee, but it would (a) make a future
-            // "I know it looks like a duplicate, import it anyway" gesture impossible without a
-            // schema change, and (b) turn two concurrent imports of the same file into a raw
-            // DbUpdateException surfaced to the user instead of a handled duplicate. The handler
-            // checks before inserting, so the index exists to make that check fast, not to enforce
-            // the rule. The residual risk — a race between check and insert writing a duplicate
-            // key — is accepted and tracked as debt.
+            // THIS INDEX IS DELIBERATELY NOT UNIQUE: it serves every key scheme, including the
+            // receipt scheme (s1:), where saving a second copy after the duplicate warning is a
+            // designed gesture. Uniqueness for the FILE-IMPORT schemes is enforced by the partial
+            // index below (TD-65).
             e.HasIndex(t => new { t.AccountId, t.ImportKey });
+
+            // TD-65. The import handler checks "which of these keys exist?" and inserts later, so two
+            // concurrent imports of one file could both pass the check and both write. This unique
+            // index is the backstop that makes that impossible: the second writer fails at flush and
+            // the unit of work reports it as a retryable conflict (the retry's check then sees the
+            // first writer's rows and skips them as already imported). It is PARTIAL on purpose: only
+            // keys from the file-import schemes (r1:, h1:, h2:) are unique per account; receipt keys
+            // (s1:) and keyless rows are untouched.
+            e.HasIndex(t => new { t.AccountId, t.ImportKey }, "UX_Transactions_AccountId_ImportKey_Imported")
+                .IsUnique()
+                .HasFilter("substr(\"ImportKey\", 1, 3) IN ('r1:', 'h1:', 'h2:')");
+
+            // Not persisted: the pre-h2 key a re-imported row would have carried, used only for the
+            // dedup probe (TD-102).
+            e.Ignore(t => t.LegacyImportKey);
 
             // TD-02. A voided transaction keeps its row, its splits and its import key; only these
             // two columns record that it stopped counting towards the balance, and when and why.
             // The width matches Transaction.MaxVoidReasonLength, so an over-long reason is rejected
             // by the domain rather than truncated by the store.
             e.Property(t => t.VoidReason).HasMaxLength(256);
+
+            // TD-62 (owner decision): a zero-amount row from a file import is kept and tagged, not dropped.
+            // NOT NULL; the migration backfills 0 for every existing row.
+            e.Property(t => t.IsZeroAmountImport).HasColumnName("IsZeroAmountImport");
 
             // Serves the balance recalculation scan: "every transaction on this account that is still
             // in force". VoidedAt is the leading-null-heavy column, so it goes second — the account
@@ -233,6 +260,12 @@ public sealed class PineDbContext : DbContext
                 // pre-existing scanned receipt unsaveable.
                 lineItem.Property(li => li.Kind).HasConversion<string>().HasColumnName("Kind");
 
+                // TD-95. A quantity is stored the way an amount is: a count of ten-thousandths in an INTEGER,
+                // so it compares and sorts correctly in SQL (it was TEXT) and 1.545 kg / 12.301 gal survive
+                // exactly. LineQuantity.Scale is 4 = ScaledMoneyConverter.StorageScale, which is why the
+                // same converter serves; the domain rejects a fifth decimal long before the converter would.
+                lineItem.Property(li => li.Quantity).HasConversion(new ScaledMoneyConverter());
+
                 
                 lineItem.OwnsOne(li => li.UnitPrice, a =>
                 {
@@ -282,6 +315,27 @@ public sealed class PineDbContext : DbContext
             // The category label, not a foreign key (TD-132). Required for the same reason
             // `Rule.Category` is: a budget that names no category measures nothing.
             e.Property(b => b.Category).IsRequired();
+
+            // The audit of a base-currency conversion (owner decision, 2026-10-14): what the limit was, the rate
+            // applied and when. All null for a budget that was never converted.
+            e.Property(b => b.PreviousLimitAmount).HasConversion(new ScaledMoneyConverter());
+            e.Property(b => b.PreviousLimitCurrency);
+            e.Property(b => b.LimitConversionRate).HasConversion(new ScaledRateConverter());
+            e.Property(b => b.LimitConvertedAtUtc);
+        });
+
+        // A rate a person typed, in force from a UTC day. The pair and the day are the natural key, and the unique
+        // index is what stops two rows disagreeing about one fact (the merge recognises them by the same tuple).
+        modelBuilder.Entity<ExchangeRate>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.FromCurrency).IsRequired()
+                .HasConversion(c => c.Value, c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            e.Property(r => r.ToCurrency).IsRequired()
+                .HasConversion(c => c.Value, c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            e.Property(r => r.Rate).HasConversion(new ScaledRateConverter());
+            e.Property(r => r.Source).IsRequired();
+            e.HasIndex(r => new { r.FromCurrency, r.ToCurrency, r.EffectiveDateUtc }).IsUnique();
         });
 
         modelBuilder.Entity<Setting>(e =>
@@ -749,7 +803,7 @@ public sealed class PineDbContext : DbContext
         try
         {
             using var command = ClockCommand();
-            return ReadClock(command.ExecuteScalar());
+            return RecordIssued(ReadClock(command.ExecuteScalar()));
         }
         finally
         {
@@ -763,7 +817,7 @@ public sealed class PineDbContext : DbContext
         try
         {
             await using var command = ClockCommand();
-            return ReadClock(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+            return RecordIssued(ReadClock(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)));
         }
         finally
         {
@@ -781,6 +835,38 @@ public sealed class PineDbContext : DbContext
         floor.Value = ReadClockFloor(_databasePath);
         command.Parameters.Add(floor);
         return command;
+    }
+
+    /// <summary>
+    /// Records the number just issued as the floor, so that a rewind by ANY path cannot hand it out again (TD-144).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The restore service already wrote the floor for the one rewind it performs. The others do not announce
+    /// themselves: copying an old <c>pine.db</c> over the vault by hand, or migrating down past the clock table and up
+    /// again (which reseeds the counter at zero). Neither can be detected from inside the database, because the
+    /// database is what was rewound; the floor lives beside it, so it is not. Written on every increment, inside the
+    /// save's transaction: a save that then rolls back leaves a floor one above the counter, which costs a gap and
+    /// nothing else, while writing it after the commit could lose it to a crash in between. The file is replaced by
+    /// moving a complete temporary file over it, as the restore does, so a reader never sees a torn number.
+    /// </para>
+    /// <para>
+    /// Still not covered: a rewind of the whole vault DIRECTORY, floor file included. The file is the same size of
+    /// secret as the database; there is nowhere further out to keep it.
+    /// </para>
+    /// </remarks>
+    private long RecordIssued(long issued)
+    {
+        if (string.Equals(_databasePath, InMemoryDataSource, StringComparison.Ordinal))
+        {
+            return issued;
+        }
+
+        var path = ClockFloorPath(_databasePath);
+        var staging = path + ".tmp";
+        File.WriteAllText(staging, issued.ToString(CultureInfo.InvariantCulture));
+        File.Move(staging, path, overwrite: true);
+        return issued;
     }
 
     private static long ReadClock(object? value) =>

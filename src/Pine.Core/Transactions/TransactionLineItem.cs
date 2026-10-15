@@ -35,6 +35,7 @@ public sealed class TransactionLineItem : Entity
     {
         TransactionId = transactionId;
         Kind = kind;
+        LineQuantity.EnsureValid(quantity);
         Description = description ?? string.Empty;
         Quantity = quantity;
         UnitPrice = CopyOf(unitPrice);
@@ -53,6 +54,7 @@ public sealed class TransactionLineItem : Entity
     /// </remarks>
     internal void Update(string description, decimal quantity, Money unitPrice, Money totalPrice, LineItemKind? kind)
     {
+        LineQuantity.EnsureValid(quantity);
         Description = description ?? string.Empty;
         Quantity = quantity;
         UnitPrice = CopyOf(unitPrice);

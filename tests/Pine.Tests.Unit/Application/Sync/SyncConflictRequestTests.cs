@@ -111,6 +111,7 @@ public class SyncConflictRequestTests
     [InlineData(SyncConflictBlock.AmbiguousNaturalKey, "Failure.SyncConflict.Ambiguous")]
     [InlineData(SyncConflictBlock.AlreadyExistsHere, "Failure.SyncConflict.AlreadyExistsHere")]
     [InlineData(SyncConflictBlock.SchemaChanged, "Failure.SyncConflict.SchemaChanged")]
+    [InlineData(SyncConflictBlock.CurrencyMismatch, "Failure.SyncConflict.CurrencyMismatch")]
     public async Task TakingABlockedSide_IsRefused_WithTheReason(SyncConflictBlock block, string key)
     {
         var conflict = Conflict(block: block);

@@ -41,6 +41,30 @@ public class TransactionVoidTests
 
     private readonly TimeProvider _timeProvider = TimeProvider.System;
 
+    [Fact]
+    public void Unvoid_ClearsTheVoidAndKeepsEverythingElse()
+    {
+        var transaction = NewHundredEuroIncome();
+        transaction.AssignImportKey("k1");
+        transaction.Void(Reason, _timeProvider);
+
+        transaction.Unvoid();
+
+        transaction.IsVoided.Should().BeFalse();
+        transaction.VoidedAt.Should().BeNull();
+        transaction.VoidReason.Should().BeNull();
+        transaction.ImportKey.Should().Be("k1");
+        transaction.TotalAmount.Amount.Should().Be(100m);
+    }
+
+    [Fact]
+    public void Unvoid_OfATransactionInForce_Throws()
+    {
+        var act = () => NewHundredEuroIncome().Unvoid();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not been voided*");
+    }
+
     private Transaction NewHundredEuroIncome()
         => Transaction.Create(
             Guid.NewGuid(),

@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pine.Core\Pine.Core.csproj" />
+    <!-- TD-57: Infrastructure implements ports that live in Application (IVaultMigrator). -->
+    <ProjectReference Include="..\Pine.Application\Pine.Application.csproj" />
   </ItemGroup>
 
   <!-- OpenCvCameraSource.Frame's pixel copy is tested against synthetic images, because no test may

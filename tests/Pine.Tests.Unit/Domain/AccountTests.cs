@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Tests.Unit.TestSupport;
@@ -116,7 +116,53 @@ public class AccountTests
         account.OpeningBalance.Should().NotBeNull();
         account.OpeningBalance!.Amount.Should().Be(250.75m);
         account.OpeningBalance.Currency.Value.Should().Be("USD",
-            "the opening balance is derived from the account's own currency, never stored with one of its own");
+            "the opening balance is denominated in the account's own currency");
+        account.OpeningBalanceCurrency.Should().Be(currency,
+            "TD-77: the opening balance carries its own persisted currency, taken from the account");
+        account.OpeningBalanceCurrencyMatchesAccount.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AdoptOpeningBalance_ShouldRecordTheAccountsCurrencyAlongsideTheAmount()
+    {
+        var account = PreMigrationAccount.WithNoOpeningBalance(
+            "Legacy", AccountType.Bank, new Money(10m, new CurrencyCode("JPY")), _timeProvider);
+        account.OpeningBalance.Should().BeNull();
+        account.OpeningBalanceCurrency.Should().BeNull();
+
+        account.AdoptOpeningBalance(new Money(10m, new CurrencyCode("JPY")), _timeProvider);
+
+        account.OpeningBalanceCurrency!.Value.Should().Be("JPY");
+        account.OpeningBalance.Should().Be(new Money(10m, new CurrencyCode("JPY")));
+    }
+
+    /// <summary>
+    /// TD-77. The account's currency is immutable: no way of using the aggregate -- opening, depositing,
+    /// withdrawing, adopting an opening balance, recalculating -- ends with a different currency.
+    /// </summary>
+    [Fact]
+    public void Account_Currency_IsUnchangedByEveryMutator_AndMismatchedMoneyIsRefused()
+    {
+        var usd = new CurrencyCode("USD");
+        var eur = new CurrencyCode("EUR");
+        var account = Account.Create("Wallet", AccountType.Cash, new Money(50m, usd), _timeProvider);
+
+        account.Deposit(new Money(5m, usd), _timeProvider);
+        account.Withdraw(new Money(1m, usd), _timeProvider);
+        account.RecalculateBalance(new Money(60m, usd), _timeProvider);
+
+        var foreign = new[]
+        {
+            () => account.Deposit(new Money(5m, eur), _timeProvider),
+            () => account.Withdraw(new Money(5m, eur), _timeProvider),
+            () => account.RecalculateBalance(new Money(5m, eur), _timeProvider),
+        };
+        foreach (var act in foreign)
+            act.Should().Throw<Exception>("a foreign-currency amount must never re-denominate or be mixed into the account");
+
+        account.Balance.Currency.Value.Should().Be("USD");
+        account.OpeningBalanceCurrency!.Value.Should().Be("USD");
+        account.OpeningBalanceCurrencyMatchesAccount.Should().BeTrue();
     }
 
     [Fact]

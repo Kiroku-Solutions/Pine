@@ -21,7 +21,11 @@ namespace Pine.Application.Transactions.Queries;
 /// </remarks>
 /// <param name="Page">The 1-based page number.</param>
 /// <param name="PageSize">How many transactions the page holds.</param>
-public record GetTransactionsQuery(int Page, int PageSize) : IRequest<Pine.Core.Common.PagedResult<Transaction>>;
+/// <param name="IncludeVoided">
+/// Whether voided rows are listed (TD-71). Defaults to true so the dashboard widgets, which have
+/// always seen every row, are unchanged; the transaction list passes its toggle.
+/// </param>
+public record GetTransactionsQuery(int Page, int PageSize, bool IncludeVoided = true) : IRequest<Pine.Core.Common.PagedResult<Transaction>>;
 
 public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery, Pine.Core.Common.PagedResult<Transaction>>
 {
@@ -34,6 +38,6 @@ public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery,
 
     public async Task<Pine.Core.Common.PagedResult<Transaction>> Handle(GetTransactionsQuery request, CancellationToken cancellationToken)
     {
-        return await _transactionRepository.GetPagedAsync(request.Page, request.PageSize, cancellationToken);
+        return await _transactionRepository.GetPagedAsync(request.Page, request.PageSize, request.IncludeVoided, cancellationToken);
     }
 }

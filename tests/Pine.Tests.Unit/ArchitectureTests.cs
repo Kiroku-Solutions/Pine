@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -34,7 +34,7 @@ public partial class ArchitectureTests
     /// created before opening balances were recorded. Neither can change the account's currency, and
     /// neither does so merely by passing a check: <c>RecalculateBalance</c> rebuilds
     /// <c>Balance</c> from the EXISTING <c>CurrencyCode</c> instance and discards the argument's, and
-    /// <c>AdoptOpeningBalance</c> stores a bare <c>decimal</c> and never persists a currency at all.
+    /// <c>AdoptOpeningBalance</c> persists the opening balance's currency (TD-77) but takes it from <c>Balance</c>, never from its argument.
     /// Deleting the guard in either one would not open the window;
     /// <c>Account_RecalculateBalance_CannotRedenominateTheAccount</c> and
     /// <c>Account_AdoptOpeningBalance_CannotRedenominateTheAccount</c> in
@@ -136,11 +136,10 @@ public partial class ArchitectureTests
     }
 
     /// <summary>
-    /// <c>SqliteTransactionRepository.ReconcileOwnedChildren</c> promotes an owned child that EF
-    /// Core has marked Modified to Added, reasoning that neither owned type exposes a mutator, so a
-    /// Modified child can only be a new one EF mis-classified from its client-assigned key. That
-    /// reasoning is load-bearing: the day either type gains a public setter, a genuine update would
-    /// be silently rewritten as an insert and no other test would notice. This pins the assumption.
+    /// Since TD-59 <c>SqliteTransactionRepository</c> no longer relies on this: it sets owned-child
+    /// state explicitly from the persisted ids (see <c>OwnedChildStateTests</c>). The guard is kept as
+    /// a design constraint: owned children change only through the aggregate's domain methods
+    /// (<c>ReplaceSplits</c>/<c>ReplaceLineItems</c>), never through public setters.
     /// </summary>
     [Fact]
     public void OwnedTransactionChildren_ShouldNot_ExposePublicSetters()
@@ -158,8 +157,7 @@ public partial class ArchitectureTests
             .ToArray();
 
         settable.Should().BeEmpty(
-            "ReconcileOwnedChildren treats every Modified owned child as a mis-classified insert, " +
-            "which is only sound while these types stay immutable after construction.");
+            "owned children must change only through the aggregate's domain methods.");
     }
 
     /// <summary>
@@ -288,6 +286,29 @@ public partial class ArchitectureTests
         publicMethods.Should().Equal(
             ExpectedAccountPublicMethods,
             "a new public member on Account is a new way its currency might change, which would invalidate reading that currency outside the transaction.");
+    }
+
+    /// <summary>
+    /// TD-77. An account's currency is chosen once, at creation. The only command in the accounts namespace allowed
+    /// to carry a currency at all is <c>CreateAccountCommand</c>; a command on an existing account (set the opening
+    /// balance, recalculate) that grew a currency member would be the first step toward re-denominating it.
+    /// </summary>
+    [Fact]
+    public void OnlyCreateAccountCommand_CarriesACurrency_SoNoCommandCanChangeAnAccountsCurrencyAfterCreation()
+    {
+        var commands = typeof(Pine.Application.Accounts.Commands.CreateAccountCommand).Assembly
+            .GetTypes()
+            .Where(t => t.Namespace == "Pine.Application.Accounts.Commands" && t.Name.EndsWith("Command", StringComparison.Ordinal))
+            .ToArray();
+        commands.Should().Contain(t => t.Name == "SetOpeningBalanceCommand").And.Contain(t => t.Name == "RecalculateAccountBalanceCommand");
+
+        var carrying = commands
+            .Where(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Any(p => p.Name.Contains("Currency", StringComparison.OrdinalIgnoreCase) || p.PropertyType == typeof(Pine.Core.Common.ValueObjects.CurrencyCode)))
+            .Select(t => t.Name)
+            .ToArray();
+
+        carrying.Should().Equal("CreateAccountCommand");
     }
 
     /// <summary>
@@ -1220,8 +1241,8 @@ public partial class ArchitectureTests
     /// </summary>
     private static readonly string[] ExpectedTransactionPublicMethods =
     [
-        "AddLineItem", "AddSplit", "AssignImportKey", "Create", "CreateTransferPair", "EnsureValid",
-        "LineItemDifference", "ReplaceLineItems", "ReplaceSplits", "Update", "ValidateLineItems",
+        "AddLineItem", "AddSplit", "AssignImportKey", "Create", "CreateTransferPair", "EnsureValid", "FlagAsZeroAmountImport",
+        "LineItemDifference", "ReplaceLineItems", "ReplaceSplits", "Unvoid", "Update", "ValidateLineItems",
         "ValidateSplits", "Void",
     ];
 
@@ -1336,5 +1357,19 @@ public partial class ArchitectureTests
         }
 
         return current;
+    }
+
+    /// <summary>
+    /// TD-57: the persistence-orchestration ports live in Pine.Application, not the domain project.
+    /// Infrastructure references Application to implement them.
+    /// </summary>
+    [Fact]
+    public void VaultMigratorPort_ShouldLiveInTheApplicationLayer_NotCore()
+    {
+        typeof(Pine.Application.Security.IVaultMigrator).Assembly.GetName().Name.Should().Be("Pine.Application");
+        typeof(Pine.Infrastructure.Data.EfCoreVaultMigrator).GetInterfaces()
+            .Should().Contain(typeof(Pine.Application.Security.IVaultMigrator));
+        typeof(Pine.Core.Security.VaultMigrationResult).Assembly.GetTypes()
+            .Should().NotContain(t => t.Name == "IVaultMigrator", "the port moved out of Pine.Core");
     }
 }

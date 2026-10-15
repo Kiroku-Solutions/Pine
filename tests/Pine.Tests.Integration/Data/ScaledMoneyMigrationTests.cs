@@ -131,7 +131,7 @@ public class ScaledMoneyMigrationTests
 
         // Assert
         ReadScalar(vault, @"SELECT ""Balance_Amount"" FROM ""Accounts"" LIMIT 1;").Should().Be(82_000L);
-        ReadScalar(vault, @"SELECT ""OpeningBalanceAmount"" FROM ""Accounts"" LIMIT 1;").Should().Be(10_050L);
+        ReadScalar(vault, @"SELECT ""OpeningBalance_Amount"" FROM ""Accounts"" LIMIT 1;").Should().Be(10_050L);
         ReadScalar(vault, @"SELECT ""TotalAmount_Amount"" FROM ""Transactions"" LIMIT 1;").Should().Be(2_900L);
         ReadScalar(vault, @"SELECT ""LimitAmount"" FROM ""Budgets"" LIMIT 1;").Should().Be(123_456_781_234L);
     }
@@ -153,7 +153,7 @@ public class ScaledMoneyMigrationTests
         await MigrateAsync(vault);
 
         // Assert
-        ReadScalar(vault, @"SELECT ""OpeningBalanceAmount"" FROM ""Accounts"" LIMIT 1;")
+        ReadScalar(vault, @"SELECT ""OpeningBalance_Amount"" FROM ""Accounts"" LIMIT 1;")
             .Should().BeOfType<DBNull>();
     }
 

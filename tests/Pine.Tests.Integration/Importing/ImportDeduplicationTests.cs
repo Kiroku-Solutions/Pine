@@ -339,6 +339,48 @@ public class ImportDeduplicationTests
             "the second account's balance must move by every row it imported");
     }
 
+    /// <summary>
+    /// TD-62 (owner decision), end to end: a zero-amount row is saved and flagged (not dropped, not rejected),
+    /// moves no money, is skipped on re-import by its key, and can be hidden with the existing void command.
+    /// </summary>
+    /// <returns>A task representing the test.</returns>
+    [Fact]
+    public async Task Import_WithAZeroAmountRow_KeepsAndFlagsIt_DeduplicatesIt_AndItCanBeVoided()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+        var account = await host.SeedAccountAsync("Everyday", OpeningBalance);
+        var statement = new StatementImporter(
+            Source,
+            new StatementRow("Gas station authorization", 0m, StatementDay),
+            new StatementRow("Coffee Hut", -4.50m, StatementDay));
+
+        var first = await ImportAsync(host, account, statement);
+
+        first.Imported.Should().HaveCount(2);
+        first.Rows.Select(row => row.IsZeroAmount).Should().Equal(true, false);
+        host.CountRowsRaw("Transactions").Should().Be(2);
+        (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance - 4.50m, "a zero row moves nothing");
+
+        var persisted = await host.QueryAsync(context => context.Transactions.AsNoTracking()
+            .Where(t => t.AccountId == account).ToListAsync());
+        persisted.Single(t => t.TotalAmount.Amount == 0m).IsZeroAmountImport.Should().BeTrue();
+        persisted.Single(t => t.TotalAmount.Amount != 0m).IsZeroAmountImport.Should().BeFalse();
+
+        var second = await ImportAsync(host, account, statement);
+        second.Rows.Select(row => row.Disposition).Should()
+            .AllBeEquivalentTo(ImportRowDisposition.SkippedAlreadyInAccount, "the zero row keeps its key and dedups like any other");
+        host.CountRowsRaw("Transactions").Should().Be(2);
+
+        var zeroId = persisted.Single(t => t.TotalAmount.Amount == 0m).Id;
+        await host.Mediator.Send(new VoidTransactionCommand(zeroId, "Zero-amount row hidden after import"));
+        var voided = await host.QueryAsync(context => context.Transactions.AsNoTracking().SingleAsync(t => t.Id == zeroId));
+        voided.IsVoided.Should().BeTrue();
+        (await host.ReadBalanceAsync(account)).Should().Be(OpeningBalance - 4.50m);
+
+        var third = await ImportAsync(host, account, statement);
+        third.Imported.Should().BeEmpty("a hidden (voided) row keeps its key, so re-importing the file does not bring it back");
+    }
+
     private static async Task<ImportTransactionsResult> ImportAsync(
         AtomicityHost host, Guid account, IImporter importer)
     {

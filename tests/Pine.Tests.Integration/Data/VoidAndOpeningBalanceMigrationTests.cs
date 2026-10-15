@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -150,6 +150,24 @@ public class VoidAndOpeningBalanceMigrationTests
     /// <summary>The head of the migration list: the local sync audit log (`14-Synchronization` §12).</summary>
     private const string SyncRunAuditLogSchemaVersion = "20261005153926_AddSyncRunAuditLog";
 
+    /// <summary>The head of the migration list: Budget start/end as UTC instants (TD-96).</summary>
+    private const string BudgetUtcDatesSchemaVersion = "20261011190857_AddBudgetUtcDates";
+
+    /// <summary>File-import keys become unique per account (TD-65).</summary>
+    private const string ImportKeyUniqueIndexSchemaVersion = "20261011214839_AddImportKeyUniqueIndex";
+
+    /// <summary>The transfer link becomes a foreign key (TD-125).</summary>
+    private const string TransferLinkForeignKeySchemaVersion = "20261012011314_AddTransferLinkForeignKey";
+
+    /// <summary>The head of the migration list: the opening balance gets a currency column (TD-77).</summary>
+    private const string OpeningBalanceCurrencySchemaVersion = "20261014120000_AddAccountOpeningBalanceCurrency";
+
+    /// <summary>The head of the migration list: line quantity scaled, zero-amount import flag (TD-95, TD-62).</summary>
+    private const string LineQuantitySchemaVersion = "20261014180000_AddLineQuantityScaleAndZeroAmountImportFlag";
+
+    /// <summary>The head of the migration list: manual exchange rates and the budget conversion audit columns.</summary>
+    private const string ExchangeRatesSchemaVersion = "20261014200000_AddExchangeRatesAndBudgetConversionAudit";
+
     /// <summary>The exact pending set expected at <see cref="PreviousSchemaVersion"/>.</summary>
     private static readonly string[] ExpectedPendingMigrations =
     [
@@ -168,6 +186,12 @@ public class VoidAndOpeningBalanceMigrationTests
         SyncMergeStateSchemaVersion,
         SyncConflictResolutionSchemaVersion,
         SyncRunAuditLogSchemaVersion,
+        BudgetUtcDatesSchemaVersion,
+        ImportKeyUniqueIndexSchemaVersion,
+        TransferLinkForeignKeySchemaVersion,
+        OpeningBalanceCurrencySchemaVersion,
+        LineQuantitySchemaVersion,
+        ExchangeRatesSchemaVersion,
     ];
 
     private const decimal LegacyBalance = 1000.00m;
@@ -211,7 +235,7 @@ public class VoidAndOpeningBalanceMigrationTests
 
         ColumnNames(vault, "Transactions").Should().Contain("VoidedAt");
         ColumnNames(vault, "Transactions").Should().Contain("VoidReason");
-        ColumnNames(vault, "Accounts").Should().Contain("OpeningBalanceAmount");
+        ColumnNames(vault, "Accounts").Should().Contain("OpeningBalance_Amount");
 
         // Read raw: "NULL" and "materialised as a default" are different facts that EF renders
         // identically, and for OpeningBalanceAmount the difference is the whole design decision.
@@ -527,7 +551,7 @@ public class VoidAndOpeningBalanceMigrationTests
     {
         using var connection = vault.OpenRaw(vault.DatabasePath, vault.Key);
         using var command = connection.CreateCommand();
-        command.CommandText = @"SELECT ""OpeningBalanceAmount"" FROM ""Accounts"" ORDER BY rowid;";
+        command.CommandText = @"SELECT ""OpeningBalance_Amount"" FROM ""Accounts"" ORDER BY rowid;";
         return command.ExecuteScalar() as long?;
     }
 

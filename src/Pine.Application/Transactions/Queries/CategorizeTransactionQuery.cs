@@ -14,6 +14,7 @@ public sealed class CategorizeTransactionQueryHandler : IRequestHandler<Categori
 {
     private readonly IAIProvider _aiProvider;
     private readonly PineAiOptions _aiOptions;
+    private readonly Pine.Application.Settings.IUserPreferences? _preferences;
 
     /// <summary>Creates the handler.</summary>
     /// <param name="aiProvider">The categoriser.</param>
@@ -32,9 +33,13 @@ public sealed class CategorizeTransactionQueryHandler : IRequestHandler<Categori
     /// </remarks>
     public CategorizeTransactionQueryHandler(
         IAIProvider aiProvider,
-        IOptions<PineAiOptions> aiOptions)
+        IOptions<PineAiOptions> aiOptions,
+        Pine.Application.Settings.IUserPreferences? preferences = null)
     {
         ArgumentNullException.ThrowIfNull(aiOptions);
+
+        // TD-119: the confidence gate is an in-vault Setting; aiOptions is the read-fallback.
+        _preferences = preferences;
 
         _aiProvider = aiProvider;
         _aiOptions = aiOptions.Value;
@@ -53,7 +58,11 @@ public sealed class CategorizeTransactionQueryHandler : IRequestHandler<Categori
         // and again in ImportTransactionsCommandHandler, and nothing tied the two numbers together
         // -- so a change to one would have left import auto-applying categories this path considered
         // too weak to even show the user.
-        if (string.IsNullOrWhiteSpace(result.Category) || result.ConfidenceScore < _aiOptions.CategorisationConfidenceThreshold)
+        var threshold = _preferences is null
+            ? _aiOptions.CategorisationConfidenceThreshold
+            : (await _preferences.GetAsync(cancellationToken)).CategorisationConfidenceThreshold;
+
+        if (string.IsNullOrWhiteSpace(result.Category) || result.ConfidenceScore < threshold)
         {
             return null;
         }

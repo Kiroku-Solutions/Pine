@@ -56,6 +56,12 @@ public static class UserFacingText
     /// <summary>A backup that could not be opened with this vault's key.</summary>
     public static UserFacingMessage RestoreUnreadable() => new("Failure.Restore.Unreadable");
 
+    /// <summary>A backup that cannot be opened with the current key and carries no key record of its era.</summary>
+    public static UserFacingMessage RestoreNoKeyRecord() => new("Failure.Restore.NoKeyRecord");
+
+    /// <summary>The password given for an older backup is wrong (or does not belong to it).</summary>
+    public static UserFacingMessage RestoreBackupPasswordWrong() => new("Failure.Restore.BackupPasswordWrong");
+
     /// <summary>The receipt detector was asked to analyse a frame before its model loaded.</summary>
     public static UserFacingMessage ScanNotReady() => new("Scan.Guidance.NotReady");
 
@@ -109,6 +115,9 @@ public static class UserFacingText
 
     /// <summary>The other device's version was recorded before this version of Pine changed how it stores that item.</summary>
     public static UserFacingMessage SyncConflictSchemaChanged() => new("Failure.SyncConflict.SchemaChanged");
+
+    /// <summary>An account's currency cannot change, so the other device's account is never taken over this one.</summary>
+    public static UserFacingMessage SyncConflictCurrencyMismatch() => new("Failure.SyncConflict.CurrencyMismatch");
 
     /// <summary>No pairing offer where the user said there was one (post-audit plan item 3.1e).</summary>
     public static UserFacingMessage SyncPairingOfferNotFound() => new("Failure.SyncPairing.OfferNotFound");

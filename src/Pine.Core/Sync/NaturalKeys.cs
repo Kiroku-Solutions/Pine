@@ -4,6 +4,7 @@ using System.Globalization;
 using Pine.Core.Accounts;
 using Pine.Core.Attachments;
 using Pine.Core.Budgets;
+using Pine.Core.ExchangeRates;
 using Pine.Core.Importing;
 using Pine.Core.Rules;
 using Pine.Core.Settings;
@@ -79,6 +80,7 @@ public static class NaturalKeys
         [typeof(Setting)] = NaturalKeyKind.Derived,
         [typeof(Budget)] = NaturalKeyKind.Derived,
         [typeof(Attachment)] = NaturalKeyKind.Derived,
+        [typeof(ExchangeRate)] = NaturalKeyKind.Derived,
         [typeof(Transaction)] = NaturalKeyKind.Partial,
         [typeof(Account)] = NaturalKeyKind.None,
         [typeof(Rule)] = NaturalKeyKind.None,
@@ -119,6 +121,7 @@ public static class NaturalKeys
             Setting setting => SettingKey(setting.Key),
             Budget budget => BudgetKey(budget.Category, budget.Limit.Currency.Value, budget.Period, budget.StartDate, budget.EndDate),
             Attachment attachment => AttachmentKey(attachment.TransactionId, attachment.Sha256),
+            ExchangeRate rate => ExchangeRateKey(rate.FromCurrency.Value, rate.ToCurrency.Value, rate.EffectiveDateUtc),
             Transaction transaction => TransactionKey(transaction.AccountId, transaction.ImportKey),
             _ => KindOf(aggregate.GetType()) == NaturalKeyKind.None
                 ? null
@@ -152,6 +155,23 @@ public static class NaturalKeys
     {
         ArgumentNullException.ThrowIfNull(sha256);
         return string.Create(CultureInfo.InvariantCulture, $"attachment|{transactionId:D}|{sha256.ToUpperInvariant()}");
+    }
+
+    /// <summary>
+    /// The natural key of an exchange rate: the pair and the UTC day it takes effect. Two devices that each typed the
+    /// rate of the same pair for the same day entered one fact, and the merge reconciles the values rather than
+    /// keeping two rows a conversion could not choose between.
+    /// </summary>
+    /// <param name="from">The currency converted from; upper-cased.</param>
+    /// <param name="to">The currency converted to; upper-cased.</param>
+    /// <param name="effectiveDateUtc">The effective instant; only its UTC day counts.</param>
+    /// <returns>The key.</returns>
+    public static string ExchangeRateKey(string from, string to, DateTime effectiveDateUtc)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"exchangerate|{from.Trim().ToUpperInvariant()}|{to.Trim().ToUpperInvariant()}|{effectiveDateUtc:yyyy-MM-dd}");
     }
 
     /// <summary>

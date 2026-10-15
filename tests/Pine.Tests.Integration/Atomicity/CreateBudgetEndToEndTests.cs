@@ -30,7 +30,7 @@ public class CreateBudgetEndToEndTests
         var account = await host.SeedAccountAsync("Current", 1000m, "USD");
         var thisMonth = DateTimeOffset.Now;
 
-        var budgetId = await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, "USD", BudgetPeriod.Monthly));
+        var budgetId = await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, BudgetPeriod.Monthly));
         await host.Mediator.Send(new AddTransactionCommand(account, thisMonth, "Grocer", -75.50m, "USD", "weekly shop", "Groceries"));
 
         var progress = (await host.Mediator.Send(new GetBudgetProgressQuery())).Should().ContainSingle().Subject;
@@ -42,14 +42,40 @@ public class CreateBudgetEndToEndTests
         progress.Limit.Amount.Should().Be(200m);
     }
 
+    /// <summary>TD-63: the budget is written in the vault's base currency (the oldest account's), never one the caller names.</summary>
+    [Fact]
+    public async Task ABudget_IsWrittenInTheVaultsBaseCurrency()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+        await host.SeedAccountAsync("Current", 1000m, "EUR");
+
+        await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, BudgetPeriod.Monthly));
+
+        var budget = (await host.QueryAsync(c => c.Budgets.AsNoTracking().ToListAsync())).Should().ContainSingle().Subject;
+        budget.Limit.Currency.Value.Should().Be("EUR");
+    }
+
+    /// <summary>TD-63: a vault with no account and no setting has no base currency, so a budget is refused by key.</summary>
+    [Fact]
+    public async Task ABudget_InAVaultWithNoBaseCurrency_IsRefused()
+    {
+        await using var host = await AtomicityHost.CreateAsync();
+
+        var act = async () => await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, BudgetPeriod.Monthly));
+
+        var thrown = await act.Should().ThrowAsync<RequestValidationException>();
+        thrown.Which.Errors.Select(e => e.UserFacingMessage.Key).Should().Equal("Validation.Budget.NoBaseCurrency");
+    }
+
     [Fact]
     public async Task ASecondIdenticalBudget_IsRefused_BeforeAnythingIsWritten()
     {
         await using var host = await AtomicityHost.CreateAsync();
-        await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, "USD", BudgetPeriod.Monthly));
+        await host.SeedAccountAsync("Current", 1000m, "USD");
+        await host.Mediator.Send(new CreateBudgetCommand("Groceries", 200m, BudgetPeriod.Monthly));
         var callsBefore = host.UnitOfWorkLog.Calls.Count;
 
-        var act = async () => await host.Mediator.Send(new CreateBudgetCommand(" Groceries", 300m, "usd", BudgetPeriod.Monthly));
+        var act = async () => await host.Mediator.Send(new CreateBudgetCommand(" Groceries", 300m, BudgetPeriod.Monthly));
 
         var thrown = await act.Should().ThrowAsync<RequestValidationException>();
         thrown.Which.Errors.Should().ContainSingle().Which.UserFacingMessage.Key.Should().Be("Validation.Budget.AlreadyExists");
@@ -62,8 +88,9 @@ public class CreateBudgetEndToEndTests
     public async Task ABudgetWithNoCategory_IsRefusedAsASentence_NotAsTheAggregatesException()
     {
         await using var host = await AtomicityHost.CreateAsync();
+        await host.SeedAccountAsync("Current", 1000m, "USD");
 
-        var act = async () => await host.Mediator.Send(new CreateBudgetCommand("  ", 200m, "USD", BudgetPeriod.Monthly));
+        var act = async () => await host.Mediator.Send(new CreateBudgetCommand("  ", 200m, BudgetPeriod.Monthly));
 
         var thrown = await act.Should().ThrowAsync<RequestValidationException>();
         thrown.Which.Errors.Select(e => e.UserFacingMessage.Key).Should().Equal("Validation.Budget.CategoryRequired");
@@ -88,7 +115,7 @@ public class CreateBudgetEndToEndTests
         }
 
         // Exactly what the page sends for "1 July to 31 July": local midnight of the 1st, and of the day after the 31st.
-        await host.Mediator.Send(new CreateBudgetCommand("Holiday", 500m, "USD", BudgetPeriod.Custom, Local(7, 1, 0, 0), Local(8, 1, 0, 0)));
+        await host.Mediator.Send(new CreateBudgetCommand("Holiday", 500m, BudgetPeriod.Custom, Local(7, 1, 0, 0), Local(8, 1, 0, 0)));
 
         await host.Mediator.Send(new AddTransactionCommand(account, Local(6, 30, 23, 30), "Before", -100m, "USD", "", "Holiday"));
         await host.Mediator.Send(new AddTransactionCommand(account, Local(7, 1, 0, 30), "First day", -1m, "USD", "", "Holiday"));

@@ -11,6 +11,7 @@ using Pine.Core.Budgets;
 using Pine.Core.Common;
 using Pine.Core.Configuration;
 using Pine.Core.Importing;
+using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Ai;
@@ -136,6 +137,7 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<ITransactionRepository, SqliteTransactionRepository>();
         services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
         services.AddScoped<ISettingRepository, SqliteSettingRepository>();
+        services.AddScoped<Pine.Core.ExchangeRates.IExchangeRateRepository, SqliteExchangeRateRepository>();
         services.AddScoped<IImportProfileRepository, SqliteImportProfileRepository>();
         services.AddScoped<IAttachmentRepository, SqliteAttachmentRepository>();
         services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
@@ -179,6 +181,11 @@ public static class PineInfrastructureServiceCollectionExtensions
         // lifetime and must only be resolved once the vault session is unlocked.
         services.AddScoped<IVaultBackupService, VaultBackupService>();
         services.AddScoped<IVaultMigrator, EfCoreVaultMigrator>();
+        // TD-86 building block: database half of a data-key rotation. Stateless, so a singleton.
+        services.TryAddSingleton<IVaultDatabaseRekeyer, SqlCipherVaultRekeyer>();
+        services.TryAddSingleton<IVaultRekeyJournal, FileVaultRekeyJournal>();
+        services.TryAddSingleton<IVaultSealedFileResealer, VaultSealedFileResealer>();
+        services.TryAddSingleton<IVaultKeyRotationService, VaultKeyRotationService>();
 
         // Restore (TD-56). Scoped for the same reason as the two above -- it drives PineDbContext --
         // and it takes IVaultBackupService rather than duplicating VACUUM INTO, so the safety copy a

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -150,6 +150,24 @@ public class ImportKeyMigrationTests
 
     /// <summary>The head of the migration list: the local sync audit log (`14-Synchronization` §12).</summary>
     private const string SyncRunAuditLogSchemaVersion = "20261005153926_AddSyncRunAuditLog";
+
+    /// <summary>The head of the migration list: Budget start/end as UTC instants (TD-96).</summary>
+    private const string BudgetUtcDatesSchemaVersion = "20261011190857_AddBudgetUtcDates";
+
+    /// <summary>File-import keys become unique per account (TD-65).</summary>
+    private const string ImportKeyUniqueIndexSchemaVersion = "20261011214839_AddImportKeyUniqueIndex";
+
+    /// <summary>The transfer link becomes a foreign key (TD-125).</summary>
+    private const string TransferLinkForeignKeySchemaVersion = "20261012011314_AddTransferLinkForeignKey";
+
+    /// <summary>The head of the migration list: the opening balance gets a currency column (TD-77).</summary>
+    private const string OpeningBalanceCurrencySchemaVersion = "20261014120000_AddAccountOpeningBalanceCurrency";
+
+    /// <summary>The head of the migration list: line quantity scaled, zero-amount import flag (TD-95, TD-62).</summary>
+    private const string LineQuantitySchemaVersion = "20261014180000_AddLineQuantityScaleAndZeroAmountImportFlag";
+
+    /// <summary>The head of the migration list: manual exchange rates and the budget conversion audit columns.</summary>
+    private const string ExchangeRatesSchemaVersion = "20261014200000_AddExchangeRatesAndBudgetConversionAudit";
 
     private const decimal LegacyBalance = 1650.00m;
 
@@ -317,7 +335,13 @@ public class ImportKeyMigrationTests
             SyncBookkeepingSchemaVersion,
             SyncMergeStateSchemaVersion,
             SyncConflictResolutionSchemaVersion,
-            SyncRunAuditLogSchemaVersion
+            SyncRunAuditLogSchemaVersion,
+            BudgetUtcDatesSchemaVersion,
+            ImportKeyUniqueIndexSchemaVersion,
+            TransferLinkForeignKeySchemaVersion,
+            OpeningBalanceCurrencySchemaVersion,
+            LineQuantitySchemaVersion,
+            ExchangeRatesSchemaVersion
         });
     }
 

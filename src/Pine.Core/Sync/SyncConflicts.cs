@@ -50,6 +50,12 @@ public enum SyncConflictBlock
     /// (independent review of item 3.1c).
     /// </summary>
     SchemaChanged,
+
+    /// <summary>
+    /// The peer's account is in another currency than this vault's. An account's currency is immutable, so the
+    /// two are not versions of one account and the peer's is never written here; only keeping this device's is offered.
+    /// </summary>
+    CurrencyMismatch,
 }
 
 /// <summary>One field of a conflicting row, as each side holds it.</summary>
@@ -186,6 +192,7 @@ public sealed class SyncConflictRefusedException : Exception, IUserFacingFailure
         SyncConflictBlock.AmbiguousNaturalKey => UserFacingText.SyncConflictAmbiguous(),
         SyncConflictBlock.AlreadyExistsHere => UserFacingText.SyncConflictAlreadyExistsHere(),
         SyncConflictBlock.SchemaChanged => UserFacingText.SyncConflictSchemaChanged(),
+        SyncConflictBlock.CurrencyMismatch => UserFacingText.SyncConflictCurrencyMismatch(),
         _ => throw new ArgumentOutOfRangeException(nameof(block), block, "Nothing blocks it, so there is nothing to say."),
     };
 

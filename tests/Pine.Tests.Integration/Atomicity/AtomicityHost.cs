@@ -140,6 +140,7 @@ internal sealed class AtomicityHost : IAsyncDisposable
             services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
             services.AddScoped<IBudgetRepository, SqliteBudgetRepository>();
             services.AddScoped<ISettingRepository, SqliteSettingRepository>();
+            services.AddScoped<Pine.Core.ExchangeRates.IExchangeRateRepository, SqliteExchangeRateRepository>();
             services.AddScoped<IImportProfileRepository, Pine.Infrastructure.Importing.SqliteImportProfileRepository>();
 
             services.AddScoped<IVaultBackupService, VaultBackupService>();
@@ -291,7 +292,7 @@ internal sealed class AtomicityHost : IAsyncDisposable
         using var connection = _vault.OpenRaw(_vault.DatabasePath, _vault.Key);
         using var command = connection.CreateCommand();
         command.CommandText =
-            @"SELECT ""Balance_Amount"", ""OpeningBalanceAmount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
+            @"SELECT ""Balance_Amount"", ""OpeningBalance_Amount"" FROM ""Accounts"" WHERE ""Id"" = $id COLLATE NOCASE;";
         command.Parameters.AddWithValue("$id", accountId.ToString());
 
         using var reader = command.ExecuteReader();

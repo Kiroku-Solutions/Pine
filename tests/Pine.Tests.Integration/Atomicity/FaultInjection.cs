@@ -214,8 +214,20 @@ internal sealed class FaultInjectingTransactionRepository : ITransactionReposito
         => _inner.GetAllAsync(cancellationToken);
 
     /// <inheritdoc />
-    public Task<PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default)
-        => _inner.GetPagedAsync(page, pageSize, cancellationToken);
+    public Task<int> CountPossiblyCategorisedAsync(CancellationToken cancellationToken = default)
+        => _inner.CountPossiblyCategorisedAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Transaction>> GetCategorisedPageAsync(int skip, int take, CancellationToken cancellationToken = default)
+        => _inner.GetCategorisedPageAsync(skip, take, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TransferLinkRow>> GetTransferLinkRowsAsync(CancellationToken cancellationToken = default)
+        => _inner.GetTransferLinkRowsAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default)
+        => _inner.GetPagedAsync(page, pageSize, includeVoided, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyCollection<string>> GetExistingImportKeysAsync(

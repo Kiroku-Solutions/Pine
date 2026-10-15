@@ -22,6 +22,9 @@ public static class ImportReviewText
     /// <summary>A row written as a new transaction, after passing the duplicate check.</summary>
     public static UserFacingMessage Imported() => new("ImportReview.Imported");
 
+    /// <summary>A row written with an amount of zero (typically a bank authorization), kept for the user to hide or keep.</summary>
+    public static UserFacingMessage ImportedZeroAmount() => new("ImportReview.ImportedZeroAmount");
+
     /// <summary>A row written without a duplicate check, because its importer supplied no key.</summary>
     public static UserFacingMessage ImportedWithoutKeyCheck() => new("ImportReview.ImportedWithoutKeyCheck");
 

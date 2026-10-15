@@ -202,6 +202,12 @@ public sealed class PineSecurityOptions
     /// Seeds <c>VaultAutoLockOptions.IdleTimeout</c>. It seeds rather than replaces because that
     /// type stays a plain mutable singleton on purpose -- a settings screen changes the timeout at
     /// runtime, and an <c>IOptions</c> snapshot would not reach the already-running timer.
+    /// <para>
+    /// TD-119: THIS IS A READ-FALLBACK, NOT THE HOME OF THE VALUE. Configuration is plaintext and outside
+    /// the vault, so it holds only what the pre-unlock screen needs (theme, language). This is an
+    /// operative preference: the encrypted in-vault Setting <c>Security.AutoLockIdleMinutes</c> wins when present and valid,
+    /// and this value applies only when no Setting exists (so a pre-TD-119 user keeps their value).
+    /// </para>
     /// </remarks>
     public TimeSpan AutoLockIdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
@@ -288,6 +294,12 @@ public sealed class PineAiOptions
     /// in two files, with nothing tying the two numbers together. They could drift, and if they
     /// did, the import path would silently apply categories the suggestion path considered too
     /// weak to show.
+    /// <para>
+    /// TD-119: THIS IS A READ-FALLBACK, NOT THE HOME OF THE VALUE. Configuration is plaintext and outside
+    /// the vault, so it holds only what the pre-unlock screen needs (theme, language). This is an
+    /// operative preference: the encrypted in-vault Setting <c>Ai.CategorisationConfidenceThreshold</c> wins when present and valid,
+    /// and this value applies only when no Setting exists (so a pre-TD-119 user keeps their value).
+    /// </para>
     /// </remarks>
     public double CategorisationConfidenceThreshold { get; set; } = 0.3;
 
@@ -358,6 +370,12 @@ public sealed class PineUiOptions
     /// shipped UI. The audit's §6.2 cites "page size 50" as the hard-coded value; the value the
     /// user actually experienced was 30. The default parameter is gone and this is the only page
     /// size that exists.
+    /// <para>
+    /// TD-119: THIS IS A READ-FALLBACK, NOT THE HOME OF THE VALUE. Configuration is plaintext and outside
+    /// the vault, so it holds only what the pre-unlock screen needs (theme, language). This is an
+    /// operative preference: the encrypted in-vault Setting <c>Ui.TransactionsPageSize</c> wins when present and valid,
+    /// and this value applies only when no Setting exists (so a pre-TD-119 user keeps their value).
+    /// </para>
     /// </remarks>
     public int TransactionsPageSize { get; set; } = 30;
 

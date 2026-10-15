@@ -63,7 +63,7 @@ public class RowAuditColumnTests
             .Distinct()
             .ToList();
 
-        rootTables.Should().HaveCount(7, "the model maps seven aggregate roots -- Category was the eighth until plan item 2.3 deleted it (TD-132)");
+        rootTables.Should().HaveCount(8, "the model maps eight aggregate roots -- seven, plus ExchangeRate (Category was deleted by plan item 2.3, TD-132)");
 
         foreach (var table in rootTables)
         {

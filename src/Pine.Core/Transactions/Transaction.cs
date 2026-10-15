@@ -83,6 +83,13 @@ public sealed class Transaction : AggregateRoot
     public string? ImportKey { get; private set; }
 
     /// <summary>
+    /// Gets the key the pre-h2 derivation (scale-sensitive, TD-102) would have given this row, so a
+    /// file imported before that fix is still recognised as already imported. Never persisted; only
+    /// set by importers, only read by the import de-duplication probe.
+    /// </summary>
+    public string? LegacyImportKey { get; private set; }
+
+    /// <summary>
     /// When this transaction was voided, or <see langword="null"/> while it is still in force.
     /// </summary>
     /// <remarks>
@@ -120,6 +127,38 @@ public sealed class Transaction : AggregateRoot
     /// balance. Not mapped: it is derived from <see cref="VoidedAt"/>, which is the stored truth.
     /// </summary>
     public bool IsVoided => VoidedAt.HasValue;
+
+    /// <summary>
+    /// Whether this transaction was brought in by a file import with an amount of zero and has not been
+    /// dealt with (TD-62, owner decision).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A zero-amount row is almost always a bank "authorization" line. The import neither drops nor rejects
+    /// it -- the user decides -- so it is saved and TAGGED here, and the import review list shows it with
+    /// the option to hide it (void it). The tag is persisted (<c>IsZeroAmountImport</c>), not derived from
+    /// the amount, so it records that the row ARRIVED as a zero import: a later edit to a non-zero amount
+    /// does not need to clear it for the review list to stay truthful about how the row got there.
+    /// </para>
+    /// <para>
+    /// MANUAL ENTRY OF ZERO STAYS REJECTED. Nothing but <see cref="FlagAsZeroAmountImport"/> sets this, and
+    /// the only caller is the import handler; <c>AddTransactionCommandValidator</c> is untouched and still
+    /// refuses a zero amount. Such a row has no effect on a balance, so the handler skips
+    /// <c>Account.Deposit</c>/<c>Withdraw</c> (which stay strictly positive) rather than weakening them.
+    /// It keeps its <see cref="ImportKey"/>, so re-importing the same file still deduplicates it.
+    /// </para>
+    /// </remarks>
+    public bool IsZeroAmountImport { get; private set; }
+
+    /// <summary>Tags this transaction as a zero-amount import. Only a transaction whose amount is zero may be.</summary>
+    /// <exception cref="InvalidOperationException">The amount is not zero.</exception>
+    public void FlagAsZeroAmountImport()
+    {
+        if (TotalAmount.Amount != 0m)
+            throw new InvalidOperationException("Only a zero-amount transaction can be flagged as a zero-amount import.");
+
+        IsZeroAmountImport = true;
+    }
 
     private readonly List<TransactionSplit> _splits = new();
     public IReadOnlyCollection<TransactionSplit> Splits => _splits.AsReadOnly();
@@ -292,10 +331,11 @@ public sealed class Transaction : AggregateRoot
     /// matching a different row.
     /// </remarks>
     /// <param name="key">The import key, as produced by <c>Pine.Core.Importing.ImportKeyFactory</c>.</param>
+    /// <param name="legacyKey">The pre-h2 key, probed (never stored) by import de-duplication (TD-102).</param>
     /// <exception cref="ArgumentException">
     /// <paramref name="key"/> is null, empty, whitespace, or longer than 128 characters once trimmed.
     /// </exception>
-    public void AssignImportKey(string key)
+    public void AssignImportKey(string key, string? legacyKey = null)
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Import key cannot be empty.", nameof(key));
@@ -305,6 +345,7 @@ public sealed class Transaction : AggregateRoot
             throw new ArgumentException($"Import key cannot exceed {MaxImportKeyLength} characters.", nameof(key));
 
         ImportKey = trimmed;
+        LegacyImportKey = string.IsNullOrWhiteSpace(legacyKey) ? null : legacyKey.Trim();
     }
 
     /// <summary>
@@ -440,6 +481,9 @@ public sealed class Transaction : AggregateRoot
 
                 if (definition.UnitPrice.Currency != TotalAmount.Currency || definition.TotalPrice.Currency != TotalAmount.Currency)
                     throw new ArgumentException("Line item currency must match transaction currency.", nameof(lineItems));
+
+                // Before anything is touched: a rejected set must leave the aggregate unmutated (TD-95).
+                LineQuantity.EnsureValid(definition.Quantity);
 
                 staged.Add(definition);
             }
@@ -585,6 +629,26 @@ public sealed class Transaction : AggregateRoot
 
         VoidedAt = timeProvider.GetUtcNow();
         VoidReason = trimmed;
+    }
+
+    /// <summary>
+    /// Puts a voided transaction back in force (TD-69), the inverse of <see cref="Void"/>.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="Void"/>, this changes the transaction ONLY: re-applying its amount to the account
+    /// balance is the caller's job, inside the same database transaction. The row keeps its id and its
+    /// <see cref="ImportKey"/> throughout (a void never cleared either), so unvoiding restores exactly
+    /// the row that was cancelled. Not idempotent on purpose: a second call means the caller believed
+    /// the transaction was void, and accepting it would let a double-unvoid apply the balance twice.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The transaction is not void.</exception>
+    public void Unvoid()
+    {
+        if (!IsVoided)
+            throw new InvalidOperationException("This transaction has not been voided.");
+
+        VoidedAt = null;
+        VoidReason = null;
     }
 
     /// <summary>

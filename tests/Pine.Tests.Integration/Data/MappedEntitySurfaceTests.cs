@@ -63,6 +63,7 @@ public class MappedEntitySurfaceTests
         nameof(Pine.Core.Accounts.Account),
         nameof(Pine.Core.Attachments.Attachment),
         nameof(Pine.Core.Budgets.Budget),
+        nameof(Pine.Core.ExchangeRates.ExchangeRate), // manually entered rates; read by the base-currency change and the Settings card
         nameof(Pine.Core.Importing.ImportProfile),
         nameof(Pine.Core.Rules.Rule),
         nameof(Pine.Core.Settings.Setting),

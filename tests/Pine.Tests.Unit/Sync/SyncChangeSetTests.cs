@@ -126,7 +126,7 @@ public class SyncChangeSetTests
         var schema = SyncSchema.From(context.Model);
         var order = schema.RootsInDependencyOrder.Select(t => t.Name).ToList();
 
-        order.Should().BeEquivalentTo(["Accounts", "Attachments", "Budgets", "ImportProfiles", "Rules", "Settings", "Transactions"],
+        order.Should().BeEquivalentTo(["Accounts", "Attachments", "Budgets", "ExchangeRates", "ImportProfiles", "Rules", "Settings", "Transactions"],
             "every aggregate root is merged, and no bookkeeping table is");
         order.IndexOf("Accounts").Should().BeLessThan(order.IndexOf("Transactions"));
         order.IndexOf("Transactions").Should().BeLessThan(order.IndexOf("Attachments"));

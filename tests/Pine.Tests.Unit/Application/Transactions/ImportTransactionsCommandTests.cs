@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using NSubstitute;
+using Pine.Application.Common;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
@@ -237,6 +238,29 @@ public class ImportTransactionsCommandTests
 
         await scenario.Importer.Received(1).ImportAsync(
             scenario.Account, scenario.Command.FileStream, scenario.Command.Profile, Arg.Any<CancellationToken>());
+        await scenario.Transactions.DidNotReceive().SaveAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// TD-64: a row that dedup would skip is still checked for currency, so a bad file is rejected on
+    /// re-import exactly as it was on the first import.
+    /// </summary>
+    [Fact]
+    public async Task Handle_RejectsAForeignCurrencyRow_EvenWhenItIsASkippedDuplicate()
+    {
+        var date = new DateTimeOffset(2026, 3, 4, 9, 0, 0, TimeSpan.Zero);
+        var euro = Transaction.Create(
+            Guid.NewGuid(), date, "Bakery", new Money(-3m, new CurrencyCode("EUR")), TransactionType.Expense, TimeProvider.System);
+        euro.AssignImportKey("already-there");
+
+        var scenario = new Scenario(euro);
+        scenario.AccountAlreadyHolds("already-there");
+
+        var act = () => scenario.RunAsync();
+
+        var thrown = await act.Should().ThrowAsync<RequestValidationException>();
+        thrown.Which.Errors.Should().ContainSingle()
+            .Which.UserFacingMessage.Key.Should().Be("Validation.ImportedCurrencyMismatch");
         await scenario.Transactions.DidNotReceive().SaveAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>());
     }
 

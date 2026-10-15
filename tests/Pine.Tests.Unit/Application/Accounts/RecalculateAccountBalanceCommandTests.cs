@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -198,7 +198,7 @@ public class RecalculateAccountBalanceCommandTests
         await scenario.Transactions.DidNotReceive()
             .GetAllAsync(Arg.Any<CancellationToken>());
         await scenario.Transactions.DidNotReceive()
-            .GetPagedAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+            .GetPagedAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -311,6 +311,19 @@ public class RecalculateAccountBalanceCommandTests
     /// would produce a total that is wrong in a quieter way.
     /// </para>
     /// </remarks>
+    /// <summary>TD-77: an opening balance recorded in a currency other than the account's must not be folded into the total.</summary>
+    [Fact]
+    public async Task Validate_ShouldRefuse_WhenTheOpeningBalanceIsRecordedInAnotherCurrency()
+    {
+        var scenario = new Scenario(openingBalance: 100m, ledger: FiftyAndMinusTwenty);
+        typeof(Account).GetProperty(nameof(Account.OpeningBalanceCurrency))!
+            .GetSetMethod(nonPublic: true)!.Invoke(scenario.Account, [new CurrencyCode("EUR")]);
+
+        var errors = await scenario.ValidateAsync(scenario.Account.Id);
+
+        errors.Should().ContainSingle().Which.UserFacingMessage.Key.Should().Be("Validation.OpeningBalanceCurrencyMismatch");
+    }
+
     [Fact]
     public async Task Validate_ShouldRefuse_WhenTheLedgerHoldsATransactionInAnotherCurrency()
     {
