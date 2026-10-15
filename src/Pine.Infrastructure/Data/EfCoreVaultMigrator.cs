@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pine.Application.Security;
 using Pine.Core.Security;
 using Microsoft.Extensions.Options;
 using Pine.Core.Configuration;

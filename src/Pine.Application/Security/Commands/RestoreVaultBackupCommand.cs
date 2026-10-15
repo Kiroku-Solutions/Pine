@@ -39,9 +39,14 @@ public class RestoreVaultBackupCommandHandler : IRequestHandler<RestoreVaultBack
 {
     private readonly IVaultRestoreService _restoreService;
     private readonly IVaultSession _session;
+    private readonly IPlatformUnlock _platformUnlock;
 
-    public RestoreVaultBackupCommandHandler(IVaultRestoreService restoreService, IVaultSession session)
+    public RestoreVaultBackupCommandHandler(
+        IVaultRestoreService restoreService,
+        IVaultSession session,
+        IPlatformUnlock platformUnlock)
     {
+        _platformUnlock = platformUnlock;
         _restoreService = restoreService;
         _session = session;
     }
@@ -56,6 +61,10 @@ public class RestoreVaultBackupCommandHandler : IRequestHandler<RestoreVaultBack
             throw new VaultLockedException("Cannot restore a vault backup while the vault is locked.");
         }
 
+        // TD-87: a restore replaces the ledger the platform wrap was enabled against. Destroyed first so
+        // that failing to do so aborts the restore before anything is replaced (fail closed).
+        _platformUnlock.InvalidateWrap(_session.DbPath);
+
         var result = await _restoreService
             .RestoreAsync(_session.DbPath, request.BackupPath, cancellationToken)
             .ConfigureAwait(false);
@@ -64,6 +73,59 @@ public class RestoreVaultBackupCommandHandler : IRequestHandler<RestoreVaultBack
         // punish the user with a password prompt for an operation that changed nothing.
         _session.Lock(VaultLockReason.UserRequested);
 
+        return result;
+    }
+}
+
+/// <summary>
+/// Restores a backup taken before the vault's data key was rotated (TD-86), using the password that was in force
+/// when that backup was created. The restored database ends up under the CURRENT data key, so the vault opens with
+/// the current password afterwards. Raised only after <c>VaultBackupKeyMismatchException</c> from the plain restore.
+/// </summary>
+/// <remarks>The password never appears in <c>ToString()</c>, so it cannot reach a log through a request dump.</remarks>
+public sealed record RestoreVaultBackupWithPasswordCommand(string BackupPath, string BackupPassword) : IRequest<VaultRestoreResult>
+{
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("BackupPath = ").Append(BackupPath);
+        return true;
+    }
+}
+
+public sealed class RestoreVaultBackupWithPasswordCommandHandler : IRequestHandler<RestoreVaultBackupWithPasswordCommand, VaultRestoreResult>
+{
+    private readonly IVaultRestoreService _restoreService;
+    private readonly IVaultSession _session;
+    private readonly IPlatformUnlock _platformUnlock;
+
+    public RestoreVaultBackupWithPasswordCommandHandler(
+        IVaultRestoreService restoreService,
+        IVaultSession session,
+        IPlatformUnlock platformUnlock)
+    {
+        _restoreService = restoreService;
+        _session = session;
+        _platformUnlock = platformUnlock;
+    }
+
+    /// <exception cref="VaultBackupPasswordIncorrectException">Wrong password for that backup; nothing changed, retry allowed.</exception>
+    public async Task<VaultRestoreResult> Handle(
+        RestoreVaultBackupWithPasswordCommand request,
+        CancellationToken cancellationToken)
+    {
+        if (!_session.IsUnlocked || string.IsNullOrWhiteSpace(_session.DbPath))
+        {
+            throw new VaultLockedException("Cannot restore a vault backup while the vault is locked.");
+        }
+
+        // Same as the plain restore (TD-87): the platform wrap belongs to the ledger being replaced.
+        _platformUnlock.InvalidateWrap(_session.DbPath);
+
+        var result = await _restoreService
+            .RestoreWithBackupPasswordAsync(_session.DbPath, request.BackupPath, request.BackupPassword, cancellationToken)
+            .ConfigureAwait(false);
+
+        _session.Lock(VaultLockReason.UserRequested);
         return result;
     }
 }

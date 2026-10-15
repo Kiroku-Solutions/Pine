@@ -58,4 +58,11 @@ public enum PasswordWeakness
     /// even for a password that passes.
     /// </summary>
     LimitedCharacterVariety = 7,
+
+    /// <summary>
+    /// Part of the password is an ordinary dictionary word (English or Spanish) from the small
+    /// embedded list - a passphrase made of plain words is far easier to guess than its length
+    /// suggests (TD-73).
+    /// </summary>
+    DictionaryWord = 8,
 }

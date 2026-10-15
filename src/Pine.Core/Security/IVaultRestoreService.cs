@@ -50,4 +50,19 @@ public interface IVaultRestoreService
         string vaultDirectory,
         string backupPath,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Restores a backup that was encrypted under a data key the vault has since rotated away from (TD-86).
+    /// The backup's own key record (the header saved beside it) is unlocked with <paramref name="backupPassword"/>,
+    /// the backup is opened and verified with that key, and the restored database is re-keyed to the vault's
+    /// CURRENT data key, so the vault opens with the current password afterwards. Same safety-copy and
+    /// all-or-nothing rules as <see cref="RestoreAsync"/>.
+    /// </summary>
+    /// <exception cref="VaultBackupPasswordIncorrectException">The password does not unlock the backup. Nothing changed; retry is allowed.</exception>
+    /// <exception cref="VaultRestoreRefusedException">The backup is outside this vault, has no key record, is damaged or newer. Nothing changed.</exception>
+    Task<VaultRestoreResult> RestoreWithBackupPasswordAsync(
+        string vaultDirectory,
+        string backupPath,
+        string backupPassword,
+        CancellationToken cancellationToken);
 }

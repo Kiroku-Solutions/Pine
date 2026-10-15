@@ -13,22 +13,10 @@ using Xunit;
 namespace Pine.Tests.Unit.Application.Security;
 
 /// <summary>
-/// Covers the password change that envelope encryption makes possible (TD-06).
+/// The password-change handler after TD-86/TD-87: it destroys the platform wrap, delegates the crash-safe key rotation to
+/// <see cref="IVaultKeyRotationService"/> (proven on a real SQLCipher vault in the integration suite) and swaps the
+/// session's key. These tests pin ORDER and SCOPE.
 /// </summary>
-/// <remarks>
-/// <para>
-/// THE HANDLER'S WHOLE JOB IS ORDER AND SCOPE, so that is what these tests pin. Read the header,
-/// ask the crypto adapter to re-wrap, write the result - and touch neither the database nor the
-/// open session. The crypto itself is proven against real AES-GCM in the integration suite; here
-/// the key service is a substitute precisely so that a mistake in sequencing cannot hide behind a
-/// passing round trip.
-/// </para>
-/// <para>
-/// The most load-bearing assertion in this file is the one that says NOTHING IS WRITTEN when the
-/// current password is wrong. A password change that half-happened would leave a vault whose header
-/// no password opens, and there is no recovery phrase (15-Security §7) to fall back on.
-/// </para>
-/// </remarks>
 public class ChangeVaultPasswordCommandTests
 {
     private const string VaultDirectory = @"C:\vaults\personal";
@@ -36,141 +24,87 @@ public class ChangeVaultPasswordCommandTests
     private const string NewPassword = "seven tired lemons argue quietly";
 
     private readonly IVaultSession _session = Substitute.For<IVaultSession>();
-    private readonly IVaultHeaderStore _headerStore = Substitute.For<IVaultHeaderStore>();
-    private readonly IVaultKeyService _keyService = Substitute.For<IVaultKeyService>();
+    private readonly IVaultKeyRotationService _rotation = Substitute.For<IVaultKeyRotationService>();
+    private readonly IPlatformUnlock _platformUnlock = Substitute.For<IPlatformUnlock>();
+    private readonly byte[] _newKey = Enumerable.Repeat((byte)5, 32).ToArray();
 
     public ChangeVaultPasswordCommandTests()
     {
         _session.IsUnlocked.Returns(true);
         _session.DbPath.Returns(VaultDirectory);
+        _rotation.ChangePassword(VaultDirectory, CurrentPassword, NewPassword).Returns(_ => (byte[])_newKey.Clone());
     }
 
-    private static VaultKeyWrap AnyWrap(byte marker = 0)
-    {
-        var ciphertext = new byte[32];
-        ciphertext[0] = marker;
+    private ChangeVaultPasswordCommandHandler CreateHandler() => new(_session, _rotation, _platformUnlock);
 
-        return new VaultKeyWrap(
-            VaultKeyWrapAlgorithms.Aes256Gcm,
-            new byte[VaultKeyWrap.Aes256GcmNonceLengthBytes],
-            ciphertext,
-            new byte[VaultKeyWrap.Aes256GcmTagLengthBytes]);
-    }
-
-    private static VaultHeader AnyHeader(byte marker = 0) => new(
-        VaultHeader.CurrentVersion,
-        Guid.Parse("11111111-2222-3333-4444-555555555555"),
-        new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero),
-        KdfParameters.Argon2idV1,
-        Convert.FromHexString("000102030405060708090a0b0c0d0e0f"),
-        AnyWrap(marker));
-
-    private ChangeVaultPasswordCommandHandler CreateHandler() =>
-        new(_session, _headerStore, _keyService);
-
-    private static ChangeVaultPasswordCommand Command() =>
-        new(CurrentPassword, NewPassword);
+    private static ChangeVaultPasswordCommand Command() => new(CurrentPassword, NewPassword);
 
     [Fact]
-    public async Task Handle_ShouldWriteTheRewrappedHeader_ForTheOpenVaultsDirectory()
+    public async Task Handle_ShouldRotateForTheVaultDirectory_AndSwapTheSessionKey()
     {
-        // Arrange
-        var current = AnyHeader(marker: 1);
-        var rewrapped = AnyHeader(marker: 2);
-        _headerStore.Read(VaultDirectory).Returns(current);
-        _keyService.ChangePassword(CurrentPassword, NewPassword, current).Returns(rewrapped);
+        byte[]? seen = null;
+        _session.When(s => s.Unlock(VaultDirectory, Arg.Any<byte[]>())).Do(c => seen = (byte[])c.Arg<byte[]>().Clone());
 
-        // Act
         await CreateHandler().Handle(Command(), CancellationToken.None);
 
-        // Assert
-        _headerStore.Received(1).Write(VaultDirectory, rewrapped);
+        _rotation.Received(1).ChangePassword(VaultDirectory, CurrentPassword, NewPassword);
+        seen.Should().Equal(_newKey, "the session must carry the rotated data key afterwards");
+    }
+
+    [Fact]
+    public async Task Handle_ShouldInvalidateThePlatformWrap_ForTheVaultDirectory_BeforeRotating()
+    {
+        await CreateHandler().Handle(Command(), CancellationToken.None);
+
+        Received.InOrder(() =>
+        {
+            _platformUnlock.InvalidateWrap(VaultDirectory);
+            _rotation.ChangePassword(VaultDirectory, CurrentPassword, NewPassword);
+        });
+    }
+
+    [Fact]
+    public async Task Handle_ShouldFailClosedWithoutRotating_WhenTheWrapCannotBeDestroyed()
+    {
+        _platformUnlock.When(p => p.InvalidateWrap(VaultDirectory)).Throw(new PlatformUnlockInvalidationException());
+
+        var act = () => CreateHandler().Handle(Command(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<PlatformUnlockInvalidationException>();
+        _rotation.DidNotReceiveWithAnyArgs().ChangePassword(default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task Handle_ShouldNotSwapTheSessionKey_WhenTheRotationFails()
+    {
+        _rotation.When(r => r.ChangePassword(VaultDirectory, CurrentPassword, NewPassword)).Throw(new VaultKeyUnwrapException());
+
+        var act = () => CreateHandler().Handle(Command(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<VaultKeyUnwrapException>();
+        _session.DidNotReceiveWithAnyArgs().Unlock(default!, default!);
     }
 
     [Fact]
     public async Task Handle_ShouldRefuse_WhenTheVaultIsLocked()
     {
-        // Arrange - "change the password of the vault you are not looking at" is not a coherent
-        // request, and a locked session has neither a directory nor a key to work from.
         _session.IsUnlocked.Returns(false);
         _session.DbPath.Returns((string?)null);
 
-        // Act
         var act = () => CreateHandler().Handle(Command(), CancellationToken.None);
 
-        // Assert
         await act.Should().ThrowAsync<VaultLockedException>();
-        _headerStore.DidNotReceiveWithAnyArgs().Read(default!);
-        _headerStore.DidNotReceiveWithAnyArgs().Write(default!, default!);
+        _rotation.DidNotReceiveWithAnyArgs().ChangePassword(default!, default!, default!);
+        _platformUnlock.DidNotReceiveWithAnyArgs().InvalidateWrap(default!);
     }
 
     [Fact]
-    public async Task Handle_ShouldWriteNothing_WhenTheCurrentPasswordIsWrong()
+    public async Task Handle_ShouldNotLockTheSession()
     {
-        // Arrange - the single most important assertion here. A change that wrote a header derived
-        // from a failed unwrap would leave a vault no password opens, and there is no recovery
-        // phrase to fall back on.
-        var current = AnyHeader();
-        _headerStore.Read(VaultDirectory).Returns(current);
-        _keyService.ChangePassword(CurrentPassword, NewPassword, current).Throws(new VaultKeyUnwrapException());
-
-        // Act
-        var act = () => CreateHandler().Handle(Command(), CancellationToken.None);
-
-        // Assert
-        await act.Should().ThrowAsync<VaultKeyUnwrapException>();
-        _headerStore.DidNotReceiveWithAnyArgs().Write(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handle_ShouldLetALegacyVaultFailureSurface_WithoutWriting()
-    {
-        // Arrange - a pre-envelope vault cannot be re-wrapped, and the read is where that is found.
-        _headerStore.Read(VaultDirectory).Throws(new LegacyVaultFormatException(VaultDirectory, 1));
-
-        // Act
-        var act = () => CreateHandler().Handle(Command(), CancellationToken.None);
-
-        // Assert
-        await act.Should().ThrowAsync<LegacyVaultFormatException>();
-        _keyService.DidNotReceiveWithAnyArgs().ChangePassword(default!, default!, default!);
-        _headerStore.DidNotReceiveWithAnyArgs().Write(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handle_ShouldNotLockTheSession_BecauseTheDataKeyDidNotChange()
-    {
-        // Arrange
-        var current = AnyHeader(marker: 1);
-        _headerStore.Read(VaultDirectory).Returns(current);
-        _keyService.ChangePassword(CurrentPassword, NewPassword, current).Returns(AnyHeader(marker: 2));
-
-        // Act
         await CreateHandler().Handle(Command(), CancellationToken.None);
 
-        // Assert - the key the session holds is still the correct key for the database on disk.
-        // Locking here would log the user out of a vault they are actively using, as a side effect
-        // of a settings change, and force them to retype the password they just set.
-        _session.DidNotReceive().Lock();
+        _session.DidNotReceiveWithAnyArgs().Lock();
         _session.DidNotReceiveWithAnyArgs().Lock(default);
-        _session.DidNotReceiveWithAnyArgs().Unlock(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handle_ShouldNeverAskTheKeyServiceForThePlaintextDataKey()
-    {
-        // Arrange - unwrap-then-rewrap happens inside IVaultKeyService.ChangePassword precisely so
-        // that no plaintext data key passes through the application layer, where nothing would zero
-        // it. If the handler ever started calling UnwrapDataKey itself, that guarantee is gone.
-        var current = AnyHeader(marker: 1);
-        _headerStore.Read(VaultDirectory).Returns(current);
-        _keyService.ChangePassword(CurrentPassword, NewPassword, current).Returns(AnyHeader(marker: 2));
-
-        // Act
-        await CreateHandler().Handle(Command(), CancellationToken.None);
-
-        // Assert
-        _keyService.DidNotReceiveWithAnyArgs().UnwrapDataKey(default!, default!);
     }
 }
 

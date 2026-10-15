@@ -23,6 +23,16 @@ namespace Pine.Infrastructure.Ai.Extraction;
 ///   2. Detect document zones (Header, Product Table, Footer/Totals)
 ///   3. Extract fields by finding keyword anchors and their spatially adjacent values
 /// </summary>
+/// <remarks>
+/// <para>
+/// TUNED-CONSTANTS BOUNDARY (TD-118). The numeric thresholds, geometry and kernel parameters in this class are the
+/// algorithm, tuned together with the model version (zone-detection ratios for header, product table and totals). They are deliberately NOT in
+/// <c>PineOptions</c>: exposing them would let a user break receipt detection and report it as a
+/// bug. Configurable limits (paths, sizes, timeouts) belong in options; these do not. Change one
+/// only with a model or fixture change that re-evaluates the whole pipeline. See
+/// <c>docs/13-AI-Architecture.md</c> section 7.1.
+/// </para>
+/// </remarks>
 public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 {
     /// <summary>Creates the extractor.</summary>
@@ -139,11 +149,6 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // ===== STEP 5: Compute per-field confidence from the words each field actually consumed
         // (TD-22). No extraction logic is re-run here -- these are the exact word lists that
         // produced the values above, not a second pass that could disagree with the first. =====
-        var confidence = new ReceiptConfidence(
-            Merchant: FieldConfidence.FromWordScores(Scores(merchantWords)),
-            Total: FieldConfidence.FromWordScores(Scores(totalWords)),
-            Date: FieldConfidence.FromWordScores(Scores(dateWords)),
-            LineItems: lineItemWords.Select(words => FieldConfidence.FromWordScores(Scores(words))).ToList());
 
         // ===== STEP 6: Promote the parsed footer modifiers to adjustment line items (TD-19) =====
         // The tax, tip and discount totals below were already parsed to build the accounting
@@ -157,8 +162,17 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // closing it would make the reconciliation unfalsifiable.
         if (lineItems.Count > 0)
         {
-            lineItems = AppendParsedAdjustments(lineItems, footerModifiers);
+            lineItems = AppendParsedAdjustments(lineItems, footerModifiers, lineItemWords);
         }
+
+        // TD-101: built AFTER the adjustments are appended, from a word list that is parallel to
+        // lineItems (adjustment rows carry the footer words they were parsed from), so index i of
+        // Confidence.LineItems always describes index i of the result's LineItems.
+        var confidence = new ReceiptConfidence(
+            Merchant: FieldConfidence.FromWordScores(Scores(merchantWords)),
+            Total: FieldConfidence.FromWordScores(Scores(totalWords)),
+            Date: FieldConfidence.FromWordScores(Scores(dateWords)),
+            LineItems: lineItemWords.Select(words => FieldConfidence.FromWordScores(Scores(words))).ToList());
 
         return new ReceiptExtractionResult(
             Merchant: merchant,
@@ -353,6 +367,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         decimal sumTaxes = 0m;
         decimal sumDiscounts = 0m;
         decimal sumTips = 0m;
+        List<OcrWord> taxWords = [], tipWords = [], discountWords = [];
 
         // Collect all amounts from the footer zone, and try to identify taxes/discounts
         for (int i = zones.FirstTotalIndex; i < lines.Count; i++)
@@ -377,11 +392,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             if (lineAmount.HasValue && lineAmount.Value > 0)
             {
                 if (upper.Contains("DESCUENTO", StringComparison.Ordinal) && !upper.Contains("TOTAL", StringComparison.Ordinal))
-                    sumDiscounts += lineAmount.Value;
+                    { sumDiscounts += lineAmount.Value; discountWords.AddRange(line.Words); }
                 else if (upper.Contains("IVA") || upper.Contains("TAX") || upper.Contains("IMPUESTO") || upper.Contains("ICE"))
-                    sumTaxes += lineAmount.Value;
+                    { sumTaxes += lineAmount.Value; taxWords.AddRange(line.Words); }
                 else if (upper.Contains("PROPINA") || upper.Contains("SERVICIO") || upper.Contains("TIP"))
-                    sumTips += lineAmount.Value;
+                    { sumTips += lineAmount.Value; tipWords.AddRange(line.Words); }
             }
         }
 
@@ -404,7 +419,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // Hand the parsed modifiers back to the caller. They are needed twice: here, to build the
         // expected total, and by ExtractFields, to emit them as adjustment line items (TD-19).
-        modifiers = new FooterModifiers(sumTaxes, sumTips, sumDiscounts);
+        modifiers = new FooterModifiers(sumTaxes, sumTips, sumDiscounts, taxWords, tipWords, discountWords);
 
         // Evaluate candidates mathematically
         decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips;
@@ -469,18 +484,29 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// printed total. Converting to the ledger sign is the job of the caller that knows whether this
     /// becomes an expense or an income.
     /// </remarks>
-    private static List<ReceiptLineItem> AppendParsedAdjustments(List<ReceiptLineItem> items, FooterModifiers modifiers)
+    private static List<ReceiptLineItem> AppendParsedAdjustments(
+        List<ReceiptLineItem> items, FooterModifiers modifiers, List<List<OcrWord>> itemWords)
     {
         var withAdjustments = new List<ReceiptLineItem>(items);
 
+        // itemWords is extended in step with the items so the two stay index-aligned (TD-101).
         if (modifiers.Taxes > 0)
+        {
             withAdjustments.Add(new ReceiptLineItem("Tax", 1m, modifiers.Taxes, modifiers.Taxes, LineItemKind.Tax));
+            itemWords.Add(modifiers.TaxWords);
+        }
 
         if (modifiers.Tips > 0)
+        {
             withAdjustments.Add(new ReceiptLineItem("Tip", 1m, modifiers.Tips, modifiers.Tips, LineItemKind.Tip));
+            itemWords.Add(modifiers.TipWords);
+        }
 
         if (modifiers.Discounts > 0)
+        {
             withAdjustments.Add(new ReceiptLineItem("Discount", 1m, -modifiers.Discounts, -modifiers.Discounts, LineItemKind.Discount));
+            itemWords.Add(modifiers.DiscountWords);
+        }
 
         return withAdjustments;
     }
@@ -819,7 +845,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// The tax, tip and discount totals read out of the footer zone. Positive magnitudes: the sign
     /// each one contributes is decided where they are used, not here.
     /// </summary>
-    private sealed record FooterModifiers(decimal Taxes, decimal Tips, decimal Discounts);
+    private sealed record FooterModifiers(
+        decimal Taxes, decimal Tips, decimal Discounts,
+        List<OcrWord> TaxWords, List<OcrWord> TipWords, List<OcrWord> DiscountWords);
 
     /// <summary>Document zone boundaries (line indices).</summary>
     private sealed record DocumentZones(int TableHeaderIndex, int FirstTotalIndex);

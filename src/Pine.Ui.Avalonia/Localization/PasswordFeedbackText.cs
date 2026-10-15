@@ -65,6 +65,7 @@ public static class PasswordFeedbackText
     {
         PasswordWeakness.TooShort => new("Password.Advice.TooShort", PasswordStrengthPolicy.MinimumLength),
         PasswordWeakness.CommonPassword => new("Password.Advice.CommonPassword"),
+        PasswordWeakness.DictionaryWord => new("Password.Advice.DictionaryWord"),
         PasswordWeakness.RepeatedPattern => new("Password.Advice.RepeatedPattern"),
         PasswordWeakness.SequentialRun => new("Password.Advice.SequentialRun"),
         PasswordWeakness.KeyboardPattern => new("Password.Advice.KeyboardPattern"),

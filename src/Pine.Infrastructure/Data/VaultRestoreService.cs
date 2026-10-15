@@ -7,8 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using Pine.Application.Security;
 using Pine.Core.Common;
 using Pine.Core.Security;
+using Pine.Infrastructure.Security;
 
 namespace Pine.Infrastructure.Data;
 
@@ -66,12 +69,18 @@ public sealed class VaultRestoreService : IVaultRestoreService
     private readonly PineDbContext _context;
     private readonly IVaultBackupService _backupService;
     private readonly TimeProvider _timeProvider;
+    private readonly IVaultKeyService? _keyService;
+    private readonly IVaultDatabaseRekeyer? _rekeyer;
 
     public VaultRestoreService(
         PineDbContext context,
         IVaultBackupService backupService,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IVaultKeyService? keyService = null,
+        IVaultDatabaseRekeyer? rekeyer = null)
     {
+        _keyService = keyService;
+        _rekeyer = rekeyer;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(backupService);
 
@@ -81,9 +90,27 @@ public sealed class VaultRestoreService : IVaultRestoreService
     }
 
     /// <inheritdoc />
-    public async Task<VaultRestoreResult> RestoreAsync(
+    public Task<VaultRestoreResult> RestoreAsync(
         string vaultDirectory,
         string backupPath,
+        CancellationToken cancellationToken) =>
+        RestoreCoreAsync(vaultDirectory, backupPath, backupPassword: null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<VaultRestoreResult> RestoreWithBackupPasswordAsync(
+        string vaultDirectory,
+        string backupPath,
+        string backupPassword,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(backupPassword);
+        return RestoreCoreAsync(vaultDirectory, backupPath, backupPassword, cancellationToken);
+    }
+
+    private async Task<VaultRestoreResult> RestoreCoreAsync(
+        string vaultDirectory,
+        string backupPath,
+        string? backupPassword,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(vaultDirectory);
@@ -121,9 +148,23 @@ public sealed class VaultRestoreService : IVaultRestoreService
                 UserFacingText.RestoreVaultMissing());
         }
 
+        // Older-era path (TD-86 rotation): the backup is opened with the key its own header yields, copied into a
+        // staging directory, and re-keyed to the CURRENT data key there. Everything after this sees an ordinary
+        // current-key backup (the staged file), so verification, safety copy and atomic replace are the same code
+        // a normal restore runs.
+        string? stagingDirectory = null;
+        var readFrom = source;
+        try
+        {
+        if (backupPassword is not null)
+        {
+            stagingDirectory = StageWithBackupPassword(vaultRoot, source, backupPassword, cancellationToken);
+            readFrom = Path.Combine(stagingDirectory, VaultBackupService.DatabaseFileName);
+        }
+
         // Step 2 and 3: the backup must open with this vault's key and must not be from a newer
         // build. Both are read through one connection, which is closed before anything is replaced.
-        var appliedInBackup = await ReadAppliedMigrationsAsync(source, cancellationToken).ConfigureAwait(false);
+        var appliedInBackup = await ReadAppliedMigrationsAsync(readFrom, cancellationToken, backupPassword is not null).ConfigureAwait(false);
 
         var known = _context.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
         var unknown = appliedInBackup.Where(id => !known.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray();
@@ -168,7 +209,7 @@ public sealed class VaultRestoreService : IVaultRestoreService
             SqliteConnection.ClearPool(sqlite);
         }
 
-        ReplaceDatabase(source, databasePath);
+        ReplaceDatabase(readFrom, databasePath);
 
         DeleteSidecar(databasePath + "-wal");
         DeleteSidecar(databasePath + "-shm");
@@ -178,6 +219,143 @@ public sealed class VaultRestoreService : IVaultRestoreService
             backupCreatedAtUtc,
             safety.Path,
             _timeProvider.GetUtcNow());
+        }
+        finally
+        {
+            if (stagingDirectory is not null)
+            {
+                DeleteStaging(stagingDirectory);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Unwraps the backup's own data key with <paramref name="backupPassword"/>, proves it opens the backup, and
+    /// returns a staging directory holding a copy of the backup re-keyed to the vault's CURRENT data key.
+    /// The vault and the backup are not touched. Both key copies are zeroed before returning.
+    /// </summary>
+    private string StageWithBackupPassword(
+        string vaultRoot,
+        string source,
+        string backupPassword,
+        CancellationToken cancellationToken)
+    {
+        if (_keyService is null || _rekeyer is null)
+        {
+            throw new InvalidOperationException("Restoring an older backup needs the key service and the database rekeyer.");
+        }
+
+        var headerPath = VaultBackupService.HeaderSidecarPath(source);
+        if (!File.Exists(headerPath))
+        {
+            throw new VaultRestoreRefusedException(
+                $"Refused to restore '{source}': it carries no key record ({Path.GetFileName(headerPath)}) of the era it was written in.",
+                UserFacingText.RestoreNoKeyRecord());
+        }
+
+        VaultHeader header;
+        try
+        {
+            header = FileVaultHeaderStore.Parse(File.ReadAllText(headerPath), headerPath, vaultRoot);
+        }
+        catch (Exception ex) when (ex is VaultHeaderCorruptException or UnsupportedVaultHeaderException or LegacyVaultFormatException or IOException or UnauthorizedAccessException)
+        {
+            throw new VaultRestoreRefusedException(
+                $"Refused to restore '{source}': its key record could not be read ({ex.GetType().Name}).",
+                UserFacingText.RestoreNoKeyRecord(),
+                ex);
+        }
+
+        byte[] backupKey;
+        try
+        {
+            backupKey = _keyService.UnwrapDataKey(backupPassword, header);
+        }
+        catch (VaultKeyUnwrapException ex)
+        {
+            throw new VaultBackupPasswordIncorrectException(ex);
+        }
+
+        byte[]? currentKey = null;
+        var staging = Path.Combine(vaultRoot, ".restore-staging-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            currentKey = ReadCurrentKey();
+
+            Directory.CreateDirectory(staging);
+            var stagedDatabase = Path.Combine(staging, VaultBackupService.DatabaseFileName);
+            File.Copy(source, stagedDatabase);
+
+            // VERIFY: the key the password yields must really open THIS backup (a header that does not belong
+            // to it, or a tampered file, ends here, before anything is rekeyed or replaced).
+            if (!_rekeyer.CanOpen(staging, backupKey))
+            {
+                throw new VaultBackupPasswordIncorrectException();
+            }
+
+            if (!backupKey.AsSpan().SequenceEqual(currentKey))
+            {
+                try
+                {
+                    // REKEY the staged copy to the current data key; the rekeyer verifies the result itself.
+                    _rekeyer.Rekey(staging, backupKey, currentKey);
+                }
+                catch (VaultRekeyException ex)
+                {
+                    throw new VaultRestoreRefusedException(
+                        "Refused to restore: the backup could not be re-keyed to the vault's current key.",
+                        UserFacingText.RestoreUnreadable(),
+                        ex);
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return staging;
+        }
+        catch
+        {
+            DeleteStaging(staging);
+            throw;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(backupKey);
+            if (currentKey is not null)
+            {
+                CryptographicOperations.ZeroMemory(currentKey);
+            }
+        }
+    }
+
+    /// <summary>The live context's data key, read from its own connection string (hex, the PineDbContext convention).</summary>
+    private byte[] ReadCurrentKey()
+    {
+        var hex = new SqliteConnectionStringBuilder(_context.Database.GetDbConnection().ConnectionString).Password;
+        try
+        {
+            return Convert.FromHexString(hex);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("The open vault's key is not available.", ex);
+        }
+    }
+
+    private static void DeleteStaging(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>
@@ -297,7 +475,8 @@ public sealed class VaultRestoreService : IVaultRestoreService
     /// </remarks>
     private async Task<IReadOnlyList<string>> ReadAppliedMigrationsAsync(
         string backupPath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isStagedCopy = false)
     {
         var live = _context.Database.GetDbConnection();
 
@@ -345,6 +524,14 @@ public sealed class VaultRestoreService : IVaultRestoreService
         }
         catch (SqliteException ex)
         {
+            // Unreadable with the current key. If the backup carries the key record of an era that is NOT the
+            // vault's current one, the data key was rotated since (TD-86): a typed signal lets the UI ask for
+            // the password from back then. Decided from the two key records, never from the error text.
+            if (!isStagedCopy && IsFromAnotherKeyEra(backupPath))
+            {
+                throw new VaultBackupKeyMismatchException(backupPath);
+            }
+
             // The one place a wrong key, a corrupt file and a foreign file all arrive. They are
             // reported as one sentence on purpose: the user cannot act differently on any of them,
             // and the engineer's version below carries the SQLite error itself.
@@ -369,6 +556,31 @@ public sealed class VaultRestoreService : IVaultRestoreService
             // exposed it: nine vault directories survived a full suite run, each held open by a
             // backup file this method had opened.
             SqliteConnection.ClearPool(connection);
+        }
+    }
+
+    private static bool IsFromAnotherKeyEra(string backupPath)
+    {
+        try
+        {
+            var sidecar = VaultBackupService.HeaderSidecarPath(backupPath);
+            var vaultRoot = Path.GetDirectoryName(Path.GetDirectoryName(backupPath))!;
+            var live = Path.Combine(vaultRoot, FileVaultHeaderStore.HeaderFileName);
+            if (!File.Exists(sidecar) || !File.Exists(live))
+            {
+                return false;
+            }
+
+            var then = FileVaultHeaderStore.Parse(File.ReadAllText(sidecar), sidecar, vaultRoot);
+            var now = FileVaultHeaderStore.Parse(File.ReadAllText(live), live, vaultRoot);
+            return !(then.Salt.AsSpan().SequenceEqual(now.Salt)
+                && then.KeyWrap.Nonce.AsSpan().SequenceEqual(now.KeyWrap.Nonce)
+                && then.KeyWrap.Ciphertext.AsSpan().SequenceEqual(now.KeyWrap.Ciphertext)
+                && then.KeyWrap.Tag.AsSpan().SequenceEqual(now.KeyWrap.Tag));
+        }
+        catch (Exception ex) when (ex is VaultHeaderCorruptException or UnsupportedVaultHeaderException or LegacyVaultFormatException or IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

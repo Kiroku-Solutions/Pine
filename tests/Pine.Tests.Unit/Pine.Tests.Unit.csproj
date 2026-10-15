@@ -46,6 +46,7 @@
     <ProjectReference Include="..\..\src\Pine.Application\Pine.Application.csproj" />
     <ProjectReference Include="..\..\src\Pine.Infrastructure\Pine.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Pine.Ui.Avalonia\Pine.Ui.Avalonia.csproj" />
+    <ProjectReference Include="..\..\src\Pine.Ui.Windows\Pine.Ui.Windows.csproj" />
   </ItemGroup>
 
 </Project>

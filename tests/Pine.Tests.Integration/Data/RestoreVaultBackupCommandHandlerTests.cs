@@ -13,14 +13,14 @@ namespace Pine.Tests.Integration.Data;
 /// vault. What is proved here is the handler's own two decisions: that it refuses a locked vault,
 /// and that it locks the vault afterwards, in that order relative to the restore itself.
 /// </summary>
-public class RestoreVaultBackupCommandHandlerTests
+public partial class RestoreVaultBackupCommandHandlerTests
 {
     [Fact]
     public async Task Handle_ShouldRestoreTheRequestedBackup_ForTheUnlockedVault()
     {
         var session = new SpyVaultSession(@"C:\vaults\demo");
         var service = new RecordingRestoreService();
-        var handler = new RestoreVaultBackupCommandHandler(service, session);
+        var handler = new RestoreVaultBackupCommandHandler(service, session, new NoopPlatformUnlock());
 
         var result = await handler.Handle(
             new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\pine-20260826T101500Z-Manual.db"),
@@ -36,7 +36,7 @@ public class RestoreVaultBackupCommandHandlerTests
     public async Task Handle_ShouldLockTheVault_AfterARestoreSucceeds()
     {
         var session = new SpyVaultSession(@"C:\vaults\demo");
-        var handler = new RestoreVaultBackupCommandHandler(new RecordingRestoreService(), session);
+        var handler = new RestoreVaultBackupCommandHandler(new RecordingRestoreService(), session, new NoopPlatformUnlock());
 
         await handler.Handle(new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
 
@@ -54,7 +54,7 @@ public class RestoreVaultBackupCommandHandlerTests
         // would do it only in production, where the service really does need the key.
         var session = new SpyVaultSession(@"C:\vaults\demo");
         var service = new RecordingRestoreService(() => session.IsUnlocked);
-        var handler = new RestoreVaultBackupCommandHandler(service, session);
+        var handler = new RestoreVaultBackupCommandHandler(service, session, new NoopPlatformUnlock());
 
         await handler.Handle(new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
 
@@ -68,7 +68,7 @@ public class RestoreVaultBackupCommandHandlerTests
         // would be a second failure on top of the first.
         var session = new SpyVaultSession(@"C:\vaults\demo");
         var service = new RefusingRestoreService();
-        var handler = new RestoreVaultBackupCommandHandler(service, session);
+        var handler = new RestoreVaultBackupCommandHandler(service, session, new NoopPlatformUnlock());
 
         var act = async () => await handler.Handle(
             new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
@@ -83,7 +83,7 @@ public class RestoreVaultBackupCommandHandlerTests
     public async Task Handle_ShouldThrowVaultLockedException_WhenVaultIsLocked()
     {
         var handler = new RestoreVaultBackupCommandHandler(
-            new RecordingRestoreService(), new SpyVaultSession(null));
+            new RecordingRestoreService(), new SpyVaultSession(null), new NoopPlatformUnlock());
 
         var act = async () => await handler.Handle(
             new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
@@ -116,6 +116,10 @@ public class RestoreVaultBackupCommandHandlerTests
                 Path.Combine(vaultDirectory, "backups", "pine-20260910T090000Z-PreRestore.db"),
                 new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero)));
         }
+
+        public Task<VaultRestoreResult> RestoreWithBackupPasswordAsync(
+            string vaultDirectory, string backupPath, string backupPassword, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class RefusingRestoreService : IVaultRestoreService
@@ -125,9 +129,13 @@ public class RestoreVaultBackupCommandHandlerTests
             => throw new VaultRestoreRefusedException(
                 "engineer's version",
                 UserFacingText.RestoreUnreadable());
+
+        public Task<VaultRestoreResult> RestoreWithBackupPasswordAsync(
+            string vaultDirectory, string backupPath, string backupPassword, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
-    private sealed class SpyVaultSession : IVaultSession
+    internal sealed class SpyVaultSession : IVaultSession
     {
         public SpyVaultSession(string? dbPath)
         {
@@ -178,5 +186,87 @@ public class RestoreVaultBackupCommandHandlerTests
         }
 
         private DateTimeOffset _lastActivityUtc = TimeProvider.System.GetUtcNow();
+    }
+}
+
+internal sealed class NoopPlatformUnlock : IPlatformUnlock
+{
+    public List<string> Invalidated { get; } = new();
+    public Exception? ThrowOnInvalidate { get; init; }
+    public bool IsAvailable => true;
+    public bool IsEnabled(string vaultDirectory) => false;
+    public void Enable(string vaultDirectory, byte[] dataKey) { }
+    public byte[]? TryUnlock(string vaultDirectory) => null;
+    public void Disable(string vaultDirectory) { }
+    public void InvalidateWrap(string vaultDirectory)
+    {
+        if (ThrowOnInvalidate is not null) throw ThrowOnInvalidate;
+        Invalidated.Add(vaultDirectory);
+    }
+}
+
+public class RestorePlatformWrapTests
+{
+    [Fact]
+    public async Task Restore_ShouldInvalidateTheWrap_ForTheVaultDirectory()
+    {
+        var unlock = new NoopPlatformUnlock();
+        var session = new RestoreVaultBackupCommandHandlerTests.SpyVaultSession(@"C:\vaults\demo");
+        var handler = new RestoreVaultBackupCommandHandler(new StubRestore(), session, unlock);
+
+        await handler.Handle(new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
+
+        unlock.Invalidated.Should().Equal(@"C:\vaults\demo");
+    }
+
+    [Fact]
+    public async Task Restore_ShouldFailClosed_WhenTheWrapCannotBeDestroyed()
+    {
+        var unlock = new NoopPlatformUnlock { ThrowOnInvalidate = new PlatformUnlockInvalidationException() };
+        var restore = new StubRestore();
+        var handler = new RestoreVaultBackupCommandHandler(restore, new RestoreVaultBackupCommandHandlerTests.SpyVaultSession(@"C:\vaults\demo"), unlock);
+
+        var act = async () => await handler.Handle(
+            new RestoreVaultBackupCommand(@"C:\vaults\demo\backups\b.db"), CancellationToken.None);
+
+        await act.Should().ThrowAsync<PlatformUnlockInvalidationException>();
+        restore.Called.Should().BeFalse();
+    }
+
+    [Fact]
+    public void RealInvalidateWrap_ShouldDeleteTheWrap_AndRefuseAFilePath()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pine-pu-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var sut = new PlatformUnlock();
+            var wrap = Path.Combine(dir, PlatformUnlock.FileName);
+            File.WriteAllText(wrap, "{\"secret\":1}");
+
+            sut.InvalidateWrap(dir);
+            File.Exists(wrap).Should().BeFalse();
+            sut.InvalidateWrap(dir); // no wrap: no-op
+
+            var file = Path.Combine(dir, "pine.db");
+            File.WriteAllText(file, "x");
+            var act = () => sut.InvalidateWrap(file);
+            act.Should().Throw<ArgumentException>();
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    private sealed class StubRestore : IVaultRestoreService
+    {
+        public bool Called { get; private set; }
+        public Task<VaultRestoreResult> RestoreAsync(string vaultDirectory, string backupPath, CancellationToken ct)
+        {
+            Called = true;
+            return Task.FromResult(new VaultRestoreResult(backupPath, DateTimeOffset.UtcNow, "safety", DateTimeOffset.UtcNow));
+        }
+
+        public Task<VaultRestoreResult> RestoreWithBackupPasswordAsync(
+            string vaultDirectory, string backupPath, string backupPassword, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

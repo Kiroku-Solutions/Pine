@@ -1,0 +1,105 @@
+# Natural-language word list for PasswordStrengthPolicy (TD-73).
+# Whitespace-separated, lowercase, unaccented, 4+ letters; lines starting with '#' are ignored.
+# Most common first, and ORDER IS THE DATA: a hit costs about log2(rank + 1) bits. Appending is safe;
+# inserting shifts every later rank. English first, then Spanish. Duplicates: first position wins.
+that with have this will your from they know want been good much some time very when come here just like
+long make many over such take than them well were what would about other which their there first could after
+these think where being every great might shall still those while again never place under water right house
+world night small large young early later happy state point begin group number people should through between
+because before little always another country different following something anything everything nothing someone
+anyone everyone together against without however although within around family friend mother father sister
+brother daughter husband child children woman women person school student teacher company business money
+market street garden forest mountain river ocean island desert valley meadow field stone rock sand earth fire
+wind storm thunder lightning rain snow cloud moon star planet galaxy universe space rocket light shadow dark
+darkness morning evening afternoon midnight winter spring summer autumn season today tomorrow yesterday monday
+tuesday wednesday thursday friday saturday sunday january february march april june july august september
+october november december blue green yellow orange purple pink brown black white grey gray silver golden gold
+copper iron steel crystal diamond ruby emerald pearl horse mouse tiger bear wolf fox rabbit bird eagle hawk
+crow raven swan duck goose chicken turkey bull sheep goat deer elephant monkey gorilla zebra giraffe camel
+snake lizard turtle frog fish shark whale dolphin octopus spider butterfly beetle dragon unicorn phoenix wizard
+witch knight king queen prince princess castle tower bridge road path trail journey adventure treasure pirate
+captain sailor ship boat anchor harbor battery staple correct stable purpose simple common proper secret
+silent hidden magic mystery legend story poem song music guitar piano violin drum trumpet dance movie picture
+paint color colour book paper pencil letter word sentence language english spanish french german italian
+chinese japanese korean russian arabic portuguese apple banana lemon lime grape cherry peach plum mango melon
+berry strawberry blueberry tomato potato carrot onion garlic pepper salt sugar honey butter cheese bread pizza
+pasta rice beans soup salad sandwich burger cookie cake candy chocolate cream coffee juice wine beer whisky
+breakfast lunch dinner kitchen table chair window door floor wall roof ceiling room bedroom bathroom basement
+attic garage lamp candle mirror clock watch bottle glass plate spoon fork knife basket bucket blanket pillow
+carpet curtain shelf drawer closet bicycle motorcycle train plane airplane helicopter truck taxi subway
+station airport ticket passport luggage suitcase holiday vacation beach resort hotel camping tent backpack
+compass telescope microscope computer laptop keyboard monitor screen printer internet network server website
+email password username account login logout download upload software hardware program application system
+database security privacy encryption secure safe vault lock chain shield sword arrow spear hammer tool wrench
+screw nail rope ladder brush broom doctor nurse hospital medicine health body head face eyes nose mouth teeth
+tongue neck shoulder finger thumb chest back stomach heart brain blood bone skin hair beard foot feet knee
+shirt pants jacket coat dress skirt shoes boots socks gloves scarf glasses ring necklace bracelet earring
+purse wallet credit bank budget finance payment price cost cheap expensive value profit loss income expense
+saving savings invest stock trade loan debt mortgage insurance pension salary wage rent bill receipt invoice
+cash coin dollar euro peso pound football soccer baseball basketball tennis golf hockey rugby cricket boxing
+karate swimming running jumping climbing skiing surfing fishing hunting cooking reading writing drawing
+singing playing working sleeping dreaming thinking waiting watching listening walking talking laughing smiling
+crying shouting whisper silence noise voice sound echo rhythm melody harmony freedom justice peace victory
+courage honor glory wisdom truth beauty kindness patience hope faith trust love hate anger fear sadness
+happiness laughter friendship loyalty power strength energy speed balance control order chaos change future
+history memory dream reality nature animal plant flower tree leaf grass seed root branch bush rose lily tulip
+daisy orchid sunflower cactus bamboo maple birch willow cedar olive zero three four five seven eight nine
+eleven twelve twenty thirty forty fifty hundred thousand million billion second third fourth fifth last next
+half double triple single open close start stop finish build break join send bring carry hold keep leave meet
+move pull push reach return rise fall turn travel visit follow lead guide teach learn study practice train
+exercise create design imagine invent discover explore search find lost found choose decide believe remember
+forget understand explain answer question problem solution reason idea plan project goal target result
+success failure mistake chance luck risk danger rescue protect defend attack fight battle army soldier warrior
+hero villain monster ghost zombie vampire robot alien ninja samurai cowboy detective agent thief bandit
+outlaw sheriff judge lawyer police officer engineer scientist artist writer singer actor farmer builder
+driver pilot baker butcher banker manager owner leader member partner neighbor stranger guest visitor master
+servant mercury venus mars jupiter saturn uranus neptune pluto north south east west left center middle
+bottom front inside outside above below behind beside near high deep wide narrow thick thin heavy soft hard
+smooth rough sharp round square straight curved empty full fresh clean dirty cold warm cool sweet sour bitter
+spicy quiet loud bright dull quick slow fast strong weak brave clever smart silly funny serious gentle wild
+calm proud lazy busy rich poor famous ancient modern real fake true false ready sorry sure certain possible
+impossible easy difficult special perfect normal strange beautiful lovely pretty ugly terrible wonderful
+amazing awesome excellent fantastic super mega ultra lucky sunny cloudy rainy windy snowy stormy foggy frozen
+burning flying rolling shining sparkling dancing electric magnetic atomic nuclear digital virtual cyber turbo
+cosmic solar lunar arctic tropical jungle savanna canyon volcano glacier iceberg waterfall lake pond creek
+swamp cave cliff hill peak summit horizon sunrise sunset twilight dawn dusk rainbow eclipse comet meteor
+asteroid nebula orbit gravity quantum photon proton neutron electron molecule oxygen carbon hydrogen helium
+nitrogen uranium titanium platinum aluminum bronze brass marble granite concrete brick wood plastic rubber
+leather cotton wool silk linen velvet cardboard metal liquid solid smoke steam dust flame spark ember coal
+fuel engine motor wheel gear pump valve pipe cable wire switch button handle lever pedal brake signal radio
+phone camera video photo film theater stage circus carnival festival party wedding birthday christmas easter
+halloween thanksgiving present gift surprise prize trophy medal champion winner player team coach league score
+game puzzle riddle trick joke doll ball kite balloon cards dice chess checkers poker casino lottery jackpot
+qwerty welcome hello goodbye please thanks okay maybe perhaps forever eternal infinity endless limitless
+ultimate final supreme royal imperial sacred divine angel heaven paradise temple church mosque palace
+fortress dungeon labyrinth maze portal gateway tunnel elevator staircase balcony terrace courtyard fountain
+statue monument museum library gallery stadium arena factory warehouse office shop store bakery pharmacy
+restaurant studio workshop laboratory observatory university college academy kindergarten playground park
+farm ranch village town city capital province kingdom empire republic nation continent america europe africa
+asia australia antarctica pacific atlantic mediterranean caribbean london paris berlin madrid rome moscow tokyo
+beijing sydney toronto chicago boston seattle dallas miami vegas texas california florida nevada colorado
+alaska hawaii mexico canada brazil argentina chile colombia peru venezuela ecuador bolivia uruguay paraguay
+cuba panama egypt india china japan korea russia greece spain france germany italy poland sweden norway
+finland denmark ireland scotland england wales holland belgium switzerland austria portugal
+hola gracias amigo amiga familia madre padre hermano hermana hijo hija abuelo abuela tiempo casa hogar ciudad
+pueblo calle camino mundo tierra cielo estrella luna mar playa lago montana bosque selva desierto isla fuego
+agua viento lluvia nieve tormenta trueno noche manana tarde semana lunes martes miercoles jueves viernes
+sabado domingo enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre
+primavera verano otono invierno rojo azul verde amarillo naranja morado rosado negro blanco gris dorado
+plateado caballo perro gato raton pajaro aguila halcon lobo zorro leon tigre conejo vaca toro oveja cabra
+cerdo gallina pato tiburon ballena delfin serpiente tortuga rana mariposa abeja hormiga fantasma bruja mago
+caballero reina principe princesa castillo torre puente tesoro pirata barco capitan marinero amor corazon vida
+muerte alma espiritu sueno esperanza verdad justicia libertad guerra victoria valor honor fuerza poder energia
+belleza sabiduria felicidad tristeza alegria miedo rabia amistad confianza paciencia bondad contrasena clave
+usuario cuenta banco dinero moneda precio pesos dolares presupuesto ahorro ahorros deuda prestamo impuesto
+salario sueldo gasto ingreso pago cobro factura comida desayuno almuerzo cocina mesa silla ventana puerta
+cuarto habitacion cama jardin flor arbol hoja planta fruta manzana platano limon uva fresa sandia tomate papa
+cebolla ajo azucar miel mantequilla queso leche cafe cerveza vino carne pollo pescado arroz frijoles sopa
+ensalada galleta pastel helado escuela colegio maestro profesor estudiante libro papel lapiz carta palabra
+idioma espanol ingles frances trabajo empresa oficina negocio tienda mercado fiesta cumpleanos navidad regalo
+sorpresa musica cancion baile pelicula juego futbol beisbol baloncesto deporte equipo campeon partido bueno
+malo grande pequeno nuevo viejo joven rapido lento fuerte debil feliz triste bonito hermoso rico pobre famoso
+loco tranquilo valiente inteligente tonto siempre nunca todo nada algo alguien nadie mucho poco mejor peor
+primero segundo tercero ultimo cuatro cinco siete ocho nueve diez cien norte este oeste arriba abajo dentro
+fuera cerca lejos ahora despues antes ayer quiero tengo puedo vamos vengo estoy dormir comer beber caminar
+correr saltar volar nadar cantar bailar jugar trabajar estudiar escribir leer amar vivir sonar

@@ -4,7 +4,7 @@
 |------------------|--------------------------------------------------------------------------------------|
 | Document ID      | `PINE-DOC-15-SECURITY`                                                               |
 | Status           | Partially implemented — see the clause-by-clause table already in §4                 |
-| Reconciled       | 2026-09-19 · §7 amended for post-audit plan item 3.1d: the sync key is generated and kept sealed under each vault's data key, not derived from one (TD-154 for pairing). Earlier: 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). **AMENDED 2026-09-09 (ADR-0021):** §10 Plugin Security Boundaries is **withdrawn, and it is the section that decided the question** — its "a plugin has no access to the data key" is unsatisfiable in-process, because an `AssemblyLoadContext` isolates type identity rather than access and `VaultSession.Key` returns the live key array. The section was right; the specification it constrained could not satisfy it. Kept unedited as the record of the constraint. See `60-Production-Readiness-Audit` §12.74. |
+| Reconciled       | 2026-10-12 · §4 artefact table: the plaintext log is stated as the honest ceiling (strictly redacted, TD-82), not an open hole. Earlier: 2026-09-19 · §7 amended for post-audit plan item 3.1d: the sync key is generated and kept sealed under each vault's data key, not derived from one (TD-154 for pairing). Earlier: 2026-08-31 · This document was reconciled in place on 2026-08-29 for TD-06 and TD-16 (:76-104), which is the pattern the rest of this header sweep generalises. Envelope encryption and Argon2id are real; platform secure storage, data-key rotation and biometric unlock are not (TD-86, TD-87). **AMENDED 2026-09-09 (ADR-0021):** §10 Plugin Security Boundaries is **withdrawn, and it is the section that decided the question** — its "a plugin has no access to the data key" is unsatisfiable in-process, because an `AssemblyLoadContext` isolates type identity rather than access and `VaultSession.Key` returns the live key array. The section was right; the specification it constrained could not satisfy it. Kept unedited as the record of the constraint. See `60-Production-Readiness-Audit` §12.74. |
 | Owner            | Engineering Review Board                                                             |
 | Created          | 2026-07-08                                                                           |
 | Last Updated     | 2026-08-29                                                                           |
@@ -83,7 +83,7 @@ them is a per-platform engineering decision and is owned by
 > | AES-256-GCM, data key wrapped by an Argon2id-derived auth key | ✅ **Implemented.** `pine.vault.json` header version 2 carries a `keyWrap` — algorithm, 12-byte nonce, ciphertext, 16-byte tag — whose AEAD associated data binds every other field of the header. |
 > | The data key is never written to disk in plaintext | ✅ **Implemented.** It is drawn from the CSPRNG and exists on disk only as that ciphertext. |
 > | The encrypted store format is versioned | ✅ **Implemented**, with one divergence: this document says older versions "can be opened for read-only access for migration", and the code instead **refuses** header version 1 outright (`LegacyVaultFormatException`). That was decided deliberately while no vault existed outside a developer machine; carrying a second, un-enveloped key path was judged the larger risk. |
-> | The data key is held in the platform's secure storage (Keychain / Keystore / DPAPI / libsecret) | ❌ **Not implemented.** There is no platform secure-storage integration anywhere in the codebase. The data key is wrapped by the passphrase-derived key only — which this section's own "OR" clause permits, but the keychain half does not exist. **TD-87.** |
+> | The data key is held in the platform's secure storage (Keychain / Keystore / DPAPI / libsecret) | 🟡 **Windows only, opt-in (TD-87, 2026-10-12).** `IPlatformKeyProtector` (Core) with `DpapiPlatformKeyProtector` (CurrentUser scope) in `Pine.Ui.Windows`; `PlatformUnlock` seals the data key into `pine.platform-unlock.json`, bound to the vault folder, fail-closed, never replacing the password wrap. **Not wired to any unlock screen yet**; macOS Keychain, Android Keystore and iOS are not built. Earlier status: ❌ **Not implemented.** There is no platform secure-storage integration anywhere in the codebase. The data key is wrapped by the passphrase-derived key only — which this section's own "OR" clause permits, but the keychain half does not exist. **TD-87.** |
 > | The data key is rotated when the user changes their credential | ❌ **Not implemented.** Changing the password rotates the **auth key** and the salt and re-wraps the *same* data key. Anyone who already knew the data key still knows it afterwards. Real rotation requires re-encrypting the database. **TD-86.** |
 > | Biometric unlock | ❌ **Not implemented.** The envelope makes it a second wrap rather than a redesign; nothing implements that wrap. **TD-87.** |
 >
@@ -102,12 +102,14 @@ them is a per-platform engineering decision and is owned by
 > | `backups/pine-*.db` | the vault directory | the data key, by SQLCipher (`VACUUM INTO` on the keyed connection) |
 > | `ai/categorizer.model` | the vault directory | `HKDF-SHA256(data key, "pine:file-cipher:v1:ai.categorizer.model")`, AES-256-GCM |
 > | `pine.vault.json` | the vault directory | **not encrypted, by design** — it is the header that makes decryption possible, and it carries no plaintext key |
-> | the JSONL logs (TD-14) | outside the vault | **not encrypted. TD-82, still open.** |
+> | the JSONL logs (TD-14) | outside the vault | **plaintext by decision, strictly redacted of personal data (TD-82).** Encrypting before a vault key exists is structurally impossible, so this is the honest ceiling, not a gap. See `30-Observability` §4.4 |
 >
 > The derived key is deliberately *not* the database key: one key with two independent nonce spaces
 > is how GCM nonce reuse happens, and a reused nonce is a catastrophic failure rather than a
-> degraded one. The seam is `IVaultFileCipher`, and the last row of that table is the remaining
-> hole in this clause.
+> degraded one. The seam is `IVaultFileCipher`. The last row of that table is not an open
+> hole but a stated ceiling: the log is the one artefact written before a key exists, and what
+> protects it is redaction (by value shape and by field name — `PreUnlockLogRedactionTests`), not
+> encryption.
 
 ## 5. Closing OD-10 — Telemetry Policy
 

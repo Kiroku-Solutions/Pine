@@ -48,6 +48,12 @@ public sealed partial class VaultBackupService : IVaultBackupService
     /// <summary>The database file name inside a vault directory.</summary>
     public const string DatabaseFileName = "pine.db";
 
+    /// <summary>Suffix of the key record saved beside a backup: <c>pine-....db.vault.json</c> (does not match the <c>pine-*.db</c> listing).</summary>
+    public const string HeaderSidecarSuffix = ".vault.json";
+
+    /// <summary>Where the key record of the era a backup was taken in is kept.</summary>
+    public static string HeaderSidecarPath(string backupPath) => backupPath + HeaderSidecarSuffix;
+
     private const string TimestampFormat = @"yyyyMMdd\THHmmss";
     private const int SqliteFull = 13;      // SQLITE_FULL: database or disk is full
     private const int SqliteCantOpen = 14;  // SQLITE_CANTOPEN: unable to open the destination file
@@ -111,6 +117,15 @@ public sealed partial class VaultBackupService : IVaultBackupService
             command.Parameters.Add(parameter);
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            // The backup is encrypted under the CURRENT data key. After a rotation (TD-86) the header that
+            // unwraps that key is gone, so the header of this era is saved beside the backup. It holds only the
+            // salt, KDF parameters and the wrapped key: nothing that opens anything without the password.
+            var headerPath = Path.Combine(vaultRoot, Pine.Infrastructure.Security.FileVaultHeaderStore.HeaderFileName);
+            if (File.Exists(headerPath))
+            {
+                File.Copy(headerPath, HeaderSidecarPath(destination), overwrite: true);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -200,6 +215,10 @@ public sealed partial class VaultBackupService : IVaultBackupService
             try
             {
                 File.Delete(stale.Path);
+                if (File.Exists(HeaderSidecarPath(stale.Path)))
+                {
+                    File.Delete(HeaderSidecarPath(stale.Path));
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -343,6 +362,11 @@ public sealed partial class VaultBackupService : IVaultBackupService
                 if (File.Exists(destination))
                 {
                     File.Delete(destination);
+                }
+
+                if (File.Exists(HeaderSidecarPath(destination)))
+                {
+                    File.Delete(HeaderSidecarPath(destination));
                 }
 
                 return;

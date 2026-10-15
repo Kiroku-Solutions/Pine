@@ -56,6 +56,26 @@ public static class LogRedactor
     /// <summary>Replacement for a money-shaped token. Implements §4.3, second clause (amounts).</summary>
     public const string AmountPlaceholder = "<amount>";
 
+    /// <summary>
+    /// Replacement for the VALUE of a sensitive-looking key (<c>passphrase=...</c>, a context field
+    /// named <c>Payee</c>). TD-82.
+    /// </summary>
+    public const string SensitiveValuePlaceholder = "<redacted>";
+
+    /// <summary>
+    /// Key-name fragments that mark a value as personal data whatever it looks like (TD-82). A
+    /// payee name, an account name or a passphrase has no shape a pattern could recognise, so the
+    /// only defence that works for free text is to refuse the value by what it is CALLED. Matching
+    /// is a case-insensitive substring test on the key, deliberately broad: a falsely redacted
+    /// diagnostic costs a re-run, a leaked payee cannot be taken back.
+    /// </summary>
+    private static readonly string[] SensitiveKeyFragments =
+    [
+        "passw", "passphrase", "pwd", "secret", "payee", "merchant", "memo", "descr",
+        "accountname", "accountnumber", "iban", "amount", "balance", "path", "email",
+        "username", "vaultname", "note",
+    ];
+
     /// <summary>A digit run of this length or longer is redacted.</summary>
     private const int DigitRunThreshold = 6;
 
@@ -92,7 +112,8 @@ public static class LogRedactor
 
         try
         {
-            var redacted = RedactPaths(value);
+            var redacted = RedactSensitivePairs(value);
+            redacted = RedactPaths(redacted);
             redacted = RedactEmails(redacted);
             redacted = RedactAmounts(redacted);
             redacted = RedactDigitRuns(redacted);
@@ -104,6 +125,150 @@ public static class LogRedactor
             // See the class remarks: the failure mode of a redactor is "say nothing".
             return RedactionFailed;
         }
+    }
+
+    /// <summary>
+    /// True when a log key (a structured-context field name, or the word before <c>=</c>/<c>:</c> in
+    /// message text) names personal data (TD-82).
+    /// </summary>
+    public static bool IsSensitiveKey(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        foreach (var fragment in SensitiveKeyFragments)
+        {
+            if (key.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// TD-82: replaces the value in <c>key=value</c> / <c>key: value</c> whenever the key names
+    /// personal data. Single forward pass; each separator triggers one bounded walk back over the
+    /// key word and one forward over the value, so it stays linear.
+    /// </summary>
+    private static string RedactSensitivePairs(string value)
+    {
+        StringBuilder? builder = null;
+        var copiedUpTo = 0;
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] is not ('=' or ':') || index < copiedUpTo)
+            {
+                continue;
+            }
+
+            var keyEnd = index;
+            while (keyEnd > copiedUpTo && value[keyEnd - 1] == ' ')
+            {
+                keyEnd--;
+            }
+
+            var keyStart = keyEnd;
+            while (keyStart > copiedUpTo && (char.IsAsciiLetterOrDigit(value[keyStart - 1]) || value[keyStart - 1] is '_' or '-' or '.'))
+            {
+                keyStart--;
+            }
+
+            if (keyStart == keyEnd || !IsSensitiveKey(value.Substring(keyStart, keyEnd - keyStart)))
+            {
+                continue;
+            }
+
+            var valueStart = index + 1;
+            while (valueStart < value.Length && value[valueStart] == ' ')
+            {
+                valueStart++;
+            }
+
+            if (valueStart >= value.Length)
+            {
+                continue;
+            }
+
+            int valueEnd;
+            if (value[valueStart] is '"' or '\'')
+            {
+                var close = value.IndexOf(value[valueStart], valueStart + 1);
+                valueEnd = close < 0 ? value.Length : close + 1;
+            }
+            else
+            {
+                valueEnd = FindUnquotedValueEnd(value, valueStart);
+            }
+
+            if (valueEnd == valueStart)
+            {
+                continue;
+            }
+
+            builder ??= new StringBuilder(value.Length);
+            builder.Append(value, copiedUpTo, valueStart - copiedUpTo);
+            builder.Append(SensitiveValuePlaceholder);
+            copiedUpTo = valueEnd;
+            index = valueEnd - 1;
+        }
+
+        return Finish(builder, value, copiedUpTo);
+    }
+
+    /// <summary>
+    /// End (exclusive) of an unquoted value that starts at <paramref name="start"/>. A free-text value
+    /// such as <c>payee=Starbucks Reserve Roastery</c> has spaces in it, so the value runs to the
+    /// first of: a line break, a <c>,</c> or <c>;</c>, the start of the next <c>word=</c> / <c>word:</c>
+    /// token, or the end of the string. Trailing blanks are not part of the value. Linear: the
+    /// look-ahead for the next key walks one word and the outer loop then resumes after it.
+    /// </summary>
+    private static int FindUnquotedValueEnd(string value, int start)
+    {
+        var cursor = start;
+        var lastNonBlank = start;
+
+        while (cursor < value.Length)
+        {
+            var c = value[cursor];
+            if (c is '\r' or '\n' or ',' or ';')
+            {
+                break;
+            }
+
+            if (c is ' ' or '\t')
+            {
+                var wordStart = cursor;
+                while (wordStart < value.Length && value[wordStart] is ' ' or '\t')
+                {
+                    wordStart++;
+                }
+
+                var wordEnd = wordStart;
+                while (wordEnd < value.Length
+                       && (char.IsAsciiLetterOrDigit(value[wordEnd]) || value[wordEnd] is '_' or '-' or '.'))
+                {
+                    wordEnd++;
+                }
+
+                if (wordEnd > wordStart && wordEnd < value.Length && value[wordEnd] is '=' or ':')
+                {
+                    break;
+                }
+
+                cursor = wordStart;
+                continue;
+            }
+
+            cursor++;
+            lastNonBlank = cursor;
+        }
+
+        return lastNonBlank;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Pine.Application.Security;
 using Pine.Core.Security;
 
 namespace Pine.Infrastructure.Data;

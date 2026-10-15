@@ -2,6 +2,7 @@ using System.Globalization;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Pine.Application.Security;
 using Pine.Core.Security;
 using Pine.Infrastructure.Data;
 using Pine.Tests.Integration.Atomicity;

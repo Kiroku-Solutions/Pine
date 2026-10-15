@@ -8,7 +8,7 @@ namespace Pine.Core.Security;
 /// <para>
 /// WHY THIS EXISTS AT ALL. The unlock and setup screens used to do this work themselves: create a
 /// DI scope, resolve <c>PineDbContext</c> out of it, run a probe query, then resolve
-/// <see cref="IVaultMigrator"/> from the same scope. That put EF Core, a concrete DbContext and the
+/// <c>IVaultMigrator</c> from the same scope. That put EF Core, a concrete DbContext and the
 /// service-locator pattern inside a view model, so the UI could not be reasoned about (or tested)
 /// without the persistence adapter it happened to be compiled against. The scope, the probe and the
 /// migrator call are an adapter concern; what the UI actually needs is the two sentences below.

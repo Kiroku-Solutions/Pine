@@ -17,6 +17,16 @@ public interface IReceiptDetector : IDisposable
     Task<Pine.Core.Ai.ReceiptAnalysisResult> AnalyzeAndCropReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default);
 }
 
+/// <remarks>
+/// <para>
+/// TUNED-CONSTANTS BOUNDARY (TD-118). The numeric thresholds, geometry and kernel parameters in this class are the
+/// algorithm, tuned together with the model version (yolo-receipt-nano.onnx: input 640, 8400 anchors, detection cutoffs). They are deliberately NOT in
+/// <c>PineOptions</c>: exposing them would let a user break receipt detection and report it as a
+/// bug. Configurable limits (paths, sizes, timeouts) belong in options; these do not. Change one
+/// only with a model or fixture change that re-evaluates the whole pipeline. See
+/// <c>docs/13-AI-Architecture.md</c> section 7.1.
+/// </para>
+/// </remarks>
 public sealed class ReceiptDetector : IReceiptDetector
 {
     private static readonly string YoloModelPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Ai", "yolo-receipt-nano.onnx");

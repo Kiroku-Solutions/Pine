@@ -61,11 +61,9 @@ namespace Pine.Core.Security;
 /// </para>
 ///
 /// <para>
-/// KNOWN LIMITATIONS, STATED RATHER THAN HIDDEN. (a) There is no natural-language word list, so a
-/// multi-word passphrase is scored as if its letters were random and is OVER-estimated -
-/// <c>correct horse battery staple</c> scores far above its true ~44 bits. The mitigation is only
-/// that such passphrases are long; the honest statement is that this is the estimator's largest
-/// error. (b) Personal facts (a name, a birth year, the vault name) are not detected, because the
+/// KNOWN LIMITATIONS, STATED RATHER THAN HIDDEN. (a) The natural-language list (TD-73) is small - a few hundred
+/// English and Spanish words - so a passphrase of UNCOMMON words is still scored as random letters and
+/// over-estimated; only words on the list are priced as words. (b) Personal facts (a name, a birth year, the vault name) are not detected, because the
 /// domain has no access to them. (c) The keyboard model is QWERTY-only and approximates key
 /// adjacency by row and column proximity. All three make the estimate too GENEROUS, never too
 /// harsh, which is the direction that matters for the floor being a floor: a password this type
@@ -81,7 +79,8 @@ namespace Pine.Core.Security;
 ///
 /// <para>
 /// BCL ONLY, as the whole of <c>Pine.Core</c> is (see <c>ImportKeyFactory</c> for the precedent):
-/// no package reference, no downloaded corpus, no network.
+/// no package reference, no downloaded corpus, no network. The word lists are an array literal
+/// (<see cref="CommonPasswords"/>) and an embedded text resource (<see cref="NaturalWords"/>).
 /// </para>
 /// </remarks>
 public static class PasswordStrengthPolicy
@@ -361,6 +360,7 @@ public static class PasswordStrengthPolicy
         var matches = new List<PatternMatch>();
 
         AddCommonPasswordMatches(password, matches);
+        AddNaturalWordMatches(password, matches);
         AddRepeatMatches(password, matches);
         AddSequenceMatches(password, matches);
         AddKeyboardMatches(password, matches);
@@ -407,6 +407,85 @@ public static class PasswordStrengthPolicy
                     PasswordWeakness.CommonPassword));
             }
         }
+    }
+
+    /// <summary>The separators a passphrase conventionally puts between words.</summary>
+    private const string WordSeparators = " -_.,;:+/";
+
+    /// <summary>
+    /// Bits for the choice of a separator after a word: a handful of conventional characters, so it
+    /// is priced as that handful rather than as one draw from the whole symbol pool.
+    /// </summary>
+    private const double WordSeparatorBits = 3d;
+
+    /// <summary>
+    /// Matches ordinary English/Spanish words from the embedded <see cref="NaturalWords"/> list, so a
+    /// passphrase is priced as the few WORDS it is rather than as the many letters it contains (TD-73).
+    /// </summary>
+    /// <remarks>
+    /// A hit costs <c>log2(rank + 1)</c> plus the casing and leetspeak surcharges, exactly as a
+    /// common password does. A word followed by one conventional separator is also offered as a single
+    /// token costing the word plus <see cref="WordSeparatorBits"/>, which is what keeps
+    /// <c>correct horse battery staple</c> from paying a full symbol-pool character for each space.
+    /// These are only EXTRA edges in the shortest-path search, so they can lower a score and never
+    /// raise one: the change fails toward lower strength by construction.
+    /// </remarks>
+    private static void AddNaturalWordMatches(string password, List<PatternMatch> matches)
+    {
+        for (var start = 0; start < password.Length; start++)
+        {
+            var widest = Math.Min(NaturalWords.MaxLength, password.Length - start);
+
+            for (var length = widest; length >= NaturalWords.MinimumWordLength; length--)
+            {
+                var candidate = password.Substring(start, length);
+                var folded = FoldLeet(FoldAccents(candidate.ToLowerInvariant()), out var leetApplied);
+                var rank = NaturalWords.RankOf(folded);
+
+                if (rank < 0)
+                {
+                    continue;
+                }
+
+                var bits = Math.Log2(rank + 1) + CasingBits(candidate) + (leetApplied ? 1d : 0d);
+                var end = start + length;
+
+                matches.Add(new PatternMatch(start, end, bits, PasswordWeakness.DictionaryWord));
+
+                if (end < password.Length && WordSeparators.Contains(password[end]))
+                {
+                    matches.Add(new PatternMatch(start, end + 1, bits + WordSeparatorBits, PasswordWeakness.DictionaryWord));
+                }
+            }
+        }
+    }
+
+    /// <summary>Maps the common Spanish accented letters to their base letter, one character to one.</summary>
+    private static string FoldAccents(string lowered)
+    {
+        char[]? buffer = null;
+
+        for (var index = 0; index < lowered.Length; index++)
+        {
+            var replacement = lowered[index] switch
+            {
+                'á' => 'a',
+                'é' => 'e',
+                'í' => 'i',
+                'ó' => 'o',
+                'ú' or 'ü' => 'u',
+                'ñ' => 'n',
+                _ => ' ',
+            };
+
+            if (replacement != ' ')
+            {
+                buffer ??= lowered.ToCharArray();
+                buffer[index] = replacement;
+            }
+        }
+
+        return buffer is null ? lowered : new string(buffer);
     }
 
     /// <summary>

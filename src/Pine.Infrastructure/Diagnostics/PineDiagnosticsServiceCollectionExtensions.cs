@@ -54,6 +54,9 @@ public static class PineDiagnosticsServiceCollectionExtensions
 
         services.TryAddSingleton<IRuntimeInfoProvider, PineRuntimeInfoProvider>();
         services.TryAddSingleton<IDatabaseHealthProbe, PineDatabaseHealthProbe>();
+        services.TryAddSingleton<IDiagnosticTextRedactor, LogRedactorAdapter>();
+        services.TryAddSingleton<IBundleEnvironmentSource, PineBundleEnvironmentSource>();
+        services.TryAddSingleton<IBundleSummarySource, PineBundleSummarySource>();
 
         return services;
     }

@@ -1,4 +1,6 @@
-namespace Pine.Core.Security;
+using Pine.Core.Security;
+
+namespace Pine.Application.Security;
 
 /// <summary>
 /// Brings the unlocked vault's schema up to date, taking a pre-migration backup first

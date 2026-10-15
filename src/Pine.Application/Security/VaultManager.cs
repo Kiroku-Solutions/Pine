@@ -7,7 +7,7 @@ using Pine.Core.Configuration;
 
 namespace Pine.Application.Security;
 
-public sealed class VaultManager
+public sealed class VaultManager : IVaultManager
 {
     private readonly string _pineDataDirectory;
     private readonly string _vaultsDirectory;
@@ -28,7 +28,7 @@ public sealed class VaultManager
     /// `InitializeVaultAsync` could not run under test without writing `vaults.json` into the
     /// developer's real `%LOCALAPPDATA%`, so every test of `SetupViewModel` stopped at an early
     /// validation failure instead of exercising the happy path. A test can now point this at a
-    /// temporary directory. The other half — the missing interface — is still open.
+    /// temporary directory. The other half — the missing interface — is now <see cref="IVaultManager"/>.
     /// </para>
     /// <para>
     /// THE PARAMETER IS OPTIONAL because this type is also constructed by hand. Defaulting to the

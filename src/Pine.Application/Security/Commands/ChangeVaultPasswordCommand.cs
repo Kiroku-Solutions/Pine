@@ -90,8 +90,8 @@ public sealed record ChangeVaultPasswordCommand(string CurrentPassword, string N
 public sealed class ChangeVaultPasswordCommandHandler : IRequestHandler<ChangeVaultPasswordCommand, Unit>
 {
     private readonly IVaultSession _session;
-    private readonly IVaultHeaderStore _headerStore;
-    private readonly IVaultKeyService _keyService;
+    private readonly IVaultKeyRotationService _rotation;
+    private readonly IPlatformUnlock _platformUnlock;
 
     /// <summary>
     /// Initialises the handler.
@@ -101,12 +101,12 @@ public sealed class ChangeVaultPasswordCommandHandler : IRequestHandler<ChangeVa
     /// <param name="keyService">Performs the unwrap and re-wrap without exposing the data key.</param>
     public ChangeVaultPasswordCommandHandler(
         IVaultSession session,
-        IVaultHeaderStore headerStore,
-        IVaultKeyService keyService)
+        IVaultKeyRotationService rotation,
+        IPlatformUnlock platformUnlock)
     {
+        _platformUnlock = platformUnlock;
+        _rotation = rotation;
         _session = session;
-        _headerStore = headerStore;
-        _keyService = keyService;
     }
 
     /// <inheritdoc />
@@ -127,18 +127,25 @@ public sealed class ChangeVaultPasswordCommandHandler : IRequestHandler<ChangeVa
 
         var vaultDirectory = _session.DbPath;
 
-        var header = _headerStore.Read(vaultDirectory);
+        // TD-87: a password change must kill the OS-credential unlock. Done FIRST so a failure to destroy the
+        // wrap (PlatformUnlockInvalidationException) fails the whole change closed with nothing altered; the
+        // reverse failure (wrap gone, change fails) only costs the user a re-enable of the toggle.
+        // (A wrong current password is therefore also costing the wrap; acceptable and fail-closed.)
+        _platformUnlock.InvalidateWrap(vaultDirectory);
 
-        // VaultKeyUnwrapException is NOT caught. It has exactly one meaning here -- the current
-        // password did not unwrap the data key, i.e. it was wrong -- and the caller is the layer
-        // that knows how to say that to a user. Translating it into a validation error would mean
-        // verifying the password inside the validator, which would require unwrapping the data key
-        // OUTSIDE this method: precisely the thing IVaultKeyService.ChangePassword exists to avoid.
-        var newHeader = _keyService.ChangePassword(request.CurrentPassword, request.NewPassword, header);
-
-        // The commit point. Everything before this is pure computation over a header the store still
-        // holds the old copy of; a throw above changes nothing on disk.
-        _headerStore.Write(vaultDirectory, newHeader);
+        // TD-86: the data key is ROTATED with the password. The service journals the intent, rekeys the database,
+        // rewrites the header and re-seals sync.key and the categoriser model, in a crash-safe order. VaultKeyUnwrapException
+        // (wrong current password) is deliberately not caught here; the UI layer owns that sentence.
+        var newKey = _rotation.ChangePassword(vaultDirectory, request.CurrentPassword, request.NewPassword);
+        try
+        {
+            // The session must carry the new key from now on; new scopes build their contexts from it.
+            _session.Unlock(vaultDirectory, newKey);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(newKey);
+        }
 
         return Task.FromResult(Unit.Value);
     }

@@ -1,5 +1,6 @@
 using Avalonia;
 using System;
+using Pine.Ui.Windows.Security;
 using Pine.Infrastructure.Diagnostics;
 using Pine.Ui.Avalonia;
 using Pine.Ui.Avalonia.Composition;
@@ -24,7 +25,9 @@ sealed class Program
             //    reflection whether or not anyone calls Init -- iteration 31 proved that with a
             //    clean-process probe after a mutation refused to die. Deleting it from here keeps
             //    the divergence from coming back with the same wrong justification.
-            var serviceProvider = PineCompositionRoot.Build(PineHeadProfile.Windows);
+            var serviceProvider = PineCompositionRoot.Build(
+                PineHeadProfile.Windows,
+                configureHeadServices: WindowsHeadServices.Register);
 
             // 2. Hand the UI what it needs, by name (TD-28). This used to be
             //    App.InitializeServices(serviceProvider) -- the whole container parked in a public

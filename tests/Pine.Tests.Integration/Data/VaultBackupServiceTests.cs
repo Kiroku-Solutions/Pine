@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -85,9 +85,9 @@ public class VaultBackupServiceTests : IDisposable
         // (TD-32), and again here for AddTransactionAttachments, which is now the head -- and this
         // line going red is the evidence that the newest migration really runs against a real
         // (retargeted for AddSyncConflictResolution, post-audit plan item 3.1c, and again here for
-        // AddSyncRunAuditLog, `14-Synchronization` §12)
+        // AddSyncRunAuditLog, `14-Synchronization` §12, and again for AddBudgetUtcDates, TD-96, and again for AddTransferLinkForeignKey, TD-125, and again for AddAccountOpeningBalanceCurrency, TD-77, and again for AddLineQuantityScaleAndZeroAmountImportFlag, TD-95/TD-62, and again for AddExchangeRatesAndBudgetConversionAudit)
         // SQLCipher vault.
-        backup.SchemaVersionBefore.Should().Be("20261005153926_AddSyncRunAuditLog");
+        backup.SchemaVersionBefore.Should().Be("20261014200000_AddExchangeRatesAndBudgetConversionAudit");
         Path.GetFileName(backup.Path).Should().EndWith("-PreMigration.db");
         Path.GetDirectoryName(backup.Path).Should().Be(_vault.BackupsDirectory);
     }

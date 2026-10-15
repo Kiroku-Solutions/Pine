@@ -138,6 +138,9 @@ public class VaultSession : IVaultSession, IDisposable
 
         lock (_gate)
         {
+            // A re-unlock with a rotated key (TD-86) must not leave the previous key in memory.
+            if (_key is not null && !ReferenceEquals(_key, key)) Array.Clear(_key, 0, _key.Length);
+
             // Copy to prevent external modification
             _key = new byte[key.Length];
             Array.Copy(key, _key, key.Length);
