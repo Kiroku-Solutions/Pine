@@ -1182,6 +1182,131 @@ encrypted vaults.
 - **Restoring an older backup rewinds the vault's logical clock** (TD-144). Harmless until sync exists.
 - **Tombstones are never pruned** (TD-145).
 
+## 13H. Screens built and never rendered, and two gaps no test can reach — TD-111, TD-92 / TD-93
+
+**Read this before running it.** Every screen in 13H.3 to 13H.7 is covered by view-model and headless tests,
+and none of them has been seen on a real window. 13H.1 and 13H.2 cannot be automated at all: the first needs
+the packaged app and a firewall, the second needs a real dispatcher painting real frames.
+
+### 13H.1 The packaged app under a firewall deny-all — TD-111
+
+`NetworkEgressTests` is a text scan of Pine's own source and an in-process check of the container; it cannot
+see a socket opened by PaddleInference, ONNX Runtime or OpenCV, or by a child process. This is the only check
+of that claim for the shipped binaries.
+
+1. Build the packaged app (`scripts/package.sh`) and install it on a machine you can firewall. Do not run it
+   from `dotnet run`: the point is the files a user would receive.
+2. Add Windows Firewall rules that block **all outbound** traffic for the installed `Pine.exe` and for every
+   executable beside it (or run it in a Windows Sandbox with networking disabled). Confirm the block works:
+   a browser on the same profile cannot load a page.
+3. Create a vault, add an account and a transaction, scan a receipt photo, import a CSV, open Rules, Budgets
+   and Settings, lock and unlock. **Expected:** every one of these works exactly as it does with the network
+   on. No dialog, no spinner that never ends, no error sentence that mentions the network.
+4. While doing step 3, watch outbound attempts (Windows Firewall log with dropped packets enabled, or
+   `netstat -ano` filtered to Pine's process id and its children). **Expected:** **no dropped outbound
+   packet** from Pine or any process it started. A dropped packet is a failure of ADR-0012's claim; record the
+   remote address and which step caused it.
+5. Receipt scanning in step 3 is the row that matters most: the native OCR and detection libraries are the
+   code the automated tests cannot see.
+
+### 13H.2 Receipt-photo decode stays off the UI thread — TD-92 / TD-93 gap
+
+TD-92 moved the CPU-bound halves of the receipt pipeline onto the thread pool. TD-93, a test that notices the
+UI thread blocking, does not exist; this row is the only check that the move still holds.
+
+1. Open **Receipt Scanner**, choose **Select Image...** and pick a **large** phone photo (4000x3000 or more).
+2. Immediately drag the window across the screen and move the pointer over its buttons.
+   **Expected:** the window follows the pointer and keeps redrawing for the whole decode; the title bar never
+   greys out and Windows never adds "(Not Responding)".
+3. Watch the progress bar. **Expected:** it animates continuously. A frozen bar means the UI thread is blocked
+   again.
+4. Repeat with a second large photo straight after the first. **Expected:** the same; the second does not
+   queue behind a frozen window.
+5. This repeats 11.1 and 11.2 on purpose: run it after **any** change to `ReceiptDetector`,
+   `OpenCvImageProcessor` or `PaddleOcrEngine`.
+
+### 13H.3 Settings: the diagnostic bundle
+
+1. Open **Settings** and find **Diagnostic bundle**. **Expected:** a sentence saying it holds redacted logs and
+   basic app information and no transactions, accounts, amounts, passwords or file paths, and an **Export...**
+   button.
+2. Press **Export...**. **Expected:** a save dialog titled *Save diagnostic bundle*. Choose a place and save.
+   **Expected:** *The diagnostic bundle was saved.*
+3. Open the zip. **Expected:** log text and app information only. Search it for one of your payee names, an
+   account name, a path under `C:\Users\` and your vault's name. **Expected:** none appears.
+4. Press **Export...** and cancel the dialog. **Expected:** no file is written and no failure sentence shows.
+5. Save to a folder you cannot write to (a read-only folder). **Expected:** *The diagnostic bundle could not be
+   created. No file was written.* and no partial zip left behind.
+
+### 13H.4 Attach file, on a transaction
+
+1. In **Transactions**, open a transaction and press **Attach file**. **Expected:** a file dialog titled
+   *Choose a file to attach*.
+2. Choose a photo. **Expected:** it attaches and can be viewed through the receipt control.
+3. Choose a PDF. **Expected:** it attaches; viewing it says it is a document and cannot be previewed here.
+4. Choose an empty file. **Expected:** refused, saying the file is empty. Cancel the dialog. **Expected:** nothing
+   changes and no failure sentence shows.
+5. With a screen reader, tab to the button. **Expected:** it announces *Attach a receipt, contract or photo to
+   this transaction*.
+
+### 13H.5 Rules: the multi-condition form
+
+1. Open **Rules**. **Expected:** an empty state sentence if you have none, and the **New rule** form.
+2. Fill Name, Category to apply, and one condition (Field, Comparison, Value). Press **Add condition** and
+   fill a second one. **Expected:** the two read joined by "and"; **Remove** on either removes only that one.
+3. Press **Create rule**. **Expected:** the rule appears in **Your rules** with both conditions, and its
+   on/off switch works.
+4. With the form half-filled and an empty value, press **Create rule**. **Expected:** refused with a sentence;
+   what you typed stays.
+5. Switch the language to Español with the form open. **Expected:** labels, operators and the "and" change.
+
+### 13H.6 Rules: preview and apply to existing transactions
+
+1. With at least one enabled rule and a few uncategorised transactions that match it, press **Preview rules on
+   existing transactions**. **Expected:** a list of changes, each reading *old -> new category*, and a summary
+   saying how many would be categorised and that nothing has changed yet.
+2. Check the transactions page. **Expected:** nothing has changed yet.
+3. Press **Discard preview**. **Expected:** the list goes away and nothing changes.
+4. Preview again and press **Apply to these transactions**. **Expected:** *Done. N transaction(s) were
+   categorised.* and the transactions page shows those categories.
+5. **Expected:** a transaction that already had a category is **not** in the preview and is not overwritten.
+6. With no match, press the preview button. **Expected:** *No existing uncategorised transaction matches an
+   enabled rule.*
+
+### 13H.7 The currency picker
+
+1. Open **Create account**. **Expected:** a Currency box with the placeholder *Search code or name*.
+2. Type `eur`, then `peso`, then `zzz`. **Expected:** the list narrows by code or name; `zzz` shows nothing to
+   choose and the account cannot be created with it.
+3. Pick one with the keyboard only (arrows and Enter), then with the mouse. **Expected:** both choose it, and
+   the account is created in that currency.
+4. With a screen reader, **Expected:** the box is announced as *Currency*.
+
+### 13H.8 Windows sign-in unlock — [G] built, never rendered
+
+**[G]** Settings has a toggle "Unlock with Windows sign-in", shown only on the Windows head. The unlock screen
+shows an "Unlock with Windows sign-in" button only when this vault has a wrap and the machine can use it. The
+data key comes from the unlocked session, and a key is accepted only after the SQLCipher database opens with it.
+
+1. Unlock with the password, open Settings and turn the toggle on. **Expected:** the toggle stays on and no error
+   appears. The vault folder now contains `pine.platform-unlock.json`.
+2. Lock the app. **Expected:** the unlock screen shows the Windows sign-in button next to the password box.
+3. Click it. **Expected:** the shell opens without the password. Lock again and enter the password.
+   **Expected:** the password path still works.
+4. Copy `pine.platform-unlock.json` into another vault's folder and open that vault. **Expected:** either no
+   button or, if clicked, the screen stays as it was with no message.
+5. Sign in as a different Windows user and try the button. **Expected:** the same silent fall-back.
+6. Turn the toggle off. **Expected:** the file is deleted and the button no longer appears.
+
+Known gaps: the wrap is not removed on a password change or a vault restore, so a stale wrap only fails
+confirmation; DPAPI is bound to the Windows logon and gives no per-unlock Windows Hello prompt.
+
+### Known gaps for §13H — confirm, do not report
+
+- **The firewall run covers the build you install, on the day you run it.** A later dependency update needs it
+  again.
+- **13H.2 is a stopwatch and an eye, not a measurement.** TD-93 (a UI-thread blocking test) is still open.
+
 ## 14. What a failure means
 
 | Where it fails | Severity |

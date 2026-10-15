@@ -12,6 +12,10 @@ namespace Pine.Tests.Unit.Documentation;
 /// exists (TD-39).
 /// </summary>
 /// <remarks>
+/// SCOPE (TD-112): the rule covers design, product and architecture documents - every top-level
+/// <c>docs/*.md</c> plus the root README, STATUS, PRODUCT and CHANGELOG. GitHub/AI meta-files
+/// (CONTRIBUTING, CODE_OF_CONDUCT, TRADEMARK, GEMINI, <c>docs/superpowers/</c>) are formally exempt;
+/// see <c>docs/24-Contributing</c> section 14. The exemption does not touch <c>docs/*</c>.
 /// <para>
 /// WHY THIS IS A TEST AND NOT AN AFTERNOON'S EDITING. §6.12 of the audit diagnosed the documentation
 /// problem correctly and then prescribed the wrong remedy: "marking every unimplemented document
@@ -331,6 +335,43 @@ public class DocumentStatusTests
         reconciled.Should().NotBeNull(
             $"{fileName}'s status needs a date, or nobody can see it go stale — which is exactly "
             + "what happened to STATUS.md for seven iterations");
+    }
+
+    /// <summary>
+    /// TD-112: the status rule's scope is stated, not implied. Every markdown file at the repository
+    /// root is either covered by the status rule (listed in the theory above) or is a GitHub/AI
+    /// meta-file on the explicit exempt list. A new root file that is neither fails, which is how the
+    /// unstated exemption that once missed <c>STATUS.md</c> is prevented from recurring.
+    /// </summary>
+    /// <remarks>
+    /// The exemption is for root meta-files and <c>docs/superpowers/</c> ONLY. Nothing here relaxes
+    /// the check on <c>docs/*</c>: <see cref="Documents"/> still requires a status on every file there.
+    /// </remarks>
+    [Fact]
+    public void EveryRootMarkdownFileIsEitherCoveredByTheStatusRuleOrExplicitlyExempt()
+    {
+        string[] covered = ["README.md", "STATUS.md", "PRODUCT.md", "CHANGELOG.md"];
+        string[] exemptMetaFiles = ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "TRADEMARK.md", "GEMINI.md"];
+
+        var rootFiles = Directory
+            .GetFiles(RepositoryRoot(), "*.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .ToList();
+
+        rootFiles.Should().Contain(covered, "the covered root documents must exist");
+
+        var unclassified = rootFiles
+            .Where(name => !covered.Contains(name!) && !exemptMetaFiles.Contains(name!))
+            .ToList();
+
+        unclassified.Should().BeEmpty(
+            "a root markdown file is either a design/product document (add it to the covered list and "
+            + "give it a Status) or a GitHub/AI meta-file (add it to the exempt list) - docs/24-Contributing "
+            + "section 14 states the rule");
+
+        exemptMetaFiles.Intersect(covered).Should().BeEmpty("a file cannot be both covered and exempt");
+
+        File.Exists(Path.Combine(DocsDirectory(), "24-Contributing.md")).Should().BeTrue();
     }
 
     /// <summary>

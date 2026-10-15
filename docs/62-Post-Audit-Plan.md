@@ -2581,6 +2581,63 @@ report: a voided-transaction check gated behind `if (false)`, a balance-reversal
 an edited income transaction's effect, and a split-sum check that unconditionally returned true. All three fixed
 in what's committed.
 
+**2026-10-11: TD-59 and TD-62 closed**, built by two Sonnet agents and audited against the diff and by re-running
+both suites in the real repo (unit 1859 → 1868, integration 374, all green), not trusted from their reports.
+TD-59: `SqliteTransactionRepository` now sets every owned child's EF state from what the database holds (not
+persisted → Added; persisted and present → never Added; persisted and gone → Deleted), scoped to the transaction;
+4 new integration tests, one mutation killed. TD-62: `AddTransactionCommandValidator` rejects a zero amount
+(including one that rounds to zero in its currency) alongside, not instead of, currency errors; the add and import
+handlers' bare `ArgumentException` for a missing account is now a `RequestValidationException`; 8 new unit tests,
+one mutation killed. Left alone and recorded in `63`: an imported zero-amount row still throws inside `Deposit`.
+Not run: a whole-solution build (the Android/iOS workloads are not installed here, NETSDK1147).
+
+**2026-10-11 (second batch): TD-69, TD-71, TD-96 closed**; TD-95 found to need a decision. Sonnet agents again,
+audited by diff and by re-running the suites in the real repo (integration 374 → 381 green; unit 1886 green plus 4
+`BuildHygieneTests` failures caused only by a leftover agent worktree under `.claude/worktrees/`, which the harness
+would not let be deleted — remove it by hand). One agent's work was **discarded, not merged**: its worktree had
+branched from a stale commit (`85e73ac`), so its migration sat on an old snapshot; TD-96 was redone on HEAD.
+TD-69: `UnvoidTransactionCommand` re-applies the balance atomically; a transfer is restored as a unit. TD-71:
+voided rows hidden by default, filtered in SQL. TD-96: migration `20261011190857_AddBudgetUtcDates`.
+
+**2026-10-11 (third batch): TD-50, TD-64, TD-70 closed; TD-77 deferred for a decision.** Sonnet agents, audited by
+reading the diffs and re-running both suites in the real repo (unit 1916 green + the same 4 worktree-caused
+`BuildHygieneTests` failures; integration 384 green). Per-row detail is in `63-Remaining-Production-Tasks`.
+
+**2026-10-11 (fourth batch): TD-65, TD-102, TD-78, TD-89 closed.** Sonnet agents, audited by diff and by re-running
+both suites in the real repo (unit 1940 green + the same 4 worktree-caused `BuildHygieneTests` failures; integration
+389 green). An automated security scan flagged `consent is null && consent is not null` in the training service's
+consent gate: it was the agent's own mutation check caught mid-run, confirmed restored to a fail-closed test
+(`!string.Equals(consent?.Value, "true")`) before accepting. Per-row detail in `63-Remaining-Production-Tasks`.
+
+**2026-10-11 (fifth batch): TD-91, TD-124, TD-133, TD-46, TD-51, TD-55 closed** (TD-46/TD-51 were already satisfied;
+a test now pins them). Sonnet agents, audited by diff and by re-running both suites (unit 1956 green + the same 4
+worktree-caused `BuildHygieneTests` failures; integration 391 green). A scanner flagged `ReceiptDetector`'s model path
+as relative: that was the agent's mutation check, and the file is clean and anchored in git. Detail in `63`.
+
+**2026-10-12 (sixth batch): TD-125, TD-57, TD-81 closed; TD-86 partly built, not closed.** Sonnet agents, audited by
+running both suites together in the real repo (unit 1958 green + the same 4 worktree-caused `BuildHygieneTests`
+failures; integration 403 green). A transient `RowClock NOT NULL` failure during the run was the TD-125 migration
+mid-edit (the table rebuild had dropped column defaults); the agent restored them and it passes. Known risk: the TD-125
+foreign key exists only in the migration, so any future migration that rebuilds `Transactions` must keep it.
+
+**2026-10-12 (seventh batch): TD-73, TD-76, TD-130, TD-131, TD-135 closed** (TD-76 only as view-model logic; the picker
+was never rendered). Sonnet agents, audited by running both suites together in the real repo (unit 1986 green + the
+same 4 worktree-caused `BuildHygieneTests` failures; integration 403 green). Two other unit failures an agent saw
+mid-run (`SyncConflictsPageTests`, `NoSentenceLiteralsInUiCodeTests`) were the other agent's UI edits in flight and are
+green in the final run. Detail in `63`.
+
+**2026-10-12 (eighth batch): TD-104, TD-107, TD-113, TD-127 closed; TD-111 narrowed.** Sonnet agents, audited by running
+both suites together in the real repo (unit 2009 green + the same 4 worktree-caused `BuildHygieneTests` failures;
+integration 403 green). One new generated doc, `64-Traceability-Matrix-Generated`. Detail and the limits of each
+claim are in `63`.
+
+**2026-10-12 (ninth batch): the seven rows decided on 2026-10-07 are all built — TD-63, TD-82, TD-100, TD-103, TD-112,
+TD-119, TD-126.** Sonnet agents, audited by running both suites together in the real repo (unit 2028 green apart from
+the 4 worktree-caused `BuildHygieneTests` failures; integration 405 green). `SyncConflictsPageTests.KeepingThisDevicesSide_...`
+failed in two full-suite runs and passed 3 of 3 in isolation and in earlier full runs: an intermittent test, not
+investigated. An automated scan flagged `if (false && LogRedactor.IsSensitiveKey(key))` in the log formatter — the
+agent's own mutation check; the final file applies the redaction. Detail in `63`.
+
 ## 8. What is deliberately NOT in this plan
 
 - **A plugin host.** ADR-0021. Not deferred — decided.
@@ -2807,3 +2864,23 @@ real limits of a text-scan technique, not papered over.
 `LocalizedMessageSlot` backs a new `ErrorMessage` property, shown only when non-empty and cleared at the top of
 every `InitializeAsync`, mirroring the exact pattern `AddTransactionView` already uses. TD-106's guard, landed
 moments earlier, confirmed clean against the changed file — proof the two items compose rather than compete.
+
+**Post-closure, 2026-10-12, batch 10: TD-93, TD-101, TD-129, TD-141, TD-142, TD-143 and TD-144.** Seven rows closed,
+each audited by diff review and a full run of both suites (unit 2070 pass / 4 known stale-worktree `BuildHygieneTests`
+failures; integration 408/408). Lock files now exist for every restorable project, with locked restore under `CI=true`
+(generated on Windows only). A UI-thread harness covers unlock and vault creation; it does not cover the receipt-photo
+decode, which stays manual. The sync clock can no longer reuse a number after a file-level rewind, and a byte-copied
+vault takes a new identity (a moved vault does too, which is safe). Retroactive rules are preview-then-apply and never
+overwrite an existing category. Manual file attachment and the multi-condition rules form were build-checked but never
+rendered. A security scan flagged `&& true` in `RetroactiveRules.cs`; it was an agent's temporary mutation, and the
+final file keeps the uncategorised check.
+
+**Post-closure, 2026-10-12, batch 11: TD-118 closed; TD-87 (Windows) and TD-84 (narrowed) built but not closed.** Audited by diff review and full runs (unit 2096 pass / 4 known stale-worktree failures; integration 408/408). The vision-constants boundary is documented and guarded. A DPAPI-backed opt-in platform unlock exists but nothing calls it yet. A redacted diagnostic zip can be exported from Settings; the audit found that the log redactor masks an unquoted multi-word value only to the first space, which is recorded in doc 63. A security scan flagged a pass-through `Redact` in the redactor adapter; it was an agent's temporary mutation and the final file delegates to `LogRedactor.Redact`.
+
+**Post-closure, 2026-10-14, batch 12: redactor gap fixed, TD-87 wired on Windows, TD-10 verified closable, manual rows added.** Audited by diff review and full runs (unit 2112 pass / 4 known stale-worktree failures; integration 408/408). `LogRedactor` now masks an unquoted value after a sensitive key to the next key token, separator or end of line. Windows sign-in unlock has a Settings toggle and an unlock-screen button; the platform path accepts the key only after the database opens. `docs/61` gained §13H, covering the features that were built but never rendered. A security scan flagged a missing key-confirmation in `UnlockViewModel`; it was the agent's temporary mutation, and the final file opens the database in both paths.
+
+**Post-closure, 2026-10-14, batch 13: TD-86, TD-87 (Windows) and TD-77 closed or cleared; TD-63 extended.** Owner decisions were applied: the platform-unlock wrap is destroyed on password change and restore; the rekey uses a write-ahead journal; the opening balance has its own currency; the base currency is a chosen setting. Audited by diff review and full runs (unit 2142 pass / 4 known stale-worktree failures; integration 432/432). Three scanner alerts were agents' temporary mutations (`if (false)` on the journal write, a missing re-seal, a mislabelled `DbPath` argument that was in fact the vault directory); the final code writes the journal, re-seals before deleting it, and passes the directory. A test helper that called `ClearAllPools` was found by the TD-140 guard and fixed. Open: backups made before a key rotation cannot be restored; cross-currency net worth needs a rate source; TD-95 `Quantity` decimal and zero-amount import tagging are decided but not yet built.
+
+**Post-closure, 2026-10-14, batch 14: TD-95 and zero-amount imports.** Line-item quantities are strictly positive with at most four decimals and are stored as scaled integers; the migration refuses a legacy value with a significant fifth decimal rather than rounding it. Zero-amount imported rows are imported, flagged, excluded from balances and offered for hiding in the review step. Audited by diff review and full runs (unit 2180 pass / 4 known stale-worktree failures; integration 450/450).
+
+**Post-closure, 2026-10-14, batch 15 (final batch of the owner-decision round).** Account currency is immutable in sync; fifth-decimal quantities are rounded half to even instead of refusing the vault; a local, manual-only exchange-rate table exists and a base-currency change converts budgets once or is refused; restoring a backup made before a key rotation prompts for the old password (new backups carry their header; older ones cannot be recovered); the diagnostic bundle gained sync and import summaries, with SLO and import-run fields honestly marked not recorded. Audited by diff review and full runs; two stale tests (aggregate-root list, OCR rounding) were updated for the new rules. No external HTTP call was introduced.
