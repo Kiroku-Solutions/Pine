@@ -382,6 +382,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             }
 
             _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
+            // HANDED OFF (TD-126): the recipient owns the stream now; this method does not touch it again.
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(imageStream));
         });
 
@@ -396,6 +397,9 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             memStream = new MemoryStream();
             croppedImageStream.CopyTo(memStream);
             memStream.Position = 0;
+
+            // Copied, so the original is never sent and nobody else will release it (TD-126).
+            croppedImageStream.Dispose();
         }
 
         MemoryStream? ocrMemStream = null;
@@ -407,6 +411,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
                 ocrMemStream = new MemoryStream();
                 ocrImageStream.CopyTo(ocrMemStream);
                 ocrMemStream.Position = 0;
+                ocrImageStream.Dispose();
             }
         }
 
@@ -429,6 +434,7 @@ public partial class LiveScannerViewModel : ObservableRecipient, IRecipient<Reta
             _navigationService.NavigateTo(_viewModels.CreateCropReceipt(_navigationService));
 
             // Deliver the already cropped image (user can adjust further if needed)
+            // HANDED OFF (TD-126): the recipient owns both streams now; this method does not touch them again.
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(memStream, ocrMemStream));
         });
 

@@ -468,8 +468,11 @@ public class PineCompositionRootTests
 
         var source = File.ReadAllText(path);
 
-        source.Should().Contain($"PineCompositionRoot.Build({expectedProfile})",
-            "a head names itself and delegates the rest");
+        // Whitespace-insensitive: a head may pass TD-87's configureHeadServices on later lines.
+        var compact = string.Concat(source.Where(c => !char.IsWhiteSpace(c)));
+        var call = "PineCompositionRoot.Build(" + expectedProfile.Replace(" ", "");
+        (compact.Contains(call + ")") || compact.Contains(call + ","))
+            .Should().BeTrue("a head names itself and delegates the rest");
         source.Should().Contain("PineCompositionRoot.Start(",
             "TD-11: the auto-lock watchdog is started the same way on every head");
 

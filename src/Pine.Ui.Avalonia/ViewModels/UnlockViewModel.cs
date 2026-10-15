@@ -79,8 +79,12 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
         IVaultHeaderStore vaultHeaderStore,
         IVaultKeyService vaultKeyService,
         IVaultDatabaseOpener vaultDatabaseOpener,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        IPlatformUnlock? platformUnlock = null,
+        IVaultKeyRotationService? keyRotation = null)
     {
+        _platformUnlock = platformUnlock;
+        _keyRotation = keyRotation;
         ArgumentNullException.ThrowIfNull(localizer);
         _message = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _title = new LocalizedMessageSlot(localizer, text => VaultName = text ?? string.Empty);
@@ -98,6 +102,84 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
     {
         _profile = profile;
         _title.Set("Unlock.Title.Named", profile.Name);
+        CanUnlockWithPlatform = IsPlatformUnlockOffered(profile.Path);
+    }
+
+    private readonly IPlatformUnlock? _platformUnlock;
+    private readonly IVaultKeyRotationService? _keyRotation;
+
+    /// <summary>True when this vault has an opt-in platform wrap that this machine can use (TD-87).</summary>
+    [ObservableProperty]
+    public partial bool CanUnlockWithPlatform { get; set; }
+
+    private bool IsPlatformUnlockOffered(string vaultDirectory)
+    {
+        try
+        {
+            return _platformUnlock is { IsAvailable: true } unlock && unlock.IsEnabled(vaultDirectory);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Opt-in OS-credential unlock (TD-87). It never replaces the password: ANY failure -- no wrap,
+    /// wrong Windows user, tampered blob, a key that does not open this database -- leaves the screen
+    /// exactly as it was, with no message (a message would tell a bystander that a wrap exists and
+    /// failed), and the password path unchanged. The key is accepted only after the SQLCipher
+    /// database has been opened with it.
+    /// </summary>
+    [RelayCommand]
+    private async Task UnlockWithPlatformAsync()
+    {
+        if (_profile == null || _platformUnlock is null || IsBusy) return;
+
+        IsBusy = true;
+        try
+        {
+            var vaultDir = _profile.Path;
+            var opened = await Task.Run(async () =>
+            {
+                var key = _platformUnlock.TryUnlock(vaultDir);
+                if (key is null) return false;
+
+                try
+                {
+                    _vaultSession.Unlock(vaultDir, key);
+                }
+                finally
+                {
+                    Array.Clear(key, 0, key.Length);
+                }
+
+                try
+                {
+                    // The confirmation: the unwrapped key must actually decrypt THIS database.
+                    await _vaultDatabaseOpener.OpenExistingAsync(CancellationToken.None).ConfigureAwait(false);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    _vaultSession.Lock();
+                    return false;
+                }
+            });
+
+            if (!opened) return;
+
+            await Pine.Ui.Avalonia.Utils.ThemeManager.ApplyFromSettingsAsync(_sender);
+            _navigationService.NavigateTo(_viewModels.CreateShell());
+        }
+        catch (Exception)
+        {
+            _vaultSession.Lock();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -136,7 +218,11 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
                 // stored wrap, so a wrong password fails HERE, before any file is opened, and it
                 // fails as one specific exception type instead of as whatever error SQLCipher
                 // happens to raise when handed a bad key.
-                var key = _vaultKeyService.UnwrapDataKey(MasterPassword, header);
+                // TD-86: an interrupted password change leaves a journal. Resolve it first (it accepts the old
+                // or the new password and rolls forward), so a crash at any step never leaves the vault unopenable.
+                var key = _keyRotation is not null && _keyRotation.HasPendingRekey(vaultDir)
+                    ? _keyRotation.RecoverAndUnwrap(vaultDir, MasterPassword)
+                    : _vaultKeyService.UnwrapDataKey(MasterPassword, header);
 
                 // Unlock session. Unlock() COPIES the key into the session's own buffer, and it is
                 // that copy which Lock() zeroes -- so this local is a second, independent copy of
@@ -196,6 +282,14 @@ public partial class UnlockViewModel : ObservableObject, IDisposable
         {
             _vaultSession.Lock();
             _message.Set("Unlock.Status.NoVaultFound");
+        }
+        catch (VaultRekeyRecoveryException)
+        {
+            // The password was right but an interrupted password change could not be finished or
+            // undone; the vault was left as found. Not an authentication failure, and the password
+            // having been accepted is not an oracle (it is only reached after a successful unwrap).
+            _vaultSession.Lock();
+            _message.Set("Unlock.Status.RekeyRecoveryFailed");
         }
         catch (VaultKeyUnwrapException)
         {

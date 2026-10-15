@@ -53,7 +53,7 @@ public partial class ImportWizardView : UserControl
     {
         ObservedTask.Run(
             SelectFileAsync,
-            null,
+            (DataContext as ImportWizardViewModel)?.Logger,
             "import-file-select",
             new UserFacingMessage("ImportWizard.Failure.SelectFile"),
             messages =>

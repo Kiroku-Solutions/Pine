@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:vo="using:Pine.Core.Common.ValueObjects"
@@ -13,13 +13,27 @@
                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
 
         <StackPanel Grid.Row="1" Spacing="6" IsVisible="{Binding HasAccounts}">
-            <ItemsControl ItemsSource="{Binding Totals}">
+            <ItemsControl ItemsSource="{Binding Totals}" IsVisible="{Binding ShowsFlatTotals}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vo:Money">
                         <TextBlock Text="{Binding}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Several currencies and a known base: the base figure is only the accounts already in the
+                 base currency; the others are listed apart, never converted or added in. -->
+            <StackPanel Spacing="4" IsVisible="{Binding ShowsBaseSplit}">
+                <TextBlock Text="{Binding BaseCurrencyTotal}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{loc:Tr Dashboard.TotalBalance.OtherCurrencies}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                <ItemsControl ItemsSource="{Binding OtherCurrencyTotals}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vo:Money">
+                            <TextBlock Text="{Binding}" FontSize="16" Foreground="{DynamicResource PineText}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
             <TextBlock Text="{Binding AccountCountText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
             <!-- Visible, not only a tooltip: a tooltip never reaches a keyboard or touch user, and this
                  sentence is the whole difference between "total balance" and "net worth". -->

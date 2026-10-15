@@ -146,6 +146,16 @@
                             <TextBlock Text="{Binding UncheckedCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
+
+                    <!-- Zero-amount rows (usually bank authorizations) were KEPT, not judged: the user decides
+                         whether to hide each one. Counts down as rows are hidden. -->
+                    <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineWarning}" BorderThickness="1"
+                            CornerRadius="12" Padding="16" MinWidth="220" IsVisible="{Binding HasZeroAmountRows}">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr ImportWizard.Review.ZeroAmountTile}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ZeroAmountCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -207,8 +217,24 @@
                                                 <TextBlock Text="{loc:Tr ImportWizard.Legend.NotImported}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
                                             </Border>
 
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineWarning}" IsVisible="{Binding CanHide}">
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.ZeroAmount}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+                                            </Border>
+
+                                            <Border CornerRadius="6" Padding="8,2" BorderThickness="1" VerticalAlignment="Center"
+                                                    BorderBrush="{DynamicResource PineBorder}" IsVisible="{Binding IsHidden}">
+                                                <TextBlock Text="{loc:Tr ImportWizard.Legend.Hidden}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineTextMuted}" />
+                                            </Border>
+
                                             <TextBlock Text="{Binding Reason}" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
                                                        TextWrapping="Wrap" VerticalAlignment="Center" />
+
+                                            <Button Content="{loc:Tr ImportWizard.Review.HideZeroAmount}"
+                                                    Command="{Binding $parent[UserControl].((vm:ImportWizardViewModel)DataContext).HideZeroAmountRowCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    IsVisible="{Binding CanHide}"
+                                                    Padding="10,2" CornerRadius="6" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>

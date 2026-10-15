@@ -68,11 +68,8 @@ public class BudgetsViewRenderingTests
         var mediator = Substitute.For<IMediator>();
         mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(Array.Empty<BudgetProgress>()));
-        mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<Account>>(new[]
-            {
-                Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System),
-            }));
+        mediator.Send(Arg.Any<GetBaseCurrencyQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>("USD"));
 
         using var page = new BudgetsViewModel(mediator, localizer);
         page.InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -123,8 +120,8 @@ public class BudgetsViewRenderingTests
                 new BudgetProgress(Guid.NewGuid(), "Groceries", new Money(200m, new CurrencyCode("USD")), new Money(50m, new CurrencyCode("USD")),
                     null, null, 0, BudgetPeriod.Weekly),
             }));
-        mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<Account>>(Array.Empty<Account>()));
+        mediator.Send(Arg.Any<GetBaseCurrencyQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
 
         using var page = new BudgetsViewModel(mediator, localizer);
         page.InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();

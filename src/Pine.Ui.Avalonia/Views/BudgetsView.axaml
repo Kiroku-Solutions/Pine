@@ -56,8 +56,8 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2" Spacing="5">
                         <TextBlock Text="{loc:Tr Budgets.Create.CurrencyLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
-                        <ComboBox ItemsSource="{Binding CurrencyOptions}" SelectedItem="{Binding NewCurrency}" MinWidth="100" IsEnabled="{Binding !IsSaving}"
-                                  AutomationProperties.Name="{loc:Tr Budgets.Create.CurrencyLabel}"/>
+                        <TextBlock Text="{Binding BaseCurrency}" MinWidth="100" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   AutomationProperties.Name="{loc:Tr Budgets.Create.CurrencyLabel}"/>
                     </StackPanel>
                 </Grid>
 

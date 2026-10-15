@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Budgets.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using Pine.Core.Accounts;
@@ -77,12 +78,17 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// The scanned image as stored bytes, kept until the transaction is saved.
     /// </summary>
     /// <remarks>
-    /// A byte array rather than the <see cref="Stream"/> that arrived, because the streams carried
-    /// by <c>ReceiptCapturedMessage</c> have no owner and are disposed by nobody (TD-126) -- so
-    /// holding one here would extend a lifetime that is already unclear. Copying costs one buffer
-    /// on a path that has already decoded a bitmap.
+    /// A byte array rather than the <see cref="Stream"/> that arrived: the streams carried by
+    /// <c>ReceiptCapturedMessage</c> are disposed as soon as the scan is done (TD-126), so none can be
+    /// held here. Copying costs one buffer on a path that has already decoded a bitmap.
     /// </remarks>
     private byte[]? _receiptBytes;
+
+    /// <summary>
+    /// The vault's base currency, whose scale the reconciliation uses while no account is selected
+    /// (TD-100). Null until loaded, or in a vault with no account and no explicit setting.
+    /// </summary>
+    private CurrencyCode? _baseCurrency;
 
     [ObservableProperty]
     public partial string Merchant { get; set; } = string.Empty;
@@ -281,6 +287,11 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private static readonly UserFacingMessage AccountsUnavailable = new("ScanReceipt.Failure.AccountsLoad");
 
     /// <summary>
+    /// The view model's logger, for the code-behind that reports a failure through it (TD-127). A view is built by the XAML loader with no container reach, so it borrows the logger of the view model it is the face of.
+    /// </summary>
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _logger;
+
+    /// <summary>
     /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
     /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
     /// </summary>
@@ -341,6 +352,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
             IsBusy = false;
         }
+        finally
+        {
+            // THE STREAMS ARE OURS (TD-126): ownership travelled with the message. Nothing below this
+            // point keeps either one -- the bitmap is decoded and the bytes are copied -- so this is the
+            // one place they are released, on success and on failure alike.
+            message.ImageStream.Dispose();
+            message.OcrImageStream?.Dispose();
+        }
     }
 
     private async Task LoadAccountsAsync()
@@ -350,6 +369,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         {
             Accounts.Add(acc);
         }
+
+        // THE SCALE FOR THE NO-ACCOUNT CASE (TD-100, decided 2026-10-07): the vault's base currency.
+        var baseCode = await _mediator.Send(new GetBaseCurrencyQuery());
+        _baseCurrency = !string.IsNullOrWhiteSpace(baseCode) && CurrencyCode.TryCreate(baseCode, out var parsed)
+            ? parsed
+            : null;
 
         if (Accounts.Any())
             SelectedAccount = Accounts.First();
@@ -477,7 +502,9 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                         // amount out of existence.
                         Kind = li.Kind,
                         Description = li.Description,
-                        Quantity = li.Quantity,
+                        // OCR input is ROUNDED to the store's scale; a person's own entry is rejected by the
+                        // validator instead (LineQuantity, TD-95).
+                        Quantity = Pine.Core.Transactions.LineQuantity.RoundRecognised(li.Quantity),
                         UnitPrice = li.UnitPrice,
                         TotalPrice = li.TotalPrice
                     });
@@ -488,7 +515,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             if (!string.IsNullOrWhiteSpace(Merchant))
             {
                 _status.Set("ScanReceipt.Status.SuggestingCategory");
-                var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Merchant, Amount));
+                var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(Pine.Application.Services.CategorisationText.Build(Merchant, null), Amount));
                 if (!string.IsNullOrWhiteSpace(categoryName))
                 {
                     Category = categoryName;
@@ -790,26 +817,21 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// the command validator both compare figures that have been normalised to the minor units of
     /// the account currency (TD-18), so comparing raw decimals here could show the user a
     /// reconciled receipt that the validator then refuses -- or, worse, an unreconciled one they
-    /// cannot clear. Falling back to plain decimals before an account is chosen is safe because
-    /// nothing can be saved in that state anyway.
+    /// cannot clear. Before an account is chosen the vault's base currency supplies the scale (TD-100);
+    /// plain decimals remain only for a vault with neither an account nor a base currency.
     /// </remarks>
     private void RecomputeReconciliation()
     {
         HasLineItems = LineItems.Count > 0;
 
-        var currency = SelectedAccount?.Balance.Currency;
+        // The selected account's currency, else the vault's base currency (TD-100): so the figure shown
+        // before an account is chosen is rounded to a real scale, the one an account in the base
+        // currency would use, rather than summed exactly.
+        var currency = SelectedAccount?.Balance.Currency ?? _baseCurrency;
         if (currency is null)
         {
-            // NO ACCOUNT YET, SO NO SCALE TO ROUND TO — and this branch is deliberately NOT unified
-            // with the one below. Rounding needs a currency, and the only way to have one here would
-            // be to guess, which would show the user a difference computed against a scale their
-            // account may not have.
-            //
-            // It is safe because the verdict is not load-bearing until an account exists:
-            // SaveTransactionAsync refuses with "Please select an account" before it ever consults
-            // IsReconciled, so every save is judged by the Money path below. What this branch feeds
-            // is the figure on screen while the user is still filling the form, and computing that
-            // exactly — no rounding at all — is the most honest thing to show without a currency.
+            // NO ACCOUNT AND NO BASE CURRENCY (an empty vault): there is genuinely no scale to round to,
+            // and nothing can be saved in that state anyway, so the exact figure is the honest one.
             LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
             UnreconciledDifference = Amount - LineItemsTotal;
         }

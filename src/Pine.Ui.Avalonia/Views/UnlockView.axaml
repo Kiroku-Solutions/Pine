@@ -61,6 +61,18 @@
                             FontWeight="SemiBold"
                             IsEnabled="{Binding !IsBusy}" />
 
+                    <!-- Opt-in OS-credential unlock (TD-87). Only offered when this vault has a platform
+                         wrap; it never replaces the password above. -->
+                    <Button Content="{loc:Tr Unlock.PlatformButton}"
+                            Command="{Binding UnlockWithPlatformCommand}"
+                            IsVisible="{Binding CanUnlockWithPlatform}"
+                            Classes="pine-outline"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="0,12"
+                            FontSize="14"
+                            IsEnabled="{Binding !IsBusy}" />
+
                     <!-- Go Back Button -->
                     <Button Content="{loc:Tr Unlock.GoBackButton}"
                             Command="{Binding GoBackCommand}" 

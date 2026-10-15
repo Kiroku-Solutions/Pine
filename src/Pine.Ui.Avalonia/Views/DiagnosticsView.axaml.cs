@@ -33,7 +33,7 @@ public partial class DiagnosticsView : UserControl
         {
             ObservedTask.Run(
                 () => CopyLogsAsync(sender, vm),
-                null,
+                vm.Logger,
                 "diagnostics-copy-logs",
                 new UserFacingMessage("Diagnostics.Failure.CopyLogs"),
                 vm.ReportFailure);

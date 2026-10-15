@@ -15,6 +15,7 @@ public partial class MainViewModel : ObservableObject, INavigationService
     private readonly IViewModelFactory _viewModels;
     private readonly IVaultSession _vaultSession;
     private readonly IVaultAutoLockService _autoLockService;
+    private readonly MediatR.ISender? _sender;
 
     /// <summary>
     /// The vault registry this screen consults at startup to decide between the picker and
@@ -27,17 +28,19 @@ public partial class MainViewModel : ObservableObject, INavigationService
     /// taking it in the constructor is the same object at the same time -- it is only the reach
     /// that has gone.
     /// </remarks>
-    private readonly VaultManager _vaultManager;
+    private readonly IVaultManager _vaultManager;
 
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
     public MainViewModel(
         IViewModelFactory viewModels,
-        VaultManager vaultManager,
+        IVaultManager vaultManager,
         IVaultSession vaultSession,
-        IVaultAutoLockService autoLockService)
+        IVaultAutoLockService autoLockService,
+        MediatR.ISender? sender = null)
     {
+        _sender = sender;
         _viewModels = viewModels;
         _vaultManager = vaultManager;
         _vaultSession = vaultSession;
@@ -233,6 +236,33 @@ public partial class MainViewModel : ObservableObject, INavigationService
         if (page is ShellViewModel)
         {
             _autoLockService.StartMonitoring();
+            _ = ApplyStoredAutoLockTimeoutAsync();
+        }
+    }
+
+    /// <summary>
+    /// TD-119: the idle timeout is an encrypted in-vault Setting, readable only once the vault is
+    /// open, so it is applied on arrival in the shell. A missing or invalid Setting leaves the
+    /// configured value in force; a failure here must never disturb navigation.
+    /// </summary>
+    private async Task ApplyStoredAutoLockTimeoutAsync()
+    {
+        if (_sender is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var preferences = await _sender.Send(new Pine.Application.Settings.GetUserPreferencesQuery());
+            if (preferences is not null)
+            {
+                _autoLockService.SetIdleTimeout(preferences.AutoLockIdleTimeout);
+            }
+        }
+        catch (Exception)
+        {
+            // Keep the configured timeout.
         }
     }
 }

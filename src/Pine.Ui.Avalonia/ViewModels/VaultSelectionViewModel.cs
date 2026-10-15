@@ -18,7 +18,7 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
     private readonly LocalizedMessageSlot _error;
     private readonly LocalizedMessageSlot _lockNotice;
 
-    private readonly VaultManager _vaultManager;
+    private readonly IVaultManager _vaultManager;
     private readonly INavigationService _navigationService;
     private readonly IViewModelFactory _viewModels;
     private readonly ILogger<VaultSelectionViewModel>? _logger;
@@ -57,7 +57,7 @@ public partial class VaultSelectionViewModel : ObservableObject, IAsyncInitializ
     public partial string? ErrorMessage { get; set; }
 
     public VaultSelectionViewModel(
-        VaultManager vaultManager,
+        IVaultManager vaultManager,
         INavigationService navigationService,
         IViewModelFactory viewModels,
         ILogger<VaultSelectionViewModel>? logger = null,

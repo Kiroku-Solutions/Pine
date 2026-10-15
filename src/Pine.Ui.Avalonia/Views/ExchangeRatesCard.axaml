@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             x:Class="Pine.Ui.Avalonia.Views.ExchangeRatesCard"
+             x:DataType="vm:SettingsViewModel">
+
+    <!-- Manual exchange rates. The data context is the Settings view model. Nothing here, or anywhere, reaches the network. -->
+    <Border Background="{DynamicResource PineSurface}"
+            BorderBrush="{DynamicResource PineBorder}"
+            BorderThickness="1" CornerRadius="12" Padding="24">
+        <StackPanel Spacing="16">
+            <TextBlock Text="{loc:Tr Settings.ExchangeRates.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+            <Border Height="1" Background="{DynamicResource PineBorder}" />
+            <TextBlock Text="{loc:Tr Settings.ExchangeRates.Description}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+
+            <Grid ColumnDefinitions="*, 16, *" RowDefinitions="Auto, Auto">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Tr Settings.ExchangeRates.From}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                    <AutoCompleteBox DataContext="{Binding RateFromPicker}"
+                                     ItemsSource="{Binding Matches}"
+                                     Text="{Binding SearchText, Mode=TwoWay}"
+                                     SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
+                                     FilterMode="None" MinimumPrefixLength="0" MaxDropDownHeight="240"
+                                     Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                     AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.From}">
+                        <AutoCompleteBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CurrencyChoice">
+                                <TextBlock Text="{Binding Display}" />
+                            </DataTemplate>
+                        </AutoCompleteBox.ItemTemplate>
+                    </AutoCompleteBox>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="{loc:Tr Settings.ExchangeRates.To}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                    <AutoCompleteBox DataContext="{Binding RateToPicker}"
+                                     ItemsSource="{Binding Matches}"
+                                     Text="{Binding SearchText, Mode=TwoWay}"
+                                     SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
+                                     FilterMode="None" MinimumPrefixLength="0" MaxDropDownHeight="240"
+                                     Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                     AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.To}">
+                        <AutoCompleteBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CurrencyChoice">
+                                <TextBlock Text="{Binding Display}" />
+                            </DataTemplate>
+                        </AutoCompleteBox.ItemTemplate>
+                    </AutoCompleteBox>
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnDefinitions="*, 16, *">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Tr Settings.ExchangeRates.Rate}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+                    <TextBox Text="{Binding RateInput, Mode=TwoWay}" AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.Rate}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="{loc:Tr Settings.ExchangeRates.Date}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+                    <TextBox Text="{Binding RateDateInput, Mode=TwoWay}" AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.Date}" />
+                </StackPanel>
+            </Grid>
+
+            <Button Content="{loc:Tr Settings.ExchangeRates.Save}" Command="{Binding SaveExchangeRateCommand}" HorizontalAlignment="Left" />
+
+            <TextBlock Text="{Binding ExchangeRateMessage}" TextWrapping="Wrap" FontSize="13"
+                       IsVisible="{Binding ExchangeRateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Classes.pine-strength-danger="{Binding ExchangeRateFailed}"
+                       Classes.pine-strength-success="{Binding !ExchangeRateFailed}" />
+
+            <TextBlock Text="{loc:Tr Settings.ExchangeRates.Empty}" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                       IsVisible="{Binding HasNoExchangeRates}" />
+            <ItemsControl ItemsSource="{Binding ExchangeRateLines}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Text="{Binding}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

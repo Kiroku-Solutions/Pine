@@ -49,25 +49,23 @@ public class BudgetsPageCreateTests
             .Returns(Task.FromResult(Guid.NewGuid()));
     }
 
-    private void WithAccounts(params string[] currencies) =>
-        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<Account>>(currencies
-                .Select((code, i) => Account.Create($"Account {i}", AccountType.Bank, new Money(0m, new CurrencyCode(code)), TimeProvider.System))
-                .ToList()));
+    /// <summary>The vault's base currency as the page reads it (TD-63); none means no account and no setting.</summary>
+    private void WithBaseCurrency(string? code) =>
+        _mediator.Send(Arg.Any<GetBaseCurrencyQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(code));
 
     private BudgetsViewModel Page() => new(_mediator, _localizer);
 
     [Fact]
-    public async Task OpeningTheForm_OffersTheCurrenciesOfTheUsersAccounts_Once_AndNoFortnight()
+    public async Task OpeningTheForm_ShowsTheVaultsBaseCurrency_AndNoFortnight()
     {
-        WithAccounts("USD", "EUR", "USD");
+        WithBaseCurrency("EUR");
         using var page = Page();
 
         await page.BeginCreateCommand.ExecuteAsync(null);
 
         page.IsCreating.Should().BeTrue();
-        page.CurrencyOptions.Should().Equal("EUR", "USD");
-        page.NewCurrency.Should().Be("EUR");
+        page.BaseCurrency.Should().Be("EUR");
         page.PeriodOptions.Select(o => o.Period).Should().Equal(
             BudgetPeriod.Monthly, BudgetPeriod.Weekly, BudgetPeriod.Yearly, BudgetPeriod.Custom);
         page.PeriodOptions.Select(o => o.Label).Should().Equal("Monthly", "Weekly", "Yearly", "Custom dates");
@@ -79,7 +77,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task WithNoAccounts_TheFormDoesNotOpen_AndSaysWhy()
     {
-        WithAccounts();
+        WithBaseCurrency(null);
         using var page = Page();
 
         await page.BeginCreateCommand.ExecuteAsync(null);
@@ -91,7 +89,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task Saving_SendsWhatTheFormHolds_ClosesTheForm_AndReloads()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
 
@@ -102,7 +100,7 @@ public class BudgetsPageCreateTests
         await page.SaveBudgetCommand.ExecuteAsync(null);
 
         _sent.Should().ContainSingle().Which.Should().Be(
-            new CreateBudgetCommand("Groceries", 400m, "USD", BudgetPeriod.Weekly, null, null));
+            new CreateBudgetCommand("Groceries", 400m, BudgetPeriod.Weekly, null, null));
         page.IsCreating.Should().BeFalse();
         page.CreateMessage.Should().BeEmpty();
         await _mediator.Received(1).Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>());
@@ -114,7 +112,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task ACustomBudget_SendsTheDayAfterTheLastDayPicked_AsItsEnd()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
 
@@ -136,7 +134,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task SwitchingAwayFromCustom_SendsNoDates()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
 
@@ -157,7 +155,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task ARefusal_IsShown_InTheScreensLanguage_AndTheFormStaysOpen()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         _mediator.Send(Arg.Any<CreateBudgetCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new RequestValidationException(new[]
             {
@@ -180,7 +178,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task AFailureThatIsNotARefusal_SaysNothingWasSaved()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         _mediator.Send(Arg.Any<CreateBudgetCommand>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("disk full at C:\\Users\\someone"));
         using var page = Page();
@@ -195,7 +193,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task Cancelling_ClosesTheForm_AndSendsNothing()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
 
@@ -260,7 +258,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task ASavedBudgetWhoseReloadFails_IsReportedAsALoadFailure_NotAsUnsaved()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
         page.NewCategory = "Groceries";
@@ -281,7 +279,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task ACustomBudgetsDates_AreLocalMidnight_AtTheOffsetInForceOnThatDay()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
         page.NewCategory = "Holiday";
@@ -326,7 +324,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task AnEmptyLimit_IsSentAsZero_SoTheValidatorRefusesIt()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.BeginCreateCommand.ExecuteAsync(null);
         page.NewCategory = "Groceries";
@@ -342,7 +340,7 @@ public class BudgetsPageCreateTests
     [Fact]
     public async Task ALanguageChange_ReWordsRowsAndPeriods_AndKeepsTheChosenPeriod()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         _mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<BudgetProgress>>(new[]
             {
@@ -375,28 +373,11 @@ public class BudgetsPageCreateTests
         notified.Should().BeFalse();
     }
 
-    /// <summary>A currency the command would refuse is never offered (review finding m8).</summary>
-    [Fact]
-    public async Task ACurrencyTheCommandWouldRefuse_IsNotOffered()
-    {
-        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<Account>>(new[]
-            {
-                Account.Create("Legacy", AccountType.Bank, new Money(0m, CurrencyCode.FromStoredValue("ZZZ")), TimeProvider.System),
-                Account.Create("Current", AccountType.Bank, new Money(0m, new CurrencyCode("USD")), TimeProvider.System),
-            }));
-        using var page = Page();
-
-        await page.BeginCreateCommand.ExecuteAsync(null);
-
-        page.CurrencyOptions.Should().Equal("USD");
-    }
-
     /// <summary>The "no budgets yet" sentence does not sit under an open form (review finding m9).</summary>
     [Fact]
     public async Task TheEmptySentence_IsHidden_WhileTheFormIsOpen()
     {
-        WithAccounts("USD");
+        WithBaseCurrency("USD");
         using var page = Page();
         await page.InitializeAsync(CancellationToken.None);
         page.IsEmpty.Should().BeTrue();

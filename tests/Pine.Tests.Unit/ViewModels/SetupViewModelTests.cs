@@ -24,7 +24,7 @@ public class SetupViewModelTests
     /// ever written -- the temporary path is what makes that true by construction rather than by
     /// luck.
     /// </summary>
-    private readonly VaultManager _vaultManager = new(new PineStorageOptions
+    private readonly IVaultManager _vaultManager = new VaultManager(new PineStorageOptions
     {
         DataDirectory = Path.Combine(Path.GetTempPath(), "pine-setup-viewmodel-tests"),
     });
@@ -105,5 +105,51 @@ public class SetupViewModelTests
         // Assert
         vm.StatusMessage.Should().Contain("cannot be empty");
         _navigationService.DidNotReceive().NavigateTo(Arg.Any<ObservableObject>());
+    }
+
+    /// <summary>
+    /// TD-81: with <see cref="IVaultManager"/> substitutable, the happy path finally runs under test
+    /// without touching the real data directory: a vault is registered, its header written BEFORE
+    /// the session is unlocked and the schema created, and the shell is shown.
+    /// </summary>
+    [Fact]
+    public async Task InitializeVaultCommand_ShouldCreateVaultAndNavigate_WithAFakeVaultManager()
+    {
+        var vaultDir = Path.Combine(Path.GetTempPath(), "pine-td81-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fakeManager = Substitute.For<IVaultManager>();
+            fakeManager.CreateVaultAsync("Home").Returns(new VaultProfile { Id = Guid.NewGuid(), Name = "Home", Path = vaultDir });
+
+            var kdf = Pine.Core.Security.KdfParameters.Argon2idV1;
+            var header = Substitute.For<IVaultKeyService>();
+            var dataKey = new byte[] { 1, 2, 3, 4 };
+            var vaultHeader = new VaultHeader(
+                VaultHeader.CurrentVersion, Guid.NewGuid(), DateTimeOffset.UtcNow, kdf, new byte[16],
+                new VaultKeyWrap(VaultKeyWrapAlgorithms.Aes256Gcm, new byte[12], new byte[32], new byte[16]));
+            header.CreateVault(Arg.Any<string>(), Arg.Any<KdfParameters>()).Returns(new VaultKeyMaterial(vaultHeader, dataKey));
+
+            var vm = new SetupViewModel(
+                fakeManager, _vaultSession, _navigationService, _viewModels,
+                _vaultHeaderStore, header, _vaultDatabaseOpener, new Localizer())
+            {
+                VaultName = "Home",
+                MasterPassword = "correct horse battery staple 7391!",
+                ConfirmPassword = "correct horse battery staple 7391!",
+            };
+
+            await vm.InitializeVaultCommand.ExecuteAsync(null);
+
+            await fakeManager.Received(1).CreateVaultAsync("Home");
+            _vaultHeaderStore.Received(1).Write(vaultDir, vaultHeader);
+            _vaultSession.Received(1).Unlock(vaultDir, Arg.Any<byte[]>());
+            await _vaultDatabaseOpener.Received(1).CreateSchemaAsync(Arg.Any<System.Threading.CancellationToken>());
+            _viewModels.Received(1).CreateShell();
+            _navigationService.Received(1).NavigateTo(Arg.Any<ObservableObject>());
+        }
+        finally
+        {
+            if (Directory.Exists(vaultDir)) Directory.Delete(vaultDir, true);
+        }
     }
 }

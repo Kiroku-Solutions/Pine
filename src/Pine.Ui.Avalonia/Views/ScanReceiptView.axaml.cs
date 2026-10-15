@@ -26,7 +26,7 @@ public partial class ScanReceiptView : UserControl
     {
         ObservedTask.Run(
             SelectImageAsync,
-            null,
+            (DataContext as ScanReceiptViewModel)?.Logger,
             "receipt-image-select",
             new UserFacingMessage("ScanReceipt.Failure.SelectImage"),
             messages =>

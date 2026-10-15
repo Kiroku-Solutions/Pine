@@ -38,7 +38,11 @@
                     <TextBlock Text="{loc:Tr Transactions.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <!-- TD-71: voided rows are hidden by default; this brings them back. -->
+                    <CheckBox Content="{loc:Tr Transactions.ShowVoided}" IsChecked="{Binding ShowVoided}" VerticalAlignment="Center" />
+                    <Button Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+                </StackPanel>
             </Grid>
 
             <!-- Transactions List -->
@@ -63,7 +67,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="core:Transaction">
                                     <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
-                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto, Auto">
+                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto, Auto, Auto">
 
                                             <Border Grid.Column="0" Classes="tx-avatar" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
                                                 <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
@@ -83,6 +87,16 @@
                                                             ToolTip.Tip="{Binding VoidReason}">
                                                         <TextBlock Text="{loc:Tr Transactions.VoidedBadge}" FontSize="10" FontWeight="Bold" Opacity="1"
                                                                    Foreground="{DynamicResource PineDanger}" />
+                                                    </Border>
+
+                                                    <!-- Zero-amount import marker: often a bank authorization the person may want to hide. -->
+                                                    <Border IsVisible="{Binding IsZeroAmountImport}"
+                                                            Background="{DynamicResource PineSurfaceElevated}"
+                                                            BorderThickness="1" BorderBrush="{DynamicResource PineBorder}"
+                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                                            ToolTip.Tip="{loc:Tr ImportReview.ImportedZeroAmount}">
+                                                        <TextBlock Text="{loc:Tr ImportWizard.Legend.ZeroAmount}" FontSize="10" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource PineTextMuted}" />
                                                     </Border>
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
@@ -137,6 +151,28 @@
                                                     IsVisible="{Binding !IsVoided}"
                                                     AutomationProperties.Name="{loc:Tr Transactions.VoidAutomationName}"
                                                     Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginVoidCommand}"
+                                                    CommandParameter="{Binding}" />
+
+                                            <!-- Unvoid action (TD-69). Shares the Void cell: exactly one of the two
+                                                 is ever visible. -->
+                                            <Button Grid.Column="6" Classes="pine-outline"
+                                                    Content="{loc:Tr Transactions.UnvoidAction}"
+                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding IsVoided}"
+                                                    AutomationProperties.Name="{loc:Tr Transactions.UnvoidAutomationName}"
+                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).UnvoidCommand}"
+                                                    CommandParameter="{Binding}" />
+
+                                            <!-- Attach a file (TD-141, FR-TXN-02). Opens the file picker the
+                                                 view supplies; always available, since any transaction may
+                                                 gain evidence. -->
+                                            <Button Grid.Column="7" Classes="pine-outline"
+                                                    Content="{loc:Tr Transactions.AttachAction}"
+                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.Name="{loc:Tr Transactions.AttachAutomationName}"
+                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).AttachFileCommand}"
                                                     CommandParameter="{Binding}" />
                                         </Grid>
                                     </Border>

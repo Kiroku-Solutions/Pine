@@ -11,10 +11,13 @@ using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Commands;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Budgets;
+using Pine.Application.Budgets.Queries;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Security.Commands;
 using Pine.Application.Security.Queries;
+using Pine.Application.Services;
 using Pine.Application.Settings.Commands;
 using Pine.Application.Settings.Queries;
 using Pine.Application.Sync.Commands;
@@ -78,6 +81,21 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     /// </remarks>
     public const string LanguageSettingKey = "Appearance.Language";
 
+    /// <summary>
+    /// Whether the user has agreed to the categoriser being trained on this vault's transactions
+    /// (TD-89). Persisted as an in-vault Setting; unset means off.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool TrainingConsent { get; set; }
+
+    /// <summary>
+    /// The vault's base currency chooser (TD-63 follow-up): the existing currency picker, seeded with the resolved
+    /// base currency. Choosing a row saves <see cref="BaseCurrency.SettingKey"/> through <c>SaveSettingCommand</c>,
+    /// whose validator refuses anything that is not an ISO 4217 code. Pine converts nothing: this decides which
+    /// currency a budget is in and which accounts form the single base-currency total.
+    /// </summary>
+    public CurrencyPickerViewModel BaseCurrencyPicker { get; } = new();
+
     /// <summary>Accent palettes offered in the appearance picker.</summary>
     public IReadOnlyList<ThemePalette> Palettes { get; } = ThemeManager.Palettes;
 
@@ -97,6 +115,14 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     [ObservableProperty]
     public partial bool RecalculationNeedsAttention { get; set; }
 
+    /// <summary>
+    /// The opening balance the user has typed for an account that has none on record (TD-70). Text,
+    /// because it is parsed here with the user's culture and a malformed entry is reported rather
+    /// than becoming a zero.
+    /// </summary>
+    [ObservableProperty]
+    public partial string OpeningBalanceInput { get; set; } = string.Empty;
+
     /// <summary>Whether a recalculation is in flight.</summary>
     [ObservableProperty]
     public partial bool IsRecalculating { get; set; }
@@ -112,6 +138,72 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     /// </summary>
     private readonly IVaultSession? _vaultSession;
 
+    private readonly IPlatformUnlock? _platformUnlock;
+    private bool _suppressPlatformUnlockChange;
+
+    /// <summary>Whether this head can offer "Unlock with Windows sign-in" at all (TD-87).</summary>
+    public bool IsPlatformUnlockAvailable => _platformUnlock is { IsAvailable: true };
+
+    /// <summary>Whether this vault currently has a platform wrap. Bound to the toggle.</summary>
+    [ObservableProperty]
+    public partial bool PlatformUnlockEnabled { get; set; }
+
+    private void LoadPlatformUnlockState()
+    {
+        _suppressPlatformUnlockChange = true;
+        try
+        {
+            var directory = _vaultSession?.DbPath;
+            PlatformUnlockEnabled = IsPlatformUnlockAvailable && directory is not null && _platformUnlock!.IsEnabled(directory);
+        }
+        catch (Exception)
+        {
+            PlatformUnlockEnabled = false;
+        }
+        finally
+        {
+            _suppressPlatformUnlockChange = false;
+        }
+    }
+
+    /// <summary>
+    /// Turning the toggle on seals the CURRENT SESSION's data key under the platform key; off deletes
+    /// the wrap. The password wrap is never touched. The vault is already unlocked, so the session key
+    /// is the proof of identity; there is no separate re-confirmation flow in Settings to reuse. A
+    /// failure puts the toggle back and reports a fixed sentence (the key and the exception detail
+    /// never reach the UI).
+    /// </summary>
+    partial void OnPlatformUnlockEnabledChanged(bool value)
+    {
+        if (_suppressPlatformUnlockChange) return;
+
+        try
+        {
+            var directory = _vaultSession?.DbPath;
+            if (_platformUnlock is null || directory is null) throw new InvalidOperationException();
+
+            if (value)
+            {
+                var key = _vaultSession!.Key ?? throw new InvalidOperationException();
+                var copy = (byte[])key.Clone();
+                try { _platformUnlock.Enable(directory, copy); }
+                finally { Array.Clear(copy, 0, copy.Length); }
+            }
+            else
+            {
+                _platformUnlock.Disable(directory);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "platform-unlock-toggle failed");
+            _suppressPlatformUnlockChange = true;
+            try { PlatformUnlockEnabled = !value; }
+            finally { _suppressPlatformUnlockChange = false; }
+            _error.Set(new UserFacingMessage("Settings.Security.PlatformUnlock.Failed"));
+        }
+    }
+
     /// <summary>Holds the vault-export sentence as a KEY, so it survives a language switch.</summary>
     private readonly LocalizedMessageSlot _exportMessage;
     private readonly LocalizedMessageSlot _restoreMessage;
@@ -121,6 +213,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     private readonly LocalizedMessageSlot _newPasswordStatus;
     private readonly LocalizedMessageSlot _newPasswordAdvice;
     private readonly LocalizedMessageSlot _eraseMessage;
+    private readonly LocalizedMessageSlot _diagnosticBundleMessage;
 
     private static void SetOrClear(LocalizedMessageSlot slot, UserFacingMessage? message)
     {
@@ -139,7 +232,8 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         ILocalizer localizer,
         LanguagePreferenceStore languageStore,
         ILogger<SettingsViewModel>? logger = null,
-        IVaultSession? vaultSession = null)
+        IVaultSession? vaultSession = null,
+        IPlatformUnlock? platformUnlock = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -149,6 +243,8 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _languageStore = languageStore;
         _logger = logger;
         _vaultSession = vaultSession;
+        _platformUnlock = platformUnlock;
+        LoadPlatformUnlockState();
         _exportMessage = new LocalizedMessageSlot(localizer, text => VaultExportMessage = text);
         _restoreMessage = new LocalizedMessageSlot(localizer, text => VaultRestoreMessage = text);
         _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
@@ -157,7 +253,9 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         _newPasswordStatus = new LocalizedMessageSlot(localizer, text => NewPasswordStrengthStatusText = text ?? string.Empty);
         _newPasswordAdvice = new LocalizedMessageSlot(localizer, text => NewPasswordAdviceText = text ?? string.Empty);
         _eraseMessage = new LocalizedMessageSlot(localizer, text => EraseMessage = text);
+        _diagnosticBundleMessage = new LocalizedMessageSlot(localizer, text => DiagnosticBundleMessage = text);
         _localizer.LanguageChanged += OnLanguageChanged;
+        BaseCurrencyPicker.PropertyChanged += OnBaseCurrencyPickerChanged;
 
         // Default values
         SelectedThemeIndex = 2; // System
@@ -228,6 +326,7 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         try
         {
             await LoadAppearanceSettingsAsync();
+            await LoadPreferencesAsync();
         }
         finally
         {
@@ -251,10 +350,22 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
             SelectedPaletteIndex = ThemeManager.CurrentPaletteIndex;
         }
 
+        var consentSetting = await _sender.Send(new GetSettingQuery(CategorizationTrainingBackgroundService.TrainingConsentSettingKey));
+        TrainingConsent = string.Equals(
+            consentSetting, CategorizationTrainingBackgroundService.TrainingConsentGranted, StringComparison.Ordinal);
+
+        // The resolved base currency (explicit choice, else the oldest account's), null for an empty vault.
+        var baseCurrency = await _sender.Send(new GetBaseCurrencyQuery());
+        if (!string.IsNullOrEmpty(baseCurrency))
+        {
+            BaseCurrencyPicker.SelectedCode = baseCurrency;
+        }
+
         await MigrateLegacyLanguageSettingAsync();
         SelectedLanguage = CurrentOption();
 
         await LoadAccountsAsync();
+        await LoadExchangeRatesAsync();
         await LoadSyncAuditLogAsync();
     }
 
@@ -386,6 +497,78 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     }
 
     /// <summary>
+    /// Records the opening balance the user typed for an account that has none, and reports what that
+    /// did to the balance (TD-70).
+    /// </summary>
+    /// <param name="account">The account to set it on.</param>
+    [RelayCommand]
+    private async Task SetOpeningBalanceAsync(Account? account)
+    {
+        if (account is null || IsRecalculating) return;
+
+        if (!decimal.TryParse(
+                OpeningBalanceInput?.Trim(),
+                System.Globalization.NumberStyles.Number | System.Globalization.NumberStyles.AllowLeadingSign,
+                System.Globalization.CultureInfo.CurrentCulture,
+                out var amount)
+            && !decimal.TryParse(
+                OpeningBalanceInput?.Trim(),
+                System.Globalization.NumberStyles.Number | System.Globalization.NumberStyles.AllowLeadingSign,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out amount))
+        {
+            RecalculationNeedsAttention = true;
+            _recalculationReport.Set("Settings.Recalculation.OpeningBalanceNotANumber");
+            return;
+        }
+
+        IsRecalculating = true;
+        _recalculationReport.Clear();
+        try
+        {
+            var result = await _sender.Send(new SetOpeningBalanceCommand(account.Id, amount));
+
+            var counted = result.TransactionsCounted;
+            var rows = new UserFacingMessage(
+                counted == 1 ? "Settings.Recalculation.TransactionCountOne" : "Settings.Recalculation.TransactionCountMany",
+                counted);
+
+            if (result.Drift == 0m)
+            {
+                RecalculationNeedsAttention = false;
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceSet",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows);
+            }
+            else
+            {
+                RecalculationNeedsAttention = true;
+                _recalculationReport.Set(
+                    "Settings.Recalculation.OpeningBalanceSetRepaired",
+                    account.Name, result.OpeningBalance, result.CurrencyCode, rows,
+                    result.PreviousBalance, result.NewBalance, result.Drift);
+                WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            }
+
+            OpeningBalanceInput = string.Empty;
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex)
+        {
+            RecalculationNeedsAttention = true;
+            _recalculationReport.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "set-opening-balance",
+                new UserFacingMessage("Settings.Recalculation.Failure")));
+        }
+        finally
+        {
+            IsRecalculating = false;
+        }
+    }
+
+    /// <summary>
     /// Recomputes one account's balance from its ledger and reports what that found.
     /// </summary>
     /// <remarks>
@@ -475,6 +658,34 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         ThemeManager.ApplyVariant(value);
         ObservedTask.Run(
             () => SaveSettingAsync(ThemeManager.VariantSettingKey, value.ToString(CultureInfo.InvariantCulture)),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            _error.Set);
+    }
+
+    private void OnBaseCurrencyPickerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isInitializing || e.PropertyName != nameof(CurrencyPickerViewModel.SelectedCode)) return;
+
+        var code = BaseCurrencyPicker.SelectedCode;
+        if (string.IsNullOrEmpty(code)) return;
+
+        ObservedTask.Run(
+            () => SaveSettingAsync(BaseCurrency.SettingKey, code),
+            _logger,
+            "setting-save",
+            SettingNotSaved,
+            OnBaseCurrencySaveFailed);
+    }
+
+    partial void OnTrainingConsentChanged(bool value)
+    {
+        if (_isInitializing) return;
+        ObservedTask.Run(
+            () => SaveSettingAsync(
+                CategorizationTrainingBackgroundService.TrainingConsentSettingKey,
+                value ? CategorizationTrainingBackgroundService.TrainingConsentGranted : "false"),
             _logger,
             "setting-save",
             SettingNotSaved,
@@ -822,6 +1033,9 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         {
             await _sender.Send(new ChangeVaultPasswordCommand(CurrentPassword, NewPassword));
 
+            // The handler destroys the platform wrap (TD-87); the toggle must show that.
+            LoadPlatformUnlockState();
+
             // Cleared the instant they are no longer needed, so the new password does not sit in a
             // bound text box for the rest of the session (TD-11). The finally block clears the
             // other two regardless of outcome; NewPassword is cleared only on success, because a
@@ -1106,9 +1320,15 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
         try
         {
             var result = await _sender.Send(new RestoreVaultBackupCommand(selected.Path));
+            LoadPlatformUnlockState();
 
             VaultRestoreFailed = false;
             _restoreMessage.Set("Settings.Security.RestoreVault.Success", result.SafetyBackupPath);
+        }
+        catch (VaultBackupKeyMismatchException mismatch)
+        {
+            // The backup predates a data-key rotation: ask for the password from back then (nothing changed).
+            ShowBackupPasswordPrompt(mismatch.BackupPath);
         }
         catch (Exception ex)
         {
@@ -1343,14 +1563,18 @@ public partial class SettingsViewModel : ObservableObject, IAsyncInitializable, 
     public void Dispose()
     {
         _localizer.LanguageChanged -= OnLanguageChanged;
+        _exchangeRateSlot?.Dispose();
         _exportMessage.Dispose();
         _restoreMessage.Dispose();
+        _backupPasswordError?.Dispose();
         _error.Dispose();
+        _diagnosticBundleMessage.Dispose();
         _recalculationReport.Dispose();
         _passwordChangeMessage.Dispose();
         _newPasswordStatus.Dispose();
         _newPasswordAdvice.Dispose();
         _eraseMessage.Dispose();
+        DisposePreferences();
         GC.SuppressFinalize(this);
     }
 }

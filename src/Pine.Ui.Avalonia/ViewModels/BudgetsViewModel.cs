@@ -258,7 +258,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     [ObservableProperty]
     public partial string NewCategory { get; set; } = string.Empty;
 
-    /// <summary>The new budget's limit, in <see cref="NewCurrency"/>; null while the box is empty.</summary>
+    /// <summary>The new budget's limit, in <see cref="BaseCurrency"/>; null while the box is empty.</summary>
     /// <remarks>
     /// NULLABLE ON PURPOSE (independent review of item 3.0). Bound as a plain <see cref="decimal"/>, clearing
     /// the box pushed null into a property that cannot hold it, the binding kept the last number, and Save
@@ -268,9 +268,12 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     [ObservableProperty]
     public partial decimal? NewLimit { get; set; }
 
-    /// <summary>The currency the new budget is measured in.</summary>
+    /// <summary>
+    /// The currency the new budget is measured in: the vault's base currency, shown and never chosen
+    /// (TD-63).
+    /// </summary>
     [ObservableProperty]
-    public partial string? NewCurrency { get; set; }
+    public partial string? BaseCurrency { get; set; }
 
     /// <summary>The period the new budget is measured over.</summary>
     [ObservableProperty]
@@ -291,17 +294,6 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     /// <summary>What went wrong creating a budget, in the user's language, or empty.</summary>
     [ObservableProperty]
     public partial string CreateMessage { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The currencies a budget may be created in: those of the user's accounts.
-    /// </summary>
-    /// <remarks>
-    /// NOT A FIXED LIST OF CURRENCIES. A budget is measured against splits in its own currency and
-    /// excludes the rest (<c>GetBudgetProgressQuery</c>), so a budget in a currency none of the user's
-    /// accounts holds could only ever report zero — a figure that looks measured and is not. With no
-    /// accounts there is nothing to offer, and the form says so instead of opening.
-    /// </remarks>
-    public ObservableCollection<string> CurrencyOptions { get; } = new();
 
     /// <summary>
     /// The periods the form offers: weekly, monthly, yearly, and custom dates.
@@ -382,10 +374,10 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     {
         _createMessage.Clear();
 
-        IReadOnlyList<Pine.Core.Accounts.Account> accounts;
+        string? baseCurrency;
         try
         {
-            accounts = await _mediator.Send(new GetAccountsQuery());
+            baseCurrency = await _mediator.Send(new GetBaseCurrencyQuery());
         }
         catch (Exception ex)
         {
@@ -393,19 +385,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             return;
         }
 
-        CurrencyOptions.Clear();
-        // Only codes the command will accept: an account can hold a non-ISO code read through
-        // CurrencyCode.FromStoredValue (TD-63), and offering it would refuse every save with no way forward.
-        foreach (var code in accounts
-                     .Select(a => a.Balance.Currency.Value)
-                     .Where(code => CurrencyCode.TryCreate(code, out _))
-                     .Distinct(StringComparer.Ordinal)
-                     .Order(StringComparer.Ordinal))
-        {
-            CurrencyOptions.Add(code);
-        }
-
-        if (CurrencyOptions.Count == 0)
+        if (string.IsNullOrEmpty(baseCurrency))
         {
             _createMessage.Set("Budgets.Create.NoAccounts");
             return;
@@ -416,7 +396,7 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
 
         NewCategory = string.Empty;
         NewLimit = null;
-        NewCurrency = CurrencyOptions[0];
+        BaseCurrency = baseCurrency;
         NewPeriod = PeriodOptions[0];
         NewStartDate = null;
         NewLastDate = null;
@@ -463,7 +443,6 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             await _mediator.Send(new CreateBudgetCommand(
                 NewCategory,
                 NewLimit ?? 0m,
-                NewCurrency ?? string.Empty,
                 period,
                 custom ? NewStartDate?.Date is { } start ? new DateTimeOffset(start) : null : null,
                 custom ? NewLastDate?.Date is { } last ? new DateTimeOffset(last.AddDays(1)) : null : null));

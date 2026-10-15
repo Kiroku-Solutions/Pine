@@ -2,6 +2,7 @@ using FluentAssertions;
 using MediatR;
 using NSubstitute;
 using Pine.Application.Accounts.Queries;
+using Pine.Application.Budgets.Queries;
 using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
@@ -55,6 +56,46 @@ public class ScanReceiptReconciliationTests
         // test does not race the fire-and-forget task for the currency the arithmetic depends on.
         viewModel.SelectedAccount = account;
         return viewModel;
+    }
+
+    /// <summary>
+    /// TD-100 (decided 2026-10-07): with no account selected the difference is rounded at the vault's
+    /// base currency's scale, not summed exactly. 99.6 is 100 in yen but 99.6 in no currency at all.
+    /// </summary>
+    [Fact]
+    public async Task WithNoAccountSelected_TheDifferenceUsesTheBaseCurrencysScale()
+    {
+        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Account>>(Array.Empty<Account>()));
+        _mediator.Send(Arg.Any<GetBaseCurrencyQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>("JPY"));
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), new Localizer());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.SelectedAccount.Should().BeNull();
+
+        viewModel.Amount = 100m;
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Description = "Tea", Quantity = 1m, UnitPrice = 99.6m });
+
+        viewModel.LineItemsTotal.Should().Be(100m, "yen has no minor unit, so 99.6 is 100");
+        viewModel.UnreconciledDifference.Should().Be(0m);
+        viewModel.IsReconciled.Should().BeTrue();
+    }
+
+    /// <summary>With neither an account nor a base currency there is no scale, and the exact sum is shown.</summary>
+    [Fact]
+    public async Task WithNoAccountAndNoBaseCurrency_TheDifferenceIsExact()
+    {
+        _mediator.Send(Arg.Any<GetAccountsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Account>>(Array.Empty<Account>()));
+        _mediator.Send(Arg.Any<GetBaseCurrencyQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
+        var viewModel = new ScanReceiptViewModel(_mediator, _navigationService, Substitute.For<IViewModelFactory>(), new Localizer());
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.Amount = 100m;
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Description = "Tea", Quantity = 1m, UnitPrice = 99.6m });
+
+        viewModel.UnreconciledDifference.Should().Be(0.4m);
     }
 
     [Fact]

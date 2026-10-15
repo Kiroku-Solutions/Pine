@@ -51,6 +51,26 @@ public class UnlockViewModelTests
     }
 
     [Fact]
+    public async Task UnlockVaultCommand_ShouldReportAFailedRekeyRecovery_WithItsOwnSentence_AndLockTheSession()
+    {
+        var rotation = Substitute.For<IVaultKeyRotationService>();
+        rotation.HasPendingRekey(Arg.Any<string>()).Returns(true);
+        rotation.RecoverAndUnwrap(Arg.Any<string>(), Arg.Any<string>())
+            .Throws(new VaultRekeyRecoveryException(@"internal detail at C:\vaults\personal"));
+        var vm = new UnlockViewModel(
+            _sender, _vaultSession, _navigationService, _viewModels, _vaultHeaderStore,
+            _vaultKeyService, _vaultDatabaseOpener, new Localizer(), keyRotation: rotation);
+        vm.Initialize(new VaultProfile { Name = "Personal", Path = @"C:\vaults\personal" });
+        vm.MasterPassword = "correct horse battery staple";
+
+        await vm.UnlockVaultCommand.ExecuteAsync(null);
+
+        vm.StatusMessage.Should().NotBe(GenericAuthMessage);
+        vm.StatusMessage.Should().Contain("password change was interrupted").And.NotContain("C:");
+        _vaultSession.Received().Lock();
+    }
+
+    [Fact]
     public async Task UnlockVaultCommand_ShouldSetErrorMessage_WhenPasswordIsEmpty()
     {
         // Arrange

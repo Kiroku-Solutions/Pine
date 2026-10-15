@@ -55,6 +55,11 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     public partial string? ErrorMessage { get; private set; }
 
     /// <summary>
+    /// The view model's logger, for the code-behind that reports a failure through it (TD-127). A view is built by the XAML loader with no container reach, so it borrows the logger of the view model it is the face of.
+    /// </summary>
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _logger;
+
+    /// <summary>
     /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
     /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
     /// </summary>
@@ -90,6 +95,9 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </remarks>
     public void Dispose()
     {
+        // The parked original is ours (TD-126): it arrived in a message and nobody else will release it.
+        _originalStream?.Dispose();
+        _originalStream = null;
         _error.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -116,9 +124,22 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
     {
         ArgumentNullException.ThrowIfNull(message);
 
+        // OWNERSHIP ARRIVED WITH THE MESSAGE (TD-126): this page releases a frame it replaces, one it cannot
+        // decode, and the one it still holds when it is disposed.
+        _originalStream?.Dispose();
         _originalStream = message.ImageStream;
-        _originalStream.Position = 0;
-        PreviewImage = new Bitmap(_originalStream);
+
+        try
+        {
+            _originalStream.Position = 0;
+            PreviewImage = new Bitmap(_originalStream);
+        }
+        catch
+        {
+            _originalStream.Dispose();
+            _originalStream = null;
+            throw;
+        }
     }
 
     public async Task ConfirmCropAsync(double tlX, double tlY, double trX, double trY, double brX, double brY, double blX, double blY)
@@ -126,6 +147,14 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
         if (_originalStream == null || PreviewImage == null) return;
 
         IsProcessing = true;
+
+        // What this method built and has not yet handed to a recipient. Whatever is still here when it
+        // leaves is released here; once a message carries a stream it is the recipient's (TD-126).
+        Stream? croppedStream = null;
+        Stream? enhancedStream = null;
+        MemoryStream? croppedMem = null;
+        MemoryStream? enhancedMem = null;
+        var sent = false;
 
         try
         {
@@ -142,10 +171,10 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
             );
 
             // 1. Perspective Crop
-            var croppedStream = await _imageProcessor.PerspectiveCropAsync(_originalStream, quad);
+            croppedStream = await _imageProcessor.PerspectiveCropAsync(_originalStream, quad);
 
             // 2. Enhance for OCR
-            var enhancedStream = await _imageProcessor.EnhanceForOcrAsync(croppedStream);
+            enhancedStream = await _imageProcessor.EnhanceForOcrAsync(croppedStream);
 
             // THE USER MAY HAVE LEFT WHILE THAT RAN (TD-121). The crop is shown beside the sidebar
             // now, so a click on Budgets during the two awaits above is a real possibility -- and
@@ -155,8 +184,6 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
             {
                 // Nobody will read these now; the live scanner's matching guard releases its streams
                 // the same way.
-                croppedStream.Dispose();
-                enhancedStream.Dispose();
                 return;
             }
 
@@ -165,7 +192,7 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
             
             // We send the enhanced stream for OCR, and maybe the cropped stream for UI display
             
-            var croppedMem = croppedStream as MemoryStream ?? new MemoryStream();
+            croppedMem = croppedStream as MemoryStream ?? new MemoryStream();
             if (croppedMem != croppedStream)
             {
                 croppedStream.Position = 0;
@@ -173,7 +200,7 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 croppedMem.Position = 0;
             }
             
-            var enhancedMem = enhancedStream as MemoryStream ?? new MemoryStream();
+            enhancedMem = enhancedStream as MemoryStream ?? new MemoryStream();
             if (enhancedMem != enhancedStream)
             {
                 enhancedStream.Position = 0;
@@ -181,6 +208,7 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 enhancedMem.Position = 0;
             }
 
+            sent = true;
             WeakReferenceMessenger.Default.Send(new ReceiptCapturedMessage(croppedMem, enhancedMem));
         }
         catch (Exception ex)
@@ -191,6 +219,28 @@ public partial class CropReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
         finally
         {
+            if (sent)
+            {
+                // Handed off: the copies belong to the recipient. Only a processor's own stream that was
+                // COPIED into a MemoryStream above is still ours to release.
+                if (!ReferenceEquals(croppedStream, croppedMem))
+                {
+                    croppedStream?.Dispose();
+                }
+
+                if (!ReferenceEquals(enhancedStream, enhancedMem))
+                {
+                    enhancedStream?.Dispose();
+                }
+            }
+            else
+            {
+                croppedStream?.Dispose();
+                enhancedStream?.Dispose();
+                croppedMem?.Dispose();
+                enhancedMem?.Dispose();
+            }
+
             IsProcessing = false;
         }
     }

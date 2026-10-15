@@ -49,6 +49,7 @@
   -->
   <ItemGroup>
     <EmbeddedResource Include="Localization\Resources\*.json" />
+    <EmbeddedResource Include="ViewModels\currency-names-english.txt" LogicalName="Pine.Ui.Avalonia.currency-names-english.txt" />
   </ItemGroup>
 
 </Project>

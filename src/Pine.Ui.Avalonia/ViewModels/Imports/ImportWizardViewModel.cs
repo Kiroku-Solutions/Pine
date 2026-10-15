@@ -174,6 +174,14 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasSkippedRows))]
     public partial int SkippedCount { get; set; }
 
+    /// <summary>
+    /// Gets or sets how many zero-amount rows were imported and still wait for the user to hide or keep them
+    /// (TD-62). Falls as rows are hidden.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasZeroAmountRows))]
+    public partial int ZeroAmountCount { get; set; }
+
     /// <summary>Gets or sets how many rows the target account already held from an earlier import.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SkippedAlreadyInAccountSentence))]
@@ -209,6 +217,9 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
     public bool HasSkippedRows => SkippedCount > 0;
 
     public bool HasUncheckedRows => UncheckedCount > 0;
+
+    /// <summary>Gets a value indicating whether any zero-amount row is still waiting for a decision.</summary>
+    public bool HasZeroAmountRows => ZeroAmountCount > 0;
 
     /// <summary>
     /// Creates the wizard.
@@ -262,6 +273,11 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             new UserFacingMessage("ImportWizard.Failure.ProfilesLoad"),
             _status.Set);
     }
+
+    /// <summary>
+    /// The view model's logger, for the code-behind that reports a failure through it (TD-127). A view is built by the XAML loader with no container reach, so it borrows the logger of the view model it is the face of.
+    /// </summary>
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _logger;
 
     /// <summary>
     /// Shows <paramref name="messages"/> in the status line, in the active language, and keeps them in
@@ -583,7 +599,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
                 // Let AI categorize if the CSV didn't provide a category
                 if (tx.Splits.Count == 0)
                 {
-                    string transactionText = $"{tx.Payee} {tx.Notes}".Trim();
+                    string transactionText = Pine.Application.Services.CategorisationText.Build(tx.Payee, tx.Notes);
                     var categoryName = await _mediator.Send(new Pine.Application.Transactions.Queries.CategorizeTransactionQuery(transactionText, tx.TotalAmount.Amount));
                     
                     if (!string.IsNullOrEmpty(categoryName))
@@ -658,7 +674,9 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
             // and every one of them was actually checked against the account first. Anything else -- a
             // skipped row, or a row saved without a duplicate check -- is a claim about the user's money
             // that they have to be able to read, so the wizard stops on the review step and waits for them.
-            if (!HasSkippedRows && !HasUncheckedRows)
+            // A zero-amount row is the same kind of claim: it was kept, not judged, and the decision to hide
+            // it belongs to the user, so the wizard must not close over it.
+            if (!HasSkippedRows && !HasUncheckedRows && !HasZeroAmountRows)
             {
                 _status.Set(_headline.Messages);
                 await Task.Delay(1500); // Give user time to see success message
@@ -706,10 +724,15 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
         var uncheckedRows = 0;
         var alreadyInAccount = 0;
         var duplicateInFile = 0;
+        var zeroAmount = 0;
 
         foreach (var row in result.Rows)
         {
             ReviewRows.Add(new ImportReviewRowViewModel(row, _localizer));
+            if (row.IsZeroAmount)
+            {
+                zeroAmount++;
+            }
 
             switch (row.Disposition)
             {
@@ -731,6 +754,7 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
         ImportedCount = result.Imported.Count;
         SkippedCount = result.Skipped.Count;
         UncheckedCount = uncheckedRows;
+        ZeroAmountCount = zeroAmount;
         SkippedAlreadyInAccountCount = alreadyInAccount;
         SkippedDuplicateInFileCount = duplicateInFile;
 
@@ -752,6 +776,41 @@ public partial class ImportWizardViewModel : ObservableObject, IDisposable
         }
 
         ReviewRows.Clear();
+    }
+
+    /// <summary>
+    /// Hides a zero-amount row the user does not want: voids it, which keeps the row and its import key (so
+    /// re-importing the file does not bring it back) but takes it out of the transaction list.
+    /// </summary>
+    /// <remarks>
+    /// Reuses <see cref="VoidTransactionCommand"/> rather than adding a delete. A zero amount has no balance
+    /// effect to reverse, and voiding is the one removal the ledger already audits and can undo.
+    /// </remarks>
+    [RelayCommand]
+    private async Task HideZeroAmountRowAsync(ImportReviewRowViewModel? row)
+    {
+        if (row is null || !row.CanHide)
+        {
+            return;
+        }
+
+        try
+        {
+            await _mediator.Send(new VoidTransactionCommand(
+                row.Transaction.Id,
+                _localizer["ImportWizard.Review.HideZeroAmountReason"]));
+            row.MarkHidden();
+            ZeroAmountCount = Math.Max(0, ZeroAmountCount - 1);
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            _status.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "import-hide-zero-amount",
+                new UserFacingMessage("ImportWizard.Failure.HideZeroAmount")));
+        }
     }
 
     [RelayCommand]
@@ -831,6 +890,20 @@ public sealed partial class ImportReviewRowViewModel : ObservableObject, IDispos
     /// <summary>Gets a value indicating whether this row was saved without any duplicate check.</summary>
     public bool WasImportedWithoutKeyCheck =>
         _row.Disposition == ImportRowDisposition.ImportedWithoutKeyCheck;
+
+    /// <summary>Gets a value indicating whether this row was saved with an amount of zero (TD-62).</summary>
+    public bool IsZeroAmount => _row.IsZeroAmount;
+
+    /// <summary>Gets a value indicating whether the user has hidden (voided) this zero-amount row.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanHide))]
+    public partial bool IsHidden { get; private set; }
+
+    /// <summary>Gets a value indicating whether the hide action applies: a zero-amount row not yet hidden.</summary>
+    public bool CanHide => IsZeroAmount && !IsHidden;
+
+    /// <summary>Records that the row was voided.</summary>
+    internal void MarkHidden() => IsHidden = true;
 
     /// <summary>Gets a value indicating whether this row was saved after passing a duplicate check.</summary>
     public bool WasImportedAndChecked => _row.Disposition == ImportRowDisposition.Imported;

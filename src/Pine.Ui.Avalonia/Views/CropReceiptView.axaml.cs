@@ -29,7 +29,7 @@ public partial class CropReceiptView : UserControl
                 Cropper.TopRight.X, Cropper.TopRight.Y,
                 Cropper.BottomRight.X, Cropper.BottomRight.Y,
                 Cropper.BottomLeft.X, Cropper.BottomLeft.Y),
-            null,
+            vm.Logger,
             "receipt-crop-confirm",
             new UserFacingMessage("CropReceipt.Failure.Confirm"),
             vm.ReportFailure);

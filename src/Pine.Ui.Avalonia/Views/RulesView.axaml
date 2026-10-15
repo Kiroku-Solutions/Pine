@@ -19,9 +19,8 @@
                            Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- The form. One condition, because a rule with several is written by creating
-                 several conditions in a grammar this screen does not have yet; the engine
-                 supports up to eight and the audit records the gap. -->
+            <!-- The form. The first condition is always present; further ones (up to the engine's
+                 eight, TD-143) are added below it and ANDed. -->
             <Border Background="{DynamicResource PineSurface}"
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1" CornerRadius="12" Padding="24">
@@ -92,6 +91,59 @@
                                        AutomationProperties.Name="{loc:Tr Rules.New.PriorityLabel}" />
                     </Grid>
 
+                    <ItemsControl ItemsSource="{Binding AdditionalConditions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:ConditionDraftViewModel">
+                                <Grid ColumnDefinitions="Auto, 12, Auto, 12, *, 12, Auto" Margin="0,0,0,8">
+                                    <ComboBox Grid.Column="0" ItemsSource="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).Fields}"
+                                              SelectedItem="{Binding Field}" MinWidth="130"
+                                              AutomationProperties.Name="{loc:Tr Rules.New.FieldLabel}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{x:Static conv:Converters.RuleFieldDisplay}">
+                                                            <Binding />
+                                                            <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <ComboBox Grid.Column="2" ItemsSource="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).Operators}"
+                                              SelectedItem="{Binding Operator}" MinWidth="140"
+                                              AutomationProperties.Name="{loc:Tr Rules.New.OperatorLabel}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{x:Static conv:Converters.RuleOperatorDisplay}">
+                                                            <Binding />
+                                                            <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBox Grid.Column="4" Text="{Binding Value}"
+                                             PlaceholderText="{loc:Tr Rules.New.ValuePlaceholder}"
+                                             AutomationProperties.Name="{loc:Tr Rules.New.ValueLabel}" />
+                                    <Button Grid.Column="6" Classes="pine-danger" FontSize="12" Padding="10,5"
+                                            Content="{loc:Tr Rules.New.RemoveCondition}"
+                                            AutomationProperties.Name="{loc:Tr Rules.New.RemoveConditionAutomationName}"
+                                            Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveConditionCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button Content="{loc:Tr Rules.New.AddCondition}" HorizontalAlignment="Left"
+                            Padding="12,6" IsEnabled="{Binding CanAddCondition}"
+                            Command="{Binding AddConditionCommand}" />
+
                     <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="13"
                                Foreground="{DynamicResource PineDanger}"
                                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -100,6 +152,52 @@
                             Padding="16,9" HorizontalAlignment="Right"
                             IsEnabled="{Binding !IsBusy}"
                             Command="{Binding CreateRuleCommand}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Retroactive application (TD-142): preview first, then apply exactly what was shown. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Rules.Preview.Section}" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <TextBlock Text="{loc:Tr Rules.Preview.Subtitle}" FontSize="13" TextWrapping="Wrap"
+                               Foreground="{DynamicResource PineTextMuted}" />
+
+                    <Button Content="{loc:Tr Rules.Preview.Button}" HorizontalAlignment="Left"
+                            Padding="16,9" IsEnabled="{Binding !IsBusy}"
+                            Command="{Binding PreviewRulesCommand}" />
+
+                    <TextBlock Text="{Binding PreviewSummary}" FontSize="13" TextWrapping="Wrap"
+                               Foreground="{DynamicResource PineText}"
+                               IsVisible="{Binding PreviewSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <ScrollViewer MaxHeight="320" IsVisible="{Binding HasPreview}">
+                        <ItemsControl ItemsSource="{Binding PreviewRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:RulePreviewRowViewModel">
+                                    <Border BorderBrush="{DynamicResource PineBorder}" BorderThickness="0,0,0,1" Padding="0,8">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Description}" FontSize="13"
+                                                       Foreground="{DynamicResource PineText}" />
+                                            <TextBlock Text="{Binding Change}" FontSize="12"
+                                                       Foreground="{DynamicResource PineTextMuted}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasPreview}">
+                        <Button Content="{loc:Tr Rules.Preview.Apply}" Classes="pine-accent" Padding="16,9"
+                                IsEnabled="{Binding CanApplyPreview}"
+                                Command="{Binding ApplyPreviewCommand}" />
+                        <Button Content="{loc:Tr Rules.Preview.Discard}" Padding="16,9"
+                                Command="{Binding DiscardPreviewCommand}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

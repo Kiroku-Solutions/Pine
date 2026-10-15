@@ -347,6 +347,11 @@ public partial class DiagnosticsViewModel : ObservableObject, IAsyncInitializabl
     }
 
     /// <summary>
+    /// The view model's logger, for the code-behind that reports a failure through it (TD-127). A view is built by the XAML loader with no container reach, so it borrows the logger of the view model it is the face of.
+    /// </summary>
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _logger;
+
+    /// <summary>
     /// Shows <paramref name="messages"/> as this page's error, in the active language, and keeps them
     /// in step with a language change. For the view's code-behind, which has no localizer (TD-139).
     /// </summary>

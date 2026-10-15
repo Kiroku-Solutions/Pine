@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -245,6 +246,160 @@ public class ViewModelFactoryTests
         PrivateField(importWizard, "_timeProvider").Should().BeSameAs(
             provider.GetRequiredService<TimeProvider>(),
             "TimeProvider.System was hard-coded at the old call site, over the top of the registered clock");
+    }
+
+    /// <summary>
+    /// Every view model the factory can build arrives with the container's logger (TD-104).
+    /// </summary>
+    /// <remarks>
+    /// Enumerates <see cref="IViewModelFactory"/> by reflection rather than naming the pages, so a
+    /// page added later is covered without anyone remembering to add a line here. Each is built on
+    /// every head that offers it; the receipt pages are skipped where the factory refuses them.
+    /// The logger is read from the field because a null one changes nothing observable -- the user
+    /// still sees the same sentence -- except that the underlying exception is recorded nowhere.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(PineCompositionRootTests.AllProfiles), MemberType = typeof(PineCompositionRootTests))]
+    public void EveryViewModelTheFactoryBuilds_ShouldHoldANonNullLogger(PineHeadProfile profile)
+    {
+        using var provider = TestContainer.Build(profile);
+        var factory = FactoryFor(provider);
+        var capabilities = PineHeadCapabilities.For(profile);
+        var receiptPages = new[] { typeof(ScanReceiptViewModel), typeof(LiveScannerViewModel), typeof(CropReceiptViewModel) };
+
+        var methods = typeof(IViewModelFactory).GetMethods();
+        methods.Should().NotBeEmpty();
+
+        var checkedPages = 0;
+        foreach (var method in methods)
+        {
+            if (!capabilities.HasReceiptVision && receiptPages.Contains(method.ReturnType))
+            {
+                continue;
+            }
+
+            var arguments = method.GetParameters().Select(ArgumentFor).ToArray();
+            var page = method.Invoke(factory, arguments);
+
+            // Unlock and the shell take no logger at all; the rule is about the ones that ask for it.
+            var asksForALogger = method.ReturnType.GetConstructors()
+                .SelectMany(c => c.GetParameters())
+                .Any(p => p.ParameterType.IsGenericType && p.ParameterType.GetGenericTypeDefinition() == typeof(ILogger<>));
+            if (!asksForALogger)
+            {
+                (page as IDisposable)?.Dispose();
+                continue;
+            }
+
+            var logger = PrivateField(page!, "_logger");
+            logger.Should().BeAssignableTo<ILogger>(
+                $"{method.ReturnType.Name} must be built through the container so its failures reach the log (TD-104)");
+            checkedPages++;
+
+            (page as IDisposable)?.Dispose();
+        }
+
+        checkedPages.Should().BeGreaterThan(10, "this test is worthless if the reflection walk found almost nothing");
+    }
+
+    private static object ArgumentFor(ParameterInfo parameter)
+    {
+        if (parameter.ParameterType == typeof(Action))
+        {
+            return new Action(() => { });
+        }
+
+        if (parameter.ParameterType == typeof(Pine.Core.Transactions.Transaction))
+        {
+            var usd = new Pine.Core.Common.ValueObjects.CurrencyCode("USD");
+            var transaction = Pine.Core.Transactions.Transaction.Create(
+                Guid.NewGuid(),
+                new DateTimeOffset(2026, 3, 5, 0, 0, 0, TimeSpan.Zero),
+                "ACME",
+                new Pine.Core.Common.ValueObjects.Money(-10m, usd),
+                Pine.Core.Transactions.TransactionType.Expense,
+                TimeProvider.System);
+            transaction.AddSplit(new Pine.Core.Common.ValueObjects.Money(-10m, usd), "Food");
+            return transaction;
+        }
+
+        return Substitute.For(new[] { parameter.ParameterType }, Array.Empty<object>());
+    }
+
+    /// <summary>
+    /// The four views that report a failure from code-behind borrow their view model's logger
+    /// instead of passing none (TD-127).
+    /// </summary>
+    /// <remarks>
+    /// A source scan, because a view cannot be constructed without an Avalonia runtime. It fails if
+    /// any <c>ObservedTask.Run</c> in <c>Views/</c> is handed a literal <c>null</c> logger -- the
+    /// shape that made the log say nothing about a failure the user was just told about.
+    /// </remarks>
+    [Fact]
+    public void ViewsThatRunObservedTasks_ShouldNotPassANullLogger()
+    {
+        var directory = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !System.IO.File.Exists(System.IO.Path.Combine(directory.FullName, "Pine.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        directory.Should().NotBeNull();
+        var views = System.IO.Directory.GetFiles(
+            System.IO.Path.Combine(directory!.FullName, "src", "Pine.Ui.Avalonia", "Views"),
+            "*.axaml.cs",
+            System.IO.SearchOption.AllDirectories);
+
+        var callSites = 0;
+        foreach (var file in views)
+        {
+            var text = System.IO.File.ReadAllText(file);
+            var from = 0;
+            while ((from = text.IndexOf("ObservedTask.Run(", from, StringComparison.Ordinal)) >= 0)
+            {
+                callSites++;
+                var end = text.IndexOf(';', from);
+                var call = text[from..end];
+                var arguments = TopLevelArguments(call);
+
+                // Run(work, logger, operation, ...): the second argument is the logger.
+                arguments[1].Should().NotBe("null", $"{System.IO.Path.GetFileName(file)} passes a null logger to ObservedTask.Run");
+                from = end;
+            }
+        }
+
+        callSites.Should().BeGreaterThanOrEqualTo(4, "the scan must actually have seen the four converted handlers");
+    }
+
+    private static List<string> TopLevelArguments(string call)
+    {
+        var arguments = new List<string>();
+        var depth = 0;
+        var current = new System.Text.StringBuilder();
+        foreach (var ch in call["ObservedTask.Run(".Length..])
+        {
+            if (ch is '(' or '[' or '{')
+            {
+                depth++;
+            }
+            else if (ch is ')' or ']' or '}')
+            {
+                depth--;
+            }
+
+            if (ch == ',' && depth == 0)
+            {
+                arguments.Add(current.ToString().Trim());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(ch);
+            }
+        }
+
+        arguments.Add(current.ToString().Trim());
+        return arguments;
     }
 
     private static object? PrivateField(object instance, string name)

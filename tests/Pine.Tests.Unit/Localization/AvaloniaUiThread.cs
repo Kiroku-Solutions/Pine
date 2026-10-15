@@ -56,4 +56,15 @@ internal static class AvaloniaUiThread
         ArgumentNullException.ThrowIfNull(assertion);
         return Session.Value.Dispatch(assertion, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Runs an asynchronous <paramref name="body"/> on the UI thread: its synchronous prefix and every
+    /// continuation that is not moved elsewhere run there, exactly as a command handler does in the
+    /// application (TD-93).
+    /// </summary>
+    public static Task OnAsync(Func<Task> body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        return Session.Value.Dispatch<bool>(async () => { await body(); return true; }, CancellationToken.None);
+    }
 }

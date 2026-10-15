@@ -35,7 +35,7 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     /// navigation stopped needing one. It is a singleton on every head, so this is the same object
     /// -- only the reach has gone.
     /// </remarks>
-    private readonly VaultManager _vaultManager;
+    private readonly IVaultManager _vaultManager;
     private readonly LocalizedMessageSlot _message;
     private readonly LocalizedMessageSlot _strengthStatus;
     private readonly LocalizedMessageSlot _advice;
@@ -193,7 +193,7 @@ public partial class SetupViewModel : ObservableObject, IDisposable
     /// ever affect new vaults.
     /// </param>
     public SetupViewModel(
-        VaultManager vaultManager,
+        IVaultManager vaultManager,
         IVaultSession vaultSession,
         INavigationService navigationService,
         IViewModelFactory viewModels,

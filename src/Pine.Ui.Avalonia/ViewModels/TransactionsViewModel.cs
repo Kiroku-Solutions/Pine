@@ -91,7 +91,7 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     /// Was <c>const int PageSize = 30</c>, which quietly overrode the <c>PageSize = 50</c> default
     /// on <c>GetTransactionsQuery</c>. That default is now gone and this is the only page size.
     /// </remarks>
-    private readonly int _pageSize;
+    private int _pageSize;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -112,6 +112,24 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
 
     [ObservableProperty]
     public partial bool HasMorePages { get; set; } = true;
+
+    /// <summary>
+    /// Whether voided rows are listed (TD-71). Off by default: a vault with many corrections reads
+    /// badly when every cancelled row sits among the live ones. The rows are still on record and one
+    /// toggle away, which is what keeps hiding them compatible with voiding rather than deleting.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowVoided { get; set; }
+
+    partial void OnShowVoidedChanged(bool value)
+    {
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-reload",
+            TransactionsUnavailable,
+            _error.Set);
+    }
 
     /// <summary>Whether the void confirmation is on screen.</summary>
     [ObservableProperty]
@@ -214,6 +232,26 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         await LoadNextPageAsync();
     }
 
+    /// <summary>
+    /// TD-119: the page size is an in-vault Setting; the configured value stays in force when the
+    /// Setting is absent, invalid, or cannot be read.
+    /// </summary>
+    private async Task ResolvePageSizePreferenceAsync()
+    {
+        try
+        {
+            var preferences = await _mediator.Send(new Pine.Application.Settings.GetUserPreferencesQuery());
+            if (preferences is { TransactionsPageSize: >= 1 })
+            {
+                _pageSize = preferences.TransactionsPageSize;
+            }
+        }
+        catch (Exception)
+        {
+            // Keep the configured page size.
+        }
+    }
+
     [RelayCommand]
     private async Task LoadNextPageAsync()
     {
@@ -222,7 +260,12 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         IsLoading = true;
         try
         {
-            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, _pageSize));
+            if (_currentPage == 1)
+            {
+                await ResolvePageSizePreferenceAsync();
+            }
+
+            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, _pageSize, ShowVoided));
 
             foreach (var t in pagedResult.Items)
             {
@@ -401,6 +444,35 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     }
 
     /// <summary>
+    /// Puts a voided transaction back in force and refreshes every screen that shows money (TD-69).
+    /// </summary>
+    /// <remarks>
+    /// No confirmation or reason: unlike a void it needs no audit text, and it is itself reversible by
+    /// voiding again. A failure is shown in the page's own error line, since the void dialog is not open.
+    /// </remarks>
+    /// <param name="transaction">The voided row the user acted on.</param>
+    [RelayCommand]
+    private async Task UnvoidAsync(Transaction? transaction)
+    {
+        if (transaction is null || !transaction.IsVoided) return;
+
+        _error.Clear();
+        try
+        {
+            await _mediator.Send(new UnvoidTransactionCommand(transaction.Id));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "unvoid-transaction",
+                new UserFacingMessage("Transactions.Failure.Unvoid")));
+        }
+    }
+
+    /// <summary>
     /// Opens the receipt attached to a transaction.
     /// </summary>
     /// <param name="transaction">The row whose receipt to show.</param>
@@ -441,6 +513,14 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 return;
             }
 
+            // A contract is a PDF (TD-141), and the viewer decodes images. Say so rather than
+            // letting the decoder throw and reporting "could not be opened".
+            if (!content.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                _voidError.Set(new UserFacingMessage("Transactions.Failure.PreviewUnsupported"));
+                return;
+            }
+
             using var buffer = new MemoryStream(content.Content);
             ReceiptImage = new Bitmap(buffer);
             _openAttachmentId = summaries[0].Id;
@@ -453,6 +533,53 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 ex,
                 "attachment-view",
                 new UserFacingMessage("Transactions.Failure.OpenReceipt")));
+        }
+    }
+
+    /// <summary>
+    /// Supplies the file chooser (TD-141). Set by the view, which owns the window the dialog belongs
+    /// to; left <see langword="null"/> in tests that do not exercise attaching, in which case
+    /// attaching does nothing.
+    /// </summary>
+    public IAttachmentFilePicker? AttachmentFilePicker { get; set; }
+
+    /// <summary>
+    /// Lets the user attach a receipt, contract or photo to a transaction (FR-TXN-02's manual path).
+    /// </summary>
+    /// <param name="transaction">The row to attach to.</param>
+    /// <remarks>
+    /// A cancelled dialog is not an error and sends nothing. Everything else -- an unsupported type,
+    /// an empty or oversized file, a transaction that has since gone -- is refused by the command's
+    /// validator and reaches the user as its own sentence.
+    /// </remarks>
+    [RelayCommand]
+    private async Task AttachFileAsync(Transaction? transaction)
+    {
+        if (transaction is null || AttachmentFilePicker is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var picked = await AttachmentFilePicker.PickAsync();
+
+            if (picked is null)
+            {
+                return;
+            }
+
+            _voidError.Clear();
+            await _mediator.Send(new AttachFileToTransactionCommand(transaction.Id, picked.FileName, picked.Content));
+            await RefreshReceiptMarkersAsync();
+        }
+        catch (Exception ex)
+        {
+            _voidError.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "attachment-add",
+                new UserFacingMessage("Transactions.Failure.AttachFile")));
         }
     }
 

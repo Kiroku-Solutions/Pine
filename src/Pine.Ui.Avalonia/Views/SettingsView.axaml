@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -6,6 +6,7 @@
              xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              xmlns:accounts="using:Pine.Core.Accounts"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             xmlns:views="using:Pine.Ui.Avalonia.Views"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700"
              x:Class="Pine.Ui.Avalonia.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -125,6 +126,61 @@
                 </StackPanel>
             </Border>
 
+            <!-- Base currency (TD-63 follow-up). The existing searchable currency picker; saving goes through
+                 SaveSettingCommand, which validates the code. Nothing is converted. -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Settings.BaseCurrency.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <Grid ColumnDefinitions="*, 240">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr Settings.BaseCurrency.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.BaseCurrency.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <AutoCompleteBox Grid.Column="1" VerticalAlignment="Center"
+                                         DataContext="{Binding BaseCurrencyPicker}"
+                                         ItemsSource="{Binding Matches}"
+                                         Text="{Binding SearchText, Mode=TwoWay}"
+                                         SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
+                                         FilterMode="None"
+                                         MinimumPrefixLength="0"
+                                         MaxDropDownHeight="240"
+                                         Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                         AutomationProperties.Name="{loc:Tr Settings.BaseCurrency.Label}">
+                            <AutoCompleteBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CurrencyChoice">
+                                    <TextBlock Text="{Binding Display}" />
+                                </DataTemplate>
+                            </AutoCompleteBox.ItemTemplate>
+                        </AutoCompleteBox>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Manually entered exchange rates (owner decision, 2026-10-14): nothing is fetched online. -->
+            <views:ExchangeRatesCard />
+
+            <!-- Smart categories consent (TD-89) -->
+            <Border Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="24">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{loc:Tr Settings.Ai.Section}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <Border Height="1" Background="{DynamicResource PineBorder}" />
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr Settings.Ai.Training.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Ai.Training.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                      IsChecked="{Binding TrainingConsent}"
+                                      AutomationProperties.Name="{loc:Tr Settings.Ai.Training.AutomationName}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Security Section -->
             <Border Background="{DynamicResource PineSurface}" 
                     BorderBrush="{DynamicResource PineBorder}" 
@@ -138,6 +194,17 @@
                          that did nothing. It is now the real "Master Password" card below: the
                          change needs three fields and a strength meter, which does not fit the
                          one-line-per-action shape of this section. -->
+
+                    <!-- TD-87: opt-in OS-credential unlock. Hidden unless the head supplies a protector. -->
+                    <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding IsPlatformUnlockAvailable}">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr Settings.Security.PlatformUnlock.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                            <TextBlock Text="{loc:Tr Settings.Security.PlatformUnlock.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                      IsChecked="{Binding PlatformUnlockEnabled}"
+                                      AutomationProperties.Name="{loc:Tr Settings.Security.PlatformUnlock.AutomationName}" />
+                    </Grid>
 
                     <!-- TD-56: this button was bound to an empty method and did nothing at all.
                          It now runs ExportVaultBackupCommand, and the sentence below it names the
@@ -165,6 +232,60 @@
                             <TextBlock Text="{Binding VaultExportMessage}" TextWrapping="Wrap" FontSize="13"
                                        Classes.pine-strength-danger="{Binding VaultExportFailed}"
                                        Classes.pine-strength-success="{Binding !VaultExportFailed}" />
+                        </Border>
+                    </StackPanel>
+
+                    <!-- TD-119: operative preferences. Validated by SaveSettingCommand; the sentence below
+                         the button is the localised refusal or confirmation. -->
+                    <StackPanel Spacing="8" Margin="0,4">
+                        <TextBlock Text="{loc:Tr Settings.Preferences.Header}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                        <Grid ColumnDefinitions="*, 160">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Preferences.AutoLock.Label}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Preferences.AutoLock.Description}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Text="{Binding AutoLockMinutesText}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*, 160">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Preferences.Confidence.Label}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Preferences.Confidence.Description}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Text="{Binding CategorisationConfidenceText}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*, 160">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Preferences.PageSize.Label}" FontSize="14" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Preferences.PageSize.Description}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Text="{Binding TransactionsPageSizeText}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Button Content="{loc:Tr Settings.Preferences.Save}" Command="{Binding SavePreferencesCommand}" HorizontalAlignment="Right" Width="160" HorizontalContentAlignment="Center" />
+                        <TextBlock IsVisible="{Binding PreferencesMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Text="{Binding PreferencesMessage}" TextWrapping="Wrap" FontSize="13"
+                                   Classes.pine-strength-danger="{Binding PreferencesFailed}"
+                                   Classes.pine-strength-success="{Binding !PreferencesFailed}" />
+                    </StackPanel>
+
+                    <!-- TD-84: the diagnostic bundle. A zip of redacted logs and non-sensitive
+                         environment facts the user chooses where to save; no ledger content. -->
+                    <StackPanel Spacing="8" Margin="0,4">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Settings.Diagnostics.Bundle.Label}" FontSize="15" Foreground="{DynamicResource PineText}" />
+                                <TextBlock Text="{loc:Tr Settings.Diagnostics.Bundle.Description}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="{loc:Tr Settings.Diagnostics.Bundle.Button}" Command="{Binding ExportDiagnosticBundleCommand}" Width="160" HorizontalContentAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsExportingDiagnosticBundle}" />
+                        <Border IsVisible="{Binding DiagnosticBundleMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                CornerRadius="8" Padding="14,10"
+                                Background="{DynamicResource PineSurfaceElevated}"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource PineBorder}">
+                            <TextBlock Text="{Binding DiagnosticBundleMessage}" TextWrapping="Wrap" FontSize="13"
+                                       Classes.pine-strength-danger="{Binding DiagnosticBundleFailed}"
+                                       Classes.pine-strength-success="{Binding !DiagnosticBundleFailed}" />
                         </Border>
                     </StackPanel>
 
@@ -327,15 +448,31 @@
                     <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,0,0,4"
                                Text="{loc:Tr Settings.DataIntegrity.Description}" />
 
+                    <!-- TD-70: an account with no opening balance on record can be given one. The
+                         figure is typed once here and applied by the per-account button below, which
+                         only appears for accounts that still have none. -->
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr Settings.DataIntegrity.OpeningBalance.Hint}" />
+                    <TextBox Text="{Binding OpeningBalanceInput}"
+                             PlaceholderText="{loc:Tr Settings.DataIntegrity.OpeningBalance.Input}"
+                             AutomationProperties.Name="{loc:Tr Settings.DataIntegrity.OpeningBalance.Input}" />
+
                     <ItemsControl ItemsSource="{Binding Accounts}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="accounts:Account">
-                                <Grid ColumnDefinitions="*, Auto" Margin="0,4">
+                                <Grid ColumnDefinitions="*, Auto, Auto" Margin="0,4">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Name}" FontSize="15" Foreground="{DynamicResource PineText}" />
                                         <TextBlock Text="{Binding Balance}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" Margin="0,2,0,0" />
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="{loc:Tr Settings.DataIntegrity.CheckBalanceButton}"
+                                    <Button Grid.Column="1" Content="{loc:Tr Settings.DataIntegrity.OpeningBalance.SetButton}"
+                                            Classes="pine-outline" Margin="0,0,8,0"
+                                            HorizontalContentAlignment="Center" VerticalAlignment="Center"
+                                            IsVisible="{Binding OpeningBalanceAmount, Converter={x:Static ObjectConverters.IsNull}}"
+                                            AutomationProperties.Name="{loc:Tr Settings.DataIntegrity.OpeningBalance.SetAutomationName}"
+                                            Command="{Binding #IntegritySection.((vm:SettingsViewModel)DataContext).SetOpeningBalanceCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Grid.Column="2" Content="{loc:Tr Settings.DataIntegrity.CheckBalanceButton}"
                                             Classes="pine-outline" Width="160"
                                             HorizontalContentAlignment="Center" VerticalAlignment="Center"
                                             AutomationProperties.Name="{loc:Tr Settings.DataIntegrity.CheckBalanceAutomationName}"
@@ -464,6 +601,37 @@
                                 Command="{Binding CancelRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
                         <Button Content="{loc:Tr Settings.Security.RestoreVault.Dialog.Confirm}" Classes="pine-danger" Padding="16,9"
                                 Command="{Binding ConfirmRestoreCommand}" IsEnabled="{Binding !IsRestoringVault}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Older-backup password prompt (TD-86): the backup was made before the data key was rotated, so it
+             needs the password from back then. Not rendered or run by any test. -->
+        <Border Background="{DynamicResource PineScrim}" IsVisible="{Binding IsBackupPasswordPromptVisible}">
+            <Border Width="460" Padding="28" CornerRadius="14"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1"
+                    BoxShadow="0 8 32 0 #30000000">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                               Text="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Prompt}" />
+                    <TextBox PlaceholderText="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Placeholder}"
+                             Text="{Binding BackupRestorePassword}"
+                             PasswordChar="●"
+                             IsEnabled="{Binding !IsRestoringVault}"
+                             AutomationProperties.Name="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Prompt}" />
+                    <TextBlock Text="{Binding BackupPasswordError}" TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                               Foreground="{DynamicResource PineDanger}"
+                               IsVisible="{Binding BackupPasswordError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                        <Button Content="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Cancel}" Classes="pine-outline" Padding="16,9"
+                                Command="{Binding CancelBackupPasswordCommand}" IsEnabled="{Binding !IsRestoringVault}" />
+                        <Button Content="{loc:Tr Settings.Security.RestoreVault.BackupPassword.Submit}" Classes="pine-danger" Padding="16,9"
+                                Command="{Binding SubmitBackupPasswordCommand}" IsEnabled="{Binding !IsRestoringVault}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

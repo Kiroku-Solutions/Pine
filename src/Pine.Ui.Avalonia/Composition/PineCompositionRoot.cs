@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pine.Application.Common;
 using Pine.Application.Security;
 using Pine.Application.Services;
 using Pine.Core.Configuration;
+using Pine.Core.Security;
 using Pine.Infrastructure.Data;
 using Pine.Infrastructure.DependencyInjection;
 using Pine.Ui.Avalonia.Localization;
@@ -99,6 +101,7 @@ public static class PineCompositionRoot
         // that a process has exactly one.
         services.AddSingleton<IVaultSession, VaultSession>();
         services.AddSingleton<VaultManager>();
+        services.AddSingleton<IVaultManager>(sp => sp.GetRequiredService<VaultManager>());
 
         // MediatR, the validation and transaction pipeline behaviours, every request validator, the
         // per-request scoping mediator, and the IVaultLockState / IVaultDataKeyAccessor forwards
@@ -128,6 +131,10 @@ public static class PineCompositionRoot
         // already-running timer. Configuration supplies the starting value and then gets out of the
         // way, which is the correct relationship for a value the user owns.
         services.AddPineVaultAutoLock(autoLock => autoLock.IdleTimeout = options.Security.AutoLockIdleTimeout);
+
+        // Opt-in OS-credential unlock (TD-87). A head that registers an IPlatformKeyProtector gets a
+        // working one; every other head gets an instance that reports itself unavailable.
+        services.TryAddSingleton<IPlatformUnlock>(sp => new PlatformUnlock(sp.GetService<IPlatformKeyProtector>()));
 
         AddViewModels(services);
 
@@ -179,7 +186,10 @@ public static class PineCompositionRoot
     /// one, and it is written down here so nobody reads the paragraph above as covering them.
     /// </para>
     /// </remarks>
-    public static ServiceProvider Build(PineHeadProfile profile, Action<PineOptions>? configureOptions = null)
+    public static ServiceProvider Build(
+        PineHeadProfile profile,
+        Action<PineOptions>? configureOptions = null,
+        Action<IServiceCollection>? configureHeadServices = null)
     {
         // Arm the SQLCipher native provider before anything can open a database (iteration 31).
         //
@@ -199,6 +209,7 @@ public static class PineCompositionRoot
 
         var services = new ServiceCollection();
         services.AddPine(profile, configureOptions);
+        configureHeadServices?.Invoke(services);
 
         return services.BuildServiceProvider(new ServiceProviderOptions
         {
