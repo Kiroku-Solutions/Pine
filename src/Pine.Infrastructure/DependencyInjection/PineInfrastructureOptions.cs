@@ -40,6 +40,13 @@ public sealed class PineInfrastructureOptions
     public bool IncludeReceiptVision { get; set; }
 
     /// <summary>
+    /// Optional LayoutLMv3 field-extraction model for the on-device receipt pipeline. Off until
+    /// <see cref="Ai.Extraction.LayoutLm.LayoutLmOptions.ModelPath"/> is set; the model is not shipped with the
+    /// application. Only used when <see cref="IncludeReceiptVision"/> is true.
+    /// </summary>
+    public Ai.Extraction.LayoutLm.LayoutLmOptions LayoutLm { get; } = new();
+
+    /// <summary>
     /// Optional hook onto <c>AddPineLogging</c>'s options -- the log directory, the minimum level,
     /// the rotation size.
     /// </summary>

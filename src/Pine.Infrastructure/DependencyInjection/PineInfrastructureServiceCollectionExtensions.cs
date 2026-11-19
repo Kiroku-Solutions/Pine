@@ -205,6 +205,16 @@ public static class PineInfrastructureServiceCollectionExtensions
 
         if (options.IncludeReceiptVision)
         {
+            if (options.LayoutLm.IsConfigured)
+            {
+                // Optional, offline, loaded on first scan. The provider falls back to the heuristics if it cannot run.
+                var layoutOptions = options.LayoutLm;
+                services.TryAddSingleton<Pine.Core.Ai.IVisualFieldExtractor>(sp =>
+                    new Pine.Infrastructure.Ai.Extraction.LayoutLm.LayoutLmFieldExtractor(
+                        layoutOptions,
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Extraction.LayoutLm.LayoutLmFieldExtractor>>()));
+            }
+
             services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
             services.TryAddSingleton<IImageProcessor, OpenCvImageProcessor>();
 

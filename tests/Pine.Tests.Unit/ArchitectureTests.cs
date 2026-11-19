@@ -1287,7 +1287,7 @@ public partial class ArchitectureTests
     /// <summary>
     /// The types in <c>Pine.Infrastructure</c> allowed to know the ONNX runtime exists.
     /// </summary>
-    private static readonly string[] TypesAllowedToUseOnnx = ["ReceiptDetector"];
+    private static readonly string[] TypesAllowedToUseOnnx = ["LayoutLmFieldExtractor", "ReceiptDetector"];
 
     /// <summary>
     /// TD-36. Only the type that actually runs inference may depend on the ONNX runtime.

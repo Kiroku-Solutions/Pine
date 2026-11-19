@@ -775,7 +775,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Normalizes a decimal string by handling thousand separators vs decimal separators.
     /// "1.000" → "1000" (thousand separator), "40.25" → "40.25" (decimal)
     /// </summary>
-    private static string NormalizeDecimalString(string numStr)
+    internal static string NormalizeDecimalString(string numStr)
     {
         // First unify: replace comma with dot
         numStr = numStr.Replace(",", ".");

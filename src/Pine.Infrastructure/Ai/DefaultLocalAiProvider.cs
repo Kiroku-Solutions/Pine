@@ -7,6 +7,7 @@ using Pine.Core.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Extraction;
 using Pine.Infrastructure.Ai.Categorisation;
+using Pine.Infrastructure.Ai.Extraction.LayoutLm;
 
 namespace Pine.Infrastructure.Ai;
 
@@ -20,6 +21,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     private readonly PaddleOcrEngine _ocr;
     private readonly HeuristicFieldExtractor _extractor;
     private readonly IMlNetCategorizer _categorizer;
+    private readonly VisualExtractionGuard _visualGuard;
 
     /// <summary>Builds the on-device pipeline.</summary>
     /// <param name="categorizer">
@@ -48,7 +50,11 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// must be exactly one object and the container must own it.
     /// </para>
     /// </remarks>
-    public DefaultLocalAiProvider(IMlNetCategorizer categorizer, ILoggerFactory? loggerFactory = null)
+    /// <param name="visualExtractor">
+    /// The optional layout model (LayoutLMv3). When it is registered, its fields overlay the heuristic ones;
+    /// when it is absent, cannot load or throws, extraction is exactly the heuristic one and a warning is logged.
+    /// </param>
+    public DefaultLocalAiProvider(IMlNetCategorizer categorizer, ILoggerFactory? loggerFactory = null, IVisualFieldExtractor? visualExtractor = null)
     {
         ArgumentNullException.ThrowIfNull(categorizer);
 
@@ -59,6 +65,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         // existed in this repository. Extraction was always heuristic.
         _extractor = new HeuristicFieldExtractor();
         _categorizer = categorizer;
+        _visualGuard = new VisualExtractionGuard(visualExtractor, loggerFactory?.CreateLogger<DefaultLocalAiProvider>());
     }
 
     public async Task<bool> DetectReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default)
@@ -109,7 +116,8 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         var textBlocks = await _ocr.ExtractTextAsync(ocrStream, cancellationToken);
 
         // Extract fields using layout-aware heuristics
-        return _extractor.ExtractFields(textBlocks);
+        var heuristic = _extractor.ExtractFields(textBlocks);
+        return await _visualGuard.OverlayAsync(heuristic, textBlocks, ocrStream, cancellationToken);
     }
 
     public async Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)
