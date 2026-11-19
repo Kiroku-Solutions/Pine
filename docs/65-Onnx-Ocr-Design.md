@@ -185,7 +185,7 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 2. [x] B1 `DbPostProcessor`, `CtcDecoder` (pure C#, ports of the reference) + golden fixtures generated from `onnx_ocr_reference.py`; unit tests with tolerance on box coordinates (±1 px) and exact text.
 3. [x] B1 `SkiaImagePreprocessor` + `OnnxOcrEngine`; models as named content; ArchitectureTests/TunedConstants/ShippedModelAssets updates (§6.2); an integration test with a real fixture receipt (skip if models absent).
 4. [x] B1 **Parity run in C#** (done: section 5.1; 100 % / 0.00 % CER vs the Python reference) against `pine960_*` reference numbers in §5 on the same 20 images; must reproduce ≥ 99 % line match and ≤ 1.5 % CER vs the Python reference, else stop.
-5. [ ] B2 (separate, larger): `SkiaReceiptDetector` replacing the OpenCV half of `ReceiptDetector` (§2.1) and `SkiaImageProcessor : IImageProcessor`; re-run the YOLO fixtures; threshold/sharpen differences go through the §7.1 re-evaluation. `LayoutLmImagePreprocessor` decode via Skia.
+5. [~] B2 (done classically, see section 13; the YOLO port is not done): `SkiaReceiptDetector` replacing the OpenCV half of `ReceiptDetector` (§2.1) and `SkiaImageProcessor : IImageProcessor`; re-run the YOLO fixtures; threshold/sharpen differences go through the §7.1 re-evaluation. `LayoutLmImagePreprocessor` decode via Skia.
 6. [ ] B3 Switch Windows to `OcrBackend.Onnx` only after 4 passes; keep Paddle one release.
 
 **Phase C — Android wiring (C-minimal implemented, see §12)**
@@ -195,7 +195,7 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 4. [ ] **LayoutLM on device**: code path works (Skia decode, no OpenCV) and is picked up from `files/layoutlm/model.onnx` (§12); memory/latency measurement and the default decision are open.
 5. [ ] Measure on the real tablet: latency per stage, peak RSS, APK size delta. Update §8 with numbers; until then they are estimates (§12 says what was measured).
 
-**Phase D — live camera:** `ICameraSource` implementation using the platform camera (CameraX through a small Android binding, or a still-capture-then-scan flow first); Skia frame conversion; throttled scanning. Not designed here.
+**Phase D — live camera:** done as capture-on-tap, see section 13: `AndroidCameraSource : ICameraSource` (Camera2), viewfinder and Capture in `ScanReceiptViewModel`. Continuous preview analysis is not built.
 
 ## 10. Risks and what is unverified
 
@@ -216,6 +216,20 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 * **LayoutLM on Android:** not bundled (CC BY-NC-SA, ~128 MB). Copy `model.onnx` and `tokenizer.json` to `/sdcard/Android/data/org.pine.app/files/layoutlm/` (e.g. `adb push model.onnx /sdcard/Android/data/org.pine.app/files/layoutlm/`; the app creates `files/` on first launch, create the folder with `adb shell mkdir -p` if needed) and restart the app. The app's own `appsettings.json` lives in the private `LocalApplicationData/Pine` directory, which `adb` cannot write on a release build, so this convention is the supported route. An explicit `Pine:Ai:LayoutLmModelPath` still wins.
 * **Diagnostics:** each scan raises `ScanDiagnostics.Reported` and the Android head logs it as `adb logcat -s PineScan` (`scan prep_ms=... ocr_ms=... lines=N heuristics_ms=... layoutlm_ms=...`): counts and times only, never text.
 * **Left for B2/D:** a Skia YOLO crop + perspective warp behind `IReceiptDetector` (then `Android -> Full` minus the camera, or add a capability for crop without live), `SkiaImageProcessor : IImageProcessor` for the crop screen, and the camera source (Phase D).
+
+## 13. B2 and phase D as built (Android)
+
+* **Crop:** `SkiaReceiptDetector` now finds the receipt with `ReceiptQuadFinder` (320 px greyscale, box blur, Otsu, both polarities, largest connected
+  region of 12-95 % of the frame, fill ratio >= 0.8 of its maximum-area inscribed quadrilateral) and warps it with a homography drawn by Skia
+  (`SKMatrix` with perspective terms). The cropped colour image (not binarised) goes to OCR. No quad means the previous EXIF + downscale behaviour.
+* **Why not YOLO:** the model is a segmentation model; its mask, contour and polygon steps are OpenCV code, cannot be checked without receipt photos on a
+  device, and bundling ~5 MB nobody reads is worse than a deterministic, unit-tested finder. Allow-list unchanged. Known limits: a receipt of the same
+  brightness as its background, a receipt cut by the frame edge, strong shadows splitting the sheet; all fall back to the uncropped picture.
+  Tested on synthetic pictures only (rotated 0/12/-25/70 degrees, perspective, dark-on-light, none, full frame, speck); no real photo has been run.
+* **Camera:** `ICameraSource` (Pine.Core, TD-120) already existed for the OpenCV webcam; Android adds `AndroidCameraSource` (Camera2, back lens, YUV up to
+  ~2 MP, rotated upright, BGRA in memory) registered through `PineCompositionRoot.Build(..., configureHeadServices)`. The manifest declares CAMERA (and
+  camera `required=false`) and removes INTERNET and ACCESS_NETWORK_STATE (the ONNX Runtime AAR declares them and the manifest merger would otherwise add them; found on the tablet with `dumpsys package`). UNVERIFIED on a device: permission prompt, preview, orientation, capture.
+* **Left:** full-resolution JPEG still capture, continuous preview analysis (auto-capture when a sheet is steady), YOLO crop.
 
 ## 11. Recommendation
 

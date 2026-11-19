@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -60,6 +61,13 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </summary>
     private readonly IViewModelFactory _viewModels;
     private readonly ILogger<ScanReceiptViewModel>? _logger;
+
+    /// <summary>The platform camera, or null when this head has none (Windows uses the live scanner page instead).</summary>
+    private readonly ICameraSource? _camera;
+    private readonly object _cameraLock = new();
+    private CancellationTokenSource? _cameraCts;
+    private ICameraSession? _cameraSession;
+    private ICameraFrame? _latestFrame;
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
@@ -249,9 +257,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         IViewModelFactory viewModels,
         ILocalizer localizer,
         ILogger<ScanReceiptViewModel>? logger = null,
-        Pine.Ui.Avalonia.Composition.PineHeadCapabilities? capabilities = null)
+        Pine.Ui.Avalonia.Composition.PineHeadCapabilities? capabilities = null,
+        ICameraSource? camera = null)
     {
         HasLiveScanner = capabilities?.HasReceiptVision ?? true;
+        _camera = camera;
+        HasCameraCapture = camera is not null && !HasLiveScanner;
         ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _navigationService = navigationService;
@@ -706,6 +717,182 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </summary>
     public bool HasLiveScanner { get; }
 
+    /// <summary>
+    /// Whether this page offers to take the receipt photo with the device camera itself (Android, docs/65 phase D):
+    /// the head registers an <see cref="ICameraSource"/> but has no full live scanner. False on Windows, where the
+    /// Retake button opens the live scanner page, and on any head without a camera.
+    /// </summary>
+    public bool HasCameraCapture { get; }
+
+    /// <summary>True while the camera is open and the viewfinder is showing.</summary>
+    [ObservableProperty]
+    public partial bool IsCameraOpen { get; private set; }
+
+    /// <summary>The most recent camera frame, for the viewfinder. Never saved: frames live in memory only.</summary>
+    [ObservableProperty]
+    public partial WriteableBitmap? LiveFeed { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(HasCameraCapture))]
+    private void OpenCamera()
+    {
+        if (_camera is null || IsCameraOpen || IsBusy)
+        {
+            return;
+        }
+
+        _error.Clear();
+        IsCameraOpen = true;
+        _status.Set("LiveScanner.Status.OpeningCamera");
+        var cts = new CancellationTokenSource();
+        _cameraCts = cts;
+        _ = Task.Run(() => CameraLoopAsync(_camera, cts.Token));
+    }
+
+    /// <summary>Opens the camera (the Android head asks for the CAMERA permission here) and feeds the viewfinder until closed.</summary>
+    private async Task CameraLoopAsync(ICameraSource camera, CancellationToken token)
+    {
+        try
+        {
+            var session = camera.OpenDefault();
+            if (session is null)
+            {
+                Post(() =>
+                {
+                    CloseCamera();
+                    _error.Set("LiveScanner.Status.CameraFailed");
+                });
+                return;
+            }
+
+            lock (_cameraLock)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    session.Dispose();
+                    return;
+                }
+
+                _cameraSession = session;
+            }
+
+            Post(() => _status.Clear());
+
+            while (!token.IsCancellationRequested)
+            {
+                ICameraFrame? frame;
+                lock (_cameraLock)
+                {
+                    frame = _cameraSession?.ReadFrame();
+                    if (_cameraSession is null)
+                    {
+                        break;
+                    }
+                }
+
+                if (frame is null)
+                {
+                    await Task.Delay(40, token).ConfigureAwait(false);
+                    continue;
+                }
+
+                var bitmap = ToBitmap(frame);
+                lock (_cameraLock)
+                {
+                    _latestFrame?.Dispose();
+                    _latestFrame = frame;
+                }
+
+                Post(() => LiveFeed = bitmap);
+
+                // About 6 frames a second is plenty for a viewfinder and keeps the CPU free for the scan itself.
+                await Task.Delay(150, token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            var failure = UserFacingError.Report(_logger, ex, "camera-loop", new UserFacingMessage("LiveScanner.Failure.CaptureLoop"));
+            Post(() =>
+            {
+                CloseCamera();
+                _error.Set(failure);
+            });
+        }
+    }
+
+    private static WriteableBitmap ToBitmap(ICameraFrame frame)
+    {
+        var bitmap = new WriteableBitmap(
+            new global::Avalonia.PixelSize(frame.Width, frame.Height),
+            new global::Avalonia.Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul);
+
+        using var buffer = bitmap.Lock();
+        unsafe
+        {
+            frame.CopyBgraTo(new Span<byte>((void*)buffer.Address, buffer.RowBytes * frame.Height), buffer.RowBytes);
+        }
+
+        return bitmap;
+    }
+
+    private static void Post(Action action) => global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
+
+    /// <summary>Takes the frame on screen, closes the camera and runs it through the same pipeline as a picked file.</summary>
+    [RelayCommand]
+    private async Task CapturePhotoAsync()
+    {
+        byte[]? jpeg;
+        lock (_cameraLock)
+        {
+            jpeg = _latestFrame?.EncodeJpeg();
+        }
+
+        CloseCamera();
+        if (jpeg is null)
+        {
+            _error.Set("ScanReceipt.Failure.CapturedImage");
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(jpeg, writable: false);
+            await ProcessReceiptImageAsync(stream);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-process",
+                new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseCamera()
+    {
+        _cameraCts?.Cancel();
+        _cameraCts?.Dispose();
+        _cameraCts = null;
+        lock (_cameraLock)
+        {
+            _cameraSession?.Dispose();
+            _cameraSession = null;
+            _latestFrame?.Dispose();
+            _latestFrame = null;
+        }
+
+        IsCameraOpen = false;
+        LiveFeed = null;
+        _status.Clear();
+    }
+
     [RelayCommand(CanExecute = nameof(HasLiveScanner))]
     private void Retake()
     {
@@ -869,6 +1056,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </remarks>
     public void Dispose()
     {
+        CloseCamera();
         _localizer.LanguageChanged -= OnLanguageChanged;
         _status.Dispose();
         _error.Dispose();

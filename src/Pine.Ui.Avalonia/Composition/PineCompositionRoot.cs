@@ -229,6 +229,23 @@ public static class PineCompositionRoot
     }
 
     /// <summary>
+    /// Gives a head its platform camera (Android's Camera2 source). A head passes this through <c>Build</c>'s
+    /// <c>configureHeadServices</c>; it registers nothing else of its own (TD-29). Where a camera source already exists
+    /// (the OpenCV one on Windows) it does nothing.
+    /// </summary>
+    /// <typeparam name="TCamera">The head's camera implementation.</typeparam>
+    /// <param name="services">The service collection being composed.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection UseCameraSource<TCamera>(this IServiceCollection services)
+        where TCamera : class, Pine.Core.Ai.ICameraSource
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions
+            .TryAddSingleton<Pine.Core.Ai.ICameraSource, TCamera>(services);
+        return services;
+    }
+
+    /// <summary>
     /// Starts every <see cref="IHostedService"/> in the container -- the auto-lock watchdog on all
     /// heads, plus categoriser training where the head has it.
     /// </summary>

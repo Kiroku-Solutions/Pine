@@ -170,7 +170,7 @@ The receipt pipeline contains roughly twenty numeric constants that are **not** 
 the detection confidence and area/aspect cutoffs, letterbox size and anchor count in
 `ReceiptDetector`; the geometry and OCR kernel parameters in `OpenCvImageProcessor`; and the
 zone-detection ratios in `HeuristicFieldExtractor`; and, for the managed ONNX OCR backend, the detector and
-recogniser constants in `OnnxOcrEngine`, `DbPostProcessor` and `SkiaImagePreprocessor` (section 7.3). They stay literals, on purpose.
+recogniser constants in `OnnxOcrEngine`, `DbPostProcessor` and `SkiaImagePreprocessor` (section 7.3), and the Skia crop in `SkiaReceiptDetector` and `ReceiptQuadFinder` (section 7.4). They stay literals, on purpose.
 
 - They are the algorithm, tuned together with the shipped model version. Changing one in isolation
   changes what counts as a receipt.
@@ -238,8 +238,17 @@ OpenCV registration (`ReceiptDetector`, `OpenCvImageProcessor`, `OpenCvCameraSou
 | Head | Level | Detect/crop stage (`IReceiptDetector`) | OCR |
 |---|---|---|---|
 | Windows | `Full` | `ReceiptDetector` (YOLO + OpenCV) | `Pine:Ai:OcrBackend` (Paddle default) |
-| Android | `OcrOnly` | `SkiaReceiptDetector` (EXIF + downscale to 2048 px, no crop) | `OnnxOcrEngine`, forced |
+| Android | `OcrOnly` | `SkiaReceiptDetector` (EXIF + downscale to 2048 px, then `ReceiptQuadFinder` + Skia homography crop; falls back to the uncropped picture when no sheet is found) | `OnnxOcrEngine`, forced |
 | macOS, iOS | `None` | n/a | n/a |
+
+`SkiaReceiptDetector` (docs/65 B2) is classical, not YOLO: Otsu threshold, largest region, convex hull, maximum-area inscribed quadrilateral,
+then a 4-point homography drawn by Skia. It answers "a sheet-like quadrilateral covering 12-95 % of the frame", never "certainly a receipt".
+Its constants are literals under the 7.1 boundary (`ReceiptQuadFinder.cs`). The YOLO model stays Windows-only.
+
+Camera on an `OcrOnly` head (docs/65 phase D): the head may register an `ICameraSource` (Android: `AndroidCameraSource`, Camera2, CAMERA permission
+requested on the first Take Photo tap, no INTERNET permission, frames in memory only). `ScanReceiptViewModel.HasCameraCapture` is true only when a
+camera source exists and the head has no live scanner page; it shows a viewfinder, Capture and Cancel, and the captured frame runs through the same
+pipeline as a picked file. `HasLiveScanner` keeps its meaning (Windows, `Full`).
 
 On an `OcrOnly` head nothing that names an OpenCvSharp type is registered or constructed
 (`AndroidOcrOnlyCompositionTests`). LayoutLM's image decode is Skia on every head. The Android head copies the OCR models

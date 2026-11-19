@@ -85,11 +85,48 @@ public sealed class AndroidOcrOnlyCompositionTests
     }
 
     [Fact]
+    public void TheAndroidScanPage_ShouldOfferTheCamera_OnlyWhenTheHeadRegistersACameraSource()
+    {
+        var shell = Substitute.For<IShellNavigator>();
+
+        using (var without = TestContainer.Build(PineHeadProfile.Android))
+        {
+            without.GetRequiredService<IViewModelFactory>().CreateScanReceipt(shell).HasCameraCapture.Should().BeFalse();
+        }
+
+        // The Android head adds its Camera2 source through configureHeadServices; the page then offers Take Photo.
+        using var with = PineCompositionRoot.Build(
+            PineHeadProfile.Android,
+            options => options.Storage.DataDirectory = TestContainer.DataDirectory,
+            services => services.UseCameraSource<FakeCamera>());
+        var scan = with.GetRequiredService<IViewModelFactory>().CreateScanReceipt(shell);
+
+        scan.HasCameraCapture.Should().BeTrue();
+        scan.HasLiveScanner.Should().BeFalse("the full live scanner page still needs OpenCV");
+        scan.OpenCameraCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public void TheWindowsScanPage_ShouldKeepTheLiveScanner_NotTheInlineCamera()
+    {
+        using var provider = TestContainer.Build(PineHeadProfile.Windows);
+        var scan = provider.GetRequiredService<IViewModelFactory>().CreateScanReceipt(Substitute.For<IShellNavigator>());
+
+        scan.HasLiveScanner.Should().BeTrue();
+        scan.HasCameraCapture.Should().BeFalse();
+    }
+
+    [Fact]
     public void TheNavigationTargets_ShouldOfferScanButNotLiveScanning_OnAnOcrOnlyHead()
     {
         var targets = PineCompositionRoot.NavigationTargets(PineHeadCapabilities.For(PineHeadProfile.Android));
 
         targets.Should().Contain(typeof(ScanReceiptViewModel));
         targets.Should().NotContain(typeof(LiveScannerViewModel));
+    }
+
+    private sealed class FakeCamera : ICameraSource
+    {
+        public ICameraSession? OpenDefault() => null;
     }
 }

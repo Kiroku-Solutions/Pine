@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content.PM;
+using Android.OS;
 using Avalonia;
 using Avalonia.Android;
 
@@ -14,4 +15,28 @@ namespace Pine.Ui.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity
 {
+    /// <summary>The running activity, for the camera source (permission prompt, display rotation). Null before creation and after destruction.</summary>
+    internal static MainActivity? Current { get; private set; }
+
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        Current = this;
+        base.OnCreate(savedInstanceState);
+    }
+
+    protected override void OnDestroy()
+    {
+        if (ReferenceEquals(Current, this))
+        {
+            Current = null;
+        }
+
+        base.OnDestroy();
+    }
+
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        AndroidCameraSource.OnPermissionResult(requestCode, grantResults);
+    }
 }

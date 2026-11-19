@@ -1,5 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:installLocation="auto">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:installLocation="auto">
 	<!-- Offline-first: no INTERNET permission. Debug builds get it added by the Android SDK for the debugger only. -->
+	<!-- Receipt photo: the camera is opened only when the person taps Take Photo, frames stay in memory, nothing is uploaded. -->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
+	<!-- The ONNX Runtime AAR declares INTERNET and ACCESS_NETWORK_STATE and the manifest merger adds them; Pine never uses the network, so remove them. -->
+	<uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 	<application android:label="Pine" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" />
 </manifest>

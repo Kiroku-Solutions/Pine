@@ -53,7 +53,8 @@ namespace Pine.Ui.Android
                 {
                     options.Ai.LayoutLmModelPath = layoutLm;
                 }
-            });
+            },
+            services => services.UseCameraSource<AndroidCameraSource>());
 
             // Hand the UI what it needs, by name (TD-28) -- a typed record, not the container.
             PineCompositionRoot.InitializeUi(serviceProvider);
