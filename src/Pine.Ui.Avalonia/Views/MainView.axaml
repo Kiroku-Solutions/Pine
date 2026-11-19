@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Pine.Ui.Avalonia.ViewModels"
+        xmlns:views="using:Pine.Ui.Avalonia.Views"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="Pine.Ui.Avalonia.Views.MainView"
+        x:DataType="vm:MainViewModel"
+        Background="{DynamicResource PineBackground}">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <UserControl.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:SetupViewModel}">
+            <views:SetupView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:UnlockViewModel}">
+            <views:UnlockView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:VaultSelectionViewModel}">
+            <views:VaultSelectionView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ShellViewModel}">
+            <views:ShellView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TransactionsViewModel}">
+            <views:TransactionsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:SettingsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
+            <views:DiagnosticsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BudgetsViewModel}">
+            <views:BudgetsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:RulesViewModel}">
+            <views:RulesView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncConflictsViewModel}">
+            <views:SyncConflictsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncPairingViewModel}">
+            <views:SyncPairingView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SyncRunViewModel}">
+            <views:SyncRunView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ScanReceiptViewModel}">
+            <views:ScanReceiptView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:LiveScannerViewModel}">
+            <views:LiveScannerView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CropReceiptViewModel}">
+            <views:CropReceiptView />
+        </DataTemplate>
+    </UserControl.DataTemplates>
+
+    <TransitioningContentControl Content="{Binding CurrentPage}">
+        <TransitioningContentControl.PageTransition>
+            <CrossFade Duration="0:0:0.25" />
+        </TransitioningContentControl.PageTransition>
+    </TransitioningContentControl>
+
+</UserControl>

@@ -4,7 +4,7 @@
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <!--
       REAL APPLICATION IDENTITY, iteration 31 (TD-109, first half).
@@ -25,6 +25,10 @@
     <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <!-- Phones are arm64; x64 is the emulator. Dropping armeabi-v7a/x86 shrinks the APK and the build. -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <!-- A Debug APK must run when installed with plain `adb install` (no IDE fast-deployment session). -->
+    <EmbedAssembliesIntoApk Condition="'$(Configuration)' == 'Debug'">true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
   <ItemGroup>
