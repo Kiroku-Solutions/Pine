@@ -8,6 +8,7 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Pine.Ui.Avalonia.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        Icon="avares://Pine.Ui.Avalonia/Assets/PineIcon.png"
         Title="{loc:Tr MainWindow.Title}"
         Width="900" Height="600"
         MinWidth="720" MinHeight="480"

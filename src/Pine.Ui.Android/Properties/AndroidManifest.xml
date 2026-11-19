@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" android:installLocation="auto">
 	<!-- Offline-first: no INTERNET permission. Debug builds get it added by the Android SDK for the debugger only. -->
-	<application android:label="Pine" android:icon="@drawable/Icon" />
+	<application android:label="Pine" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" />
 </manifest>
