@@ -532,6 +532,8 @@
   "Shell.Nav.Dashboard": "Panel",
   "Shell.Nav.Diagnostics": "Diagnóstico",
   "Shell.Nav.LiveScanner": "Escáner en vivo",
+  "Shell.Nav.ReceiptUnavailable": "El escaneo de recibos no está disponible en este dispositivo.",
+  "Shell.Menu": "☰  Menú",
   "Shell.Nav.Rules": "Reglas",
   "Shell.Nav.ScanReceipt": "Escanear recibo",
   "Shell.Nav.Settings": "Configuración",

@@ -18,11 +18,11 @@
 
     <Grid>
         <!-- Main Content Area (Dashboard only) -->
-        <Grid RowDefinitions="Auto, *" Margin="40">
+        <Grid RowDefinitions="Auto, *" Margin="24">
             
             <!-- Header -->
-            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
-                <StackPanel Grid.Column="0">
+            <WrapPanel Grid.Row="0" Margin="0,0,0,24">
+                <StackPanel Margin="0,0,20,8">
                     <TextBlock Text="{Binding Greeting}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                     <TextBlock Text="{loc:Tr Dashboard.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
                     <!-- TD-105: a failed load's sentence, in its own slot. Used to overwrite Greeting
@@ -31,7 +31,7 @@
                     <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
                 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <!-- It had no Command at all: rendered, clickable, did nothing (post-audit plan item 1.4).
                          Hidden on a head without receipt vision, like the sidebar's receipt buttons (TD-85). -->
                     <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Command="{Binding OpenScanReceiptCommand}"
@@ -45,7 +45,7 @@
                         </StackPanel>
                     </Button>
                 </StackPanel>
-            </Grid>
+            </WrapPanel>
 
             <!-- Content -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">

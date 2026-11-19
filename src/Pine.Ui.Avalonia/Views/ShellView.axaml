@@ -8,9 +8,13 @@
              x:Class="Pine.Ui.Avalonia.Views.ShellView"
              x:DataType="vm:ShellViewModel">
 
-    <Grid ColumnDefinitions="240, *" Background="{DynamicResource PineBackground}">
+    <SplitView x:Name="NavSplit" DisplayMode="Inline" OpenPaneLength="240"
+               IsPaneOpen="{Binding IsPaneOpen, Mode=TwoWay}"
+               PanePlacement="Left" Background="{DynamicResource PineBackground}"
+               PaneBackground="{DynamicResource PineSidebar}">
+      <SplitView.Pane>
         <!-- Sidebar Navigation -->
-        <Border Grid.Column="0" Background="{DynamicResource PineSidebar}"
+        <Border Background="{DynamicResource PineSidebar}"
                 BorderBrush="{DynamicResource PineSidebarBorder}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <!-- App Title at Top -->
@@ -72,6 +76,10 @@
                         <Button Content="{loc:Tr Shell.Nav.SyncRun}" Command="{Binding NavigateToSyncRunCommand}"
                                 Classes="pine-nav" Classes.active="{Binding IsSyncRunActive}" />
 
+                        <TextBlock Text="{loc:Tr Shell.Nav.ReceiptUnavailable}" IsVisible="{Binding ShowReceiptVisionNote}"
+                                   TextWrapping="Wrap" FontSize="11" Margin="12,6,12,0"
+                                   Foreground="{DynamicResource PineTextMuted}" />
+
                         <Border Height="1" Background="{DynamicResource PineBorder}" Margin="4,12" />
 
                         <Button Content="{loc:Tr Shell.Nav.Settings}" Command="{Binding NavigateToSettingsCommand}"
@@ -82,12 +90,23 @@
                 </ScrollViewer>
             </DockPanel>
         </Border>
+      </SplitView.Pane>
 
-        <!-- Main Content Area -->
-        <TransitioningContentControl Grid.Column="1" Content="{Binding CurrentPage}">
-            <TransitioningContentControl.PageTransition>
-                <CrossFade Duration="0:0:0.2" />
-            </TransitioningContentControl.PageTransition>
-        </TransitioningContentControl>
-    </Grid>
+      <SplitView.Content>
+        <DockPanel>
+            <!-- Menu bar, only when the sidebar is a drawer (narrow screens). -->
+            <Border DockPanel.Dock="Top" IsVisible="{Binding IsCompact}"
+                    Background="{DynamicResource PineSidebar}" Padding="8">
+                <Button Content="{loc:Tr Shell.Menu}" Command="{Binding TogglePaneCommand}"
+                        Classes="pine-nav" HorizontalAlignment="Left" FontSize="18" />
+            </Border>
+            <!-- Main Content Area -->
+            <TransitioningContentControl Content="{Binding CurrentPage}">
+                <TransitioningContentControl.PageTransition>
+                    <CrossFade Duration="0:0:0.2" />
+                </TransitioningContentControl.PageTransition>
+            </TransitioningContentControl>
+        </DockPanel>
+      </SplitView.Content>
+    </SplitView>
 </UserControl>

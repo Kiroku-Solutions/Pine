@@ -532,6 +532,8 @@
   "Shell.Nav.Dashboard": "Dashboard",
   "Shell.Nav.Diagnostics": "Diagnostics",
   "Shell.Nav.LiveScanner": "Live Scanner",
+  "Shell.Nav.ReceiptUnavailable": "Receipt scanning is not available on this device.",
+  "Shell.Menu": "☰  Menu",
   "Shell.Nav.Rules": "Rules",
   "Shell.Nav.ScanReceipt": "Scan Receipt",
   "Shell.Nav.Settings": "Settings",

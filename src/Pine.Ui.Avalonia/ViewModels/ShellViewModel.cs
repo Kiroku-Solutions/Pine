@@ -38,6 +38,30 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     /// </remarks>
     public bool HasReceiptVision { get; }
 
+    /// <summary>
+    /// Whether to tell the person that receipt scanning is unavailable here, instead of the two
+    /// receipt buttons silently not being in the list.
+    /// </summary>
+    public bool ShowReceiptVisionNote => !HasReceiptVision;
+
+    /// <summary>
+    /// Whether the window is too narrow for a permanent sidebar (a phone, or a tablet held in
+    /// portrait). Set by <c>ShellView</c> from its width; the sidebar then becomes an overlay
+    /// drawer opened from a menu button, instead of taking 240 of ~600 available pixels.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsCompact { get; set; }
+
+    /// <summary>Whether the sidebar is showing. Always true when not compact.</summary>
+    [ObservableProperty]
+    public partial bool IsPaneOpen { get; set; } = true;
+
+    partial void OnIsCompactChanged(bool value) => IsPaneOpen = !value;
+
+    /// <summary>Opens or closes the sidebar drawer.</summary>
+    [RelayCommand]
+    private void TogglePane() => IsPaneOpen = !IsPaneOpen;
+
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
@@ -109,6 +133,10 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         CurrentPage = page;
 
         UpdateActiveStates(page);
+
+        // A drawer that stays open over the page you just chose would hide it.
+        if (IsCompact)
+            IsPaneOpen = false;
     }
 
     /// <summary>
