@@ -106,22 +106,22 @@ public sealed class PineViewModelFactory : IViewModelFactory
     // of its dependencies exists there -- and hand it a pipeline that refuses vision on first use.
 
     /// <inheritdoc />
-    public ScanReceiptViewModel CreateScanReceipt(IShellNavigator shell) => CreateReceiptPage<ScanReceiptViewModel>(shell);
+    public ScanReceiptViewModel CreateScanReceipt(IShellNavigator shell) => CreateReceiptPage<ScanReceiptViewModel>(shell, _capabilities.HasReceiptScan);
 
     /// <inheritdoc />
-    public LiveScannerViewModel CreateLiveScanner(IShellNavigator shell) => CreateReceiptPage<LiveScannerViewModel>(shell);
+    public LiveScannerViewModel CreateLiveScanner(IShellNavigator shell) => CreateReceiptPage<LiveScannerViewModel>(shell, _capabilities.HasReceiptVision);
 
     /// <inheritdoc />
-    public CropReceiptViewModel CreateCropReceipt(IShellNavigator shell) => CreateReceiptPage<CropReceiptViewModel>(shell);
+    public CropReceiptViewModel CreateCropReceipt(IShellNavigator shell) => CreateReceiptPage<CropReceiptViewModel>(shell, _capabilities.HasReceiptVision);
 
-    private TPage CreateReceiptPage<TPage>(IShellNavigator shell)
+    private TPage CreateReceiptPage<TPage>(IShellNavigator shell, bool available)
     {
         ArgumentNullException.ThrowIfNull(shell);
 
-        if (!_capabilities.HasReceiptVision)
+        if (!available)
         {
             throw new InvalidOperationException(
-                $"The {_capabilities.Profile} head has no receipt pipeline, so it cannot show {typeof(TPage).Name}. " +
+                $"The {_capabilities.Profile} head cannot run the pipeline behind {typeof(TPage).Name}. " +
                 "The shell hides the buttons that lead here on such a head.");
         }
 

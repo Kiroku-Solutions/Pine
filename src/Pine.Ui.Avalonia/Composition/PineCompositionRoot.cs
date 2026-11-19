@@ -111,14 +111,16 @@ public static class PineCompositionRoot
         // Persistence, vault cryptography, logging, diagnostics and the AI subsystem (TD-29).
         services.AddPineInfrastructure(infrastructure =>
         {
-            infrastructure.IncludeReceiptVision = capabilities.HasReceiptVision;
+            infrastructure.IncludeReceiptVision = capabilities.HasReceiptScan;
+            infrastructure.UseOpenCvVision = capabilities.HasReceiptVision;
 
             // Optional LayoutLMv3 model: paths only, null = off. Enabled keeps its default.
             infrastructure.LayoutLm.ModelPath = options.Ai.LayoutLmModelPath;
             infrastructure.LayoutLm.TokenizerPath = options.Ai.LayoutLmTokenizerPath;
 
             // Which OCR engine reads the receipt (docs/65). Paddle unless configured otherwise.
-            infrastructure.OcrBackend = options.Ai.OcrBackend;
+            // An OCR-only head (Android) has no Paddle native library, so the setting cannot select it there.
+            infrastructure.OcrBackend = capabilities.HasReceiptVision ? options.Ai.OcrBackend : Pine.Core.Ai.OcrBackend.Onnx;
             infrastructure.OcrModelDirectory = options.Ai.OcrModelDirectory;
 
             // The log directory is now a fact about Pine's data directory rather than a second,
@@ -302,9 +304,13 @@ public static class PineCompositionRoot
             typeof(TransactionsViewModel),
         };
 
-        if (capabilities.HasReceiptVision)
+        if (capabilities.HasReceiptScan)
         {
             targets.Add(typeof(ScanReceiptViewModel));
+        }
+
+        if (capabilities.HasReceiptVision)
+        {
             targets.Add(typeof(LiveScannerViewModel));
         }
 

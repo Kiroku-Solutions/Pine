@@ -39,10 +39,22 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     public bool HasReceiptVision { get; }
 
     /// <summary>
-    /// Whether to tell the person that receipt scanning is unavailable here, instead of the two
-    /// receipt buttons silently not being in the list.
+    /// Whether the Scan Receipt page (choose an image file, read it) is offered. True on Windows and, with
+    /// the managed OCR stack, on Android (docs/65 phase C).
     /// </summary>
-    public bool ShowReceiptVisionNote => !HasReceiptVision;
+    public bool HasReceiptScan { get; }
+
+    /// <summary>
+    /// Whether to tell the person that receipt scanning is unavailable here, instead of the receipt
+    /// buttons silently not being in the list.
+    /// </summary>
+    public bool ShowReceiptVisionNote => !HasReceiptScan;
+
+    /// <summary>
+    /// Whether to tell the person that scanning from a file works here but live scanning and the crop
+    /// screen do not (an OCR-only head).
+    /// </summary>
+    public bool ShowLiveScanNote => HasReceiptScan && !HasReceiptVision;
 
     /// <summary>
     /// Whether the window is too narrow for a permanent sidebar (a phone, or a tablet held in
@@ -75,6 +87,7 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         _viewModels = viewModels;
         _vaultSession = vaultSession;
         HasReceiptVision = capabilities.HasReceiptVision;
+        HasReceiptScan = capabilities.HasReceiptScan;
 
         // Start on the Dashboard
         NavigateToDashboard();

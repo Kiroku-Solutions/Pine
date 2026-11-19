@@ -1,4 +1,4 @@
-using OpenCvSharp;
+using Pine.Infrastructure.Ai.Vision;
 
 namespace Pine.Infrastructure.Ai.Extraction.LayoutLm;
 
@@ -14,9 +14,10 @@ public sealed record LayoutLmImage(int Width, int Height, float[] PixelValues);
 /// </summary>
 /// <remarks>
 /// <para>
-/// DECODING USES OPENCV, BECAUSE THE OCR ENGINE DOES. <c>PaddleOcrEngine</c> decodes with
-/// <c>Cv2.ImDecode(..., Color)</c>, so the OCR boxes live in that decoder's coordinate space (EXIF
-/// rotation included). Decoding the same bytes the same way keeps boxes and pixels aligned.
+/// DECODING USES SKIA (<c>SkiaImagePreprocessor.Decode</c>), BECAUSE OPENCV DOES NOT EXIST ON EVERY HEAD. It
+/// applies the EXIF rotation exactly as <c>Cv2.ImDecode</c> does (which the Paddle engine uses), so the OCR
+/// boxes and these pixels stay in the same coordinate space on every backend. This type used to decode with
+/// OpenCV; moving it is what lets LayoutLM run on Android.
 /// </para>
 /// <para>
 /// RESIZE IS PILLOW'S BILINEAR, REIMPLEMENTED. OpenCV's <c>INTER_LINEAR</c> does not widen its
@@ -35,21 +36,16 @@ public static class LayoutLmImagePreprocessor
     /// <summary>Decodes an encoded image (PNG, JPEG, ...) and preprocesses it.</summary>
     public static LayoutLmImage Process(ReadOnlySpan<byte> encoded)
     {
-        using var mat = Cv2.ImDecode(encoded.ToArray(), ImreadModes.Color);
-        if (mat.Empty())
-        {
-            throw new InvalidOperationException("The image could not be decoded.");
-        }
-
-        var width = mat.Width;
-        var height = mat.Height;
+        var bgr = SkiaImagePreprocessor.Decode(encoded.ToArray());
+        var width = bgr.Width;
+        var height = bgr.Height;
         var rgb = new byte[width * height * 3];
-        mat.GetArray(out Vec3b[] bgr);
-        for (var i = 0; i < bgr.Length; i++)
+        var source = bgr.Data;
+        for (var i = 0; i < width * height; i++)
         {
-            rgb[i * 3] = bgr[i].Item2;
-            rgb[i * 3 + 1] = bgr[i].Item1;
-            rgb[i * 3 + 2] = bgr[i].Item0;
+            rgb[i * 3] = source[i * 3 + 2];
+            rgb[i * 3 + 1] = source[i * 3 + 1];
+            rgb[i * 3 + 2] = source[i * 3];
         }
 
         var resized = ResizeBilinear(rgb, width, height, Size, Size);

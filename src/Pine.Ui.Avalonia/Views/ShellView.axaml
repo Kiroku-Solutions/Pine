@@ -55,7 +55,7 @@
                              PineViewModelFactory), so a visible button always has a view model
                              behind it. -->
                         <Button Content="{loc:Tr Shell.Nav.ScanReceipt}" Command="{Binding NavigateToScanReceiptCommand}"
-                                IsVisible="{Binding HasReceiptVision}"
+                                IsVisible="{Binding HasReceiptScan}"
                                 Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
                         <Button Content="{loc:Tr Shell.Nav.LiveScanner}" Command="{Binding NavigateToLiveScannerCommand}"
                                 IsVisible="{Binding HasReceiptVision}"
@@ -77,6 +77,9 @@
                                 Classes="pine-nav" Classes.active="{Binding IsSyncRunActive}" />
 
                         <TextBlock Text="{loc:Tr Shell.Nav.ReceiptUnavailable}" IsVisible="{Binding ShowReceiptVisionNote}"
+                                   TextWrapping="Wrap" FontSize="11" Margin="12,6,12,0"
+                                   Foreground="{DynamicResource PineTextMuted}" />
+                        <TextBlock Text="{loc:Tr Shell.Nav.LiveScanUnavailable}" IsVisible="{Binding ShowLiveScanNote}"
                                    TextWrapping="Wrap" FontSize="11" Margin="12,6,12,0"
                                    Foreground="{DynamicResource PineTextMuted}" />
 

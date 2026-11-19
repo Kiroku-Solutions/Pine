@@ -533,6 +533,7 @@
   "Shell.Nav.Diagnostics": "Diagnóstico",
   "Shell.Nav.LiveScanner": "Escáner en vivo",
   "Shell.Nav.ReceiptUnavailable": "El escaneo de recibos no está disponible en este dispositivo.",
+  "Shell.Nav.LiveScanUnavailable": "El escaneo en vivo y el recorte manual no están disponibles en este dispositivo; elige un archivo de imagen para escanear un recibo.",
   "Shell.Menu": "☰  Menú",
   "Shell.Nav.Rules": "Reglas",
   "Shell.Nav.ScanReceipt": "Escanear recibo",

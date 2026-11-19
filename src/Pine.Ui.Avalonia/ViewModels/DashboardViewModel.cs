@@ -121,7 +121,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         _mediator = mediator;
         _viewModels = viewModels;
         _shell = shell;
-        HasReceiptVision = capabilities.HasReceiptVision;
+        HasReceiptScan = capabilities.HasReceiptScan;
         _logger = logger;
         _localizer = localizer ?? Localizer.Instance;
         _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
@@ -277,7 +277,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// page at all -- so a visible button always has a page behind it, and a head without the
     /// pipeline shows neither the button nor a button that would throw.
     /// </remarks>
-    public bool HasReceiptVision { get; }
+    public bool HasReceiptScan { get; }
 
     /// <summary>
     /// Opens the receipt page in the shell -- what the dashboard's Scan Receipt button has always
@@ -300,7 +300,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     [RelayCommand(CanExecute = nameof(CanOpenScanReceipt))]
     private void OpenScanReceipt() => _shell.NavigateTo(_viewModels.CreateScanReceipt(_shell));
 
-    private bool CanOpenScanReceipt() => HasReceiptVision;
+    private bool CanOpenScanReceipt() => HasReceiptScan;
 
     // The two dialogs only close themselves now. What they wrote reaches the tiles through
     // DataChangedMessage -- CreateAccountViewModel has always sent it, and the import wizard does as

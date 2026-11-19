@@ -188,12 +188,12 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 5. [ ] B2 (separate, larger): `SkiaReceiptDetector` replacing the OpenCV half of `ReceiptDetector` (§2.1) and `SkiaImageProcessor : IImageProcessor`; re-run the YOLO fixtures; threshold/sharpen differences go through the §7.1 re-evaluation. `LayoutLmImagePreprocessor` decode via Skia.
 6. [ ] B3 Switch Windows to `OcrBackend.Onnx` only after 4 passes; keep Paddle one release.
 
-**Phase C — Android wiring**
-1. File picker (Avalonia `StorageProvider`) → `Stream` → `IAIProvider.ExtractReceiptDataAsync`; image downscale policy; EXIF orientation.
-2. Models as `AndroidAsset`, first-run copy or byte[] load; YOLO asset too.
-3. `PineHeadCapabilities`: `Android → OcrOnly` (or `Full` after B2), tests; composition test that the container resolves `IAIProvider` on the Android profile without OpenCvSharp types loaded.
-4. **LayoutLM on device** (ONNX Runtime already there): memory/latency measurement; decide whether it is on by default.
-5. Measure on the real tablet: latency per stage, peak RSS, APK size delta. Update §8 with numbers; until then they are estimates.
+**Phase C — Android wiring (C-minimal implemented, see §12)**
+1. [x] File picker (Avalonia `StorageProvider`) → `Stream` → `IAIProvider.ExtractReceiptDataAsync`; image downscale policy (`SkiaReceiptDetector`, 2048 px long side); EXIF orientation (Skia).
+2. [x] Models as `AndroidAsset`, first-run copy to the files directory (`OcrModelInstaller`). YOLO is **not** bundled: its pre/post-processing is OpenCV, so nothing would read it (B2).
+3. [x] `PineHeadCapabilities`: `Android → OcrOnly` (`Full` after B2), tests; composition test (`AndroidOcrOnlyCompositionTests`) that the container resolves `IAIProvider`, the OCR engine and the scan page on the Android profile without any OpenCV-bound type.
+4. [ ] **LayoutLM on device**: code path works (Skia decode, no OpenCV) and is picked up from `files/layoutlm/model.onnx` (§12); memory/latency measurement and the default decision are open.
+5. [ ] Measure on the real tablet: latency per stage, peak RSS, APK size delta. Update §8 with numbers; until then they are estimates (§12 says what was measured).
 
 **Phase D — live camera:** `ICameraSource` implementation using the platform camera (CameraX through a small Android binding, or a still-capture-then-scan flow first); Skia frame conversion; throttled scanning. Not designed here.
 
@@ -207,6 +207,15 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 * **Android 16 KB page size / ABI:** `libonnxruntime.so` for arm64 is present; 16 KB alignment for Android 15+ devices is untested.
 * **Latency on the tablet** may exceed 15 s with 80-line receipts; the user-visible fallback (manual entry) must remain.
 * Models are float32 with ~13 MB RAM and no quantisation; INT8 recognition may change CER — unmeasured.
+
+## 12. Android phase C-minimal (as built)
+
+* **Pipeline on Android:** system picker -> `Stream` -> `SkiaReceiptDetector` (decode, EXIF, shrink to 2048 px long side; re-encoded as JPEG only when it had to change, otherwise the original bytes are used) -> `OnnxOcrEngine` -> `HeuristicFieldExtractor` -> LayoutLM overlay when configured. No YOLO, no crop, no binarisation (OCR runs on the colour image, the §10 mitigation). `SkiaReceiptDetector` implements `IReceiptDetector`, the seam where B2 slots in (its Detect methods throw `AiCapabilityUnavailableException` until then).
+* **Capabilities:** `ReceiptVisionLevel { None, OcrOnly, Full }`; `HasReceiptScan` vs `HasReceiptVision` (docs/13 section 7.4). The shell shows "Live scanning and manual crop are not available on this device" on Android instead of the generic note.
+* **Models:** `det.onnx`, `rec.onnx`, `dict_latin_v5.txt` are `AndroidAsset` items (stored uncompressed) and are copied once to `<files>/ocr-models/` (size-compared on later starts); `Pine:Ai:OcrModelDirectory` is set to that folder unless configured.
+* **LayoutLM on Android:** not bundled (CC BY-NC-SA, ~128 MB). Copy `model.onnx` and `tokenizer.json` to `/sdcard/Android/data/org.pine.app/files/layoutlm/` (e.g. `adb push model.onnx /sdcard/Android/data/org.pine.app/files/layoutlm/`; the app creates `files/` on first launch, create the folder with `adb shell mkdir -p` if needed) and restart the app. The app's own `appsettings.json` lives in the private `LocalApplicationData/Pine` directory, which `adb` cannot write on a release build, so this convention is the supported route. An explicit `Pine:Ai:LayoutLmModelPath` still wins.
+* **Diagnostics:** each scan raises `ScanDiagnostics.Reported` and the Android head logs it as `adb logcat -s PineScan` (`scan prep_ms=... ocr_ms=... lines=N heuristics_ms=... layoutlm_ms=...`): counts and times only, never text.
+* **Left for B2/D:** a Skia YOLO crop + perspective warp behind `IReceiptDetector` (then `Android -> Full` minus the camera, or add a capability for crop without live), `SkiaImageProcessor : IImageProcessor` for the crop screen, and the camera source (Phase D).
 
 ## 11. Recommendation
 

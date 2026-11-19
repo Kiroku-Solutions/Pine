@@ -533,6 +533,7 @@
   "Shell.Nav.Diagnostics": "Diagnostics",
   "Shell.Nav.LiveScanner": "Live Scanner",
   "Shell.Nav.ReceiptUnavailable": "Receipt scanning is not available on this device.",
+  "Shell.Nav.LiveScanUnavailable": "Live scanning and manual crop are not available on this device; choose an image file to scan a receipt.",
   "Shell.Menu": "☰  Menu",
   "Shell.Nav.Rules": "Rules",
   "Shell.Nav.ScanReceipt": "Scan Receipt",

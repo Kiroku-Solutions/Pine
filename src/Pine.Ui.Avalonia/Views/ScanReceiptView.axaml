@@ -55,7 +55,7 @@
                 <Grid ColumnDefinitions="*, 10, *">
                     <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.SelectImage}" x:Name="SelectImageButton" Click="OnSelectImageClicked"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}"
+                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}" IsVisible="{Binding HasLiveScanner}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                 </Grid>
             </StackPanel>

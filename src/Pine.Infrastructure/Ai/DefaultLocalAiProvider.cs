@@ -17,7 +17,8 @@ namespace Pine.Infrastructure.Ai;
 /// </summary>
 public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 {
-    private readonly ReceiptDetector _detector;
+    private readonly IReceiptDetector _detector;
+    private readonly bool _ownsDetector;
     private readonly IOcrEngine _ocr;
     private readonly bool _ownsOcr;
     private readonly HeuristicFieldExtractor _extractor;
@@ -55,6 +56,11 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// The optional layout model (LayoutLMv3). When it is registered, its fields overlay the heuristic ones;
     /// when it is absent, cannot load or throws, extraction is exactly the heuristic one and a warning is logged.
     /// </param>
+    /// <param name="detector">
+    /// The detect/crop stage. The container supplies the OpenCV one or, on an OCR-only head, the Skia
+    /// pass-through one, and owns it. When <see langword="null"/> the provider builds the OpenCV detector
+    /// itself, as before, and disposes it.
+    /// </param>
     /// <param name="ocrEngine">
     /// The OCR backend (docs/65). The container supplies the one chosen by <c>Pine:Ai:OcrBackend</c> and
     /// OWNS it. When it is <see langword="null"/> (hand-constructed callers, older tests) the provider falls
@@ -64,11 +70,13 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         IMlNetCategorizer categorizer,
         ILoggerFactory? loggerFactory = null,
         IVisualFieldExtractor? visualExtractor = null,
-        IOcrEngine? ocrEngine = null)
+        IOcrEngine? ocrEngine = null,
+        IReceiptDetector? detector = null)
     {
         ArgumentNullException.ThrowIfNull(categorizer);
 
-        _detector = new ReceiptDetector();
+        _ownsDetector = detector is null;
+        _detector = detector ?? CreateOpenCvDetector();
         _ownsOcr = ocrEngine is null;
         _ocr = ocrEngine ?? new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
         // No logger and no LoadModel call any more (TD-36): the extractor's only log record was a
@@ -78,6 +86,10 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         _categorizer = categorizer;
         _visualGuard = new VisualExtractionGuard(visualExtractor, loggerFactory?.CreateLogger<DefaultLocalAiProvider>());
     }
+
+    // Separate method: only a caller that really falls back to OpenCV resolves ReceiptDetector (Android never does).
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static ReceiptDetector CreateOpenCvDetector() => new();
 
     public async Task<bool> DetectReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
@@ -96,8 +108,9 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
     public async Task<ReceiptExtractionResult> ExtractReceiptDataAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
-        // P0 FIX: Preprocess image before OCR using the ReceiptDetector's
-        // adaptive threshold pipeline when possible.
+        // P0 FIX: Preprocess image before OCR using the detector's stage when possible (OpenCV crop and
+        // binarise on Windows; EXIF + downscale only on an OCR-only head).
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         Stream ocrStream = imageStream;
         try
         {
@@ -105,7 +118,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
             var analysis = await _detector.AnalyzeAndCropReceiptAsync(imageStream, cancellationToken);
             if (analysis.PassedFilters && analysis.OcrImageStream != null)
             {
-                // Use the binarized, perspective-corrected image for OCR
+                // Use the preprocessed (upright, downscaled or cropped + binarised) image for OCR
                 ocrStream = analysis.OcrImageStream;
             }
             else
@@ -122,13 +135,25 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
             ocrStream = imageStream;
         }
 
+        var prepMs = clock.ElapsedMilliseconds;
+        clock.Restart();
+
         // Execute OCR on the (potentially preprocessed) image
         ocrStream.Position = 0;
         var textBlocks = await _ocr.ExtractTextAsync(ocrStream, cancellationToken);
+        var ocrMs = clock.ElapsedMilliseconds;
+        clock.Restart();
 
         // Extract fields using layout-aware heuristics
         var heuristic = _extractor.ExtractFields(textBlocks);
-        return await _visualGuard.OverlayAsync(heuristic, textBlocks, ocrStream, cancellationToken);
+        var heuristicMs = clock.ElapsedMilliseconds;
+        clock.Restart();
+        var result = await _visualGuard.OverlayAsync(heuristic, textBlocks, ocrStream, cancellationToken);
+
+        // Counts and timings only -- never a recognised word (30-Observability section 4.3).
+        ScanDiagnostics.Report(
+            $"scan prep_ms={prepMs} ocr_ms={ocrMs} lines={textBlocks.Count} heuristics_ms={heuristicMs} layoutlm_ms={clock.ElapsedMilliseconds}");
+        return result;
     }
 
     public async Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)
@@ -149,7 +174,11 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// </remarks>
     public void Dispose()
     {
-        _detector?.Dispose();
+        if (_ownsDetector)
+        {
+            _detector.Dispose();
+        }
+
         if (_ownsOcr && _ocr is IDisposable ocr)
         {
             ocr.Dispose();

@@ -248,8 +248,10 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         IShellNavigator navigationService,
         IViewModelFactory viewModels,
         ILocalizer localizer,
-        ILogger<ScanReceiptViewModel>? logger = null)
+        ILogger<ScanReceiptViewModel>? logger = null,
+        Pine.Ui.Avalonia.Composition.PineHeadCapabilities? capabilities = null)
     {
+        HasLiveScanner = capabilities?.HasReceiptVision ?? true;
         ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _navigationService = navigationService;
@@ -698,7 +700,13 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _navigationService.NavigateTo(_viewModels.CreateTransactions());
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// Whether the Retake button exists. It opens the live scanner, so a head with no live camera (an
+    /// OCR-only head such as Android) does not show it; choosing another file is the retake there.
+    /// </summary>
+    public bool HasLiveScanner { get; }
+
+    [RelayCommand(CanExecute = nameof(HasLiveScanner))]
     private void Retake()
     {
         _navigationService.NavigateTo(_viewModels.CreateLiveScanner(_navigationService));

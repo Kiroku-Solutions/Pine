@@ -71,18 +71,21 @@ public class PineCompositionRootTests
     /// it has to be deliberate enough to change this line too.
     /// </remarks>
     [Theory]
-    [InlineData(PineHeadProfile.Windows, true)]
-    [InlineData(PineHeadProfile.MacOs, false)]
-    [InlineData(PineHeadProfile.Android, false)]
-    [InlineData(PineHeadProfile.Ios, false)]
-    public void TheCapabilityTable_ShouldSayWhatItSays(PineHeadProfile profile, bool hasReceiptVision)
+    [InlineData(PineHeadProfile.Windows, ReceiptVisionLevel.Full)]
+    [InlineData(PineHeadProfile.MacOs, ReceiptVisionLevel.None)]
+    [InlineData(PineHeadProfile.Android, ReceiptVisionLevel.OcrOnly)]
+    [InlineData(PineHeadProfile.Ios, ReceiptVisionLevel.None)]
+    public void TheCapabilityTable_ShouldSayWhatItSays(PineHeadProfile profile, ReceiptVisionLevel receiptVision)
     {
         var capabilities = PineHeadCapabilities.For(profile);
 
         capabilities.Profile.Should().Be(profile);
-        capabilities.HasReceiptVision.Should().Be(
-            hasReceiptVision,
-            "only the Windows head restores OpenCvSharp4.runtime.win and Sdcb.PaddleInference.runtime.win64.mkl");
+        capabilities.ReceiptVision.Should().Be(
+            receiptVision,
+            "only the Windows head restores OpenCvSharp4.runtime.win and Sdcb.PaddleInference.runtime.win64.mkl; "
+            + "Android runs the managed ONNX OCR stack from a file, with no crop and no live camera");
+        capabilities.HasReceiptVision.Should().Be(receiptVision == ReceiptVisionLevel.Full);
+        capabilities.HasReceiptScan.Should().Be(receiptVision != ReceiptVisionLevel.None);
     }
 
     /// <summary>
@@ -171,22 +174,25 @@ public class PineCompositionRootTests
         using var provider = TestContainer.Build(profile);
         using var scope = provider.CreateScope();
 
-        var expected = PineHeadCapabilities.For(profile).HasReceiptVision;
+        var capabilities = PineHeadCapabilities.For(profile);
         var factory = provider.GetRequiredService<IViewModelFactory>();
 
         var shell = factory.CreateShell();
         shell.HasReceiptVision.Should().Be(
-            expected,
-            "the sidebar's two receipt buttons bind to this property");
+            capabilities.HasReceiptVision,
+            "the sidebar's live-scanner button binds to this property");
+        shell.HasReceiptScan.Should().Be(
+            capabilities.HasReceiptScan,
+            "the sidebar's scan-receipt button binds to this property");
 
-        var builders = new Func<object>[]
+        var builders = new (Func<object> Build, bool Expected)[]
         {
-            () => factory.CreateScanReceipt(shell),
-            () => factory.CreateLiveScanner(shell),
-            () => factory.CreateCropReceipt(shell),
+            (() => factory.CreateScanReceipt(shell), capabilities.HasReceiptScan),
+            (() => factory.CreateLiveScanner(shell), capabilities.HasReceiptVision),
+            (() => factory.CreateCropReceipt(shell), capabilities.HasReceiptVision),
         };
 
-        foreach (var build in builders)
+        foreach (var (build, expected) in builders)
         {
             if (expected)
             {
@@ -195,7 +201,7 @@ public class PineCompositionRootTests
             else
             {
                 build.Should().Throw<InvalidOperationException>()
-                    .WithMessage($"*{profile}*no receipt pipeline*");
+                    .WithMessage($"*{profile}*cannot run the pipeline*");
             }
         }
 
@@ -296,12 +302,13 @@ public class PineCompositionRootTests
     {
         using var provider = TestContainer.Build(profile);
 
+        var expectScan = PineHeadCapabilities.For(profile).HasReceiptScan;
         var expectVision = PineHeadCapabilities.For(profile).HasReceiptVision;
         var descriptor = Descriptor(profile, typeof(IAIProvider));
 
         descriptor.Should().NotBeNull("import and categorisation both need one on every head");
         descriptor!.ImplementationType.Should().Be(
-            expectVision ? typeof(DefaultLocalAiProvider) : typeof(PortableAiProvider));
+            expectScan ? typeof(DefaultLocalAiProvider) : typeof(PortableAiProvider));
 
         // IImageProcessor is NOT stubbed on a head without vision: its only consumer is
         // CropReceiptViewModel, which the factory refuses to build there.
@@ -319,7 +326,7 @@ public class PineCompositionRootTests
     [Fact]
     public void PortableAiProvider_ShouldRefuseVision_WithAUserFacingSentence()
     {
-        using var provider = TestContainer.Build(PineHeadProfile.Android);
+        using var provider = TestContainer.Build(PineHeadProfile.MacOs);
         var ai = provider.GetRequiredService<IAIProvider>();
 
         using var image = new MemoryStream([1, 2, 3]);

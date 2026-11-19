@@ -40,6 +40,18 @@ public sealed class PineInfrastructureOptions
     public bool IncludeReceiptVision { get; set; }
 
     /// <summary>
+    /// Whether the receipt pipeline may use OpenCV (document crop, enhancement, the manual crop
+    /// processor and the live camera). Only consulted when <see cref="IncludeReceiptVision"/> is true.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="false"/> is the "OCR only" shape (docs/65 phase C): the container registers
+    /// <see cref="Ai.Vision.SkiaReceiptDetector"/> and NOTHING that names an OpenCvSharp type, so a head
+    /// without the native library (Android) never loads one. Default <see langword="true"/> keeps every
+    /// existing caller on the full pipeline.
+    /// </remarks>
+    public bool UseOpenCvVision { get; set; } = true;
+
+    /// <summary>
     /// Optional LayoutLMv3 field-extraction model for the on-device receipt pipeline. Off until
     /// <see cref="Ai.Extraction.LayoutLm.LayoutLmOptions.ModelPath"/> is set; the model is not shipped with the
     /// application. Only used when <see cref="IncludeReceiptVision"/> is true.

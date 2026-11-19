@@ -1104,7 +1104,24 @@ public partial class BuildHygieneTests
             var project = File.ReadAllText(
                 Path.Combine(RepositoryRoot(), "src", head, $"{head}.csproj"));
 
-            project.Should().NotContain(".onnx",
+            // The Android head is the one exception, and a narrow one (docs/65 phase C): a Content item does not
+            // reach an APK, so it re-links the three ONNX OCR files as AndroidAsset. It still ships no model of its
+            // own -- every link points into Pine.Infrastructure's Assets\Ai\ocr -- and never the YOLO or LayoutLM model.
+            var checkedProject = project;
+            if (head == "Pine.Ui.Android")
+            {
+                project.Should().NotContain("yolo-receipt-nano").And.NotContain("layoutlm");
+                var document = XDocument.Parse(project);
+                document.DescendantNodes().OfType<XComment>().ToList().ForEach(c => c.Remove());
+                checkedProject = document.ToString();
+                checkedProject = string.Join(
+                    '\n',
+                    checkedProject.Split('\n').Where(line =>
+                        !line.Contains("<AndroidAsset Include=\"..\\Pine.Infrastructure\\Assets\\Ai\\ocr\\", StringComparison.Ordinal)
+                        && !line.Contains("AndroidStoreUncompressedFileExtensions", StringComparison.Ordinal)));
+            }
+
+            checkedProject.Should().NotContain(".onnx",
                 $"'{head}' must not ship model assets of its own: the model already reaches every head "
                 + "through the Pine.Infrastructure ProjectReference, which is why 'only Windows copies "
                 + "the ONNX models' was never a true reason for the capability table");

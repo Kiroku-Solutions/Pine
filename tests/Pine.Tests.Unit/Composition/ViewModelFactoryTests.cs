@@ -81,16 +81,24 @@ public class ViewModelFactoryTests
         var live = () => factory.CreateLiveScanner(shell);
         var crop = () => factory.CreateCropReceipt(shell);
 
-        if (PineHeadCapabilities.For(profile).HasReceiptVision)
+        var capabilities = PineHeadCapabilities.For(profile);
+        if (capabilities.HasReceiptScan)
         {
             scan.Should().NotThrow().Which.Should().BeOfType<ScanReceiptViewModel>();
-            live.Should().NotThrow().Which.Should().BeOfType<LiveScannerViewModel>();
-            crop.Should().NotThrow().Which.Should().BeOfType<CropReceiptViewModel>();
         }
         else
         {
             scan.Should().Throw<InvalidOperationException>(
                 "the factory refuses the receipt pages on a head with no receipt pipeline, and the shell hides their buttons");
+        }
+
+        if (capabilities.HasReceiptVision)
+        {
+            live.Should().NotThrow().Which.Should().BeOfType<LiveScannerViewModel>();
+            crop.Should().NotThrow().Which.Should().BeOfType<CropReceiptViewModel>();
+        }
+        else
+        {
             live.Should().Throw<InvalidOperationException>();
             crop.Should().Throw<InvalidOperationException>();
         }
@@ -273,7 +281,8 @@ public class ViewModelFactoryTests
         var checkedPages = 0;
         foreach (var method in methods)
         {
-            if (!capabilities.HasReceiptVision && receiptPages.Contains(method.ReturnType))
+            if (receiptPages.Contains(method.ReturnType)
+                && !(method.ReturnType == typeof(ScanReceiptViewModel) ? capabilities.HasReceiptScan : capabilities.HasReceiptVision))
             {
                 continue;
             }

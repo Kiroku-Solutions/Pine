@@ -31,6 +31,23 @@
     <EmbedAssembliesIntoApk Condition="'$(Configuration)' == 'Debug'">true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
+  <!--
+    ONNX OCR MODELS AS APK ASSETS (docs/65 section 7). The three files are the ones Pine.Infrastructure ships as
+    named Content for the desktop heads; Content does not reach an APK, so they are linked here as AndroidAsset
+    (named, not globbed: the TD-41 rule). They are stored UNCOMPRESSED so the first-run copy to the files
+    directory (OcrModelInstaller) can compare sizes with AssetManager.OpenFd and skip the copy next time.
+    The LayoutLM model is NOT bundled: it is CC BY-NC-SA research-only and ~128 MB. YOLO is not bundled either:
+    its OpenCV pre/post-processing cannot run on this head, so nothing would read it.
+  -->
+  <PropertyGroup>
+    <AndroidStoreUncompressedFileExtensions>$(AndroidStoreUncompressedFileExtensions);.onnx</AndroidStoreUncompressedFileExtensions>
+  </PropertyGroup>
+  <ItemGroup>
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\det.onnx" Link="Assets\ocr\det.onnx" />
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\rec.onnx" Link="Assets\ocr\rec.onnx" />
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\dict_latin_v5.txt" Link="Assets\ocr\dict_latin_v5.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia.Android" />
     <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" />

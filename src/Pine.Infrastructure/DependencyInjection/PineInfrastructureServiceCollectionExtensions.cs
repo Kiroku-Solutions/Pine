@@ -197,6 +197,12 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddSingleton<IVaultDatabaseOpener, ScopedVaultDatabaseOpener>();
     }
 
+    // Its own method so that a head which never takes the OpenCV branch never JIT-resolves ReceiptDetector
+    // (whose body names OpenCvSharp) while compiling AddAi.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static Pine.Infrastructure.Ai.Vision.ReceiptDetector CreateOpenCvDetector()
+        => new Pine.Infrastructure.Ai.Vision.ReceiptDetector();
+
     private static void AddAi(IServiceCollection services, PineInfrastructureOptions options)
     {
         // The categoriser, its model store and the file cipher that seals the model (TD-16). Both
@@ -232,6 +238,18 @@ public static class PineInfrastructureServiceCollectionExtensions
                         sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Vision.PaddleOcrEngine>>()));
             }
 
+            if (!options.UseOpenCvVision)
+            {
+                // OCR-only head (Android, docs/65 phase C): decode + EXIF + downscale in Skia, no crop. Nothing
+                // below names an OpenCvSharp type; IImageProcessor and ICameraSource stay unregistered because
+                // their consumers (the crop screen, the live scanner) are refused by the factory on such a head.
+                // B2 (a Skia document detector) replaces SkiaReceiptDetector here.
+                services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector, Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector>();
+                services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
+                return;
+            }
+
+            services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector>(_ => CreateOpenCvDetector());
             services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
             services.TryAddSingleton<IImageProcessor, OpenCvImageProcessor>();
 

@@ -25,6 +25,23 @@ public class ShellParityTests
         nameof(ShellViewModel.NavigateToLiveScannerCommand),
     };
 
+    /// <summary>Android scans from a file (OCR only): Scan Receipt is offered, live scanning and crop are not.</summary>
+    [Fact]
+    public void Android_offers_scan_from_file_but_not_live_scanning()
+    {
+        var shell = Shell(PineHeadProfile.Android);
+
+        shell.HasReceiptScan.Should().BeTrue();
+        shell.HasReceiptVision.Should().BeFalse();
+        shell.ShowReceiptVisionNote.Should().BeFalse("scanning is available, so the generic 'unavailable' note is wrong");
+        shell.ShowLiveScanNote.Should().BeTrue("the person is told exactly what is missing");
+
+        var windows = Shell(PineHeadProfile.Windows);
+        windows.HasReceiptScan.Should().BeTrue();
+        windows.ShowLiveScanNote.Should().BeFalse();
+        windows.ShowReceiptVisionNote.Should().BeFalse();
+    }
+
     private static ShellViewModel Shell(PineHeadProfile profile)
     {
         var mediator = Substitute.For<MediatR.IMediator>();
@@ -52,7 +69,7 @@ public class ShellParityTests
         Shell(PineHeadProfile.Windows).HasReceiptVision.Should().BeTrue();
         var shell = Shell(profile);
         shell.HasReceiptVision.Should().BeFalse();
-        shell.ShowReceiptVisionNote.Should().BeTrue("the missing buttons are explained, not silently gone");
+        (shell.ShowReceiptVisionNote || shell.ShowLiveScanNote).Should().BeTrue("the missing buttons are explained, not silently gone");
     }
 
     [Fact]
