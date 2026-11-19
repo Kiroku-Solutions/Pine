@@ -19,6 +19,8 @@ public class TunedConstantsBoundaryTests
         "src/Pine.Infrastructure/Ai/Vision/DbPostProcessor.cs",
         "src/Pine.Infrastructure/Ai/Vision/SkiaImagePreprocessor.cs",
         "src/Pine.Infrastructure/Ai/Vision/OnnxOcrOptions.cs",
+        "src/Pine.Infrastructure/Ai/Vision/SkiaReceiptDetector.cs",
+        "src/Pine.Infrastructure/Ai/Vision/ReceiptQuadFinder.cs",
     ];
 
     private static string Root()
