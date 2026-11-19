@@ -1,0 +1,4 @@
+# Extra deps for the Roboflow ingest (research/docs/roboflow_ingest.md). Install: pip install -r requirements-roboflow.txt
+# Only needed for `roboflow_download.py --api`; --from-dir, prepare, sample and prelabel need only requirements.txt (pillow, numpy, opencv).
+# Exact version taken from research/.venv (Python 3.12).
+roboflow==1.7.3

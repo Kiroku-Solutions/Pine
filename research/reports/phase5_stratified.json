@@ -1,0 +1,256 @@
+{
+ "min_docs_flag": 15,
+ "dimensions": {
+  "blur": {
+   "blurry": {
+    "docs": 27,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.5096,
+      "MERCHANT": 1.0,
+      "DATE": 1.0,
+      "TOTAL": 0.0385,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.9759,
+      "MERCHANT": 1.0,
+      "DATE": 1.0,
+      "TOTAL": 0.9804,
+      "TAX": 0.9231
+     },
+     "hybrid": {
+      "macro_f1_4": 0.9666,
+      "MERCHANT": 1.0,
+      "DATE": 1.0,
+      "TOTAL": 0.9434,
+      "TAX": 0.9231
+     }
+    }
+   },
+   "sharp": {
+    "docs": 137,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.3932,
+      "MERCHANT": 0.4355,
+      "DATE": 0.9167,
+      "TOTAL": 0.2206,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.8832,
+      "MERCHANT": 0.7742,
+      "DATE": 0.931,
+      "TOTAL": 0.9213,
+      "TAX": 0.9062
+     },
+     "hybrid": {
+      "macro_f1_4": 0.8899,
+      "MERCHANT": 0.7742,
+      "DATE": 0.9667,
+      "TOTAL": 0.9124,
+      "TAX": 0.9062
+     }
+    }
+   }
+  },
+  "illumination": {
+   "bright": {
+    "docs": 59,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.602,
+      "MERCHANT": 0.4561,
+      "DATE": 0.9091,
+      "TOTAL": 0.4407,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.8748,
+      "MERCHANT": 0.807,
+      "DATE": 0.9245,
+      "TOTAL": 0.8929,
+      "TAX": 0.0
+     },
+     "hybrid": {
+      "macro_f1_4": 0.884,
+      "MERCHANT": 0.807,
+      "DATE": 0.9636,
+      "TOTAL": 0.8814,
+      "TAX": 0.0
+     }
+    }
+   },
+   "low_contrast": {
+    "docs": 8,
+    "low_n": true,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.0,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.0,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.9375,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.875,
+      "TAX": 1.0
+     },
+     "hybrid": {
+      "macro_f1_4": 0.9375,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.875,
+      "TAX": 1.0
+     }
+    }
+   },
+   "ok": {
+    "docs": 97,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.3465,
+      "MERCHANT": 0.3333,
+      "DATE": 1.0,
+      "TOTAL": 0.0526,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.8391,
+      "MERCHANT": 0.5,
+      "DATE": 1.0,
+      "TOTAL": 0.9579,
+      "TAX": 0.8986
+     },
+     "hybrid": {
+      "macro_f1_4": 0.8354,
+      "MERCHANT": 0.5,
+      "DATE": 1.0,
+      "TOTAL": 0.943,
+      "TAX": 0.8986
+     }
+    }
+   }
+  },
+  "layout": {
+   "long_narrow": {
+    "docs": 22,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.4021,
+      "MERCHANT": 0.35,
+      "DATE": 0.8947,
+      "TOTAL": 0.3636,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.8609,
+      "MERCHANT": 0.6,
+      "DATE": 0.8889,
+      "TOTAL": 0.9545,
+      "TAX": 1.0
+     },
+     "hybrid": {
+      "macro_f1_4": 0.8755,
+      "MERCHANT": 0.6,
+      "DATE": 0.9474,
+      "TOTAL": 0.9545,
+      "TAX": 1.0
+     }
+    }
+   },
+   "standard": {
+    "docs": 142,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.3953,
+      "MERCHANT": 0.4884,
+      "DATE": 0.9286,
+      "TOTAL": 0.1643,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.9113,
+      "MERCHANT": 0.8605,
+      "DATE": 0.9512,
+      "TOTAL": 0.927,
+      "TAX": 0.9067
+     },
+     "hybrid": {
+      "macro_f1_4": 0.9137,
+      "MERCHANT": 0.8605,
+      "DATE": 0.9762,
+      "TOTAL": 0.9117,
+      "TAX": 0.9067
+     }
+    }
+   }
+  },
+  "source": {
+   "cord": {
+    "docs": 101,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.0202,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.0404,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.9266,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.9442,
+      "TAX": 0.9091
+     },
+     "hybrid": {
+      "macro_f1_4": 0.9172,
+      "MERCHANT": 0.0,
+      "DATE": 0.0,
+      "TOTAL": 0.9254,
+      "TAX": 0.9091
+     }
+    }
+   },
+   "sroie": {
+    "docs": 63,
+    "low_n": false,
+    "systems": {
+     "heuristics": {
+      "macro_f1_4": 0.597,
+      "MERCHANT": 0.4444,
+      "DATE": 0.918,
+      "TOTAL": 0.4286,
+      "TAX": 0.0
+     },
+     "layoutlm": {
+      "macro_f1_4": 0.873,
+      "MERCHANT": 0.7778,
+      "DATE": 0.9322,
+      "TOTAL": 0.9091,
+      "TAX": 0.0
+     },
+     "hybrid": {
+      "macro_f1_4": 0.8833,
+      "MERCHANT": 0.7778,
+      "DATE": 0.9672,
+      "TOTAL": 0.9048,
+      "TAX": 0.0
+     }
+    }
+   }
+  }
+ }
+}

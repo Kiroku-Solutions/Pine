@@ -14,4 +14,7 @@
     <Project Path="tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj" />
     <Project Path="tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj" />
   </Folder>
+  <Folder Name="/research/">
+    <Project Path="research/baseline_dotnet/Baseline.csproj" />
+  </Folder>
 </Solution>
