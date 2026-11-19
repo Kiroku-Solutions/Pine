@@ -117,6 +117,10 @@ public static class PineCompositionRoot
             infrastructure.LayoutLm.ModelPath = options.Ai.LayoutLmModelPath;
             infrastructure.LayoutLm.TokenizerPath = options.Ai.LayoutLmTokenizerPath;
 
+            // Which OCR engine reads the receipt (docs/65). Paddle unless configured otherwise.
+            infrastructure.OcrBackend = options.Ai.OcrBackend;
+            infrastructure.OcrModelDirectory = options.Ai.OcrModelDirectory;
+
             // The log directory is now a fact about Pine's data directory rather than a second,
             // independently computed answer to the same question. PineLoggingOptions STAYS a plain
             // mutable class -- its own remarks explain why, and they are still true: PineCrashLogger

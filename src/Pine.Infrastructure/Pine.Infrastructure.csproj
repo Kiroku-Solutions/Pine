@@ -22,6 +22,7 @@
     <PackageReference Include="Microsoft.ML.FastTree" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="SkiaSharp" />
     <PackageReference Include="OpenCvSharp4" />
     <PackageReference Include="OpenCvSharp4.runtime.win" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
@@ -60,6 +61,20 @@
     keeps the two lists equal.
   -->
   <ItemGroup>
+    <!--
+      The managed OCR engine's models (docs/65 section 7, about 13 MB in all; PP-OCRv5 mobile, Apache-2.0).
+      OnnxOcrOptions names each file. The two .onnx files are Git LFS objects (.gitattributes: *.onnx).
+      Provenance and how to rebuild rec.onnx: research/scripts/paddle_rec_to_onnx_transplant.py.
+    -->
+    <Content Include="Assets\Ai\ocr\det.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\Ai\ocr\rec.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\Ai\ocr\dict_latin_v5.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Assets\Ai\yolo-receipt-nano.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

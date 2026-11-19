@@ -15,6 +15,10 @@ public class TunedConstantsBoundaryTests
         "src/Pine.Infrastructure/Ai/Vision/ReceiptDetector.cs",
         "src/Pine.Infrastructure/Ai/Vision/OpenCvImageProcessor.cs",
         "src/Pine.Infrastructure/Ai/Extraction/OnnxNlpFieldExtractor.cs",
+        "src/Pine.Infrastructure/Ai/Vision/OnnxOcrEngine.cs",
+        "src/Pine.Infrastructure/Ai/Vision/DbPostProcessor.cs",
+        "src/Pine.Infrastructure/Ai/Vision/SkiaImagePreprocessor.cs",
+        "src/Pine.Infrastructure/Ai/Vision/OnnxOcrOptions.cs",
     ];
 
     private static string Root()
@@ -46,6 +50,7 @@ public class TunedConstantsBoundaryTests
 
         doc.Should().Contain("Tuned-constants boundary (TD-118)").And.Contain(Marker);
         doc.Should().Contain("ReceiptDetector").And.Contain("OpenCvImageProcessor").And.Contain("HeuristicFieldExtractor");
+        doc.Should().Contain("OnnxOcrEngine").And.Contain("DbPostProcessor").And.Contain("SkiaImagePreprocessor");
     }
 
     [Fact]

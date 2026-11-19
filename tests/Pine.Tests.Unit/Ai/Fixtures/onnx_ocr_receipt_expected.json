@@ -1,0 +1,136 @@
+{
+ "width": 520,
+ "height": 440,
+ "words": [
+  {
+   "text": "PINE MARKET",
+   "confidence": 0.9997796416282654,
+   "box": {
+    "x": 23.0,
+    "y": 23.0,
+    "width": 200.0,
+    "height": 24.0
+   }
+  },
+  {
+   "text": "Calle Mayor 12, Madrid",
+   "confidence": 0.9866949319839478,
+   "box": {
+    "x": 24.0,
+    "y": 74.0,
+    "width": 265.0,
+    "height": 22.0
+   }
+  },
+  {
+   "text": "2024-03-14",
+   "confidence": 0.9998836517333984,
+   "box": {
+    "x": 23.0,
+    "y": 118.0,
+    "width": 126.0,
+    "height": 21.0
+   }
+  },
+  {
+   "text": "18:42",
+   "confidence": 0.9994276165962219,
+   "box": {
+    "x": 172.0,
+    "y": 118.0,
+    "width": 70.0,
+    "height": 22.0
+   }
+  },
+  {
+   "text": "Leche entera 1L",
+   "confidence": 0.9980497360229492,
+   "box": {
+    "x": 23.0,
+    "y": 162.0,
+    "width": 183.0,
+    "height": 21.0
+   }
+  },
+  {
+   "text": "1.29",
+   "confidence": 0.9999232292175293,
+   "box": {
+    "x": 295.0,
+    "y": 159.0,
+    "width": 56.0,
+    "height": 27.0
+   }
+  },
+  {
+   "text": "Pan de molde",
+   "confidence": 0.9996853470802307,
+   "box": {
+    "x": 21.0,
+    "y": 204.0,
+    "width": 149.0,
+    "height": 24.0
+   }
+  },
+  {
+   "text": "2.10",
+   "confidence": 0.9999008774757385,
+   "box": {
+    "x": 296.0,
+    "y": 203.0,
+    "width": 55.0,
+    "height": 27.0
+   }
+  },
+  {
+   "text": "Manzanas 1.5kg",
+   "confidence": 0.9993323683738708,
+   "box": {
+    "x": 21.0,
+    "y": 247.0,
+    "width": 172.0,
+    "height": 26.0
+   }
+  },
+  {
+   "text": "3.45",
+   "confidence": 0.9996979236602783,
+   "box": {
+    "x": 297.0,
+    "y": 248.0,
+    "width": 54.0,
+    "height": 25.0
+   }
+  },
+  {
+   "text": "TOTAL",
+   "confidence": 0.99982088804245,
+   "box": {
+    "x": 21.0,
+    "y": 295.0,
+    "width": 84.0,
+    "height": 27.0
+   }
+  },
+  {
+   "text": "6.84",
+   "confidence": 0.9998785257339478,
+   "box": {
+    "x": 381.0,
+    "y": 294.0,
+    "width": 67.0,
+    "height": 26.0
+   }
+  },
+  {
+   "text": "Gracias por su compra",
+   "confidence": 0.9846030473709106,
+   "box": {
+    "x": 23.0,
+    "y": 344.0,
+    "width": 254.0,
+    "height": 24.0
+   }
+  }
+ ]
+}

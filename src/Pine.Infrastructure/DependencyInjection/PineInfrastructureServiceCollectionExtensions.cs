@@ -215,6 +215,23 @@ public static class PineInfrastructureServiceCollectionExtensions
                         sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Extraction.LayoutLm.LayoutLmFieldExtractor>>()));
             }
 
+            // The OCR engine is a singleton the container owns (and disposes); the provider takes it by
+            // constructor instead of constructing it (docs/65 section 6.1).
+            if (options.OcrBackend == Pine.Core.Ai.OcrBackend.Onnx)
+            {
+                var ocrModelDirectory = options.OcrModelDirectory;
+                services.TryAddSingleton<Pine.Core.Ai.IOcrEngine>(sp =>
+                    new Pine.Infrastructure.Ai.Vision.OnnxOcrEngine(
+                        Pine.Infrastructure.Ai.Vision.OnnxOcrOptions.ForDirectory(ocrModelDirectory),
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Vision.OnnxOcrEngine>>()));
+            }
+            else
+            {
+                services.TryAddSingleton<Pine.Core.Ai.IOcrEngine>(sp =>
+                    new Pine.Infrastructure.Ai.Vision.PaddleOcrEngine(
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Vision.PaddleOcrEngine>>()));
+            }
+
             services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
             services.TryAddSingleton<IImageProcessor, OpenCvImageProcessor>();
 

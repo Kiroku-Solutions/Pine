@@ -47,6 +47,15 @@ public sealed class PineInfrastructureOptions
     public Ai.Extraction.LayoutLm.LayoutLmOptions LayoutLm { get; } = new();
 
     /// <summary>
+    /// Which OCR engine the receipt pipeline uses (docs/65). Only consulted when
+    /// <see cref="IncludeReceiptVision"/> is true. Default <see cref="Pine.Core.Ai.OcrBackend.Paddle"/>.
+    /// </summary>
+    public Pine.Core.Ai.OcrBackend OcrBackend { get; set; } = Pine.Core.Ai.OcrBackend.Paddle;
+
+    /// <summary>Where the ONNX OCR backend looks for its models; <see langword="null"/> = the shipped assets folder.</summary>
+    public string? OcrModelDirectory { get; set; }
+
+    /// <summary>
     /// Optional hook onto <c>AddPineLogging</c>'s options -- the log directory, the minimum level,
     /// the rotation size.
     /// </summary>

@@ -43,6 +43,8 @@
     <PackageVersion Include="Avalonia.Headless" Version="12.0.5" />
     <PackageVersion Include="Avalonia.iOS" Version="12.0.5" />
     <PackageVersion Include="Avalonia.Skia" Version="12.0.5" />
+    <!-- Pinned to the version Avalonia.Skia 12.0.5 resolves, so the app carries one Skia. Used by OnnxOcrEngine (docs/65). -->
+    <PackageVersion Include="SkiaSharp" Version="3.119.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.0.5" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="FluentAvaloniaUI" Version="3.0.1" />

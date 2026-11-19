@@ -19,7 +19,7 @@ namespace Pine.Infrastructure.Ai.Vision;
 /// Uses Sdcb.PaddleOCR to process receipt images.
 /// Uses the LatinV5 models for robust extraction in Spanish and other latin languages.
 /// </summary>
-public sealed partial class PaddleOcrEngine : IDisposable
+public sealed partial class PaddleOcrEngine : IOcrEngine, IDisposable
 {
     private readonly ILogger<PaddleOcrEngine>? _logger;
 
@@ -71,6 +71,10 @@ public sealed partial class PaddleOcrEngine : IDisposable
             _engine = null;
         }
     }
+
+    /// <inheritdoc />
+    async Task<IReadOnlyList<OcrWord>> IOcrEngine.ExtractTextAsync(Stream imageStream, CancellationToken cancellationToken)
+        => await ExtractTextAsync(imageStream, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Extracts text from a stream and formats it as OcrWord list.

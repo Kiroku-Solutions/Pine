@@ -18,7 +18,8 @@ namespace Pine.Infrastructure.Ai;
 public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 {
     private readonly ReceiptDetector _detector;
-    private readonly PaddleOcrEngine _ocr;
+    private readonly IOcrEngine _ocr;
+    private readonly bool _ownsOcr;
     private readonly HeuristicFieldExtractor _extractor;
     private readonly IMlNetCategorizer _categorizer;
     private readonly VisualExtractionGuard _visualGuard;
@@ -54,12 +55,22 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// The optional layout model (LayoutLMv3). When it is registered, its fields overlay the heuristic ones;
     /// when it is absent, cannot load or throws, extraction is exactly the heuristic one and a warning is logged.
     /// </param>
-    public DefaultLocalAiProvider(IMlNetCategorizer categorizer, ILoggerFactory? loggerFactory = null, IVisualFieldExtractor? visualExtractor = null)
+    /// <param name="ocrEngine">
+    /// The OCR backend (docs/65). The container supplies the one chosen by <c>Pine:Ai:OcrBackend</c> and
+    /// OWNS it. When it is <see langword="null"/> (hand-constructed callers, older tests) the provider falls
+    /// back to the Paddle engine it always used, and then disposes it itself.
+    /// </param>
+    public DefaultLocalAiProvider(
+        IMlNetCategorizer categorizer,
+        ILoggerFactory? loggerFactory = null,
+        IVisualFieldExtractor? visualExtractor = null,
+        IOcrEngine? ocrEngine = null)
     {
         ArgumentNullException.ThrowIfNull(categorizer);
 
         _detector = new ReceiptDetector();
-        _ocr = new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
+        _ownsOcr = ocrEngine is null;
+        _ocr = ocrEngine ?? new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
         // No logger and no LoadModel call any more (TD-36): the extractor's only log record was a
         // failure to load an ONNX model that was never used for inference, and whose file has never
         // existed in this repository. Extraction was always heuristic.
@@ -139,6 +150,9 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     public void Dispose()
     {
         _detector?.Dispose();
-        _ocr?.Dispose();
+        if (_ownsOcr && _ocr is IDisposable ocr)
+        {
+            ocr.Dispose();
+        }
     }
 }

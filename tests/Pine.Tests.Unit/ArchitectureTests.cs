@@ -557,6 +557,30 @@ public partial class ArchitectureTests
     }
 
     /// <summary>
+    /// docs/65 section 6.2. The UI assembly does not depend on SkiaSharp through Infrastructure: image decoding
+    /// for the managed OCR engine is Infrastructure's, and the UI asks for text, not pixels.
+    /// </summary>
+    [Fact]
+    public void TheUiAssembly_ShouldNot_DependOnSkiaSharp()
+    {
+        var uiAssembly = typeof(Pine.Ui.Avalonia.ViewModels.MainViewModel).Assembly;
+
+        // Anti-vacuity: the library is really referenced by Infrastructure, so an absent dependency is a finding.
+        typeof(Pine.Infrastructure.Ai.Vision.OnnxOcrEngine).Assembly.GetReferencedAssemblies()
+            .Should().Contain(name => name.Name == "SkiaSharp", "the rule below must name a library that exists");
+
+        var result = Types
+            .InAssembly(uiAssembly)
+            .ShouldNot()
+            .HaveDependencyOn("SkiaSharp")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "the UI must not name Skia types; the OCR engine's image handling stays in Infrastructure. Offending types: {0}",
+            string.Join(", ", result.FailingTypeNames ?? Array.Empty<string>()));
+    }
+
+    /// <summary>
     /// TD-28, the other half: the set of types in the UI assembly that touch
     /// <c>Pine.Infrastructure</c> at all is an explicit, enumerated allow-list.
     /// </summary>
@@ -1287,7 +1311,10 @@ public partial class ArchitectureTests
     /// <summary>
     /// The types in <c>Pine.Infrastructure</c> allowed to know the ONNX runtime exists.
     /// </summary>
-    private static readonly string[] TypesAllowedToUseOnnx = ["LayoutLmFieldExtractor", "ReceiptDetector"];
+    // OnnxOcrEngine (docs/65 section 6.2) genuinely calls session.Run over det.onnx and rec.onnx. Its
+    // collaborators -- DbPostProcessor, CtcDecoder, SkiaImagePreprocessor, OnnxOcrOptions -- are deliberately
+    // NOT listed: they are array-in/array-out code, and this test keeps them free of the runtime.
+    private static readonly string[] TypesAllowedToUseOnnx = ["LayoutLmFieldExtractor", "OnnxOcrEngine", "ReceiptDetector"];
 
     /// <summary>
     /// TD-36. Only the type that actually runs inference may depend on the ONNX runtime.

@@ -51,6 +51,7 @@ public class PineOptionsTests
         // The optional LayoutLM model is off until a path is supplied.
         options.Ai.LayoutLmModelPath.Should().BeNull();
         options.Ai.LayoutLmTokenizerPath.Should().BeNull();
+        options.Ai.OcrBackend.Should().Be(Pine.Core.Ai.OcrBackend.Paddle, "the ONNX OCR engine is opt-in until the Windows switch (docs/65 B3)");
 
         // Was TransactionsViewModel's const 30 -- NOT GetTransactionsQuery's 50, which no user ever
         // saw. See PineUiOptions.TransactionsPageSize's remarks.
