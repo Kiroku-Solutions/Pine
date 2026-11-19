@@ -342,7 +342,14 @@ public class PineCompositionRootTests
     [Fact]
     public void TheVisualFieldExtractor_ShouldBeRegisteredOnlyWhenAModelPathIsConfigured()
     {
-        using var off = TestContainer.Build(PineHeadProfile.Windows);
+        // The composition root also reads the real %LOCALAPPDATA%\Pine\appsettings.json, which a developer may
+        // have pointed at a model. The "off" case therefore clears the path explicitly instead of trusting the machine.
+        using var off = PineCompositionRoot.Build(PineHeadProfile.Windows, options =>
+        {
+            options.Storage.DataDirectory = TestContainer.DataDirectory;
+            options.Ai.LayoutLmModelPath = null;
+            options.Ai.LayoutLmTokenizerPath = null;
+        });
         off.GetService<IVisualFieldExtractor>().Should().BeNull("the model is not shipped and is off until a path is supplied");
 
         // The file does not exist: registration is lazy, so the container still builds and nothing throws.
