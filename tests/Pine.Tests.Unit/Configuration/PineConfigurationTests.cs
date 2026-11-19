@@ -253,6 +253,18 @@ public class PineConfigurationTests
         bind.Should().NotThrow();
     }
 
+    /// <summary>The optional LayoutLM paths bind from <c>Pine:Ai:LayoutLm*Path</c>.</summary>
+    [Fact]
+    public void TheLayoutLmPaths_ShouldBindFromConfiguration()
+    {
+        var bound = PineConfiguration.Bind(ConfigurationFrom(
+            ("Pine:Ai:LayoutLmModelPath", "/models/m.onnx"),
+            ("Pine:Ai:LayoutLmTokenizerPath", "/models/t.json")));
+
+        bound.Ai.LayoutLmModelPath.Should().Be("/models/m.onnx");
+        bound.Ai.LayoutLmTokenizerPath.Should().Be("/models/t.json");
+    }
+
     /// <summary>
     /// Unknown keys and out-of-bounds values are reported together, so one edit fixes a file.
     /// </summary>

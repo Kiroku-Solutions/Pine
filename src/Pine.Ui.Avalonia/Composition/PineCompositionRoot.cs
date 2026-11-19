@@ -113,6 +113,10 @@ public static class PineCompositionRoot
         {
             infrastructure.IncludeReceiptVision = capabilities.HasReceiptVision;
 
+            // Optional LayoutLMv3 model: paths only, null = off. Enabled keeps its default.
+            infrastructure.LayoutLm.ModelPath = options.Ai.LayoutLmModelPath;
+            infrastructure.LayoutLm.TokenizerPath = options.Ai.LayoutLmTokenizerPath;
+
             // The log directory is now a fact about Pine's data directory rather than a second,
             // independently computed answer to the same question. PineLoggingOptions STAYS a plain
             // mutable class -- its own remarks explain why, and they are still true: PineCrashLogger

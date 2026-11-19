@@ -48,6 +48,10 @@ public class PineOptionsTests
         options.Ai.TrainingStartupDelay.Should().Be(TimeSpan.FromMinutes(1));
         options.Ai.TrainingInterval.Should().Be(TimeSpan.FromMinutes(5));
 
+        // The optional LayoutLM model is off until a path is supplied.
+        options.Ai.LayoutLmModelPath.Should().BeNull();
+        options.Ai.LayoutLmTokenizerPath.Should().BeNull();
+
         // Was TransactionsViewModel's const 30 -- NOT GetTransactionsQuery's 50, which no user ever
         // saw. See PineUiOptions.TransactionsPageSize's remarks.
         options.Ui.TransactionsPageSize.Should().Be(30);

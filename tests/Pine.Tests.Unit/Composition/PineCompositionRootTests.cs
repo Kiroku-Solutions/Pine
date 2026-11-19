@@ -337,6 +337,25 @@ public class PineCompositionRootTests
     }
 
     /// <summary>
+    /// The optional LayoutLM model is registered only when a path is configured.
+    /// </summary>
+    [Fact]
+    public void TheVisualFieldExtractor_ShouldBeRegisteredOnlyWhenAModelPathIsConfigured()
+    {
+        using var off = TestContainer.Build(PineHeadProfile.Windows);
+        off.GetService<IVisualFieldExtractor>().Should().BeNull("the model is not shipped and is off until a path is supplied");
+
+        // The file does not exist: registration is lazy, so the container still builds and nothing throws.
+        var missing = Path.Combine(Path.GetTempPath(), "pine-no-such-dir", "model.onnx");
+        using var on = PineCompositionRoot.Build(PineHeadProfile.Windows, options =>
+        {
+            options.Storage.DataDirectory = TestContainer.DataDirectory;
+            options.Ai.LayoutLmModelPath = missing;
+        });
+        on.GetService<IVisualFieldExtractor>().Should().NotBeNull();
+    }
+
+    /// <summary>
     /// <c>PineDbContext</c> is scoped on every head (TD-29).
     /// </summary>
     /// <remarks>

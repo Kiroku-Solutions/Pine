@@ -181,6 +181,35 @@ zone-detection ratios in `HeuristicFieldExtractor`. They stay literals, on purpo
 - A change to any of these constants requires re-evaluating the whole pipeline against the
   fixtures, in the same change that updates the model or its version.
 
+### 7.2 Optional layout model (LayoutLMv3 field extraction)
+
+`LayoutLmFieldExtractor` (Pine.Infrastructure, `Ai/Extraction/LayoutLm/`) runs a LayoutLMv3
+token-classification model through ONNX Runtime, offline, and reads Merchant, Date, Total and Tax
+from the OCR lines **and** the page image. `INlpFieldExtractor` takes no image, so the model has its
+own port, `IVisualFieldExtractor` (Pine.Core); `DefaultLocalAiProvider` is the one place that holds both
+the words and the image, runs the heuristics first, and overlays the fields the model found. A missing
+model, a failed load or an inference exception logs a warning (no receipt text) and returns the
+heuristic result; after three consecutive failures the model is left alone for the process. Tax is
+reported in `ReceiptExtractionResult.TaxAmount` (the heuristics keep emitting tax as an adjustment line).
+
+- **Not shipped.** The int8 model is about 128 MB and its licence (LayoutLMv3: CC BY-NC-SA) is
+  unresolved: the weights are CC BY-NC-SA 4.0 (research use) and are never bundled or committed.
+  It is configured by path, with no code change, through `Pine:Ai:LayoutLmModelPath` and optionally
+  `Pine:Ai:LayoutLmTokenizerPath` (`PineAiOptions`; default null = off). The composition root copies them
+  into `PineInfrastructureOptions.LayoutLm`. When the tokenizer path is omitted, `tokenizer.json` must sit
+  beside the model file. Without a path the pipeline is unchanged; a path to a missing file is not a startup
+  error (warning without the path or receipt text, heuristic result). Only the Windows head has receipt vision.
+- **Trying it.** Put the keys in the user's `appsettings.json` (see `packaging/appsettings.example.json`) or set
+  `PINE_Pine__Ai__LayoutLmModelPath` to the absolute model path, restart Pine and scan a receipt.
+- **Interchangeable.** Inputs `input_ids`, `bbox` (0..1000), `attention_mask` (int64, dynamic length) and
+  `pixel_values` (float32 [1,3,224,224]); output logits [1,S,9]; labels O, B/I-MERCHANT, B/I-DATE,
+  B/I-TOTAL, B/I-TAX. Windows of 512 tokens with stride 128; a word takes the label of its first sub-token.
+- **Parity.** The tokenizer is a byte-level BPE read from `tokenizer.json`; unit tests compare its ids and
+  windows with Hugging Face `tokenizers`, and the image resize with PIL (within 1 grey level). The window,
+  stride and image size are literals under the same boundary as 7.1 (`TUNED-CONSTANTS BOUNDARY (TD-118)`).
+- **Tests.** The integration tests use `PINE_LAYOUTLM_MODEL` / `PINE_LAYOUTLM_TOKENIZER` or the files under
+  `research/`, and are reported as skipped when they are absent.
+
 ## 8. Assistant Architecture (high level)
 
 - The assistant is a *chat* model with a tool-use interface.
