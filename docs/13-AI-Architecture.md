@@ -211,6 +211,30 @@ reported in `ReceiptExtractionResult.TaxAmount` (the heuristics keep emitting ta
 - **Tests.** The integration tests use `PINE_LAYOUTLM_MODEL` / `PINE_LAYOUTLM_TOKENIZER` or the files under
   `research/`, and are reported as skipped when they are absent.
 
+### 7.2.1 Spanish receipts, number formats and the limits of the layout model
+
+- **One number reader.** Every amount is parsed by `Pine.Core.Ai.ReceiptNumberParser` (heuristics, LayoutLM
+  decoding, tests). The decimal separator is inferred once per receipt from all its numbers
+  (`ReceiptNumberParser.Infer`) and only then used to read ambiguous tokens: with `2,08`-style amounts a
+  `1,000`/`2,500` is a three-decimal quantity, with `1,591,600` or `60.000` and no other evidence it is a
+  thousands group. Percentages (`12,00%`, `6.25%`) are rates, never amounts; five or more bare digits in an
+  item row (ZIP, RUC, invoice number) are identifiers, not prices.
+- **Day/month order per receipt.** `ReceiptDateParser.InferDayFirst` reads every numeric date on the receipt:
+  `26/02/2019` proves `11/02/2019` is 11 February, so the date is no longer offered as ambiguous.
+  Month-name dates (`20 de noviembre de 2026`, `18-NOV-2026`, `Nov 15, 2026`) parse in Spanish and English.
+- **Spanish and English keywords.** The heuristics fold accents (`DESCRIPCIÓN`, `EMISIÓN`) and recognise
+  TOTAL / VALOR TOTAL / TOTAL A PAGAR / IMPORTE TOTAL, SUBTOTAL, IVA / IGV / ICE, PROPINA / SERVICIO,
+  DESCUENTO, plus tax BASES (`SUBTOTAL 12%`, `TARIFA 0%`, `BASE IMPONIBLE`, `OP. GRAVADA`) that are neither
+  taxes nor items. Item rows are cross-checked against the printed subtotal; one or two rows whose removal
+  makes the sums agree are discarded.
+- **What is NOT known.** The LayoutLMv3 model was fine-tuned on WildReceipt, CORD and SROIE (English,
+  Indonesian, Malaysian receipts). Its accuracy on Spanish text is **unmeasured**: no labelled Spanish photo
+  exists in the repository, and `LayoutLmResultMerger.Overlay` lets the model override the heuristics whenever it
+  finds a field. The OCR recogniser (`dict_latin_v5`) does cover accents and ñ. The regression corpus under
+  `tests/Pine.Tests.Unit/Ai/SpanishReceipts` is hand-written text (no OCR, no model), so it guards the text
+  stage only. Recommended next step, not started: label a few hundred real Spanish receipts and fine-tune or
+  at least evaluate the model on them before trusting the overlay.
+
 ### 7.3 OCR backend (`IOcrEngine`, docs/65)
 
 `DefaultLocalAiProvider` receives its OCR engine by constructor (`IOcrEngine`, Pine.Core) instead of constructing
