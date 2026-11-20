@@ -181,6 +181,15 @@
                         </StackPanel>
 
                         <StackPanel Spacing="5">
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Tax}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <NumericUpDown Value="{Binding TaxTotal}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
+                            <CheckBox IsChecked="{Binding IsTaxIncluded}" Content="{loc:Tr ScanReceipt.Field.TaxIncluded}" FontSize="12" IsEnabled="{Binding !IsBusy}" />
+                            <TextBlock IsVisible="{Binding TaxWarningMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Text="{Binding TaxWarningMessage}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource PineWarning}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="5">
                             <TextBlock Text="{loc:Tr ScanReceipt.Field.Category}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <TextBox Text="{Binding Category}" PlaceholderText="{loc:Tr ScanReceipt.Field.CategoryPlaceholder}" IsEnabled="{Binding !IsBusy}" />
                         </StackPanel>

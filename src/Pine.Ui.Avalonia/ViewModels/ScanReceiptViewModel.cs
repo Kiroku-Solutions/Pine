@@ -210,6 +210,73 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
     partial void OnAlternativeDateChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
 
+    // ===== TAX FIELD =====
+    // The receipt's tax as one editable figure. It is persisted as the transaction's Tax line (the domain has no
+    // separate tax column): while the tax is on top of the prices, this field and the single Tax line move together,
+    // so the reconciliation (products + tax + tip + delivery + rounding - discount = total) is always the grid's.
+    // Tax already included in the prices is shown and flagged but never added, and therefore never saved as a line.
+    private bool _syncingTax;
+
+    /// <summary>The tax read from the receipt (or typed by the person).</summary>
+    [ObservableProperty]
+    public partial decimal TaxTotal { get; set; }
+
+    /// <summary>True when the tax is already inside the prices and is not added to the total.</summary>
+    [ObservableProperty]
+    public partial bool IsTaxIncluded { get; set; }
+
+    /// <summary>The other tax reading (layout model versus heuristics) that did not reconcile, if any.</summary>
+    [ObservableProperty]
+    public partial decimal? TaxAlternative { get; set; }
+
+    /// <summary>Warning shown when the two readings of the tax disagree.</summary>
+    public string? TaxWarningMessage =>
+        TaxAlternative.HasValue ? _localizer.Format("ScanReceipt.TaxAlternativeWarning", TaxAlternative.Value) : null;
+
+    partial void OnTaxAlternativeChanged(decimal? value) => OnPropertyChanged(nameof(TaxWarningMessage));
+
+    partial void OnTaxTotalChanged(decimal value) => SyncTaxLine();
+
+    partial void OnIsTaxIncludedChanged(bool value) => SyncTaxLine();
+
+    private void SyncTaxLine()
+    {
+        if (_syncingTax)
+        {
+            return;
+        }
+
+        var taxLines = LineItems.Where(li => li.Kind == LineItemKind.Tax).ToList();
+        if (IsTaxIncluded || TaxTotal <= 0m)
+        {
+            // Included tax is not a charge; a zero tax is no line. Only a lone line is ours to remove.
+            if (taxLines.Count == 1)
+            {
+                LineItems.Remove(taxLines[0]);
+            }
+
+            return;
+        }
+
+        if (taxLines.Count == 0)
+        {
+            LineItems.Add(new ReceiptLineItemViewModel
+            {
+                Kind = LineItemKind.Tax,
+                Description = _localizer["LineItemKind.Tax"],
+                Quantity = 1,
+                UnitPrice = TaxTotal,
+                TotalPrice = TaxTotal,
+            });
+        }
+        else if (taxLines.Count == 1)
+        {
+            taxLines[0].UnitPrice = TaxTotal;
+            taxLines[0].TotalPrice = TaxTotal;
+        }
+        // Several printed tax rows: the breakdown stays as read and the field is the figure to compare it with.
+    }
+
     public ObservableCollection<Account> Accounts { get; } = new();
 
     public ObservableCollection<ReceiptLineItemViewModel> LineItems { get; } = new();
@@ -254,6 +321,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         LineItemKind.Tip,
         LineItemKind.Discount,
         LineItemKind.Deposit,
+        LineItemKind.Delivery,
         LineItemKind.Rounding,
         LineItemKind.Unattributed,
     };
@@ -538,6 +606,24 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                         TotalPrice = li.TotalPrice
                     });
                 }
+            }
+
+            // The tax field: filled from the extraction, flagged when it is already inside the prices.
+            _syncingTax = true;
+            try
+            {
+                TaxTotal = result.TaxAmount ?? 0m;
+                IsTaxIncluded = result.TaxIncluded;
+                TaxAlternative = result.TaxAlternative;
+            }
+            finally
+            {
+                _syncingTax = false;
+            }
+
+            if (LineItems.Count > 0)
+            {
+                SyncTaxLine();
             }
 
             // Suggest category if merchant is known
