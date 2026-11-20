@@ -245,7 +245,13 @@
                                     <Grid ColumnDefinitions="*, Auto">
                                         <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.ItemsTotal}" FontSize="13"
                                                    Foreground="{DynamicResource PineTextMuted}" />
-                                        <TextBlock Grid.Column="1" Text="{Binding LineItemsTotal}" FontSize="13"
+                                        <TextBlock Grid.Column="1" Text="{Binding ProductsTotal}" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.AdjustmentsTotal}" FontSize="13"
+                                                   Foreground="{DynamicResource PineTextMuted}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AdjustmentsTotal}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Grid>
                                     <Grid ColumnDefinitions="*, Auto">

@@ -218,6 +218,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     [ObservableProperty]
     public partial decimal LineItemsTotal { get; private set; }
 
+    /// <summary>The sum of the product lines only: tax, tip, discount, rounding and deposit rows are not "items".</summary>
+    [ObservableProperty]
+    public partial decimal ProductsTotal { get; private set; }
+
+    /// <summary>Tax, tip, discount, rounding and the other typed adjustment rows, in receipt sign.</summary>
+    [ObservableProperty]
+    public partial decimal AdjustmentsTotal { get; private set; }
+
     /// <summary>
     /// What the itemisation is missing: <see cref="Amount"/> minus <see cref="LineItemsTotal"/>.
     /// Positive means the lines do not yet account for the whole bill -- the usual case, and usually
@@ -1344,6 +1352,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // NO ACCOUNT AND NO BASE CURRENCY (an empty vault): there is genuinely no scale to round to,
             // and nothing can be saved in that state anyway, so the exact figure is the honest one.
             LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
+            ProductsTotal = LineItems.Where(li => li.Kind == LineItemKind.Product).Sum(li => li.TotalPrice);
             UnreconciledDifference = Amount - LineItemsTotal;
         }
         else
@@ -1354,8 +1363,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             var total = Money.FromRounded(Amount, currency);
 
             LineItemsTotal = sum.Amount;
+            ProductsTotal = LineItems.Where(li => li.Kind == LineItemKind.Product)
+                .Aggregate(Money.Zero(currency), (running, li) => running + Money.FromRounded(li.TotalPrice, currency)).Amount;
             UnreconciledDifference = (total - sum).Amount;
         }
+
+        AdjustmentsTotal = LineItemsTotal - ProductsTotal;
 
         IsReconciled = !HasLineItems || UnreconciledDifference == 0m;
     }
