@@ -235,6 +235,32 @@ reported in `ReceiptExtractionResult.TaxAmount` (the heuristics keep emitting ta
   stage only. Recommended next step, not started: label a few hundred real Spanish receipts and fine-tune or
   at least evaluate the model on them before trusting the overlay.
 
+### 7.2.2 Tax model of a scanned receipt
+
+- **A tax is never a Product.** `ReceiptExtractionResult.TaxAmount` is the sum of every tax row printed on the
+  receipt (IVA, IGV, ITBMS, ISV, VAT, GST, HST, PST, QST, PB1/PPN, sales/state tax, `TAX 1`/`TAX 2`, ICE when it
+  stands alone as a row, tolerant of OCR such as `T4X` and `I.V.A.`). When the tax is charged on top of the
+  prices, each row also becomes its own `LineItemKind.Tax` line, labelled as printed (`Sales Tax 6.25%`), so the
+  breakdown survives. A "total tax" row that repeats the sum of the others is not counted twice.
+- **Tax already inside the prices** (`IVA INCLUIDO`, `GST (Included)`, or items that already add up to the printed
+  total) is reported in `TaxAmount` only; adding it as a line would push the lines past the total.
+- **Not taxes:** tax bases and exempt rows (`SUBTOTAL 12%`, `TARIFA 0%`, `BASE IMPONIBLE`, `OP. GRAVADA`, `EXENTO`),
+  totals "with tax" (`Total with GST`), a bare rate without an amount (`IVA 15%`), and `ICE CREAM`.
+- **Other kinds.** Tip/service charge (`PROPINA`, `SERVICIO 10%`, `Service Charge`), discount, rounding
+  (`ROUNDING`, `REDONDEO`, signed) have their own `LineItemKind`; cash, change, card and net/final-total rows are
+  not lines at all. Tax-code flags printed after a price (`3.99 F`) are dropped from the description. Delivery or
+  shipping has no kind of its own and still reads as a product.
+- **Arithmetic backstop.** If no keyword caught a tax, a product row equal to total minus the printed subtotal, or
+  equal to the rate in its own text times the other items, is reclassified as tax. Items are also checked against
+  the printed subtotal (or the per-rate `SUBTOTAL 12%` + `SUBTOTAL 0%` bases) and misread rows are dropped.
+- **UI.** The scan screen shows `ProductsTotal` (products only) and `AdjustmentsTotal` (tax, tip, discount, rounding)
+  separately; the reconciliation difference is still total minus every line, i.e.
+  products + tax + tip + rounding - discount. `TaxAmount` itself has no dedicated field in the form: it is visible
+  as the Tax lines (and not at all when the tax is included in the prices).
+- **Measured** (research OCR set, 164 documents, TAX field F1): heuristics 0.05 -> 0.81, LayoutLM 0.91,
+  hybrid 0.94. Adjustment-like rows (cash, change, subtotal, GST, rounding, service) read as products in 54 of 164
+  documents (78 of 337 items) before, 1 of 164 after.
+
 ### 7.3 OCR backend (`IOcrEngine`, docs/65)
 
 `DefaultLocalAiProvider` receives its OCR engine by constructor (`IOcrEngine`, Pine.Core) instead of constructing
