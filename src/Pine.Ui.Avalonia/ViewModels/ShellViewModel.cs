@@ -74,7 +74,23 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     [ObservableProperty]
     public partial bool IsPaneOpen { get; set; } = true;
 
-    partial void OnIsCompactChanged(bool value) => IsPaneOpen = !value;
+    partial void OnIsCompactChanged(bool value)
+    {
+        IsPaneOpen = !value;
+        OnPropertyChanged(nameof(ShowMenuBar));
+    }
+
+    /// <summary>
+    /// Whether a bottom tab bar replaces the sidebar (a narrow touch screen). Set by <c>ShellView</c>; always false on
+    /// desktop, where a narrow window keeps the menu button and drawer it had.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool UseBottomNav { get; set; }
+
+    partial void OnUseBottomNavChanged(bool value) => OnPropertyChanged(nameof(ShowMenuBar));
+
+    /// <summary>The top menu button: only when the sidebar is a drawer and there is no bottom bar to open it from.</summary>
+    public bool ShowMenuBar => IsCompact && !UseBottomNav;
 
     /// <summary>Opens or closes the sidebar drawer.</summary>
     [RelayCommand]
