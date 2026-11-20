@@ -80,7 +80,7 @@ namespace Pine.Ui.Android
 
                     if (serviceProvider.GetService(typeof(Pine.Core.Ai.IOcrEngine)) is Pine.Core.Ai.IOcrEngine ocr)
                     {
-                        await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg));
+                        await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg), System.Threading.CancellationToken.None);
                     }
 
                     global::Android.Util.Log.Info("PineScan", "warm-up done");
