@@ -22,7 +22,7 @@
                                      Text="{Binding SearchText, Mode=TwoWay}"
                                      SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
                                      FilterMode="None" MinimumPrefixLength="0" MaxDropDownHeight="240"
-                                     Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                     PlaceholderText="{loc:Tr CreateAccount.Currency.Placeholder}"
                                      AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.From}">
                         <AutoCompleteBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:CurrencyChoice">
@@ -38,7 +38,7 @@
                                      Text="{Binding SearchText, Mode=TwoWay}"
                                      SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
                                      FilterMode="None" MinimumPrefixLength="0" MaxDropDownHeight="240"
-                                     Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                     PlaceholderText="{loc:Tr CreateAccount.Currency.Placeholder}"
                                      AutomationProperties.Name="{loc:Tr Settings.ExchangeRates.To}">
                         <AutoCompleteBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:CurrencyChoice">

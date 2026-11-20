@@ -64,7 +64,7 @@
                                      FilterMode="None"
                                      MinimumPrefixLength="0"
                                      MaxDropDownHeight="240"
-                                     Watermark="{loc:Tr CreateAccount.Currency.Placeholder}"
+                                     PlaceholderText="{loc:Tr CreateAccount.Currency.Placeholder}"
                                      AutomationProperties.Name="{loc:Tr CreateAccount.Currency.Label}"
                                      HorizontalAlignment="Stretch">
                         <AutoCompleteBox.ItemTemplate>
