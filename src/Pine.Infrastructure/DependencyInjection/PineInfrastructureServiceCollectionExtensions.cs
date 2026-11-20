@@ -250,6 +250,10 @@ public static class PineInfrastructureServiceCollectionExtensions
                 services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector>(_ =>
                     new Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector(
                         Pine.Infrastructure.Ai.Vision.YoloReceiptSegmenter.TryCreate(yoloDirectory)));
+
+                // The edge editor's service is the same object: one YOLO session, not two.
+                services.TryAddSingleton<IReceiptEdgeService>(sp =>
+                    (Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector)sp.GetRequiredService<Pine.Infrastructure.Ai.Vision.IReceiptDetector>());
                 services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
                 return;
             }

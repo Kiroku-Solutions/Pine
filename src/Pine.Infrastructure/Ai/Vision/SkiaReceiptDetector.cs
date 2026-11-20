@@ -35,7 +35,7 @@ namespace Pine.Infrastructure.Ai.Vision;
 /// by design, like the rest of the vision stack; see <c>docs/13-AI-Architecture.md</c> section 7.1.
 /// </para>
 /// </remarks>
-public sealed class SkiaReceiptDetector : IReceiptDetector
+public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
 {
     private readonly YoloReceiptSegmenter? _yolo;
 
@@ -90,6 +90,89 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
     public void Dispose()
     {
     }
+
+    /// <inheritdoc />
+    public Task<ReceiptQuad?> DetectEdgesAsync(Stream image, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        var bytes = ReadAll(image);
+        return Task.Run(
+            () =>
+            {
+                using var upright = DecodeUpright(bytes, out _);
+                return ToNormalized(FindQuadWithModel(upright), upright.Width, upright.Height);
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<ReceiptEdgeResult> FindEdgesAsync(Stream image, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        var bytes = ReadAll(image);
+        return Task.Run(
+            () =>
+            {
+                using var upright = DecodeUpright(bytes, out _);
+                var quad = FindQuadWithModel(upright);
+                return new ReceiptEdgeResult(Encode(upright), ToNormalized(quad, upright.Width, upright.Height), quad is null ? "none" : "found");
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Stream> CropAsync(Stream uprightImage, ReceiptQuad quad, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uprightImage);
+        ArgumentNullException.ThrowIfNull(quad);
+        var bytes = ReadAll(uprightImage);
+        return Task.Run<Stream>(
+            () =>
+            {
+                using var upright = DecodeUpright(bytes, out _);
+                (double X, double Y)[] corners =
+                [
+                    (quad.TopLeft.X * upright.Width, quad.TopLeft.Y * upright.Height),
+                    (quad.TopRight.X * upright.Width, quad.TopRight.Y * upright.Height),
+                    (quad.BottomRight.X * upright.Width, quad.BottomRight.Y * upright.Height),
+                    (quad.BottomLeft.X * upright.Width, quad.BottomLeft.Y * upright.Height),
+                ];
+                using var warped = Warp(upright, corners) ?? throw new InvalidOperationException("The selected area is too small to crop.");
+                return new MemoryStream(Encode(warped));
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Stream> RotateAsync(Stream uprightImage, bool clockwise, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uprightImage);
+        var bytes = ReadAll(uprightImage);
+        return Task.Run<Stream>(
+            () =>
+            {
+                using var upright = DecodeUpright(bytes, out _);
+                using var turned = RotateBitmap(upright, clockwise);
+                return new MemoryStream(Encode(turned));
+            },
+            cancellationToken);
+    }
+
+    private static byte[] ReadAll(Stream stream)
+    {
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
+
+    private static ReceiptQuad? ToNormalized((double X, double Y)[]? quad, int width, int height)
+        => quad is null
+            ? null
+            : new ReceiptQuad(
+                new NormalizedPoint(quad[0].X / width, quad[0].Y / height),
+                new NormalizedPoint(quad[1].X / width, quad[1].Y / height),
+                new NormalizedPoint(quad[2].X / width, quad[2].Y / height),
+                new NormalizedPoint(quad[3].X / width, quad[3].Y / height));
 
     internal ReceiptAnalysisResult Normalise(byte[] encoded)
     {
@@ -150,6 +233,24 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
         return encodedData.ToArray();
     }
 
+    /// <summary>The picture turned a quarter turn (clockwise or not).</summary>
+    internal static SKBitmap RotateBitmap(SKBitmap source, bool clockwise)
+    {
+        var result = new SKBitmap(source.Height, source.Width, SKColorType.Bgra8888, SKAlphaType.Opaque);
+        using var canvas = new SKCanvas(result);
+        canvas.Clear(SKColors.White);
+        // Clockwise: (x, y) -> (H - y, x).  Counter-clockwise: (x, y) -> (y, W - x).
+        canvas.SetMatrix(clockwise
+            ? new SKMatrix(0, -1, source.Height, 1, 0, 0, 0, 0, 1)
+            : new SKMatrix(0, 1, 0, -1, 0, source.Width, 0, 0, 1));
+        canvas.DrawBitmap(source, 0, 0);
+        return result;
+    }
+
+    /// <summary>Maps a point found in a picture that was turned a quarter turn back to the original picture (<paramref name="width"/> x <paramref name="height"/>).</summary>
+    internal static (double X, double Y) UnrotatePoint((double X, double Y) p, int width, int height, bool clockwise)
+        => clockwise ? (p.Y, height - p.X) : (width - p.Y, p.X);
+
     /// <summary>YOLO first (the Windows semantics), then the classical finder, then nothing. Timings go to <see cref="ScanDiagnostics"/>.</summary>
     private (double X, double Y)[]? FindQuadWithModel(SKBitmap upright)
     {
@@ -165,6 +266,32 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
             {
                 quad = _yolo.FindQuad(upright, out confidence, out modelMs, out reason, out _);
                 source = quad is null ? "yolo-miss" : "yolo";
+
+                // A receipt lying on its side (a device turned to landscape, a photo taken sideways) is a rotated picture to the
+                // model. When the upright pass is not confident, try a quarter turn each way and keep the more confident answer.
+                if (quad is null && reason == "conf")
+                {
+                    foreach (var clockwise in new[] { true, false })
+                    {
+                        using var turned = RotateBitmap(upright, clockwise);
+                        var turnedQuad = _yolo.FindQuad(turned, out var turnedConfidence, out var ms, out var turnedReason, out _);
+                        modelMs += ms;
+                        if (turnedQuad is not null && turnedConfidence > confidence)
+                        {
+                            confidence = turnedConfidence;
+                            reason = "ok";
+                            source = clockwise ? "yolo-rot90" : "yolo-rot270";
+                            var w = upright.Width;
+                            var h = upright.Height;
+                            quad = turnedQuad.Select(p => UnrotatePoint(p, w, h, clockwise)).ToArray();
+                        }
+                        else if (turnedConfidence > confidence)
+                        {
+                            confidence = turnedConfidence;
+                            reason = turnedReason;
+                        }
+                    }
+                }
             }
             catch (InvalidOperationException)
             {
