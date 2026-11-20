@@ -255,22 +255,36 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
 
     internal ReceiptAnalysisResult Normalise(byte[] encoded)
     {
+        var total = System.Diagnostics.Stopwatch.StartNew();
+        var stage = System.Diagnostics.Stopwatch.StartNew();
         using var upright = DecodeUpright(encoded, out var unchanged);
+        var decodeMs = stage.ElapsedMilliseconds;
 
         // A failure in the optional crop must never lose the scan: any problem means "no receipt found".
         try
         {
+            stage.Restart();
             var quad = FindQuadWithModel(upright);
+            var detectMs = stage.ElapsedMilliseconds;
             if (quad is not null)
             {
+                stage.Restart();
                 using var warped = Warp(upright, quad);
+                var warpMs = stage.ElapsedMilliseconds;
                 if (warped is not null)
                 {
-                    // The screen copy is sharpened like the Windows one; the OCR copy is the colour crop, or the screen
-                    // mitigation when the picture is a photo of a screen (docs/65 section 14: binarising hurts PP-OCRv5).
-                    using var sharp = ReceiptEnhancer.Sharpen(warped);
-                    using var forOcr = PrepareForOcr(warped);
-                    return new ReceiptAnalysisResult(1f, true, null, new MemoryStream(Encode(sharp)), new MemoryStream(Encode(forOcr)));
+                    // The OCR copy is the colour crop, or the screen mitigation when the picture is a photo of a screen
+                    // (docs/65 section 14: binarising hurts PP-OCRv5). Nothing on this head shows the cropped picture, so the 3x3 sharpen of
+                    // the Windows pipeline is not computed: it cost a full pass over the crop and fed nothing.
+                    stage.Restart();
+                    using var forOcr = PrepareForOcr(warped, out var isScreen);
+                    var enhanceMs = stage.ElapsedMilliseconds;
+                    stage.Restart();
+                    var ocrBytes = Encode(forOcr);
+                    var displayBytes = isScreen ? Encode(warped) : ocrBytes;
+                    ScanDiagnostics.Report(
+                        $"prep stage_ms decode={decodeMs} detect={detectMs} warp={warpMs} enhance={enhanceMs} encode={stage.ElapsedMilliseconds} total={total.ElapsedMilliseconds} crop={warped.Width}x{warped.Height}");
+                    return new ReceiptAnalysisResult(1f, true, null, new MemoryStream(displayBytes), new MemoryStream(ocrBytes));
                 }
             }
         }
@@ -303,10 +317,24 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         var scale = longSide > maxSide ? (float)maxSide / longSide : 1f;
         var decodeSize = scale < 1f ? codec.GetScaledDimensions(scale) : codec.Info.Size;
         var info = new SKImageInfo(decodeSize.Width, decodeSize.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
-        using var decoded = SKBitmap.Decode(codec, info) ?? throw new InvalidDataException("The image could not be decoded.");
+        var decoded = SKBitmap.Decode(codec, info) ?? throw new InvalidDataException("The image could not be decoded.");
 
-        using var sized = ShrinkTo(decoded, maxSide);
-        return Orient(sized, origin);
+        // The common case (upright, no larger than the cap) returns the decoded bitmap itself: no resize copy, no redraw.
+        if (origin == SKEncodedOrigin.TopLeft && Math.Max(decoded.Width, decoded.Height) <= maxSide)
+        {
+            return decoded;
+        }
+
+        using (decoded)
+        {
+            if (Math.Max(decoded.Width, decoded.Height) <= maxSide)
+            {
+                return Orient(decoded, origin);
+            }
+
+            using var sized = ShrinkTo(decoded, maxSide);
+            return Orient(sized, origin);
+        }
     }
 
     private static byte[] Encode(SKBitmap bitmap)
@@ -346,7 +374,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var score = ScreenPatternDetector.Score(picture);
         screen = score > ScreenPatternDetector.Threshold;
-        var sharpness = ReceiptEnhancer.LaplacianVariance(picture);
+        var sharpness = ReceiptEnhancer.LaplacianVarianceCentral(picture);
         SKBitmap result;
         if (screen)
         {
@@ -357,7 +385,8 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         }
         else
         {
-            result = picture.Copy();
+            // Nothing to change: hand the same bitmap back (callers dispose it once, and disposing twice is harmless).
+            result = picture;
         }
 
         ScanDiagnostics.Report($"enhance mode={(screen ? "screen" : "none")} screen_score={score:F0} sharpness={sharpness:F0} ms={clock.ElapsedMilliseconds}");

@@ -36,7 +36,10 @@ public static class LayoutLmImagePreprocessor
     /// <summary>Decodes an encoded image (PNG, JPEG, ...) and preprocesses it.</summary>
     public static LayoutLmImage Process(ReadOnlySpan<byte> encoded)
     {
-        var bgr = SkiaImagePreprocessor.Decode(encoded.ToArray());
+        // The model sees 224 x 224, so a 7 MP picture is decoded at no more than a quarter of its size per side while keeping at least
+        // 448 px on its shorter side (a JPEG decodes at 1/2, 1/4, 1/8 for almost nothing). The width and height reported are still the
+        // full picture's, because that is the coordinate space of the OCR boxes.
+        var (bgr, fullWidth, fullHeight) = SkiaImagePreprocessor.DecodeReduced(encoded.ToArray(), 2 * Size);
         var width = bgr.Width;
         var height = bgr.Height;
         var rgb = new byte[width * height * 3];
@@ -49,7 +52,7 @@ public static class LayoutLmImagePreprocessor
         }
 
         var resized = ResizeBilinear(rgb, width, height, Size, Size);
-        return new LayoutLmImage(width, height, ToPixelValues(resized));
+        return new LayoutLmImage(fullWidth, fullHeight, ToPixelValues(resized));
     }
 
     /// <summary>Interleaved HWC uint8 RGB to normalised CHW float32.</summary>

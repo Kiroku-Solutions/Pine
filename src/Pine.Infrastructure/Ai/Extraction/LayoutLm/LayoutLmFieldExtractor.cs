@@ -99,10 +99,17 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
     public LayoutLmPrediction Predict(IReadOnlyList<OcrWord> ocrWords, ReadOnlyMemory<byte> encodedImage)
     {
         ArgumentNullException.ThrowIfNull(ocrWords);
+        var stage = System.Diagnostics.Stopwatch.StartNew();
         var (session, tokenizer) = EnsureLoaded();
+        var loadMs = stage.ElapsedMilliseconds;
+        stage.Restart();
 
         var image = LayoutLmImagePreprocessor.Process(encodedImage.Span);
+        var imageMs = stage.ElapsedMilliseconds;
+        stage.Restart();
         var chunks = LayoutLmEncoder.Encode(ocrWords, image.Width, image.Height, tokenizer, out var kept);
+        var encodeMs = stage.ElapsedMilliseconds;
+        stage.Restart();
         if (chunks.Count == 0)
         {
             return new LayoutLmPrediction(new Dictionary<LayoutLmField, LayoutLmSpan>());
@@ -131,6 +138,7 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
             }
         }
 
+        ScanDiagnostics.Report($"layoutlm stage_ms load={loadMs} image={imageMs} encode={encodeMs} run={stage.ElapsedMilliseconds} windows={chunks.Count}");
         var texts = kept.Select(i => ocrWords[i].Text!.Trim()).ToList();
         var spans = LayoutLmDecoder.Decode(texts, wordProbabilities);
         if (_logger is not null)

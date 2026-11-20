@@ -130,8 +130,13 @@ public sealed partial class OnnxOcrEngine : IOcrEngine, IDisposable
         var rec = _rec!;
         var charset = _charset!;
 
+        var stage = System.Diagnostics.Stopwatch.StartNew();
         var image = SkiaImagePreprocessor.Decode(encoded);
+        var decodeMs = stage.ElapsedMilliseconds;
+        stage.Restart();
         var boxes = Detect(det, image);
+        var detectMs = stage.ElapsedMilliseconds;
+        stage.Restart();
         if (boxes.Count > MaxLines)
         {
             boxes = boxes.Take(MaxLines).ToList();
@@ -145,6 +150,8 @@ public sealed partial class OnnxOcrEngine : IOcrEngine, IDisposable
             inputs[i] = SkiaImagePreprocessor.RecTensor(SkiaImagePreprocessor.CropLine(image, boxes[i].Quad));
         }
 
+        var cropMs = stage.ElapsedMilliseconds;
+        stage.Restart();
         var texts = new (string Text, float Confidence)[boxes.Count];
         foreach (var group in Enumerable.Range(0, boxes.Count).GroupBy(i => inputs[i].Width))
         {
@@ -157,6 +164,7 @@ public sealed partial class OnnxOcrEngine : IOcrEngine, IDisposable
             }
         }
 
+        ScanDiagnostics.Report($"ocr stage_ms decode={decodeMs} detect={detectMs} crop={cropMs} recognise={stage.ElapsedMilliseconds} boxes={boxes.Count} size={image.Width}x{image.Height}");
         var words = new List<OcrWord>(boxes.Count);
         for (var i = 0; i < boxes.Count; i++)
         {

@@ -55,6 +55,41 @@ public static class ReceiptEnhancer
         return grey;
     }
 
+    /// <summary>Grey values of a region only (clamped into the bitmap), so a statistic over the middle of a 12 MP picture does not convert all of it.</summary>
+    internal static byte[] ToGreyRegion(SKBitmap bitmap, int left, int top, int width, int height)
+    {
+        left = Math.Clamp(left, 0, Math.Max(0, bitmap.Width - 1));
+        top = Math.Clamp(top, 0, Math.Max(0, bitmap.Height - 1));
+        width = Math.Min(width, bitmap.Width - left);
+        height = Math.Min(height, bitmap.Height - top);
+        var grey = new byte[width * height];
+        var pixels = bitmap.GetPixelSpan();
+        var stride = bitmap.RowBytes;
+        var bpp = bitmap.BytesPerPixel;
+        for (var y = 0; y < height; y++)
+        {
+            var row = ((top + y) * stride) + (left * bpp);
+            for (var x = 0; x < width; x++)
+            {
+                var i = row + (x * bpp);
+                grey[(y * width) + x] = bpp >= 3
+                    ? (byte)(((pixels[i + 2] * 299) + (pixels[i + 1] * 587) + (pixels[i] * 114)) / 1000)
+                    : pixels[i];
+            }
+        }
+
+        return grey;
+    }
+
+    /// <summary>Variance of the Laplacian over the central <paramref name="size"/> x <paramref name="size"/> region (a cheap sharpness figure that does not touch the whole picture).</summary>
+    public static double LaplacianVarianceCentral(SKBitmap bitmap, int size = 512)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        var w = Math.Min(size, bitmap.Width);
+        var h = Math.Min(size, bitmap.Height);
+        return LaplacianVariance(ToGreyRegion(bitmap, (bitmap.Width - w) / 2, (bitmap.Height - h) / 2, w, h), w, h);
+    }
+
     internal static SKBitmap FromGrey(byte[] grey, int width, int height)
     {
         var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
@@ -259,7 +294,16 @@ public static class ReceiptEnhancer
             return 0;
         }
 
-        var g = ToGrey(bitmap);
+        return LaplacianVariance(ToGrey(bitmap), w, h);
+    }
+
+    internal static double LaplacianVariance(byte[] g, int w, int h)
+    {
+        if (w < 3 || h < 3)
+        {
+            return 0;
+        }
+
         double sum = 0;
         double sumSquares = 0;
         var n = 0;

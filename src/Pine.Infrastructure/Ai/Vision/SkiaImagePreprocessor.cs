@@ -80,6 +80,36 @@ internal static class SkiaImagePreprocessor
     }
 
     /// <summary>
+    /// <see cref="Decode"/> for a consumer that needs few pixels: asks the codec for the largest power-of-two reduction (1/2, 1/4, 1/8)
+    /// that keeps the shorter side at or above <paramref name="minShortSide"/>. Returns the reduced upright image and the full upright
+    /// size, which is the coordinate space of anything computed on the full picture.
+    /// </summary>
+    internal static (BgrImage Image, int FullWidth, int FullHeight) DecodeReduced(byte[] encoded, int minShortSide)
+    {
+        ArgumentNullException.ThrowIfNull(encoded);
+        using var data = SKData.CreateCopy(encoded);
+        using var codec = SKCodec.Create(data) ?? throw new InvalidDataException("The image could not be decoded.");
+        var swap = codec.EncodedOrigin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+        var fullWidth = swap ? codec.Info.Height : codec.Info.Width;
+        var fullHeight = swap ? codec.Info.Width : codec.Info.Height;
+        var scale = 1f;
+        var shortSide = Math.Min(codec.Info.Width, codec.Info.Height);
+        foreach (var candidate in new[] { 0.125f, 0.25f, 0.5f })
+        {
+            if (shortSide * candidate >= minShortSide)
+            {
+                scale = candidate;
+                break;
+            }
+        }
+
+        var size = scale < 1f ? codec.GetScaledDimensions(scale) : codec.Info.Size;
+        var info = new SKImageInfo(size.Width, size.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+        using var bitmap = SKBitmap.Decode(codec, info) ?? throw new InvalidDataException("The image could not be decoded.");
+        return (Reorient(bitmap.GetPixelSpan(), bitmap.Width, bitmap.Height, bitmap.RowBytes, codec.EncodedOrigin), fullWidth, fullHeight);
+    }
+
+    /// <summary>
     /// Copies BGRA pixels into a BGR image and applies the EXIF orientation. OpenCV's <c>imdecode</c>, which the
     /// Paddle engine uses, does the same, so both backends see the same upright pixels.
     /// </summary>
@@ -89,6 +119,27 @@ internal static class SkiaImagePreprocessor
         var outW = swap ? height : width;
         var outH = swap ? width : height;
         var output = new byte[outW * outH * 3];
+
+        if (origin is not (SKEncodedOrigin.TopRight or SKEncodedOrigin.BottomRight or SKEncodedOrigin.BottomLeft
+            or SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom))
+        {
+            // Upright (the usual case): a straight row copy dropping the alpha byte, no per-pixel orientation switch.
+            for (var y = 0; y < height; y++)
+            {
+                var s = y * rowBytes;
+                var d = y * width * 3;
+                for (var x = 0; x < width; x++)
+                {
+                    output[d] = bgra[s];
+                    output[d + 1] = bgra[s + 1];
+                    output[d + 2] = bgra[s + 2];
+                    d += 3;
+                    s += 4;
+                }
+            }
+
+            return new BgrImage(outW, outH, output);
+        }
 
         for (var oy = 0; oy < outH; oy++)
         {

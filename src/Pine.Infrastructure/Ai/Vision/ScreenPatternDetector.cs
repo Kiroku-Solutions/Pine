@@ -36,9 +36,10 @@ public static class ScreenPatternDetector
             return 0;
         }
 
-        var grey = ReceiptEnhancer.ToGrey(bitmap);
-        var x0 = (bitmap.Width - Window) / 2;
-        var y0 = (bitmap.Height - Window) / 2;
+        // Only the middle window is read: converting a whole 12 MP picture to grey to look at 256 x 256 of it cost seconds on a tablet.
+        var grey = ReceiptEnhancer.ToGreyRegion(bitmap, (bitmap.Width - Window) / 2, (bitmap.Height - Window) / 2, Window, Window);
+        const int x0 = 0;
+        const int y0 = 0;
         var horizontal = new double[LastBin + 1];
         var vertical = new double[LastBin + 1];
         var samples = new double[Window];
@@ -47,13 +48,13 @@ public static class ScreenPatternDetector
             var offset = (int)((long)line * (Window - 1) / (Lines - 1));
             for (var i = 0; i < Window; i++)
             {
-                samples[i] = grey[((y0 + offset) * bitmap.Width) + x0 + i];
+                samples[i] = grey[((y0 + offset) * Window) + x0 + i];
             }
 
             Accumulate(samples, horizontal);
             for (var i = 0; i < Window; i++)
             {
-                samples[i] = grey[((y0 + i) * bitmap.Width) + x0 + offset];
+                samples[i] = grey[((y0 + i) * Window) + x0 + offset];
             }
 
             Accumulate(samples, vertical);
