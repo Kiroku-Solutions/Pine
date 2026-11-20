@@ -38,7 +38,7 @@ public class ReceiptNumberParserTests
         { "1,000", DecimalSeparator.Point, 1000 },
         { "1.000", DecimalSeparator.Comma, 1000 },
         { "35.250", DecimalSeparator.Point, 35.25 },
-        { "1234,567", DecimalSeparator.Unknown, 1234.567 },
+        { "1178.100", DecimalSeparator.Unknown, 1178100 },      // OCR-damaged grouped number, not a 3-decimal quantity
         // A percentage is a rate, never an amount.
         { "12,00%", DecimalSeparator.Unknown, null },
         { "6.25 %", DecimalSeparator.Unknown, null },
@@ -68,6 +68,7 @@ public class ReceiptNumberParserTests
     [InlineData(new[] { "TOTAL 1,591,600", "EFECTIVO 2,000,000" }, DecimalSeparator.Point)]
     [InlineData(new[] { "TOTAL 60.000", "IVA 5.000" }, DecimalSeparator.Unknown)]
     [InlineData(new[] { "IVA 12,00%", "FECHA 05.03.2026" }, DecimalSeparator.Unknown)]
+    [InlineData(new[] { "TAX 10.00 %", "TOTAL 54,600", "4.964" }, DecimalSeparator.Unknown)]
     public void Document_separator_is_inferred_from_every_amount(string[] lines, DecimalSeparator expected) =>
         ReceiptNumberParser.Infer(lines).Should().Be(expected);
 
