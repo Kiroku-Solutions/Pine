@@ -111,6 +111,7 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         var images = ResearchImagesDirectory()!;
         using var yolo = YoloReceiptSegmenter.TryCreate(null);
 
+        yolo!.StrictFilters = true; // the OpenCV detector's own refusals
         using var opencv = new ReceiptDetector();
         var compared = 0;
         var opencvFound = 0;
@@ -120,7 +121,7 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         {
             var bytes = await File.ReadAllBytesAsync(file);
             using var bitmap = SKBitmap.Decode(bytes);
-            var quad = yolo!.FindQuad(bitmap, out _, out _);
+            var quad = yolo.FindQuad(bitmap, out _, out _);
             var b = await opencv.AnalyzeAndCropReceiptAsync(new MemoryStream(bytes));
             compared++;
             if (quad is not null)
@@ -157,6 +158,46 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         {
             agreeing.Should().BeGreaterThanOrEqualTo((int)Math.Ceiling(passedBoth * 0.7), $"{agreeing}/{passedBoth} agreed");
         }
+    }
+
+    [RequiresYoloParityFact]
+    public void Against_the_labelled_test_set_the_detector_finds_the_document_and_the_refusals_are_the_filters()
+    {
+        var images = ResearchImagesDirectory()!;
+        using var yolo = YoloReceiptSegmenter.TryCreate(null);
+        using var labels = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(images, "_annotations.coco.json")));
+        var boxes = new Dictionary<string, double[]>();
+        var byId = labels.RootElement.GetProperty("images").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetInt32(), i => i.GetProperty("file_name").GetString()!);
+        foreach (var a in labels.RootElement.GetProperty("annotations").EnumerateArray())
+        {
+            boxes[byId[a.GetProperty("image_id").GetInt32()]] = a.GetProperty("bbox").EnumerateArray().Select(v => v.GetDouble()).ToArray();
+        }
+
+        var reasons = new Dictionary<string, int>();
+        var total = 0;
+        var ious = new List<double>();
+        foreach (var name in boxes.Keys.Take(150))
+        {
+            using var bitmap = SKBitmap.Decode(Path.Combine(images, name));
+            yolo!.FindQuad(bitmap, out var confidence, out _, out var reason, out var raw);
+            total++;
+            reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+            if (raw is not null)
+            {
+                var gt = boxes[name];
+                double x0 = raw.Min(p => p.X), x1 = raw.Max(p => p.X), y0 = raw.Min(p => p.Y), y1 = raw.Max(p => p.Y);
+                var ix = Math.Max(0, Math.Min(x1, gt[0] + gt[2]) - Math.Max(x0, gt[0]));
+                var iy = Math.Max(0, Math.Min(y1, gt[1] + gt[3]) - Math.Max(y0, gt[1]));
+                var inter = ix * iy;
+                ious.Add(inter / (((x1 - x0) * (y1 - y0)) + (gt[2] * gt[3]) - inter));
+            }
+        }
+
+        output.WriteLine($"images={total} reasons={string.Join(",", reasons.Select(kv => kv.Key + ":" + kv.Value))} maskBoxIoU>0.7={ious.Count(v => v > 0.7)}/{ious.Count}");
+        total.Should().BeGreaterThan(0);
+        // Regression: the Android detector refused every photo whose receipt touched the frame or was squarish (the Windows
+        // live-scanner guidance), so YOLO never cropped. With the relaxed filters nearly every labelled document is found.
+        reasons.GetValueOrDefault("ok").Should().BeGreaterThanOrEqualTo((int)(total * 0.9), string.Join(",", reasons.Select(kv => kv.Key + ":" + kv.Value)));
     }
 
     private static Stream Rewind(Stream stream)

@@ -140,12 +140,18 @@ internal static class YoloPostProcessor
 
     /// <summary>The same three refusals as <c>ReceiptDetector</c>: touching the frame edge, not elongated, too small.</summary>
     internal static bool Accept((double X, double Y)[] quad, int imageWidth, int imageHeight)
+        => Refusal(quad, imageWidth, imageHeight) is null;
+
+    /// <summary>Why <see cref="Accept"/> says no: <c>border</c>, <c>aspect</c> or <c>area</c>; null when accepted.</summary>
+    internal static string? Refusal((double X, double Y)[] quad, int imageWidth, int imageHeight, bool strict = true)
     {
+        // The strict set is the Windows live scanner's guidance ("move back", "not rectangular"). A still photo that fills the frame
+        // or a squarish sheet is still worth cropping, so the relaxed set only refuses what is too small to be the receipt.
         foreach (var (x, y) in quad)
         {
-            if (x < BorderMargin || x > imageWidth - BorderMargin || y < BorderMargin || y > imageHeight - BorderMargin)
+            if (strict && (x < BorderMargin || x > imageWidth - BorderMargin || y < BorderMargin || y > imageHeight - BorderMargin))
             {
-                return false;
+                return "border";
             }
         }
 
@@ -155,6 +161,11 @@ internal static class YoloPostProcessor
         var width = Math.Max(Distance(quad[0], quad[1]), Distance(quad[3], quad[2]));
         var height = Math.Max(Distance(quad[0], quad[3]), Distance(quad[1], quad[2]));
         var aspect = Math.Max(width, height) / Math.Max(1, Math.Min(width, height));
-        return aspect >= MinAspect && width * height >= imageWidth * (double)imageHeight * MinAreaShare;
+        if (strict && aspect < MinAspect)
+        {
+            return "aspect";
+        }
+
+        return width * height >= imageWidth * (double)imageHeight * MinAreaShare ? null : "area";
     }
 }

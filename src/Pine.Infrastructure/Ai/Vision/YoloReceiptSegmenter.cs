@@ -25,6 +25,12 @@ public sealed class YoloReceiptSegmenter : IDisposable
     private const long MinimumRealModelBytes = 1_000_000; // a Git LFS pointer stub is ~130 bytes
 
     private readonly object _gate = new();
+
+    /// <summary>
+    /// True applies the OpenCV detector's refusals unchanged (edge contact, aspect below 1.15) -- used by the parity test. The default,
+    /// false, is for still photos: only a quad under 10 % of the frame is refused, and corners are clamped into the picture.
+    /// </summary>
+    internal bool StrictFilters { get; set; }
     private readonly InferenceSession _session;
     private readonly string _inputName;
 
@@ -62,10 +68,15 @@ public sealed class YoloReceiptSegmenter : IDisposable
 
     /// <summary>Finds the receipt in an upright picture: its corners (image pixels, clockwise from top-left) and the model's confidence.</summary>
     internal (double X, double Y)[]? FindQuad(SKBitmap upright, out float confidence, out long inferenceMilliseconds)
+        => FindQuad(upright, out confidence, out inferenceMilliseconds, out _, out _);
+
+    /// <summary>As above, also returning why a pass failed (<paramref name="reason"/>: conf, nomask, border, aspect, area, nomodel) and the unfiltered quad.</summary>
+    internal (double X, double Y)[]? FindQuad(
+        SKBitmap upright, out float confidence, out long inferenceMilliseconds, out string reason, out (double X, double Y)[]? unfiltered)
     {
         try
         {
-            return Run(upright, out confidence, out inferenceMilliseconds);
+            return Run(upright, out confidence, out inferenceMilliseconds, out reason, out unfiltered);
         }
         catch (OnnxRuntimeException ex)
         {
@@ -73,10 +84,13 @@ public sealed class YoloReceiptSegmenter : IDisposable
         }
     }
 
-    private (double X, double Y)[]? Run(SKBitmap upright, out float confidence, out long inferenceMilliseconds)
+    private (double X, double Y)[]? Run(
+        SKBitmap upright, out float confidence, out long inferenceMilliseconds, out string reason, out (double X, double Y)[]? unfiltered)
     {
         confidence = 0f;
         inferenceMilliseconds = 0;
+        reason = "ok";
+        unfiltered = null;
         var box = YoloPostProcessor.ComputeLetterbox(upright.Width, upright.Height);
         var input = Preprocess(upright, box);
 
@@ -90,6 +104,7 @@ public sealed class YoloReceiptSegmenter : IDisposable
             inferenceMilliseconds = clock.ElapsedMilliseconds;
             if (results.Count < 2)
             {
+                reason = "nomodel";
                 return null; // a detection-only export has no mask: not the model this pipeline is tuned for
             }
 
@@ -97,6 +112,7 @@ public sealed class YoloReceiptSegmenter : IDisposable
             channels = first.Dimensions[1];
             if (channels < 4 + 1 + YoloPostProcessor.MaskChannels)
             {
+                reason = "nomodel";
                 return null;
             }
 
@@ -107,11 +123,33 @@ public sealed class YoloReceiptSegmenter : IDisposable
         if (!YoloPostProcessor.TryPickAnchor(output0, channels, out var anchor, out confidence)
             || confidence < YoloPostProcessor.MinConfidence)
         {
+            reason = "conf";
             return null;
         }
 
         var quad = YoloPostProcessor.QuadFromAnchor(output0, channels, anchor, protos, box);
-        return quad is not null && YoloPostProcessor.Accept(quad, upright.Width, upright.Height) ? quad : null;
+        unfiltered = quad;
+        if (quad is null)
+        {
+            reason = "nomask";
+            return null;
+        }
+
+        reason = YoloPostProcessor.Refusal(quad, upright.Width, upright.Height, StrictFilters) ?? "ok";
+        if (reason != "ok")
+        {
+            return null;
+        }
+
+        if (!StrictFilters)
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                quad[i] = (Math.Clamp(quad[i].X, 0, upright.Width - 1), Math.Clamp(quad[i].Y, 0, upright.Height - 1));
+            }
+        }
+
+        return quad;
     }
 
     private static DenseTensor<float> Preprocess(SKBitmap source, YoloPostProcessor.Letterbox box)

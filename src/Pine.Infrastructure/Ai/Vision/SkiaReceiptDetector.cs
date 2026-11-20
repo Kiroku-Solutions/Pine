@@ -157,11 +157,13 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
         (double X, double Y)[]? quad = null;
         var source = "none";
         long modelMs = 0;
+        var confidence = 0f;
+        var reason = "off";
         if (_yolo is not null)
         {
             try
             {
-                quad = _yolo.FindQuad(upright, out _, out modelMs);
+                quad = _yolo.FindQuad(upright, out confidence, out modelMs, out reason, out _);
                 source = quad is null ? "yolo-miss" : "yolo";
             }
             catch (InvalidOperationException)
@@ -180,7 +182,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
             }
         }
 
-        ScanDiagnostics.Report($"detect source={source} yolo_infer_ms={modelMs} yolo_total_ms={yoloTotal} total_ms={clock.ElapsedMilliseconds}");
+        ScanDiagnostics.Report($"detect source={source} yolo_conf={confidence:F2} yolo_reason={reason} size={upright.Width}x{upright.Height} yolo_infer_ms={modelMs} yolo_total_ms={yoloTotal} total_ms={clock.ElapsedMilliseconds}");
         return quad;
     }
 
