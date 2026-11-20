@@ -238,10 +238,10 @@ OpenCV registration (`ReceiptDetector`, `OpenCvImageProcessor`, `OpenCvCameraSou
 | Head | Level | Detect/crop stage (`IReceiptDetector`) | OCR |
 |---|---|---|---|
 | Windows | `Full` | `ReceiptDetector` (YOLO + OpenCV) | `Pine:Ai:OcrBackend` (Paddle default) |
-| Android | `OcrOnly` | `SkiaReceiptDetector` (EXIF + downscale to 2048 px, then `ReceiptQuadFinder` + Skia homography crop; falls back to the uncropped picture when no sheet is found) | `OnnxOcrEngine`, forced |
+| Android | `OcrOnly` | `SkiaReceiptDetector`: `YoloReceiptSegmenter` (same model and thresholds as Windows, managed post-processing), then `ReceiptQuadFinder`, then EXIF + downscale to 2048 px; Skia homography crop | `OnnxOcrEngine`, forced |
 | macOS, iOS | `None` | n/a | n/a |
 
-`SkiaReceiptDetector` (docs/65 B2) is classical, not YOLO: Otsu threshold, largest region, convex hull, maximum-area inscribed quadrilateral,
+`SkiaReceiptDetector` (docs/65 B2) runs YOLO first (`YoloReceiptSegmenter`, `YoloPostProcessor`, same literals as `ReceiptDetector`), and its fallback is classical: Otsu threshold, largest region, convex hull, maximum-area inscribed quadrilateral,
 then a 4-point homography drawn by Skia. It answers "a sheet-like quadrilateral covering 12-95 % of the frame", never "certainly a receipt".
 Its constants are literals under the 7.1 boundary (`ReceiptQuadFinder.cs`). The YOLO model stays Windows-only.
 

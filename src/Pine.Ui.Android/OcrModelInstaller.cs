@@ -12,7 +12,7 @@ namespace Pine.Ui.Android;
 /// </summary>
 internal static class OcrModelInstaller
 {
-    private static readonly string[] Files = ["det.onnx", "rec.onnx", "dict_latin_v5.txt"];
+    private static readonly string[] Files = ["det.onnx", "rec.onnx", "dict_latin_v5.txt", "yolo-receipt-nano.onnx"];
 
     /// <summary>Installs the models and returns the directory that holds them.</summary>
     internal static string Install(Context context)
@@ -24,7 +24,7 @@ internal static class OcrModelInstaller
         foreach (var name in Files)
         {
             var destination = Path.Combine(target, name);
-            var assetName = "ocr/" + name;
+            var assetName = (name.StartsWith("yolo", StringComparison.Ordinal) ? "yolo/" : "ocr/") + name;
             if (File.Exists(destination) && SizeOf(assets, assetName) is { } size && new FileInfo(destination).Length == size)
             {
                 continue;

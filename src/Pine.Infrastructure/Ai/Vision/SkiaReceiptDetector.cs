@@ -37,6 +37,14 @@ namespace Pine.Infrastructure.Ai.Vision;
 /// </remarks>
 public sealed class SkiaReceiptDetector : IReceiptDetector
 {
+    private readonly YoloReceiptSegmenter? _yolo;
+
+    /// <summary>Creates the detector; <paramref name="yolo"/> is the optional ONNX segmenter tried before the classical finder.</summary>
+    public SkiaReceiptDetector(YoloReceiptSegmenter? yolo = null)
+    {
+        _yolo = yolo;
+    }
+
     /// <summary>Longest side an image is shrunk to before OCR.</summary>
     /// <remarks>Receipt photos are long and thin; 2048 keeps text well above the recogniser's 48 px line height.</remarks>
     public const int MaxSide = 2048;
@@ -62,7 +70,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
             () =>
             {
                 using var upright = DecodeUpright(bytes, out _);
-                return FindQuad(upright) is null ? 0f : 1f;
+                return FindQuadWithModel(upright) is null ? 0f : 1f;
             },
             cancellationToken);
     }
@@ -83,14 +91,14 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
     {
     }
 
-    internal static ReceiptAnalysisResult Normalise(byte[] encoded)
+    internal ReceiptAnalysisResult Normalise(byte[] encoded)
     {
         using var upright = DecodeUpright(encoded, out var unchanged);
 
         // A failure in the optional crop must never lose the scan: any problem means "no receipt found".
         try
         {
-            var quad = FindQuad(upright);
+            var quad = FindQuadWithModel(upright);
             if (quad is not null)
             {
                 using var warped = Warp(upright, quad);
@@ -140,6 +148,40 @@ public sealed class SkiaReceiptDetector : IReceiptDetector
         using var image = SKImage.FromBitmap(bitmap);
         using var encodedData = image.Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
         return encodedData.ToArray();
+    }
+
+    /// <summary>YOLO first (the Windows semantics), then the classical finder, then nothing. Timings go to <see cref="ScanDiagnostics"/>.</summary>
+    private (double X, double Y)[]? FindQuadWithModel(SKBitmap upright)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        (double X, double Y)[]? quad = null;
+        var source = "none";
+        long modelMs = 0;
+        if (_yolo is not null)
+        {
+            try
+            {
+                quad = _yolo.FindQuad(upright, out _, out modelMs);
+                source = quad is null ? "yolo-miss" : "yolo";
+            }
+            catch (InvalidOperationException)
+            {
+                source = "yolo-error";
+            }
+        }
+
+        var yoloTotal = clock.ElapsedMilliseconds;
+        if (quad is null)
+        {
+            quad = FindQuad(upright);
+            if (quad is not null)
+            {
+                source += "+classic";
+            }
+        }
+
+        ScanDiagnostics.Report($"detect source={source} yolo_infer_ms={modelMs} yolo_total_ms={yoloTotal} total_ms={clock.ElapsedMilliseconds}");
+        return quad;
     }
 
     /// <summary>The receipt's corners in <paramref name="upright"/>'s pixel coordinates, clockwise from top-left, or null.</summary>

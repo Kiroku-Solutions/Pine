@@ -65,6 +65,10 @@ internal static class ReceiptQuadFinder
         return best;
     }
 
+    /// <summary>The corners of the largest region of a ready-made mask (the YOLO segmentation mask), or null.</summary>
+    internal static (double X, double Y)[]? QuadFromMask(bool[] mask, int width, int height)
+        => TryQuad(mask, width, height, out var quad, out _) ? quad : null;
+
     private static bool TryQuad(bool[] mask, int width, int height, out (double X, double Y)[] quad, out double score)
     {
         quad = [];

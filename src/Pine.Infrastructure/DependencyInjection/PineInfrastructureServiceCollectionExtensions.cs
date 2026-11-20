@@ -244,7 +244,12 @@ public static class PineInfrastructureServiceCollectionExtensions
                 // below names an OpenCvSharp type; IImageProcessor and ICameraSource stay unregistered because
                 // their consumers (the crop screen, the live scanner) are refused by the factory on such a head.
                 // B2 (a Skia document detector) replaces SkiaReceiptDetector here.
-                services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector, Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector>();
+                // The YOLO model (same file as Windows) is tried first when it is present in the models directory, then the
+                // classical finder, then EXIF + downscale only (docs/65 section 13).
+                var yoloDirectory = options.OcrModelDirectory;
+                services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector>(_ =>
+                    new Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector(
+                        Pine.Infrastructure.Ai.Vision.YoloReceiptSegmenter.TryCreate(yoloDirectory)));
                 services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
                 return;
             }

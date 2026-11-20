@@ -1314,7 +1314,7 @@ public partial class ArchitectureTests
     // OnnxOcrEngine (docs/65 section 6.2) genuinely calls session.Run over det.onnx and rec.onnx. Its
     // collaborators -- DbPostProcessor, CtcDecoder, SkiaImagePreprocessor, OnnxOcrOptions -- are deliberately
     // NOT listed: they are array-in/array-out code, and this test keeps them free of the runtime.
-    private static readonly string[] TypesAllowedToUseOnnx = ["LayoutLmFieldExtractor", "OnnxOcrEngine", "ReceiptDetector"];
+    private static readonly string[] TypesAllowedToUseOnnx = ["LayoutLmFieldExtractor", "OnnxOcrEngine", "ReceiptDetector", "YoloReceiptSegmenter"];
 
     /// <summary>
     /// TD-36. Only the type that actually runs inference may depend on the ONNX runtime.

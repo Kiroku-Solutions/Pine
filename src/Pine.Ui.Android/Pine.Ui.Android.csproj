@@ -36,8 +36,8 @@
     named Content for the desktop heads; Content does not reach an APK, so they are linked here as AndroidAsset
     (named, not globbed: the TD-41 rule). They are stored UNCOMPRESSED so the first-run copy to the files
     directory (OcrModelInstaller) can compare sizes with AssetManager.OpenFd and skip the copy next time.
-    The LayoutLM model is NOT bundled: it is CC BY-NC-SA research-only and ~128 MB. YOLO is not bundled either:
-    its OpenCV pre/post-processing cannot run on this head, so nothing would read it.
+    The LayoutLM model is NOT bundled: it is CC BY-NC-SA research-only and ~128 MB. The YOLO receipt detector
+    IS bundled (below): its pre/post-processing is managed code now (YoloReceiptSegmenter).
   -->
   <PropertyGroup>
     <AndroidStoreUncompressedFileExtensions>$(AndroidStoreUncompressedFileExtensions);.onnx</AndroidStoreUncompressedFileExtensions>
@@ -46,6 +46,8 @@
     <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\det.onnx" Link="Assets\ocr\det.onnx" />
     <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\rec.onnx" Link="Assets\ocr\rec.onnx" />
     <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\dict_latin_v5.txt" Link="Assets\ocr\dict_latin_v5.txt" />
+    <!-- The receipt detector model, the same file Windows ships (docs/65 section 13): 13 MB, copied with the OCR models. -->
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\yolo-receipt-nano.onnx" Link="Assets\yolo\yolo-receipt-nano.onnx" />
   </ItemGroup>
 
   <ItemGroup>
