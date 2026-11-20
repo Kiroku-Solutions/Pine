@@ -187,8 +187,11 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
                 using var warped = Warp(upright, quad);
                 if (warped is not null)
                 {
-                    var jpeg = Encode(warped);
-                    return new ReceiptAnalysisResult(1f, true, null, new MemoryStream(jpeg), new MemoryStream(jpeg));
+                    // The screen copy is sharpened like the Windows one; the OCR copy is the colour crop, or the screen
+                    // mitigation when the picture is a photo of a screen (docs/65 section 14: binarising hurts PP-OCRv5).
+                    using var sharp = ReceiptEnhancer.Sharpen(warped);
+                    using var forOcr = PrepareForOcr(warped);
+                    return new ReceiptAnalysisResult(1f, true, null, new MemoryStream(Encode(sharp)), new MemoryStream(Encode(forOcr)));
                 }
             }
         }
@@ -196,12 +199,13 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         {
         }
 
-        if (unchanged)
+        using var prepared = PrepareForOcr(upright, out var screenPicture);
+        if (unchanged && !screenPicture)
         {
             return new ReceiptAnalysisResult(1f, false, null, null);
         }
 
-        return new ReceiptAnalysisResult(1f, true, null, null, new MemoryStream(Encode(upright)));
+        return new ReceiptAnalysisResult(1f, true, null, null, new MemoryStream(Encode(prepared)));
     }
 
     /// <summary>Decodes, shrinks to <see cref="MaxSide"/> and applies the EXIF orientation. <paramref name="unchanged"/> is true when neither was needed.</summary>
@@ -250,6 +254,36 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
     /// <summary>Maps a point found in a picture that was turned a quarter turn back to the original picture (<paramref name="width"/> x <paramref name="height"/>).</summary>
     internal static (double X, double Y) UnrotatePoint((double X, double Y) p, int width, int height, bool clockwise)
         => clockwise ? (p.Y, height - p.X) : (width - p.Y, p.X);
+
+    /// <summary>
+    /// The picture handed to OCR: the colour picture as it is, or, when it looks like a photo of a screen, a 0.6 x downscale and a
+    /// background flatten (measured best on synthetic screen photos: recall 61.8 % to 73.4 %, docs/65 section 14). Never the hard
+    /// binarisation of the Windows pipeline, which lowered PP-OCRv5 recall on clean scans from 92.2 % to 78.1 %.
+    /// </summary>
+    internal static SKBitmap PrepareForOcr(SKBitmap picture) => PrepareForOcr(picture, out _);
+
+    private static SKBitmap PrepareForOcr(SKBitmap picture, out bool screen)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var score = ScreenPatternDetector.Score(picture);
+        screen = score > ScreenPatternDetector.Threshold;
+        var sharpness = ReceiptEnhancer.LaplacianVariance(picture);
+        SKBitmap result;
+        if (screen)
+        {
+            using var small = picture.Resize(
+                new SKImageInfo(Math.Max(1, (int)(picture.Width * 0.6)), Math.Max(1, (int)(picture.Height * 0.6)), SKColorType.Bgra8888, SKAlphaType.Opaque),
+                new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear)) ?? throw new InvalidDataException("The image could not be resized.");
+            result = ReceiptEnhancer.ForOcr(small, OcrEnhancement.Flatten);
+        }
+        else
+        {
+            result = picture.Copy();
+        }
+
+        ScanDiagnostics.Report($"enhance mode={(screen ? "screen" : "none")} screen_score={score:F0} sharpness={sharpness:F0} ms={clock.ElapsedMilliseconds}");
+        return result;
+    }
 
     /// <summary>YOLO first (the Windows semantics), then the classical finder, then nothing. Timings go to <see cref="ScanDiagnostics"/>.</summary>
     private (double X, double Y)[]? FindQuadWithModel(SKBitmap upright)

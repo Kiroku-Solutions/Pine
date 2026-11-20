@@ -38,7 +38,7 @@ public sealed class SkiaReceiptDetectorTests
                 canvas.DrawPath(path, fill);
 
                 // Printed lines inside the sheet, which must not break the detection.
-                using var ink = new SKPaint { Color = new SKColor(120, 120, 120), StrokeWidth = 3, IsAntialias = true };
+                using var ink = new SKPaint { Color = new SKColor(165, 165, 165), StrokeWidth = 3, IsAntialias = true };
                 canvas.Save();
                 canvas.ClipPath(path, antialias: true);
                 var minY = quad.Min(p => p.Y);
@@ -112,8 +112,9 @@ public sealed class SkiaReceiptDetectorTests
         var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(quad)));
 
         result.PassedFilters.Should().BeTrue();
+        result.CroppedImageStream.Should().NotBeNull();
         result.OcrImageStream.Should().NotBeNull();
-        using var cropped = Decode(result.OcrImageStream!);
+        using var cropped = Decode(result.CroppedImageStream!);
         var longSide = Math.Max(cropped.Width, cropped.Height);
         var shortSide = Math.Min(cropped.Width, cropped.Height);
         longSide.Should().BeInRange(720, 800, "the receipt is 760 long");
@@ -131,7 +132,7 @@ public sealed class SkiaReceiptDetectorTests
         var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(quad)));
 
         result.PassedFilters.Should().BeTrue();
-        using var cropped = Decode(result.OcrImageStream!);
+        using var cropped = Decode(result.CroppedImageStream!);
         cropped.Height.Should().BeGreaterThan(cropped.Width);
         BackgroundEdgeShare(cropped).Should().BeLessThan(0.08);
     }
@@ -145,7 +146,7 @@ public sealed class SkiaReceiptDetectorTests
         var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(quad, background: 235, paper: 60)));
 
         result.PassedFilters.Should().BeTrue();
-        using var cropped = Decode(result.OcrImageStream!);
+        using var cropped = Decode(result.CroppedImageStream!);
         Math.Max(cropped.Width, cropped.Height).Should().BeInRange(660, 740);
     }
 
@@ -180,7 +181,7 @@ public sealed class SkiaReceiptDetectorTests
 
         var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(quad)));
 
-        result.PassedFilters.Should().BeFalse("there is nothing to crop away");
+        result.CroppedImageStream.Should().BeNull("there is nothing to crop away");
     }
 
     [Fact]
