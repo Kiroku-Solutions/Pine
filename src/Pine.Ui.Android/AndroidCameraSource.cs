@@ -118,6 +118,7 @@ internal sealed class AndroidCameraSession : ICameraSession
     private int _frames;
     private readonly System.Collections.Concurrent.ConcurrentBag<byte[]> _pool = [];
     private long _convertTicks;
+    private long _copyTicks;
 
     private AndroidCameraSession(MainActivity activity, int sensorOrientation, HandlerThread thread, ImageReader reader)
     {
@@ -360,8 +361,11 @@ internal sealed class AndroidCameraSession : ICameraSession
 #pragma warning restore CA1422
         var rotation = (_sensorOrientation - display + 360) % 360;
 
-        var outWidth = rotation is 90 or 270 ? height : width;
-        var outHeight = rotation is 90 or 270 ? width : height;
+        // With a camera still available the viewfinder and the analysis need only a quarter of the pixels (YOLO letterboxes to 640 anyway),
+        // so every second pixel of every second row is converted; the full-size capture is the still. Without one the frame stays full size.
+        var step = _stillReader is not null ? 2 : 1;
+        var outWidth = (rotation is 90 or 270 ? height : width) / step;
+        var outHeight = (rotation is 90 or 270 ? width : height) / step;
         // Frames are 8 MB each; reusing their buffers keeps the garbage collector (and its pauses) out of the viewfinder.
         var needed = outWidth * outHeight * 4;
         if (!_pool.TryTake(out var bgra) || bgra.Length != needed)
@@ -380,6 +384,11 @@ internal sealed class AndroidCameraSession : ICameraSession
             default: x0 = 0; y0 = 0; dxOx = 1; dxOy = 0; dyOx = 0; dyOy = 1; break;
         }
 
+        dxOx *= step;
+        dxOy *= step;
+        dyOx *= step;
+        dyOy *= step;
+        var copyTicks = clock.ElapsedTicks;
         var o = 0;
         for (var oy = 0; oy < outHeight; oy++)
         {
@@ -402,10 +411,12 @@ internal sealed class AndroidCameraSession : ICameraSession
         }
 
         _convertTicks += clock.ElapsedTicks;
+        _copyTicks += copyTicks;
         if (++_frames % 60 == 0)
         {
-            global::Android.Util.Log.Info("PineCamera", $"frames={_frames} convert_ms_avg={_convertTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 60:F1} size={outWidth}x{outHeight}");
+            global::Android.Util.Log.Info("PineCamera", $"frames={_frames} convert_ms_avg={_convertTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 60:F1} (of which plane copy {_copyTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 60:F1}) step={step} size={outWidth}x{outHeight}");
             _convertTicks = 0;
+            _copyTicks = 0;
         }
 
         return new AndroidCameraFrame(outWidth, outHeight, bgra, buffer => { if (!_disposed) { _pool.Add(buffer); } });
