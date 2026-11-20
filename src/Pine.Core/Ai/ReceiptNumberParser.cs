@@ -29,7 +29,7 @@ public enum DecimalSeparator
 /// most other amounts are "x,yy" the comma is the decimal separator, so "2,500" is 2.5 and "1.000" is 1000.
 /// If they are "x.yy" the point is decimal and "1.000" is 1.0. With no evidence the legacy reading stays
 /// (a single separator followed by three digits is a thousands group), which is what CORD-style "60.000"
-/// needs. A leading "0" ("0,500") or a longer integer part ("1234,567") can never be a thousands group.
+/// needs. A leading "0" ("0,500") can never be a thousands group.
 /// </para>
 /// <para>BCL only, so it lives in Pine.Core and is testable without an OCR engine.</para>
 /// </remarks>
@@ -54,20 +54,30 @@ public static class ReceiptNumberParser
             foreach (Match m in EvidenceToken.Matches(text ?? string.Empty))
             {
                 var after = m.Index + m.Length;
-                if (after < text!.Length && text[after] == '%')
+                while (after < text!.Length && text[after] == ' ')
+                {
+                    after++;
+                }
+
+                if (after < text.Length && text[after] == '%')
                 {
                     continue;
                 }
 
+                // A repeated thousands group ("1.591.600") is conclusive on its own (weight 2); a lone "x,yy" may be an
+                // OCR slip, so a style needs two such tokens before it overrides the thousands reading.
+                var weight = m.Value.Count(c => c is '.' or ',') > 1 && !(m.Value.Contains('.') && m.Value.Contains(',')) ? 2 : 1;
                 switch (Vote(m.Value))
                 {
-                    case DecimalSeparator.Point: point++; break;
-                    case DecimalSeparator.Comma: comma++; break;
+                    case DecimalSeparator.Point: point += weight; break;
+                    case DecimalSeparator.Comma: comma += weight; break;
                 }
             }
         }
 
-        return point > comma ? DecimalSeparator.Point : comma > point ? DecimalSeparator.Comma : DecimalSeparator.Unknown;
+        return point >= 2 && point > comma ? DecimalSeparator.Point
+            : comma >= 2 && comma > point ? DecimalSeparator.Comma
+            : DecimalSeparator.Unknown;
     }
 
     private static DecimalSeparator Vote(string token)
@@ -101,7 +111,7 @@ public static class ReceiptNumberParser
             return decimalOf;
         }
 
-        return parts[0] == "0" || parts[0].Length > 3 ? decimalOf : DecimalSeparator.Unknown;
+        return parts[0] == "0" ? decimalOf : DecimalSeparator.Unknown;
     }
 
     /// <summary>True when the text is a percentage ("12,00%", "6.25 %"), which is a rate and never an amount.</summary>
@@ -223,8 +233,9 @@ public static class ReceiptNumberParser
             return before + "." + after;
         }
 
+        // A thousands group cannot follow a lone zero ("0,500"); a longer integer part ("1178.100") is more likely an
+        // OCR-damaged grouped number than a three-decimal quantity, so it stays thousands.
         var isDecimalHere = before == "0"
-            || before.Length > 3
             || (separator == DecimalSeparator.Point && sep == '.')
             || (separator == DecimalSeparator.Comma && sep == ',');
         return isDecimalHere ? before + "." + after : before + after;

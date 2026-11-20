@@ -8,7 +8,7 @@ using Pine.Infrastructure.Ai.Extraction.LayoutLm;
 // Usage: PineKieBaseline <ocr_dir> <predictions_dir> [--layoutlm <model.onnx> <tokenizer.json>]
 // Reads <ocr_dir>/*.json  ({ "id", "image", "words": [ { "text", "confidence", "box": {"x","y","width","height"} } ] })
 // Without --layoutlm (Phase 1 baseline): the heuristic extractor only -> <predictions_dir>/<id>.json
-//   { id, merchant, total, date, tax:null, tax_supported:false }.  TAX is not supported by the heuristics.
+//   { id, merchant, total, date, tax, tax_supported:true }.  The heuristics report TaxAmount (summed tax rows).
 // With --layoutlm (Phase 5): runs Pine's REAL LayoutLmFieldExtractor on the same OCR words + the page image and writes
 //   <predictions_dir>             = layout model only
 //   <predictions_dir>-hybrid      = heuristics overlaid by the model, exactly as DefaultLocalAiProvider does
@@ -57,7 +57,7 @@ foreach (var file in Directory.EnumerateFiles(ocrDir, "*.json").OrderBy(f => f, 
         var h = heuristic.ExtractFields(words);
         if (layout is null)
         {
-            pred = Shape(doc.Id, h, false);
+            pred = Shape(doc.Id, h, true); // heuristics report TaxAmount since the tax-model change
         }
         else
         {

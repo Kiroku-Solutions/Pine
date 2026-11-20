@@ -80,18 +80,41 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     [GeneratedRegex(@"^\W*(?:SUB\s*-?\s*TOTAL|TOTAL|VALOR TOTAL|IMPORTE|IVA|IGV|TAX|SALES TAX|TARIFA|BASE IMPONIBLE|PROPINA|DESCUENTO|AMOUNT DUE)\b", RegexOptions.Compiled)]
     private static partial Regex FooterStartRegex();
 
-    // Tax rows (IVA/IGV/ICE/VAT/sales tax) as whole words: "SERVICE", "PRICE" and "TIPO" must not match.
-    [GeneratedRegex(@"\b(?:IVA|IGV|ICE|ITBMS|TAX|VAT|IMPUESTOS?)\b", RegexOptions.Compiled)]
+    // Tax rows as whole words, tolerant of OCR (T4X) and punctuation (I.V.A.): IVA, IGV, ITBMS, ISV, VAT, GST, HST, PST,
+    // QST, TAX, TAX 1/TAX 2, sales/state tax, IMPUESTO. "ICE" is handled apart (it is also an English word).
+    [GeneratedRegex(@"(?<![A-Z0-9])(?:T[A4]X(?:\s?[12])?|I\.?\s?V\.?\s?A\.?|IGV|ITBMS|ISV|VAT|GST|HST|PST|QST|PB1|PPN|PAJAK|SALES\s+TAX|STATE\s+TAX|IMPUESTOS?|IMPTO\.?)(?![A-Z0-9])", RegexOptions.Compiled)]
     private static partial Regex TaxLineRegex();
 
-    // Rows that quote a tax BASE or an untaxed/exempt amount, not the tax itself.
-    [GeneratedRegex(@"\b(?:SUB\s*-?\s*TOTAL|BASE|TARIFA|IMPONIBLE|GRAVADA|EXONERADA|INAFECTA|EXENTO|OBJETO|SIN)\b", RegexOptions.Compiled)]
+    // Ecuador's excise tax is only a tax row when ICE stands alone with its rate and amount ("ICE 15% 1,20"), never in "ICE CREAM".
+    [GeneratedRegex(@"^\W*ICE\b[\s\d$%.,:@-]*$", RegexOptions.Compiled)]
+    private static partial Regex IceRowRegex();
+
+    // Rows that quote a tax BASE or an untaxed/exempt amount, or a total "with/including tax", not the tax itself.
+    [GeneratedRegex(@"\b(?:SUB\s*-?\s*TOTAL|BASE|TARIFA|IMPONIBLE|GRAVADA|EXONERADA|INAFECTA|EXENTO|OBJETO|SIN)\b|(?:WITH|INCL\w*|INCLUDING|CON|MAS)\s*[.,]?\s*(?:SALES\s+)?(?:T[A4]X|GST|VAT|IVA|IGV)|AMOUNT\s+INCL", RegexOptions.Compiled)]
     private static partial Regex TaxBaseLineRegex();
 
-    [GeneratedRegex(@"\b(?:PROPINA|SERVICIO|TIP|GRATUITY|SERVICE CHARGE)\b", RegexOptions.Compiled)]
+    // "GST (Included)", "IVA INCLUIDO": the tax is already inside the prices, so it is reported but never added on top.
+    [GeneratedRegex(@"\b(?:INCL\w*|INCLUID[OA]S?|INCLUYE\w*)\b", RegexOptions.Compiled)]
+    private static partial Regex IncludedMarkerRegex();
+
+    [GeneratedRegex(@"\b(?:ROUNDING|ROUNDED|REDONDEO|ROUND\s+ADJ\w*|ADJUSTMENT)\b", RegexOptions.Compiled)]
+    private static partial Regex RoundingLineRegex();
+
+    // Payment and tender rows, and net/final/grand totals: never products.
+    [GeneratedRegex(@"\b(?:CASH|CHANGE|CREDIT|DEBIT|VISA|MASTERCARD|TENDER(?:ED)?|NET\s+TOTAL|NETT\s+TOTAL|FINAL\s+TOTAL|GRAND\s+TOTAL|ITEM\s+COUNT|TOTAL\s+QTY|TOTAL\s+ITEMS?|TOTAL\s+(?:WITH|INCL\w*|DUE)|AMOUNT\s+(?:INCL\w*|DUE)|SUB[\s.\-]*TOTAL)\b", RegexOptions.Compiled)]
+    private static partial Regex PaymentRowRegex();
+
+    // A row whose description, once numbers are removed, is only a totals/adjustment word ("Total", "Round *", "PB1 10%").
+    [GeneratedRegex(@"^(?:TOTAL|SUB TOTAL|ROUND|ROUNDING|SERVICE|PB1?|PPN|TAX|GST|VAT)(?:\s+RM)?$", RegexOptions.Compiled)]
+    private static partial Regex DescriptionOnlyAdjustmentRegex();
+
+    [GeneratedRegex(@"[\d.,$%@*:()#-]+", RegexOptions.Compiled)]
+    private static partial Regex NumberNoiseRegex();
+
+    [GeneratedRegex(@"\b(?:PROPINA|SERVICIO|TIP|GRATUITY|SERVICE\s+CHARGE|SERV\w*\s*(?:CHARGE|CHG)|SVC|SERVICE(?=[\s:(]*\d+(?:[.,]\d+)?\s*%))\b", RegexOptions.Compiled)]
     private static partial Regex TipLineRegex();
 
-    [GeneratedRegex(@"\b(?:DESCUENTO|DESC|DTO|DISCOUNT)\b", RegexOptions.Compiled)]
+    [GeneratedRegex(@"\b(?:DESCUENTO|DESC|DTO|DISCOUNT|COUPON|CUPON)\b", RegexOptions.Compiled)]
     private static partial Regex DiscountLineRegex();
 
     [GeneratedRegex(@"^\W*SUB\s*-?\s*TOTAL\b(?!\s*\d+\s*%)", RegexOptions.Compiled)]
@@ -109,6 +132,13 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     [GeneratedRegex(@"\b(?:DUE|VENCIMIENTO|VENCE|VTO|EXPIR\w*|CADUC\w*)\b", RegexOptions.Compiled)]
     private static partial Regex DueDateLineRegex();
 
+    [GeneratedRegex(@"(\d+(?:[.,]\d+)?)\s*%", RegexOptions.Compiled)]
+    private static partial Regex PercentRegex();
+
+    // A trailing tax-code flag after the price ("MILK 3.99 F", "SHIRT 10.00 T"): not part of the description.
+    [GeneratedRegex(@"(?<=\d[.,]\d{2})\s+[A-Z]{1,2}$", RegexOptions.Compiled)]
+    private static partial Regex TrailingTaxFlagRegex();
+
     // "NY 12210", "MA 12210", "CP 170150": a postal code, not a quantity or a price.
     [GeneratedRegex(@"\b(?:[A-Z]{2}|ZIP|CP|C\.P\.)\s+\d{4,6}\b", RegexOptions.Compiled)]
     private static partial Regex PostalCodeRegex();
@@ -123,7 +153,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     private static readonly HashSet<string> LineItemNoiseKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
         // Totals & Tax (Removed isolated "TOTAL" because it rejects valid products like "Colesterol Total")
-        "VALOR TOTAL", "TOTAL A PAGAR", "SUBTOTAL", "IVA", "ICE", "IMPUESTO", "DESCUENTO", "PROPINA",
+        "VALOR TOTAL", "TOTAL A PAGAR", "SUBTOTAL", "IVA", "IMPUESTO", "DESCUENTO", "PROPINA",
         // Payment
         "CAMBIO", "TARJETA", "EFECTIVO", "VUELTO", "PAGO", "TRANSACCION",
         // Receipt metadata
@@ -185,6 +215,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Upper-cases and folds Spanish accents (and ñ) to ASCII, one character for one character, so keyword
     /// matching works on "DESCRIPCIÓN"/"EMISIÓN" and indexes stay valid in the original text.
     /// </summary>
+    private static bool IsTaxRow(string upper) =>
+        (TaxLineRegex().IsMatch(upper) || IceRowRegex().IsMatch(upper)) && !TaxBaseLineRegex().IsMatch(upper);
+
     internal static string FoldUpper(string text)
     {
         var chars = text.ToUpperInvariant().ToCharArray();
@@ -222,6 +255,15 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // properties of the whole receipt, not of each token (see ReceiptNumberParser).
         var lineTexts = clusteredLines.Select(l => l.Text).ToList();
         var separator = ReceiptNumberParser.Infer(lineTexts);
+        if (separator == DecimalSeparator.Unknown && !lineTexts.Any(t => AmountRegex().IsMatch(t)))
+        {
+            // No "x,yy" amount anywhere: a zero-decimal currency (CLP, COP, IDR). Every separator is a thousands
+            // mark, so the other one is the (unused) decimal separator.
+            var dots = lineTexts.Sum(t => GroupedIntegerRegex().Matches(t).Count(m => m.Value.Contains('.')));
+            var commas = lineTexts.Sum(t => GroupedIntegerRegex().Matches(t).Count(m => m.Value.Contains(',')));
+            if (dots + commas > 0)
+                separator = dots >= commas ? DecimalSeparator.Comma : DecimalSeparator.Point;
+        }
         var dayFirst = ReceiptDateParser.InferDayFirst(lineTexts);
 
         // ===== STEP 3: Extract Line Items FIRST (Needed for math validation) =====
@@ -250,6 +292,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // Only lines that were actually READ are emitted. No residual "unattributed" line is
         // invented here: a gap the extractor cannot explain is the user's to resolve, and silently
         // closing it would make the reconciliation unfalsifiable.
+        lineItems = ReclassifyArithmeticTax(lineItems, clusteredLines, zones, separator, totalAmount, footerModifiers, out var arithmeticTax);
         if (lineItems.Count > 0)
         {
             lineItems = AppendParsedAdjustments(lineItems, footerModifiers, lineItemWords);
@@ -273,7 +316,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             LineItems: lineItems,
             DateIsAmbiguous: dateCandidate?.IsAmbiguous ?? false,
             AlternativeDate: dateCandidate?.Alternative,
-            TaxAmount: footerModifiers.Taxes > 0m ? footerModifiers.Taxes : null
+            TaxAmount: footerModifiers.Taxes + arithmeticTax > 0m ? footerModifiers.Taxes + arithmeticTax : null
         );
     }
 
@@ -494,39 +537,66 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         decimal itemsSum = items.Sum(i => i.TotalPrice);
 
         var footerCandidates = new List<(decimal Amount, float X, float Y, string LineText, List<OcrWord> Words)>();
-        decimal sumTaxes = 0m;
         decimal sumDiscounts = 0m;
         decimal sumTips = 0m;
-        List<OcrWord> taxWords = [], tipWords = [], discountWords = [];
+        decimal sumRounding = 0m;
+        List<OcrWord> tipWords = [], discountWords = [], roundingWords = [];
+        var taxRows = new List<TaxRow>();
 
-        // Collect all amounts from the footer zone, and try to identify taxes/discounts
-        for (int i = zones.FirstTotalIndex; i < lines.Count; i++)
+        // Candidate totals come from the footer zone; adjustment rows (tax, tip, discount, rounding) are read from
+        // every row below the table header, because a mis-placed zone boundary must not turn them into products.
+        for (int i = Math.Min(zones.FirstTotalIndex, zones.TableHeaderIndex + 1); i < lines.Count; i++)
         {
             var line = lines[i];
             string upper = FoldUpper(line.Text);
 
-            foreach (var (val, index) in EnumerateAmounts(line.Text, separator))
+            if (i >= zones.FirstTotalIndex)
             {
-                if (val > 0 && val < 10_000_000)
+                foreach (var (val, index) in EnumerateAmounts(line.Text, separator))
                 {
-                    // Approximation of X coordinate for this specific match using interpolation
-                    float xPos = line.MinX + (line.MaxX - line.MinX) * (index / (float)line.Text.Length);
-                    footerCandidates.Add((val, xPos, line.Y, upper, line.Words));
+                    if (val > 0 && val < 10_000_000)
+                    {
+                        // Approximation of X coordinate for this specific match using interpolation
+                        float xPos = line.MinX + (line.MaxX - line.MinX) * (index / (float)line.Text.Length);
+                        footerCandidates.Add((val, xPos, line.Y, upper, line.Words));
+                    }
                 }
             }
 
-            // Extract exact modifiers for the accounting equation. Tax BASES (SUBTOTAL 12%, TARIFA 0%,
-            // BASE IMPONIBLE, OP. GRAVADA) are not taxes, and a percentage is a rate, never an amount.
-            decimal? lineAmount = ExtractAmountFromLine(line.Text, separator);
-            if (lineAmount.HasValue && lineAmount.Value > 0)
+            if (i <= zones.TableHeaderIndex)
+                continue;
+
+            // Tax BASES (SUBTOTAL 12%, TARIFA 0%, BASE IMPONIBLE, OP. GRAVADA) are not taxes, and a percentage is a
+            // rate, never an amount.
+            var amounts = EnumerateAmounts(line.Text, separator).Where(a => a.Value > 0 && a.Value < 10_000_000).ToList();
+            if (amounts.Count == 0)
+                continue;
+            var (lineAmount, amountIndex) = amounts[^1];
+
+            if (DiscountLineRegex().IsMatch(upper) && !upper.Contains("TOTAL", StringComparison.Ordinal))
+                { sumDiscounts += lineAmount; discountWords.AddRange(line.Words); }
+            else if (RoundingLineRegex().IsMatch(upper))
             {
-                if (DiscountLineRegex().IsMatch(upper) && !upper.Contains("TOTAL", StringComparison.Ordinal))
-                    { sumDiscounts += lineAmount.Value; discountWords.AddRange(line.Words); }
-                else if (TaxLineRegex().IsMatch(upper) && !TaxBaseLineRegex().IsMatch(upper))
-                    { sumTaxes += lineAmount.Value; taxWords.AddRange(line.Words); }
-                else if (TipLineRegex().IsMatch(upper))
-                    { sumTips += lineAmount.Value; tipWords.AddRange(line.Words); }
+                var negative = amountIndex > 0 && line.Text[amountIndex - 1] == '-';
+                sumRounding += negative ? -lineAmount : lineAmount;
+                roundingWords.AddRange(line.Words);
             }
+            else if (IsTaxRow(upper))
+            {
+                var taxWord = TaxLineRegex().Match(upper);
+                var included = IncludedMarkerRegex().Match(upper) is { Success: true } im && (!taxWord.Success || im.Index > taxWord.Index);
+                taxRows.Add(new TaxRow(TaxLabel(line.Text, amountIndex), lineAmount, included, line.Words));
+            }
+            else if (TipLineRegex().IsMatch(upper))
+                { sumTips += lineAmount; tipWords.AddRange(line.Words); }
+        }
+
+        // A "total tax" row repeats the sum of the other tax rows; counting both would double the tax.
+        if (taxRows.Count >= 3)
+        {
+            var total = taxRows.FirstOrDefault(r => Math.Abs(r.Amount - taxRows.Where(o => o != r).Sum(o => o.Amount)) <= 0.02m);
+            if (total is not null)
+                taxRows.Remove(total);
         }
 
         // Add the last fallback candidate (largest amount on receipt) in case footer zone detection was completely wrong
@@ -548,10 +618,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // Hand the parsed modifiers back to the caller. They are needed twice: here, to build the
         // expected total, and by ExtractFields, to emit them as adjustment line items (TD-19).
-        modifiers = new FooterModifiers(sumTaxes, sumTips, sumDiscounts, taxWords, tipWords, discountWords);
+        modifiers = new FooterModifiers(taxRows, sumTips, sumDiscounts, sumRounding, tipWords, discountWords, roundingWords);
+        decimal sumTaxes = modifiers.AdditiveTaxes;
 
         // Evaluate candidates mathematically
-        decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips;
+        decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips + sumRounding;
         
         // 1. Math Exact Match (Epsilon 0.02)
         var exactMatch = footerCandidates.FirstOrDefault(c => Math.Abs(c.Amount - expectedTotal) <= 0.02m);
@@ -559,7 +630,13 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // 2. Math Simple Match (Sum Items == Candidate, ignoring parsed taxes/discounts)
         var simpleMatch = footerCandidates.FirstOrDefault(c => Math.Abs(c.Amount - itemsSum) <= 0.02m);
-        if (simpleMatch != default) { totalWords = simpleMatch.Words; return simpleMatch.Amount; }
+        if (simpleMatch != default)
+        {
+            // The items already add up to the total, so any tax read from the footer is inside the prices.
+            if (sumTaxes > 0) modifiers = modifiers with { TaxIncluded = true };
+            totalWords = simpleMatch.Words;
+            return simpleMatch.Amount;
+        }
 
         // 3. Fallback: Euclidean Distance to "TOTAL" keyword
         var totalKeywordsFound = new List<(float X, float Y)>();
@@ -629,10 +706,15 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         var withAdjustments = new List<ReceiptLineItem>(items);
 
         // itemWords is extended in step with the items so the two stay index-aligned (TD-101).
-        if (modifiers.Taxes > 0)
+        // One typed line per tax row, labelled as printed (breakdown); tax that is already inside the prices is a
+        // receipt field only (TaxAmount), never a line, or the lines would add up past the total.
+        if (!modifiers.TaxIncluded)
         {
-            withAdjustments.Add(new ReceiptLineItem("Tax", 1m, modifiers.Taxes, modifiers.Taxes, LineItemKind.Tax));
-            itemWords.Add(modifiers.TaxWords);
+            foreach (var row in modifiers.TaxRows.Where(r => !r.Included))
+            {
+                withAdjustments.Add(new ReceiptLineItem(row.Label, 1m, row.Amount, row.Amount, LineItemKind.Tax));
+                itemWords.Add(row.Words);
+            }
         }
 
         if (modifiers.Tips > 0)
@@ -645,6 +727,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         {
             withAdjustments.Add(new ReceiptLineItem("Discount", 1m, -modifiers.Discounts, -modifiers.Discounts, LineItemKind.Discount));
             itemWords.Add(modifiers.DiscountWords);
+        }
+
+        if (modifiers.Rounding != 0)
+        {
+            withAdjustments.Add(new ReceiptLineItem("Rounding", 1m, modifiers.Rounding, modifiers.Rounding, LineItemKind.Rounding));
+            itemWords.Add(modifiers.RoundingWords);
         }
 
         return withAdjustments;
@@ -677,6 +765,49 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         return found;
     }
 
+    /// <summary>The row text before its amount ("Sales Tax 6.25%"), trimmed; "Tax" when nothing is left.</summary>
+    private static string TaxLabel(string lineText, int amountIndex)
+    {
+        var label = MultipleSpacesRegex().Replace(lineText[..Math.Min(amountIndex, lineText.Length)], " ").Trim(' ', ':', '-', '.', '$', '@');
+        return label.Length >= 2 && label.Any(char.IsLetter) ? label : "Tax";
+    }
+
+    /// <summary>
+    /// Last line of defence against a tax row that no keyword caught: a product whose amount is exactly the gap
+    /// between the printed subtotal and the total, or exactly rate x base for a rate named in its own text, is a tax.
+    /// </summary>
+    private static List<ReceiptLineItem> ReclassifyArithmeticTax(
+        List<ReceiptLineItem> items, List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator,
+        decimal total, FooterModifiers modifiers, out decimal reclassified)
+    {
+        reclassified = 0m;
+        if (modifiers.TaxRows.Count > 0 || total <= 0 || items.Count < 2)
+            return items;
+
+        var targets = SubtotalTargets(lines, zones, separator);
+        for (int k = items.Count - 1; k >= 0; k--)
+        {
+            var p = items[k];
+            if (p.Kind != LineItemKind.Product)
+                continue;
+            var others = items.Where((x, j) => j != k && x.Kind == LineItemKind.Product).Sum(x => x.TotalPrice);
+            var viaSubtotal = targets.Any(t => Math.Abs(t - others) <= 0.02m) && Math.Abs(others + p.TotalPrice - total) <= 0.02m;
+            var rate = PercentRegex().Match(p.Description);
+            var viaRate = rate.Success
+                && decimal.TryParse(rate.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var pct)
+                && Math.Abs(p.TotalPrice - pct / 100m * others) <= 0.02m
+                && Math.Abs(others + p.TotalPrice - total) <= 0.02m;
+            if (viaSubtotal || viaRate)
+            {
+                var copy = new List<ReceiptLineItem>(items) { [k] = p with { Kind = LineItemKind.Tax } };
+                reclassified = p.TotalPrice;
+                return copy;
+            }
+        }
+
+        return items;
+    }
+
     /// <summary>Extracts a decimal amount from a single line of text (the rightmost one).</summary>
     private static decimal? ExtractAmountFromLine(string lineText, DecimalSeparator separator)
     {
@@ -695,12 +826,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// per-rate SUBTOTAL 12% + SUBTOTAL 0% bases) disagrees with the sum of the items, and removing one or
     /// two items makes them agree, those items were misread rows (an address, a code) and are discarded.
     /// </summary>
-    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> PruneItemsAgainstSubtotal(
-        List<(ReceiptLineItem Item, List<OcrWord> Words)> items, List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator)
+    private static List<decimal> SubtotalTargets(List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator)
     {
-        if (items.Count < 2)
-            return items;
-
         var targets = new List<decimal>();
         decimal perRate = 0m;
         for (int i = zones.TableHeaderIndex + 1; i < lines.Count; i++)
@@ -717,6 +844,16 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         if (perRate > 0)
             targets.Add(perRate);
+        return targets;
+    }
+
+    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> PruneItemsAgainstSubtotal(
+        List<(ReceiptLineItem Item, List<OcrWord> Words)> items, List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator)
+    {
+        if (items.Count < 2)
+            return items;
+
+        var targets = SubtotalTargets(lines, zones, separator);
         if (targets.Count == 0)
             return items;
 
@@ -730,7 +867,15 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         {
             var without = items.Where((_, k) => k != a).ToList();
             if (Matches(Sum(without)))
+            {
+                // A row that is exactly rate x base for the rate in its own text is a tax, kept for reclassification.
+                var rate = PercentRegex().Match(items[a].Item.Description);
+                if (rate.Success
+                    && decimal.TryParse(rate.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var pct)
+                    && Math.Abs(items[a].Item.TotalPrice - pct / 100m * Sum(without)) <= 0.02m)
+                    return items;
                 return without;
+            }
         }
 
         for (int a = 0; a < items.Count; a++)
@@ -855,8 +1000,14 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         string upper = FoldUpper(lineText);
 
         // A row opening with a totals word, or carrying a postal code, is never a product.
-        if (FooterStartRegex().IsMatch(upper) || PostalCodeRegex().IsMatch(upper))
+        if (FooterStartRegex().IsMatch(upper) || PostalCodeRegex().IsMatch(upper) || IsTaxRow(upper)
+            || RoundingLineRegex().IsMatch(upper) || PaymentRowRegex().IsMatch(upper)
+            || TipLineRegex().IsMatch(upper) || DiscountLineRegex().IsMatch(upper)
+            || DescriptionOnlyAdjustmentRegex().IsMatch(NumberNoiseRegex().Replace(upper, " ").Trim()))
             return null;
+
+        // Tax-code flags printed after the price (T, F, A, B) are not part of the description.
+        lineText = TrailingTaxFlagRegex().Replace(lineText, string.Empty);
 
         // P2 Fix: Check noise keywords with word-boundary awareness
         foreach (var keyword in LineItemNoiseKeywords)
@@ -1035,8 +1186,21 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// each one contributes is decided where they are used, not here.
     /// </summary>
     private sealed record FooterModifiers(
-        decimal Taxes, decimal Tips, decimal Discounts,
-        List<OcrWord> TaxWords, List<OcrWord> TipWords, List<OcrWord> DiscountWords);
+        List<TaxRow> TaxRows, decimal Tips, decimal Discounts, decimal Rounding,
+        List<OcrWord> TipWords, List<OcrWord> DiscountWords, List<OcrWord> RoundingWords)
+    {
+        /// <summary>True once the items were found to add up to the total without the tax rows.</summary>
+        public bool TaxIncluded { get; init; }
+
+        /// <summary>Every tax read from the receipt, included or not: the TaxAmount field.</summary>
+        public decimal Taxes => TaxRows.Sum(r => r.Amount);
+
+        /// <summary>Taxes charged on top of the prices (what the accounting equation adds).</summary>
+        public decimal AdditiveTaxes => TaxRows.Where(r => !r.Included).Sum(r => r.Amount);
+    }
+
+    /// <summary>One printed tax row: its label as printed ("Sales Tax 6.25%"), amount, and whether it is already in the prices.</summary>
+    private sealed record TaxRow(string Label, decimal Amount, bool Included, List<OcrWord> Words);
 
     /// <summary>Document zone boundaries (line indices).</summary>
     private sealed record DocumentZones(int TableHeaderIndex, int FirstTotalIndex);
