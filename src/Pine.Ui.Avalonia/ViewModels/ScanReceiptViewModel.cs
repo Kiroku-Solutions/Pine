@@ -888,7 +888,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
         catch (Exception ex)
         {
-            var failure = UserFacingError.Report(_logger, ex, "camera-loop", new UserFacingMessage("LiveScanner.Failure.CaptureLoop"));
+            var failure = UserFacingError.Report(_logger, ex, "camera-loop", new UserFacingMessage("ScanReceipt.Failure.CameraReadFormat", ex.GetType().Name));
             Post(() =>
             {
                 CloseCamera();

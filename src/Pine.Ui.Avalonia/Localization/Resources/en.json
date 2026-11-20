@@ -335,6 +335,7 @@
   "ScanReceipt.Error.Unreconciled": "The line items add up to {0}, which is {1} short of the {2} total. Record the difference as an adjustment, or correct the items.",
   "ScanReceipt.ExtractedDetails": "Extracted Details",
   "ScanReceipt.Failure.AccountsLoad": "Pine could not load your accounts, so this receipt cannot be saved yet. Try again.",
+  "ScanReceipt.Failure.CameraReadFormat": "The camera stopped sending pictures ({0}). Close it and open it again; if it keeps happening, restart Pine.",
   "ScanReceipt.Failure.CapturedImage": "Pine could not read that receipt. Try taking the photo again in better light.",
   "ScanReceipt.Failure.Process": "The receipt could not be read. Try a clearer photo, or enter the transaction manually.",
   "ScanReceipt.Failure.Save": "The transaction could not be saved. Nothing was changed.",

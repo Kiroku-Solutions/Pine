@@ -155,7 +155,7 @@ internal sealed class AndroidCameraSession : ICameraSession
         var thread = new HandlerThread("pine-camera");
         thread.Start();
         var handler = new Handler(thread.Looper!);
-        var reader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Yuv420888, 2)!;
+        var reader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Yuv420888, 3)!;
         var session = new AndroidCameraSession(activity, sensor, thread, reader);
         try
         {
@@ -207,8 +207,24 @@ internal sealed class AndroidCameraSession : ICameraSession
             return null;
         }
 
-        using var image = _reader.AcquireLatestImage();
-        return image is null ? null : Convert(image);
+        var image = _reader.AcquireLatestImage();
+        if (image is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Convert(image);
+        }
+        finally
+        {
+            // Close(), NOT Dispose(): disposing the Java peer only drops the managed handle, the buffer stays acquired.
+            // With maxImages = 2 the third read then fails ("acquired more than maxImages") and the producer times out
+            // on dequeueBuffer about 1.5 s after opening: the bug seen on the tablet (acquiredCount: 2).
+            image.Close();
+            image.Dispose();
+        }
     }
 
     private AndroidCameraFrame Convert(Image image)

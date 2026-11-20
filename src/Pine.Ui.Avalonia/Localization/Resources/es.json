@@ -335,6 +335,7 @@
   "ScanReceipt.Error.Unreconciled": "Los artículos suman {0}, que es {1} menos que el total de {2}. Registra la diferencia como un ajuste o corrige los artículos.",
   "ScanReceipt.ExtractedDetails": "Datos extraídos",
   "ScanReceipt.Failure.AccountsLoad": "Pine no pudo cargar tus cuentas, así que este recibo todavía no se puede guardar. Inténtalo de nuevo.",
+  "ScanReceipt.Failure.CameraReadFormat": "La cámara dejó de enviar imágenes ({0}). Ciérrala y ábrela de nuevo; si sigue pasando, reinicia Pine.",
   "ScanReceipt.Failure.CapturedImage": "Pine no pudo leer ese recibo. Vuelve a tomar la foto con mejor luz.",
   "ScanReceipt.Failure.Process": "No se pudo leer el recibo. Prueba con una foto más nítida o registra la transacción manualmente.",
   "ScanReceipt.Failure.Save": "No se pudo guardar la transacción. No se cambió nada.",
