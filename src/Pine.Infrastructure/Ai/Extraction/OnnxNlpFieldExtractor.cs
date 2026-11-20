@@ -97,6 +97,10 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     [GeneratedRegex(@"\b(?:INCL\w*|INCLUID[OA]S?|INCLUYE\w*)\b", RegexOptions.Compiled)]
     private static partial Regex IncludedMarkerRegex();
 
+    // Delivery, shipping and freight charges (their own kind, never a product).
+    [GeneratedRegex(@"\b(?:ENVIO|DOMICILIO|DELIVERY|SHIPPING|FLETE|FREIGHT|POSTAGE)\b", RegexOptions.Compiled)]
+    private static partial Regex DeliveryLineRegex();
+
     [GeneratedRegex(@"\b(?:ROUNDING|ROUNDED|REDONDEO|ROUND\s+ADJ\w*|ADJUSTMENT)\b", RegexOptions.Compiled)]
     private static partial Regex RoundingLineRegex();
 
@@ -316,7 +320,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             LineItems: lineItems,
             DateIsAmbiguous: dateCandidate?.IsAmbiguous ?? false,
             AlternativeDate: dateCandidate?.Alternative,
-            TaxAmount: footerModifiers.Taxes + arithmeticTax > 0m ? footerModifiers.Taxes + arithmeticTax : null
+            TaxAmount: footerModifiers.Taxes + arithmeticTax > 0m ? footerModifiers.Taxes + arithmeticTax : null,
+            TaxIncluded: footerModifiers.TaxIncluded || (footerModifiers.TaxRows.Count > 0 && footerModifiers.TaxRows.All(r => r.Included))
         );
     }
 
@@ -541,6 +546,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         decimal sumTips = 0m;
         decimal sumRounding = 0m;
         List<OcrWord> tipWords = [], discountWords = [], roundingWords = [];
+        var deliveryRows = new List<(string Label, decimal Amount, List<OcrWord> Words)>();
         var taxRows = new List<TaxRow>();
 
         // Candidate totals come from the footer zone; adjustment rows (tax, tip, discount, rounding) are read from
@@ -575,6 +581,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
             if (DiscountLineRegex().IsMatch(upper) && !upper.Contains("TOTAL", StringComparison.Ordinal))
                 { sumDiscounts += lineAmount; discountWords.AddRange(line.Words); }
+            else if (DeliveryLineRegex().IsMatch(upper) && !upper.Contains("TOTAL", StringComparison.Ordinal))
+                deliveryRows.Add((TaxLabel(line.Text, amountIndex), lineAmount, line.Words));
             else if (RoundingLineRegex().IsMatch(upper))
             {
                 var negative = amountIndex > 0 && line.Text[amountIndex - 1] == '-';
@@ -618,11 +626,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // Hand the parsed modifiers back to the caller. They are needed twice: here, to build the
         // expected total, and by ExtractFields, to emit them as adjustment line items (TD-19).
-        modifiers = new FooterModifiers(taxRows, sumTips, sumDiscounts, sumRounding, tipWords, discountWords, roundingWords);
+        modifiers = new FooterModifiers(taxRows, sumTips, sumDiscounts, sumRounding, tipWords, discountWords, roundingWords) { DeliveryRows = deliveryRows };
         decimal sumTaxes = modifiers.AdditiveTaxes;
 
         // Evaluate candidates mathematically
-        decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips + sumRounding;
+        decimal expectedTotal = itemsSum - sumDiscounts + sumTaxes + sumTips + sumRounding + deliveryRows.Sum(d => d.Amount);
         
         // 1. Math Exact Match (Epsilon 0.02)
         var exactMatch = footerCandidates.FirstOrDefault(c => Math.Abs(c.Amount - expectedTotal) <= 0.02m);
@@ -727,6 +735,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         {
             withAdjustments.Add(new ReceiptLineItem("Discount", 1m, -modifiers.Discounts, -modifiers.Discounts, LineItemKind.Discount));
             itemWords.Add(modifiers.DiscountWords);
+        }
+
+        foreach (var (label, amount, words) in modifiers.DeliveryRows)
+        {
+            withAdjustments.Add(new ReceiptLineItem(label == "Tax" ? "Delivery" : label, 1m, amount, amount, LineItemKind.Delivery));
+            itemWords.Add(words);
         }
 
         if (modifiers.Rounding != 0)
@@ -1002,7 +1016,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // A row opening with a totals word, or carrying a postal code, is never a product.
         if (FooterStartRegex().IsMatch(upper) || PostalCodeRegex().IsMatch(upper) || IsTaxRow(upper)
             || RoundingLineRegex().IsMatch(upper) || PaymentRowRegex().IsMatch(upper)
-            || TipLineRegex().IsMatch(upper) || DiscountLineRegex().IsMatch(upper)
+            || TipLineRegex().IsMatch(upper) || DiscountLineRegex().IsMatch(upper) || DeliveryLineRegex().IsMatch(upper)
             || DescriptionOnlyAdjustmentRegex().IsMatch(NumberNoiseRegex().Replace(upper, " ").Trim()))
             return null;
 
@@ -1189,6 +1203,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         List<TaxRow> TaxRows, decimal Tips, decimal Discounts, decimal Rounding,
         List<OcrWord> TipWords, List<OcrWord> DiscountWords, List<OcrWord> RoundingWords)
     {
+        /// <summary>Delivery, shipping and freight rows, as printed.</summary>
+        public List<(string Label, decimal Amount, List<OcrWord> Words)> DeliveryRows { get; init; } = [];
+
         /// <summary>True once the items were found to add up to the total without the tax rows.</summary>
         public bool TaxIncluded { get; init; }
 

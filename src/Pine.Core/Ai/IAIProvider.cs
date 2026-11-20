@@ -60,7 +60,9 @@ public record ReceiptExtractionResult(
     System.Collections.Generic.IReadOnlyList<ReceiptLineItem>? LineItems = null,
     bool DateIsAmbiguous = false,
     System.DateTimeOffset? AlternativeDate = null,
-    decimal? TaxAmount = null
+    decimal? TaxAmount = null,
+    bool TaxIncluded = false,
+    decimal? TaxAlternative = null
 );
 
 /// <summary>
