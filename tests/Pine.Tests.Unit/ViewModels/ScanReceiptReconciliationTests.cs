@@ -123,6 +123,39 @@ public class ScanReceiptReconciliationTests
     }
 
     [Fact]
+    public void TheTaxField_AndTheSingleTaxLine_MoveTogether_AndIncludedTaxIsNeverAdded()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.Amount = 125m;
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Description = "Steak", Quantity = 1m, UnitPrice = 100m });
+
+        viewModel.TaxTotal = 25m;
+        viewModel.LineItems.Should().ContainSingle(li => li.Kind == LineItemKind.Tax).Which.TotalPrice.Should().Be(25m);
+        viewModel.IsReconciled.Should().BeTrue();
+
+        viewModel.TaxTotal = 20m;
+        viewModel.LineItems.Single(li => li.Kind == LineItemKind.Tax).TotalPrice.Should().Be(20m);
+        viewModel.UnreconciledDifference.Should().Be(5m);
+
+        viewModel.IsTaxIncluded = true;
+        viewModel.LineItems.Should().NotContain(li => li.Kind == LineItemKind.Tax);
+        viewModel.TaxTotal.Should().Be(20m, "the figure stays visible, flagged as included");
+    }
+
+    [Fact]
+    public void ADeliveryLine_IsNotAProduct_AndStaysOutOfTheItemsTotal()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.Amount = 110m;
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Description = "Chair", Quantity = 1m, UnitPrice = 100m });
+        viewModel.LineItems.Add(new ReceiptLineItemViewModel { Kind = LineItemKind.Delivery, Description = "Delivery", Quantity = 1m, UnitPrice = 10m, TotalPrice = 10m });
+
+        viewModel.ProductsTotal.Should().Be(100m);
+        viewModel.AdjustmentsTotal.Should().Be(10m);
+        viewModel.IsReconciled.Should().BeTrue();
+    }
+
+    [Fact]
     public void CorrectingAPrice_MovesTheDifferenceWithIt()
     {
         // The panel has to follow the grid while it is being edited, not only when it is loaded.
