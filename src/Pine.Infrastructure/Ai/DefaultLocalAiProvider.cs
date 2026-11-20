@@ -168,7 +168,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
         // Counts and timings only -- never a recognised word (30-Observability section 4.3).
         ScanDiagnostics.Report(
-            $"scan prep_ms={prepMs} ocr_ms={ocrMs} lines={textBlocks.Count} heuristics_ms={heuristicMs} layoutlm_ms={clock.ElapsedMilliseconds}");
+            $"scan prep_ms={prepMs} ocr_ms={ocrMs} lines={textBlocks.Count} heuristics_ms={heuristicMs} layoutlm_ms={clock.ElapsedMilliseconds} layoutlm={_visualGuard.LastOutcome}");
         return result;
     }
 

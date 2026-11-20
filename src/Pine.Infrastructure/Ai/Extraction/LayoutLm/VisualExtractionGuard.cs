@@ -33,6 +33,14 @@ internal sealed class VisualExtractionGuard
     public int ConsecutiveFailures => Volatile.Read(ref _failures);
 
     /// <summary>
+    /// What the last <see cref="OverlayAsync"/> did: <c>ok</c> (the model's fields were merged), <c>off</c> (no model registered),
+    /// <c>retired</c> (it failed <see cref="MaxConsecutiveFailures"/> times in a row and is left alone) or <c>failed</c> (this
+    /// scan fell back to the heuristics). It exists so the scan diagnostics line says whether the model really contributed,
+    /// which a bare <c>layoutlm_ms</c> cannot.
+    /// </summary>
+    public string LastOutcome { get; private set; } = "off";
+
+    /// <summary>
     /// Overlays the model's fields onto <paramref name="heuristic"/>. The model gets the SAME image the OCR ran
     /// on, because the OCR boxes are in that image's coordinates.
     /// </summary>
@@ -44,6 +52,7 @@ internal sealed class VisualExtractionGuard
     {
         if (_extractor is null || ConsecutiveFailures >= MaxConsecutiveFailures)
         {
+            LastOutcome = _extractor is null ? "off" : "retired";
             return heuristic;
         }
 
@@ -54,6 +63,7 @@ internal sealed class VisualExtractionGuard
             await image.CopyToAsync(buffer, cancellationToken);
             var visual = _extractor.ExtractFields(words, buffer.GetBuffer().AsMemory(0, (int)buffer.Length));
             Volatile.Write(ref _failures, 0);
+            LastOutcome = "ok";
             return LayoutLmResultMerger.Overlay(heuristic, visual);
         }
         catch (OperationCanceledException)
@@ -63,6 +73,7 @@ internal sealed class VisualExtractionGuard
         catch (Exception ex)
         {
             var failures = Interlocked.Increment(ref _failures);
+            LastOutcome = "failed";
             if (_logger is not null)
             {
                 // The exception object is not passed: a missing-file exception carries the user's full model path.
