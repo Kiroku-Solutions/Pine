@@ -57,6 +57,9 @@
                         <Button Content="{loc:Tr Shell.Nav.ScanReceipt}" Command="{Binding NavigateToScanReceiptCommand}"
                                 IsVisible="{Binding HasReceiptScan}"
                                 Classes="pine-nav" Classes.active="{Binding IsScanReceiptActive}" />
+                        <Button Content="{loc:Tr Shell.Nav.LiveScan}" Command="{Binding NavigateToInlineLiveScanCommand}"
+                                IsVisible="{Binding HasInlineLiveScan}"
+                                Classes="pine-nav" />
                         <Button Content="{loc:Tr Shell.Nav.LiveScanner}" Command="{Binding NavigateToLiveScannerCommand}"
                                 IsVisible="{Binding HasReceiptVision}"
                                 Classes="pine-nav" Classes.active="{Binding IsLiveScannerActive}" />

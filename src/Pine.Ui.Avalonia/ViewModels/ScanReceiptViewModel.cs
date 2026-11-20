@@ -68,6 +68,10 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private CancellationTokenSource? _cameraCts;
     private ICameraSession? _cameraSession;
     private ICameraFrame? _latestFrame;
+    private readonly LocalizedMessageSlot _live;
+    private byte[]? _bestJpeg;
+    private int _bestScore = -1;
+    private int _analysing;
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
@@ -270,6 +274,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _localizer = localizer;
         _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
+        _live = new LocalizedMessageSlot(localizer, text => LiveStatus = text ?? string.Empty);
         _duplicate = new LocalizedMessageSlot(localizer, text => DuplicateWarning = text ?? string.Empty);
         _localizer.LanguageChanged += OnLanguageChanged;
         _logger = logger;
@@ -732,6 +737,65 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     [ObservableProperty]
     public partial WriteableBitmap? LiveFeed { get; private set; }
 
+    /// <summary>What the live scan has read so far (merchant, date, total), or that it is still looking.</summary>
+    [ObservableProperty]
+    public partial string LiveStatus { get; private set; } = string.Empty;
+
+    /// <summary>Starts the live scan (opens the camera). The sidebar and dashboard entries call this after navigating here.</summary>
+    public void StartLiveScan() => OpenCamera();
+
+    /// <summary>One analysed frame every ~1.5 s: slow enough for a mid-range tablet, and never two at once.</summary>
+    private static readonly TimeSpan LiveAnalysisInterval = TimeSpan.FromMilliseconds(1500);
+
+    private async Task AnalyseLiveFrameAsync(byte[] jpeg, CancellationToken token)
+    {
+        try
+        {
+            using var stream = new MemoryStream(jpeg, writable: false);
+            var result = await _mediator.Send(new ScanReceiptCommand(stream), token).ConfigureAwait(false);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var score = (string.IsNullOrWhiteSpace(result.Merchant) ? 0 : 1)
+                + (result.TotalAmount is > 0 ? 2 : 0)
+                + (result.Date is not null ? 1 : 0);
+            lock (_cameraLock)
+            {
+                // Only the best frame is kept (one JPEG in memory); a later frame with an equal score replaces it.
+                if (score >= _bestScore && score > 0)
+                {
+                    _bestScore = score;
+                    _bestJpeg = jpeg;
+                }
+            }
+
+            var merchant = string.IsNullOrWhiteSpace(result.Merchant) ? "-" : result.Merchant;
+            var date = result.Date is { } d ? d.ToString("d", CultureInfo.CurrentCulture) : "-";
+            var total = result.TotalAmount is > 0 ? result.TotalAmount.Value.ToString("N2", CultureInfo.CurrentCulture) : "-";
+            Post(() =>
+            {
+                if (IsCameraOpen)
+                {
+                    _live.Set(score == 0 ? "ScanReceipt.Live.Looking" : "ScanReceipt.Live.FoundFormat", merchant, date, total);
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            // A frame that cannot be read is not an error worth showing; the next one gets another go.
+            _ = UserFacingError.Report(_logger, ex, "live-frame", new UserFacingMessage("ScanReceipt.Failure.CapturedImage"));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _analysing, 0);
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(HasCameraCapture))]
     private void OpenCamera()
     {
@@ -741,6 +805,9 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
 
         _error.Clear();
+        _bestJpeg = null;
+        _bestScore = -1;
+        _live.Set("ScanReceipt.Live.Looking");
         IsCameraOpen = true;
         _status.Set("LiveScanner.Status.OpeningCamera");
         var cts = new CancellationTokenSource();
@@ -776,6 +843,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             }
 
             Post(() => _status.Clear());
+            var sinceAnalysis = System.Diagnostics.Stopwatch.StartNew();
 
             while (!token.IsCancellationRequested)
             {
@@ -793,6 +861,13 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 {
                     await Task.Delay(40, token).ConfigureAwait(false);
                     continue;
+                }
+
+                if (sinceAnalysis.Elapsed >= LiveAnalysisInterval && Interlocked.CompareExchange(ref _analysing, 1, 0) == 0)
+                {
+                    sinceAnalysis.Restart();
+                    var jpeg = frame.EncodeJpeg();
+                    _ = Task.Run(() => AnalyseLiveFrameAsync(jpeg, token), token);
                 }
 
                 var bitmap = ToBitmap(frame);
@@ -848,7 +923,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         byte[]? jpeg;
         lock (_cameraLock)
         {
-            jpeg = _latestFrame?.EncodeJpeg();
+            jpeg = _bestJpeg ?? _latestFrame?.EncodeJpeg();
         }
 
         CloseCamera();
@@ -886,9 +961,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             _cameraSession = null;
             _latestFrame?.Dispose();
             _latestFrame = null;
+            _bestJpeg = null;
+            _bestScore = -1;
         }
 
         IsCameraOpen = false;
+        _live.Clear();
         LiveFeed = null;
         _status.Clear();
     }
@@ -1060,6 +1138,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _localizer.LanguageChanged -= OnLanguageChanged;
         _status.Dispose();
         _error.Dispose();
+        _live.Dispose();
         _duplicate.Dispose();
         GC.SuppressFinalize(this);
     }

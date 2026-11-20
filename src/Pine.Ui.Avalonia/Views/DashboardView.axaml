@@ -37,6 +37,9 @@
                     <Button Content="{loc:Tr Dashboard.Actions.ScanReceipt}" Command="{Binding OpenScanReceiptCommand}"
                             IsVisible="{Binding HasReceiptScan}"
                             Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Dashboard.Actions.LiveScan}" Command="{Binding OpenLiveScanCommand}"
+                            IsVisible="{Binding HasInlineLiveScan}"
+                            Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
                     <Button Content="{loc:Tr Dashboard.Actions.ImportData}" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
                     <Button Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14">
                         <StackPanel Orientation="Horizontal" Spacing="4">

@@ -45,6 +45,11 @@
                         <!-- Viewfinder while the device camera is open (Android). Frames stay in memory. -->
                         <Image Source="{Binding LiveFeed}" Stretch="Uniform"
                                IsVisible="{Binding IsCameraOpen}" />
+                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Margin="8"
+                                Background="{DynamicResource PineScrim}" CornerRadius="6" Padding="10,6"
+                                IsHitTestVisible="False" IsVisible="{Binding IsCameraOpen}">
+                            <TextBlock Text="{Binding LiveStatus}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                        </Border>
 
                         <!-- Enlarge hint -->
                         <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8"
@@ -65,7 +70,7 @@
 
                 <!-- Take the photo with the device camera (heads with a camera source and no live scanner page). -->
                 <Grid ColumnDefinitions="*, 10, *" IsVisible="{Binding HasCameraCapture}">
-                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.TakePhoto}" Command="{Binding OpenCameraCommand}"
+                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.LiveScan}" Command="{Binding OpenCameraCommand}"
                             IsVisible="{Binding !IsCameraOpen}" Grid.ColumnSpan="3"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                     <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Camera.Capture}" Command="{Binding CapturePhotoCommand}"

@@ -54,7 +54,13 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     /// Whether to tell the person that scanning from a file works here but live scanning and the crop
     /// screen do not (an OCR-only head).
     /// </summary>
-    public bool ShowLiveScanNote => HasReceiptScan && !HasReceiptVision;
+    public bool ShowLiveScanNote => HasReceiptScan && !HasReceiptVision && !HasInlineLiveScan;
+
+    /// <summary>
+    /// Whether the live scan runs inside the Scan Receipt page (an OCR-only head that has a camera, Android):
+    /// the sidebar then offers Live Scan, which opens that page with the camera already running.
+    /// </summary>
+    public bool HasInlineLiveScan { get; }
 
     /// <summary>
     /// Whether the window is too narrow for a permanent sidebar (a phone, or a tablet held in
@@ -80,7 +86,8 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     public ShellViewModel(
         IViewModelFactory viewModels,
         IVaultSession vaultSession,
-        PineHeadCapabilities capabilities)
+        PineHeadCapabilities capabilities,
+        Pine.Core.Ai.ICameraSource? camera = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -88,6 +95,7 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         _vaultSession = vaultSession;
         HasReceiptVision = capabilities.HasReceiptVision;
         HasReceiptScan = capabilities.HasReceiptScan;
+        HasInlineLiveScan = camera is not null && HasReceiptScan && !HasReceiptVision;
 
         // Start on the Dashboard
         NavigateToDashboard();
@@ -370,6 +378,14 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     private void NavigateToScanReceipt()
     {
         NavigateTo(_viewModels.CreateScanReceipt(this));
+    }
+
+    [RelayCommand]
+    private void NavigateToInlineLiveScan()
+    {
+        var scan = _viewModels.CreateScanReceipt(this);
+        NavigateTo(scan);
+        scan.StartLiveScan();
     }
 
     [RelayCommand]
