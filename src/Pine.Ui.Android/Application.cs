@@ -62,6 +62,35 @@ namespace Pine.Ui.Android
             // Start the idle auto-lock watchdog (TD-11). No generic host on this head.
             PineCompositionRoot.Start(serviceProvider);
 
+            // Warm the receipt models in the background a moment after start-up: loading the YOLO, detection and recognition sessions and
+            // running them once cost seconds on the first scan; done here, nobody waits for it. Nothing is read or kept from the blank picture.
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(3000);
+                    using var blank = new SkiaSharp.SKBitmap(640, 640, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Opaque);
+                    blank.Erase(new SkiaSharp.SKColor(200, 200, 200));
+                    using var image = SkiaSharp.SKImage.FromBitmap(blank);
+                    var jpeg = image.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 80).ToArray();
+                    if (serviceProvider.GetService(typeof(Pine.Infrastructure.Ai.Vision.IReceiptDetector)) is Pine.Infrastructure.Ai.Vision.IReceiptDetector detector)
+                    {
+                        await detector.AnalyzeAndCropReceiptAsync(new System.IO.MemoryStream(jpeg));
+                    }
+
+                    if (serviceProvider.GetService(typeof(Pine.Core.Ai.IOcrEngine)) is Pine.Core.Ai.IOcrEngine ocr)
+                    {
+                        await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg));
+                    }
+
+                    global::Android.Util.Log.Info("PineScan", "warm-up done");
+                }
+                catch (System.Exception ex)
+                {
+                    global::Android.Util.Log.Info("PineScan", $"warm-up skipped: {ex.GetType().Name}");
+                }
+            });
+
             return base.CustomizeAppBuilder(builder)
                 .WithInterFont();
         }
