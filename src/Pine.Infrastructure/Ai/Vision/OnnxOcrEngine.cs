@@ -176,10 +176,30 @@ public sealed partial class OnnxOcrEngine : IOcrEngine, IDisposable
                 Text = texts[i].Text,
                 Confidence = texts[i].Confidence,
                 BoundingBox = new BoundingBox { X = (float)minX, Y = (float)minY, Width = (float)(maxX - minX), Height = (float)(maxY - minY) },
+                AngleDegrees = LineAngle(quad),
             });
         }
 
         return words;
+    }
+
+    /// <summary>The direction of the box's long edge in degrees, folded into (-90, 90]; the box corners are top-left, top-right, bottom-right, bottom-left.</summary>
+    private static float LineAngle(Point2[] quad)
+    {
+        var along = (X: quad[1].X - quad[0].X, Y: quad[1].Y - quad[0].Y);
+        var down = (X: quad[3].X - quad[0].X, Y: quad[3].Y - quad[0].Y);
+        var edge = (along.X * along.X) + (along.Y * along.Y) >= (down.X * down.X) + (down.Y * down.Y) ? along : down;
+        var angle = Math.Atan2(edge.Y, edge.X) * 180 / Math.PI;
+        if (angle > 90)
+        {
+            angle -= 180;
+        }
+        else if (angle <= -90)
+        {
+            angle += 180;
+        }
+
+        return (float)angle;
     }
 
     private static IReadOnlyList<DetectedBox> Detect(InferenceSession det, BgrImage image)

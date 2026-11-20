@@ -140,7 +140,23 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
         // Execute OCR on the (potentially preprocessed) image
         ocrStream.Position = 0;
-        var textBlocks = await _ocr.ExtractTextAsync(ocrStream, cancellationToken);
+        byte[] ocrBytes;
+        using (var copy = new MemoryStream())
+        {
+            await ocrStream.CopyToAsync(copy, cancellationToken);
+            ocrBytes = copy.ToArray();
+        }
+
+        // Read; if the text runs at more than 3 degrees, level the picture and read again, so the row grouping and LayoutLM both work
+        // on a level page (docs/65 section 14).
+        var read = await ReceiptDeskew.ReadLevelAsync(_ocr, ocrBytes, cancellationToken);
+        var textBlocks = read.Words;
+        if (read.RemovedDegrees != 0)
+        {
+            ocrStream = new MemoryStream(read.Image, writable: false);
+        }
+
+        ocrStream.Position = 0;
         var ocrMs = clock.ElapsedMilliseconds;
         clock.Restart();
 

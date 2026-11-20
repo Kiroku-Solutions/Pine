@@ -271,6 +271,18 @@ preview + still in one session it falls back to the viewfinder frame. The editor
 the original (`CropOriginalAsync`, turns applied) and the pipeline's own cap is 3072 px. **Not verified on a device**: still
 capture, the session combination on this tablet, memory at 8-12 MP, and whether the sharpness gate improves real reads.
 
+**Deskew before reading (Android and any head using `OnnxOcrEngine`).** Each recognised line carries the angle of its detector box
+(`OcrWord.AngleDegrees`); `ReceiptDeskew` takes the median over lines at least twice as wide as tall (five or more), and when it is
+between 3 and 45 degrees turns the picture the other way on a white canvas and reads again (kept if it lost under 20 % of the lines).
+The provider then feeds the heuristics and LayoutLM the levelled picture. Measured with the real engine on the East Repair invoice
+(three items, tax 9.06, total 154.06 expected): without levelling 0 and 5 degrees read right, 8 degrees gave 1 item / tax 145.00 /
+total 9.06, 12 degrees the same, 20 degrees 0 items / tax 15.00 / total 15.00, -12 degrees tax 154.06; with levelling every one of
+0, 5, 8, 12, 20 and -12 degrees reads 3 items, 9.06, 154.06 (angles recovered to within 1 degree). Cost: a second full OCR only when tilted.
+
+**Mask-to-corners and frame conversion (Android).** A YOLO mask under 12 % of the picture (a receipt photographed from a distance) was
+refused as "no mask" and the crop was lost; model masks now accept 2 % to 100 %. With the still available, camera frames are converted at
+half size in each direction (the viewfinder and analysis need no more; YOLO letterboxes to 640).
+
 ## 11. Recommendation
 
 **Go for Phase B (B1).** The model question — the part most likely to block — is resolved with no quality loss measured against Pine's current engine, in 13 MB, and the algorithm is already ported to portable code. **Do not promise Android scanning from B1 alone**: the OpenCV-based `ReceiptDetector`/`OpenCvImageProcessor` (§2.1) still need a Skia port (B2) or an explicit "OCR on the original image" milestone, and nothing about the tablet has been measured. Re-evaluate after the C# parity run (B1 step 4) and after the first real-device measurement (C5).
