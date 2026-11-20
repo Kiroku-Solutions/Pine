@@ -43,7 +43,6 @@
                     <Button Content="{loc:Tr Dashboard.Actions.ImportData}" Command="{Binding ShowImportWizardCommand}" Classes="pine-outline" Padding="15,10" CornerRadius="8" FontSize="14" />
                     <Button Command="{Binding ShowCreateAccountDialogCommand}" Classes="pine-accent" Padding="15,10" CornerRadius="8" FontSize="14">
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Text="+" />
                             <TextBlock Text="{loc:Tr Dashboard.Actions.NewAccount}" />
                         </StackPanel>
                     </Button>

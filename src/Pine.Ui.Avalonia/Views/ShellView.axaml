@@ -110,7 +110,7 @@
             <Border DockPanel.Dock="Bottom" IsVisible="{Binding UseBottomNav}"
                     Background="{DynamicResource PineSidebar}"
                     BorderBrush="{DynamicResource PineSidebarBorder}" BorderThickness="0,1,0,0" Padding="4,4">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="2">
+                <UniformGrid Rows="1">
                     <Button Content="{loc:Tr Shell.Nav.Dashboard}" Command="{Binding NavigateToDashboardCommand}"
                             Classes="pine-tab" Classes.active="{Binding IsDashboardActive}" />
                     <Button Content="{loc:Tr Shell.Nav.Transactions}" Command="{Binding NavigateToTransactionsCommand}"
@@ -123,7 +123,7 @@
                             Classes="pine-tab" />
                     <Button Content="{loc:Tr Shell.Nav.More}" Command="{Binding TogglePaneCommand}"
                             Classes="pine-tab" />
-                </StackPanel>
+                </UniformGrid>
             </Border>
             <!-- Main Content Area -->
             <TransitioningContentControl Content="{Binding CurrentPage}">
