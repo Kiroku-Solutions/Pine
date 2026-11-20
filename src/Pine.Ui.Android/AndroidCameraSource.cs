@@ -112,7 +112,6 @@ internal sealed class AndroidCameraSession : ICameraSession
     private (int Width, int Height)? _stillSize;
     private ImageReader? _stillReader;
     private Handler? _handler;
-    private CaptureRequest.Builder? _stillRequest;
     private byte[] _yBuffer = [];
     private byte[] _uBuffer = [];
     private byte[] _vBuffer = [];
