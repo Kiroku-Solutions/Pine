@@ -131,7 +131,7 @@ public sealed class YoloReceiptSegmenter : IDisposable
         unfiltered = quad;
         if (quad is null)
         {
-            reason = "nomask";
+            reason = "nomask:" + ReceiptQuadFinder.LastWhy;
             return null;
         }
 

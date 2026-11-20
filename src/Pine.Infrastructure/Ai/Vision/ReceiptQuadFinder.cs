@@ -25,11 +25,21 @@ namespace Pine.Infrastructure.Ai.Vision;
 /// </remarks>
 internal static class ReceiptQuadFinder
 {
+    /// <summary>Why the last <see cref="QuadFromMask"/> refused (diagnostics only).</summary>
+    [ThreadStatic]
+    internal static string? LastWhy;
+
     private const int BlurRadius = 2;
     private const double MinAreaFraction = 0.12;
     private const double MaxAreaFraction = 0.95;
     private const double MinFillRatio = 0.80;
     private const double MinQuadSide = 0.12;
+
+    /// <summary>A model mask may fill the whole picture (a close photo) and is looser than a threshold blob, so the checks written for a blob are relaxed.</summary>
+    private const double ModelMinFillRatio = 0.65;
+
+    /// <summary>A receipt photographed from a distance can be a few percent of the frame (a mask under 12 % was refused as no mask, so the crop was lost; seen on the tablet).</summary>
+    private const double ModelMinAreaFraction = 0.02;
 
     /// <summary>The four corners in image coordinates, clockwise, or null when no receipt-like sheet was found.</summary>
     /// <param name="grey">Row-major 8-bit luma, <paramref name="width"/> x <paramref name="height"/>.</param>
@@ -67,9 +77,9 @@ internal static class ReceiptQuadFinder
 
     /// <summary>The corners of the largest region of a ready-made mask (the YOLO segmentation mask), or null.</summary>
     internal static (double X, double Y)[]? QuadFromMask(bool[] mask, int width, int height)
-        => TryQuad(mask, width, height, out var quad, out _) ? quad : null;
+        => TryQuad(mask, width, height, out var quad, out _, model: true) ? quad : null;
 
-    private static bool TryQuad(bool[] mask, int width, int height, out (double X, double Y)[] quad, out double score)
+    private static bool TryQuad(bool[] mask, int width, int height, out (double X, double Y)[] quad, out double score, bool model = false)
     {
         quad = [];
         score = 0;
@@ -110,8 +120,9 @@ internal static class ReceiptQuadFinder
         }
 
         var total = (double)width * height;
-        if (bestRegion is null || bestArea < total * MinAreaFraction || bestArea > total * MaxAreaFraction)
+        if (bestRegion is null || bestArea < total * (model ? ModelMinAreaFraction : MinAreaFraction) || bestArea > total * (model ? 1.0 : MaxAreaFraction))
         {
+            LastWhy = bestRegion is null ? "noregion" : $"area={bestArea / total:F3}";
             return false;
         }
 
@@ -141,13 +152,15 @@ internal static class ReceiptQuadFinder
         var hull = ConvexHull(points);
         if (hull.Count < 4)
         {
+            LastWhy = "hull";
             return false;
         }
 
         var candidate = MaxAreaQuad(hull);
         var quadArea = PolygonArea(candidate);
-        if (quadArea <= 0 || bestArea / quadArea < MinFillRatio || quadArea > total * MaxAreaFraction)
+        if (quadArea <= 0 || bestArea / quadArea < (model ? ModelMinFillRatio : MinFillRatio) || quadArea > total * (model ? 1.0 : MaxAreaFraction))
         {
+            LastWhy = $"fill={bestArea / Math.Max(quadArea, 1):F2} quad={quadArea / total:F2}";
             return false;
         }
 
@@ -158,6 +171,7 @@ internal static class ReceiptQuadFinder
             var b = candidate[(i + 1) % 4];
             if (Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y))) < minSide)
             {
+                LastWhy = "side";
                 return false;
             }
         }

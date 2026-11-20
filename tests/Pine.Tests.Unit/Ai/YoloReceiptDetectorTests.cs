@@ -74,6 +74,52 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         YoloPostProcessor.Accept(quad, 1000, 2000).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(70, 60, 90, 100)] // a receipt far away: about 4 % of the picture
+    [InlineData(2, 2, 158, 158)] // a close photo: the mask fills nearly everything
+    public void A_small_or_all_filling_mask_still_gives_a_quad(int x0, int y0, int x1, int y1)
+    {
+        var (output, protos) = Fabricate(9, 0.9f, x0, y0, x1, y1);
+        var box = YoloPostProcessor.ComputeLetterbox(1000, 1000);
+
+        var quad = YoloPostProcessor.QuadFromAnchor(output, Channels, 9, protos, box);
+
+        quad.Should().NotBeNull("a mask under 12 % of the picture, or over 95 %, used to be refused as 'nomask' and the crop was lost");
+        YoloPostProcessor.Accept(quad!, 1000, 1000, strict: false).Should().BeTrue();
+    }
+
+    [RequiresYoloParityFact]
+    public async Task A_large_photo_with_a_small_receipt_is_still_cropped_by_the_model()
+    {
+        var images = ResearchImagesDirectory()!;
+        using var yolo = YoloReceiptSegmenter.TryCreate(null);
+        using var detector = new SkiaReceiptDetector(yolo);
+        var found = 0;
+        var tried = 0;
+        foreach (var file in Directory.EnumerateFiles(images, "*.jpg").Take(12))
+        {
+            using var source = SKBitmap.Decode(file);
+            // A 12 MP picture (3000 x 4000) with the 640 px original small in the middle, as when the receipt is far from the camera.
+            using var big = new SKBitmap(3000, 4000, SKColorType.Bgra8888, SKAlphaType.Opaque);
+            using (var canvas = new SKCanvas(big))
+            {
+                canvas.Clear(new SKColor(70, 60, 55));
+                canvas.DrawBitmap(source, new SKRect(700, 1300, 2300, 2700));
+            }
+
+            using var image = SKImage.FromBitmap(big);
+            tried++;
+            var quad = await detector.DetectEdgesAsync(new MemoryStream(image.Encode(SKEncodedImageFormat.Jpeg, 90).ToArray()));
+            if (quad is not null)
+            {
+                found++;
+            }
+        }
+
+        output.WriteLine($"12 MP pictures with a small receipt: found {found}/{tried}");
+        found.Should().BeGreaterThanOrEqualTo(tried - 1);
+    }
+
     [Fact]
     public void A_quad_touching_the_frame_or_nearly_square_is_refused_like_on_windows()
     {
@@ -181,7 +227,7 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
             using var bitmap = SKBitmap.Decode(Path.Combine(images, name));
             yolo!.FindQuad(bitmap, out var confidence, out _, out var reason, out var raw);
             total++;
-            reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+            reasons[reason] = reasons.GetValueOrDefault(reason) + 1; if (reason.StartsWith("nomask", StringComparison.Ordinal)) { output.WriteLine(name + " " + reason + " conf=" + confidence); }
             if (raw is not null)
             {
                 var gt = boxes[name];
@@ -197,7 +243,7 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         total.Should().BeGreaterThan(0);
         // Regression: the Android detector refused every photo whose receipt touched the frame or was squarish (the Windows
         // live-scanner guidance), so YOLO never cropped. With the relaxed filters nearly every labelled document is found.
-        reasons.GetValueOrDefault("ok").Should().BeGreaterThanOrEqualTo((int)(total * 0.9), string.Join(",", reasons.Select(kv => kv.Key + ":" + kv.Value)));
+        reasons.GetValueOrDefault("ok").Should().BeGreaterThanOrEqualTo((int)(total * 0.97), string.Join(",", reasons.Select(kv => kv.Key + ":" + kv.Value)));
     }
 
     private static Stream Rewind(Stream stream)

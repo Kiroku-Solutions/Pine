@@ -25,6 +25,7 @@ internal static class YoloPostProcessor
     private const double BorderMargin = 15;
     private const double MinAspect = 1.15;
     private const double MinAreaShare = 0.10;
+    private const double StillMinAreaShare = 0.03;
 
     /// <summary>Where the resized picture sits inside the 640 x 640 square.</summary>
     internal readonly record struct Letterbox(float Ratio, int Width, int Height, int Left, int Top);
@@ -139,8 +140,8 @@ internal static class YoloPostProcessor
     }
 
     /// <summary>The same three refusals as <c>ReceiptDetector</c>: touching the frame edge, not elongated, too small.</summary>
-    internal static bool Accept((double X, double Y)[] quad, int imageWidth, int imageHeight)
-        => Refusal(quad, imageWidth, imageHeight) is null;
+    internal static bool Accept((double X, double Y)[] quad, int imageWidth, int imageHeight, bool strict = true)
+        => Refusal(quad, imageWidth, imageHeight, strict) is null;
 
     /// <summary>Why <see cref="Accept"/> says no: <c>border</c>, <c>aspect</c> or <c>area</c>; null when accepted.</summary>
     internal static string? Refusal((double X, double Y)[] quad, int imageWidth, int imageHeight, bool strict = true)
@@ -166,6 +167,6 @@ internal static class YoloPostProcessor
             return "aspect";
         }
 
-        return width * height >= imageWidth * (double)imageHeight * MinAreaShare ? null : "area";
+        return width * height >= imageWidth * (double)imageHeight * (strict ? MinAreaShare : StillMinAreaShare) ? null : "area";
     }
 }
