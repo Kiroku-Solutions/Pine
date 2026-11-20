@@ -44,8 +44,8 @@
                                Cursor="Hand" PointerPressed="OnPreviewImageClicked" />
 
                         <!-- Viewfinder while the device camera is open (Android). Frames stay in memory. -->
-                        <Image Source="{Binding LiveFeed}" Stretch="Uniform"
-                               IsVisible="{Binding IsCameraOpen}" />
+                        <controls:QuadEditorControl Source="{Binding LiveFeed}" Quad="{Binding LiveQuad}" IsEditable="False"
+                                                    IsVisible="{Binding IsCameraOpen}" />
                         <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Margin="8"
                                 Background="{DynamicResource PineScrim}" CornerRadius="6" Padding="10,6"
                                 IsHitTestVisible="False" IsVisible="{Binding IsCameraOpen}">
@@ -307,6 +307,26 @@
         </Grid>
     </Border>
     </ScrollViewer>
+
+    <!-- Edge editor (Android): the photo with the detected outline; drag a corner, then Crop and read. -->
+    <Grid IsVisible="{Binding IsEditingEdges}" ZIndex="40" RowDefinitions="Auto,*,Auto"
+          Background="{DynamicResource PineBackground}">
+      <StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="4">
+        <TextBlock Text="{loc:Tr ScanReceipt.Edges.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+        <TextBlock Text="{Binding EdgeHint}" FontSize="14" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+      </StackPanel>
+      <controls:QuadEditorControl Grid.Row="1" Margin="8" Source="{Binding EdgeImage}" Quad="{Binding EdgeQuad, Mode=TwoWay}" IsEditable="True" />
+      <Grid Grid.Row="2" Margin="16,8,16,16" ColumnDefinitions="*,8,*,8,*,8,2*">
+        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Edges.Rotate}" Command="{Binding RotateEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Edges.Retry}" Command="{Binding RetryEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Edges.Cancel}" Command="{Binding CancelEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="6" Content="{loc:Tr ScanReceipt.Edges.Confirm}" Command="{Binding ConfirmEdgesCommand}" Classes="pine-accent"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+      </Grid>
+    </Grid>
 
     <!--
       Busy overlay.

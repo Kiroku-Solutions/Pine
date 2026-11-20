@@ -132,7 +132,7 @@ public partial class ScanReceiptView : UserControl
             await stream.CopyToAsync(ms);
             ms.Position = 0;
 
-            await vm.ProcessReceiptImageAsync(ms);
+            await vm.HandlePickedImageAsync(ms);
         }
     }
 

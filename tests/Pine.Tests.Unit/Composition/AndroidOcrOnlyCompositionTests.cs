@@ -107,6 +107,32 @@ public sealed class AndroidOcrOnlyCompositionTests
     }
 
     [Fact]
+    public void TheAndroidScanPage_ShouldHaveTheEdgeEditor_AndWindowsShouldNot()
+    {
+        var shell = Substitute.For<IShellNavigator>();
+        using (var android = TestContainer.Build(PineHeadProfile.Android))
+        {
+            android.GetService<IReceiptEdgeService>().Should().BeOfType<SkiaReceiptDetector>();
+            android.GetRequiredService<IViewModelFactory>().CreateScanReceipt(shell).HasEdgeEditor.Should().BeTrue();
+        }
+
+        using var windows = TestContainer.Build(PineHeadProfile.Windows);
+        windows.GetService<IReceiptEdgeService>().Should().BeNull();
+        windows.GetRequiredService<IViewModelFactory>().CreateScanReceipt(shell).HasEdgeEditor.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TheLiveOutline_IsSmoothedAndSteadinessIsMeasuredInCornerMovement()
+    {
+        var a = new ReceiptQuad(new(0.1, 0.1), new(0.9, 0.1), new(0.9, 0.9), new(0.1, 0.9));
+        var b = new ReceiptQuad(new(0.12, 0.1), new(0.9, 0.1), new(0.9, 0.9), new(0.1, 0.9));
+
+        ScanReceiptViewModel.Smooth(null, b).Should().Be(b);
+        ScanReceiptViewModel.Smooth(a, b).TopLeft.X.Should().BeApproximately(0.11, 1e-9);
+        ScanReceiptViewModel.MaxCornerMove(a, b).Should().BeApproximately(0.02, 1e-9);
+    }
+
+    [Fact]
     public void TheWindowsScanPage_ShouldKeepTheLiveScanner_NotTheInlineCamera()
     {
         using var provider = TestContainer.Build(PineHeadProfile.Windows);
