@@ -9,8 +9,11 @@ namespace Pine.Infrastructure.Ai.Extraction.LayoutLm;
 /// (line items, currency, any field it missed) stays as the heuristics produced it. The heuristic logic
 /// itself is untouched.
 /// </remarks>
-public static class LayoutLmResultMerger
+public static partial class LayoutLmResultMerger
 {
+    [System.Text.RegularExpressions.GeneratedRegex(@"(\d+(?:[.,]\d+)?)\s*%")]
+    private static partial System.Text.RegularExpressions.Regex RateRegex();
+
     /// <summary>Overlays the fields the model found onto the heuristic result.</summary>
     public static ReceiptExtractionResult Overlay(ReceiptExtractionResult heuristic, ReceiptExtractionResult layout)
     {
@@ -65,6 +68,27 @@ public static class LayoutLmResultMerger
     private static ReceiptExtractionResult ReconcileTax(ReceiptExtractionResult merged, decimal? layoutTax)
     {
         var heuristicTax = merged.TaxAmount;
+
+        // A tax can never be the printed total (the model sometimes labels the TOTAL figure as tax), nor the sum of the
+        // items: such a reading is dropped, and an empty field is preferred to an invented one.
+        var all = merged.LineItems ?? [];
+        var productsSum = all.Where(i => i.Kind == LineItemKind.Product).Sum(i => i.TotalPrice);
+        bool Implausible(decimal t) =>
+            (merged.TotalAmount is { } tot && Math.Abs(t - tot) <= 0.005m) || (productsSum > 0m && Math.Abs(t - productsSum) <= 0.005m);
+
+        if (layoutTax is { } candidate && Implausible(candidate))
+        {
+            layoutTax = null;
+        }
+
+        if (heuristicTax is { } hCandidate && Implausible(hCandidate))
+        {
+            // Without the implausible figure there is no Tax line either.
+            var withoutTax = all.Where(i => i.Kind != LineItemKind.Tax).ToList();
+            merged = merged with { TaxAmount = null, TaxIncluded = false, LineItems = merged.LineItems is null ? null : withoutTax };
+            heuristicTax = null;
+        }
+
         if (layoutTax is not { } lt)
         {
             return merged;
@@ -90,8 +114,17 @@ public static class LayoutLmResultMerger
         var others = items.Where(i => i.Kind != LineItemKind.Tax).Sum(i => i.TotalPrice);
         bool Fits(decimal tax, bool included) => Math.Abs(others + (included ? 0m : tax) - total) <= 0.02m;
 
-        var heuristicFits = Fits(ht, merged.TaxIncluded);
-        var layoutFitsOnTop = Fits(lt, false);
+        // The rate printed on the heuristic Tax line ("Sales Tax 6.25%") is a second witness: a tax that misses
+        // rate x items, while the model's figure hits it, is the mis-read one.
+        var rateMatch = RateRegex().Match(items.FirstOrDefault(i => i.Kind == LineItemKind.Tax)?.Description ?? string.Empty);
+        bool RateFits(decimal tax) =>
+            rateMatch.Success
+            && decimal.TryParse(rateMatch.Groups[1].Value.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var pct)
+            && productsSum > 0m
+            && Math.Abs(tax - pct / 100m * productsSum) <= Math.Max(0.05m, productsSum * 0.005m);
+
+        var heuristicFits = Fits(ht, merged.TaxIncluded) || (RateFits(ht) && !RateFits(lt));
+        var layoutFitsOnTop = Fits(lt, false) || (RateFits(lt) && !RateFits(ht));
         var layoutFitsIncluded = Fits(lt, true);
 
         if (!heuristicFits && (layoutFitsOnTop || layoutFitsIncluded))

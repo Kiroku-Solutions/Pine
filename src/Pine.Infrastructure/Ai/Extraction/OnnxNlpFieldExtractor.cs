@@ -219,12 +219,23 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Upper-cases and folds Spanish accents (and ñ) to ASCII, one character for one character, so keyword
     /// matching works on "DESCRIPCIÓN"/"EMISIÓN" and indexes stay valid in the original text.
     /// </summary>
+    [GeneratedRegex(@"(?<![A-Z0-9])SUB[TL][O0][TL][A4][L1I](?![A-Z0-9])", RegexOptions.Compiled)]
+    private static partial Regex FuzzySubtotalRegex();
+
+    // Words that name a table column; a row made only of them is the header, never an item.
+    [GeneratedRegex(@"^(?:(?:DESCRIPTION|DESCRIPCION|DESCRIP|QTY|QUANTITY|CANT|CANTIDAD|UNIT|PRICE|PRECIO|AMOUNT|VALOR|IMPORTE|ITEM|ITEMS|ARTICULO|DETALLE|CODIGO|COD|TOTAL|P|U|UND)[\s.]*)+$", RegexOptions.Compiled)]
+    private static partial Regex TableHeaderRowRegex();
+
+    [GeneratedRegex(@"\s+(?:DESCRIPTION|QTY|QUANTITY|UNIT PRICE|PRICE|AMOUNT|CANTIDAD|PRECIO|VALOR|IMPORTE)$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex TrailingHeaderWordRegex();
+
     private static bool IsTaxRow(string upper) =>
         (TaxLineRegex().IsMatch(upper) || IceRowRegex().IsMatch(upper)) && !TaxBaseLineRegex().IsMatch(upper);
 
     internal static string FoldUpper(string text)
     {
-        var chars = text.ToUpperInvariant().ToCharArray();
+        // OCR typos of SUBTOTAL ("SUBLOTAL", "SUBTOLAL") are repaired in place (same length) so every keyword rule sees it.
+        var chars = FuzzySubtotalRegex().Replace(text.ToUpperInvariant(), "SUBTOTAL").ToCharArray();
         for (var i = 0; i < chars.Length; i++)
         {
             chars[i] = chars[i] switch
@@ -331,7 +342,107 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Clusters OCR words into logical lines using Y-axis proximity with
     /// dynamic tolerance based on median text height.
     /// </summary>
-    private static List<ClusteredLine> ClusterIntoLines(IReadOnlyList<OcrWord> ocrWords)
+    private static List<ClusteredLine> ClusterIntoLines(IReadOnlyList<OcrWord> originalWords)
+    {
+        // A photo of a screen or a tilted page makes the amounts of one row sit lower (or higher) than its label, so
+        // rows are clustered in a deskewed frame (the median slope of label -> amount pairs) and the ORIGINAL words
+        // are handed back. Level pages (|skew| under 1 degree) are untouched.
+        var levelLines = ClusterLevelLines(originalWords);
+        var angle = EstimateSkew(originalWords);
+        IReadOnlyList<OcrWord> ocrWords = originalWords;
+        Dictionary<(string, float, float), OcrWord>? backToOriginal = null;
+        if (Math.Abs(angle) > 0.035f)
+        {
+            var (cos, sin) = (MathF.Cos(angle), MathF.Sin(angle));
+            backToOriginal = new Dictionary<(string, float, float), OcrWord>();
+            var rotated = new List<OcrWord>(originalWords.Count);
+            foreach (var w in originalWords)
+            {
+                var b = w.BoundingBox;
+                float cx = b.X + b.Width / 2f, cy = b.Y + b.Height / 2f;
+                float nx = cx * cos + cy * sin, ny = cy * cos - cx * sin;
+                var copy = new OcrWord
+                {
+                    Text = w.Text,
+                    Confidence = w.Confidence,
+                    BoundingBox = new BoundingBox { X = nx - b.Width / 2f, Y = ny - b.Height / 2f, Width = b.Width, Height = b.Height },
+                };
+                backToOriginal[(copy.Text, copy.BoundingBox.X, copy.BoundingBox.Y)] = w;
+                rotated.Add(copy);
+            }
+
+            ocrWords = rotated;
+        }
+
+        if (backToOriginal is null)
+            return levelLines;
+
+        // The deskewed grouping is kept only when it is clearly tighter (words sit closer to their row's own height):
+        // a wrong angle estimate on a curved or perspective-warped photo must never make things worse.
+        var clustered = ClusterLevelLines(ocrWords);
+        if (RowSpread(clustered) > RowSpread(levelLines) * 0.7f)
+            return levelLines;
+
+        return clustered.Select(l => l with { Words = l.Words.Select(w => backToOriginal[(w.Text, w.BoundingBox.X, w.BoundingBox.Y)]).ToList() }).ToList();
+    }
+
+    /// <summary>Mean distance of every word from the height of its row, relative to the median word height (lower is tighter).</summary>
+    private static float RowSpread(List<ClusteredLine> lines)
+    {
+        var words = lines.SelectMany(l => l.Words.Select(w => (w, l.Y))).ToList();
+        if (words.Count == 0)
+            return 0f;
+        var height = words.Select(x => x.w.BoundingBox.Height).OrderBy(h => h).ElementAt(words.Count / 2);
+        return words.Average(x => Math.Abs(x.w.BoundingBox.Y - x.Y)) / Math.Max(height, 1f);
+    }
+
+    /// <summary>
+    /// Median angle (radians, weighted by distance) of the line from each word to its nearest right-hand neighbour in
+    /// the same band: label -> amount pairs on one row. Zero when there are too few pairs.
+    /// </summary>
+    private static float EstimateSkew(IReadOnlyList<OcrWord> words)
+    {
+        var samples = new List<(float Angle, float Weight)>();
+        foreach (var a in words)
+        {
+            var ba = a.BoundingBox;
+            float acx = ba.X + ba.Width / 2f, acy = ba.Y + ba.Height / 2f;
+            (float Dx, float Dy)? best = null;
+            foreach (var b in words)
+            {
+                var bb = b.BoundingBox;
+                float dx = bb.X + bb.Width / 2f - acx, dy = bb.Y + bb.Height / 2f - acy;
+                if (dx <= 0f || dx <= (ba.Width + bb.Width) / 2f || Math.Abs(dy) > 4f * Math.Max(ba.Height, bb.Height))
+                    continue;
+                if (best is null || dx < best.Value.Dx)
+                    best = (dx, dy);
+            }
+
+            if (best is { } p)
+            {
+                var angle = MathF.Atan2(p.Dy, p.Dx);
+                if (Math.Abs(angle) < 0.35f)
+                    samples.Add((angle, p.Dx));
+            }
+        }
+
+        if (samples.Count < 4)
+            return 0f;
+
+        samples.Sort((x, y) => x.Angle.CompareTo(y.Angle));
+        var half = samples.Sum(x => x.Weight) / 2f;
+        float run = 0f;
+        foreach (var (angle, weight) in samples)
+        {
+            run += weight;
+            if (run >= half)
+                return angle;
+        }
+
+        return 0f;
+    }
+
+    private static List<ClusteredLine> ClusterLevelLines(IReadOnlyList<OcrWord> ocrWords)
     {
         var sortedWords = ocrWords
             .OrderBy(w => w.BoundingBox.Y)
@@ -599,6 +710,32 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
                 { sumTips += lineAmount; tipWords.AddRange(line.Words); }
         }
 
+        // A tax can never be the printed total, a printed subtotal, or larger than all the items together: such a
+        // row is a mis-read figure, and no tax is better than an invented one.
+        if (taxRows.Count > 0)
+        {
+            var targets = SubtotalTargets(lines, zones, separator);
+            // Amounts printed on a TOTAL row (not SUBTOTAL, not a tax-inclusive/exclusive variant): a tax is never one of them.
+            var totalRowAmounts = new List<decimal>();
+            foreach (var l in lines)
+            {
+                var up = FoldUpper(l.Text);
+                if (TotalKeywords.Any(k => up.Contains(k, StringComparison.Ordinal)) && !TotalSkipRegex().IsMatch(up) && !TaxBaseLineRegex().IsMatch(up) && !TaxLineRegex().IsMatch(up)
+                    && ExtractAmountFromLine(l.Text, separator) is { } ta)
+                    totalRowAmounts.Add(ta);
+            }
+
+            // The items-based limits only apply when the items were verified against a printed subtotal: a partly read
+            // item list says nothing about how large the tax can be.
+            var itemsVerified = itemsSum > 0 && targets.Any(t => Math.Abs(t - itemsSum) <= 0.02m);
+            taxRows.RemoveAll(r =>
+                totalRowAmounts.Any(t => Math.Abs(t - r.Amount) <= 0.005m)
+                || targets.Any(t => Math.Abs(t - r.Amount) <= 0.005m)
+                || (itemsVerified && r.Amount > itemsSum)
+                // A tax cannot exceed its own rate applied to every item together.
+                || (itemsVerified && RateOf(r.Label) is { } rate && r.Amount > rate / 100m * itemsSum * 1.25m + 0.02m));
+        }
+
         // A "total tax" row repeats the sum of the other tax rows; counting both would double the tax.
         if (taxRows.Count >= 3)
         {
@@ -780,6 +917,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     }
 
     /// <summary>The row text before its amount ("Sales Tax 6.25%"), trimmed; "Tax" when nothing is left.</summary>
+    private static decimal? RateOf(string label)
+    {
+        var m = PercentRegex().Match(label);
+        return m.Success && decimal.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var r) && r > 0 ? r : null;
+    }
+
     private static string TaxLabel(string lineText, int amountIndex)
     {
         var label = MultipleSpacesRegex().Replace(lineText[..Math.Min(amountIndex, lineText.Length)], " ").Trim(' ', ':', '-', '.', '$', '@');
@@ -1020,6 +1163,10 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             || DescriptionOnlyAdjustmentRegex().IsMatch(NumberNoiseRegex().Replace(upper, " ").Trim()))
             return null;
 
+        // A row made only of column names ("DESCRIPTION QTY AMOUNT") is the table header, never an item.
+        if (TableHeaderRowRegex().IsMatch(NumberNoiseRegex().Replace(upper, " ").Trim()))
+            return null;
+
         // Tax-code flags printed after the price (T, F, A, B) are not part of the description.
         lineText = TrailingTaxFlagRegex().Replace(lineText, string.Empty);
 
@@ -1072,6 +1219,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         }
         descCandidate = MultipleSpacesRegex().Replace(descCandidate, " ").Trim();
         descCandidate = descCandidate.Trim('-', '.', ',', '|', ':', ';', ' ');
+
+        // A header word glued to the end of a description by a mis-grouped row ("pedal arms AMOUNT") is not part of it.
+        descCandidate = TrailingHeaderWordRegex().Replace(descCandidate, string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(descCandidate) || descCandidate.Length < 2)
             return null;
@@ -1140,6 +1290,10 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         if (totalPrice <= 0 || totalPrice > 10_000_000)
             return null;
+
+        // qty x unit must give the total; when the row says otherwise the unit price is the total shared over the quantity.
+        if (quantity > 1 && Math.Abs(quantity * unitPrice - totalPrice) > Math.Max(0.02m, totalPrice * 0.005m))
+            unitPrice = totalPrice / quantity;
 
         // If there is only 1 number and it's a small integer without decimals, it's highly likely part of a description (e.g. "5 partes")
         if (numbers.Count == 1)
