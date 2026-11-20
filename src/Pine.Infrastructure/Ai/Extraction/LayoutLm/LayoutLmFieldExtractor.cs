@@ -321,7 +321,7 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
             using var options = new SessionOptions
             {
                 GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-                IntraOpNumThreads = Math.Min(MaxIntraOpThreads, Environment.ProcessorCount),
+                IntraOpNumThreads = Math.Max(1, Math.Min(MaxIntraOpThreads, Environment.ProcessorCount - 2)),
                 InterOpNumThreads = 1,
                 // Sequence length changes per page; a memory pattern planned for one shape only wastes RAM on the next.
                 EnableMemoryPattern = false,

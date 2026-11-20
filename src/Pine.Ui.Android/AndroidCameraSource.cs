@@ -109,6 +109,12 @@ internal sealed class AndroidCameraSession : ICameraSession
     private CameraDevice? _device;
     private CameraCaptureSession? _session;
     private bool _disposed;
+    private byte[] _yBuffer = [];
+    private byte[] _uBuffer = [];
+    private byte[] _vBuffer = [];
+    private int _frames;
+    private readonly System.Collections.Concurrent.ConcurrentBag<byte[]> _pool = [];
+    private long _convertTicks;
 
     private AndroidCameraSession(MainActivity activity, int sensorOrientation, HandlerThread thread, ImageReader reader)
     {
@@ -231,10 +237,11 @@ internal sealed class AndroidCameraSession : ICameraSession
     {
         var width = image.Width;
         var height = image.Height;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var planes = image.GetPlanes() ?? throw new InvalidOperationException("no planes");
-        var y = Copy(planes[0]);
-        var u = Copy(planes[1]);
-        var v = Copy(planes[2]);
+        var y = Copy(planes[0], ref _yBuffer);
+        var u = Copy(planes[1], ref _uBuffer);
+        var v = Copy(planes[2], ref _vBuffer);
         var yRow = planes[0].RowStride;
         var uvRow = planes[1].RowStride;
         var uvPixel = planes[1].PixelStride;
@@ -253,44 +260,68 @@ internal sealed class AndroidCameraSession : ICameraSession
 
         var outWidth = rotation is 90 or 270 ? height : width;
         var outHeight = rotation is 90 or 270 ? width : height;
-        var bgra = new byte[outWidth * outHeight * 4];
+        // Frames are 8 MB each; reusing their buffers keeps the garbage collector (and its pauses) out of the viewfinder.
+        var needed = outWidth * outHeight * 4;
+        if (!_pool.TryTake(out var bgra) || bgra.Length != needed)
+        {
+            bgra = new byte[needed];
+        }
+
+        // Source position of output pixel (ox, oy) is (x0 + ox*dxOx + oy*dxOy, y0 + ox*dyOx + oy*dyOy): the rotation is
+        // resolved once here, so the inner loop is straight arithmetic.
+        int x0, y0, dxOx, dxOy, dyOx, dyOy;
+        switch (rotation)
+        {
+            case 90: x0 = 0; y0 = height - 1; dxOx = 0; dxOy = 1; dyOx = -1; dyOy = 0; break;
+            case 180: x0 = width - 1; y0 = height - 1; dxOx = -1; dxOy = 0; dyOx = 0; dyOy = -1; break;
+            case 270: x0 = width - 1; y0 = 0; dxOx = 0; dxOy = -1; dyOx = 1; dyOy = 0; break;
+            default: x0 = 0; y0 = 0; dxOx = 1; dxOy = 0; dyOx = 0; dyOy = 1; break;
+        }
+
+        var o = 0;
         for (var oy = 0; oy < outHeight; oy++)
         {
+            var sx = x0 + (oy * dxOy);
+            var sy = y0 + (oy * dyOy);
             for (var ox = 0; ox < outWidth; ox++)
             {
-                int sx;
-                int sy;
-                switch (rotation)
-                {
-                    case 90: sx = oy; sy = height - 1 - ox; break;
-                    case 180: sx = width - 1 - ox; sy = height - 1 - oy; break;
-                    case 270: sx = width - 1 - oy; sy = ox; break;
-                    default: sx = ox; sy = oy; break;
-                }
-
                 var yy = y[(sy * yRow) + sx];
                 var ci = ((sy >> 1) * uvRow) + ((sx >> 1) * uvPixel);
                 var uu = u[ci] - 128;
                 var vv = v[ci] - 128;
-                var o = ((oy * outWidth) + ox) * 4;
                 bgra[o] = Clamp(yy + ((454 * uu) >> 8));
                 bgra[o + 1] = Clamp(yy - (((88 * uu) + (183 * vv)) >> 8));
                 bgra[o + 2] = Clamp(yy + ((359 * vv) >> 8));
                 bgra[o + 3] = 255;
+                o += 4;
+                sx += dxOx;
+                sy += dyOx;
             }
         }
 
-        return new AndroidCameraFrame(outWidth, outHeight, bgra);
+        _convertTicks += clock.ElapsedTicks;
+        if (++_frames % 60 == 0)
+        {
+            global::Android.Util.Log.Info("PineCamera", $"frames={_frames} convert_ms_avg={_convertTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 60:F1} size={outWidth}x{outHeight}");
+            _convertTicks = 0;
+        }
+
+        return new AndroidCameraFrame(outWidth, outHeight, bgra, buffer => { if (!_disposed) { _pool.Add(buffer); } });
     }
 
     private static byte Clamp(int value) => (byte)(value < 0 ? 0 : value > 255 ? 255 : value);
 
-    private static byte[] Copy(Image.Plane plane)
+    private static byte[] Copy(Image.Plane plane, ref byte[] reuse)
     {
         var buffer = plane.Buffer ?? throw new InvalidOperationException("no plane buffer");
-        var bytes = new byte[buffer.Remaining()];
-        buffer.Get(bytes);
-        return bytes;
+        var length = buffer.Remaining();
+        if (reuse.Length < length)
+        {
+            reuse = new byte[length];
+        }
+
+        buffer.Get(reuse, 0, length);
+        return reuse;
     }
 
     public void Dispose()
@@ -347,7 +378,7 @@ internal sealed class AndroidCameraSession : ICameraSession
 }
 
 /// <summary>One upright frame as BGRA bytes in managed memory.</summary>
-internal sealed class AndroidCameraFrame(int width, int height, byte[] bgra) : ICameraFrame
+internal sealed class AndroidCameraFrame(int width, int height, byte[] bgra, Action<byte[]>? release = null) : ICameraFrame
 {
     private byte[]? _bgra = bgra;
 
@@ -367,6 +398,40 @@ internal sealed class AndroidCameraFrame(int width, int height, byte[] bgra) : I
 
     public byte[] EncodeJpeg() => Encode(SKEncodedImageFormat.Jpeg, 92);
 
+    /// <inheritdoc />
+    public byte[] EncodeJpeg(int maxSide)
+    {
+        var longSide = Math.Max(Width, Height);
+        if (longSide <= maxSide)
+        {
+            return EncodeJpeg();
+        }
+
+        var source = _bgra ?? throw new ObjectDisposedException(nameof(AndroidCameraFrame));
+        var ratio = (double)maxSide / longSide;
+        // Wrap the frame's own pixels (no 8 MB copy) for the resize.
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(source, System.Runtime.InteropServices.GCHandleType.Pinned);
+        SKBitmap? small;
+        try
+        {
+            using var full = new SKBitmap();
+            full.InstallPixels(new SKImageInfo(Width, Height, SKColorType.Bgra8888, SKAlphaType.Opaque), pin.AddrOfPinnedObject(), Width * 4);
+            small = full.Resize(
+                new SKImageInfo((int)Math.Round(Width * ratio), (int)Math.Round(Height * ratio), SKColorType.Bgra8888, SKAlphaType.Opaque),
+                new SKSamplingOptions(SKFilterMode.Linear))
+                ?? throw new InvalidOperationException("frame could not be resized");
+        }
+        finally
+        {
+            pin.Free();
+        }
+
+        using var smallBitmap = small;
+        using var image = SKImage.FromBitmap(smallBitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 85);
+        return data.ToArray();
+    }
+
     public byte[] EncodePng() => Encode(SKEncodedImageFormat.Png, 100);
 
     private byte[] Encode(SKEncodedImageFormat format, int quality)
@@ -378,5 +443,13 @@ internal sealed class AndroidCameraFrame(int width, int height, byte[] bgra) : I
         return data.ToArray();
     }
 
-    public void Dispose() => _bgra = null;
+    public void Dispose()
+    {
+        var buffer = _bgra;
+        _bgra = null;
+        if (buffer is not null)
+        {
+            release?.Invoke(buffer);
+        }
+    }
 }

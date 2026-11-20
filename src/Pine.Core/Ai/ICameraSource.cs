@@ -66,6 +66,14 @@ public interface ICameraFrame : IDisposable
     /// <returns>The encoded bytes.</returns>
     byte[] EncodeJpeg();
 
+    /// <summary>
+    /// Encodes the frame as a JPEG whose longer side is at most <paramref name="maxSide"/>, for a cheap analysis pass.
+    /// The default ignores the limit; a camera that can shrink while encoding overrides it.
+    /// </summary>
+    /// <param name="maxSide">Longest side in pixels.</param>
+    /// <returns>The encoded bytes.</returns>
+    byte[] EncodeJpeg(int maxSide) => EncodeJpeg();
+
     /// <summary>Encodes the frame as a PNG, lossless, for the crop and OCR screens.</summary>
     /// <returns>The encoded bytes.</returns>
     byte[] EncodePng();

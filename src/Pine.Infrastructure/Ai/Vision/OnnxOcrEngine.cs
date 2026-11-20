@@ -109,7 +109,7 @@ public sealed partial class OnnxOcrEngine : IOcrEngine, IDisposable
             using var sessionOptions = new SessionOptions
             {
                 GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-                IntraOpNumThreads = Math.Min(4, Environment.ProcessorCount),
+                IntraOpNumThreads = Math.Max(1, Math.Min(4, Environment.ProcessorCount - 2)),
                 InterOpNumThreads = 1,
                 ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
                 EnableMemoryPattern = false,
