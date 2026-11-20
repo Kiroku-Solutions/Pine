@@ -248,15 +248,21 @@ reported in `ReceiptExtractionResult.TaxAmount` (the heuristics keep emitting ta
   totals "with tax" (`Total with GST`), a bare rate without an amount (`IVA 15%`), and `ICE CREAM`.
 - **Other kinds.** Tip/service charge (`PROPINA`, `SERVICIO 10%`, `Service Charge`), discount, rounding
   (`ROUNDING`, `REDONDEO`, signed) have their own `LineItemKind`; cash, change, card and net/final-total rows are
-  not lines at all. Tax-code flags printed after a price (`3.99 F`) are dropped from the description. Delivery or
-  shipping has no kind of its own and still reads as a product.
+  not lines at all. Tax-code flags printed after a price (`3.99 F`) are dropped from the description.
+  Delivery, shipping and freight (`ENVIO`, `DOMICILIO`, `DELIVERY`, `SHIPPING`, `FLETE`) are `LineItemKind.Delivery`:
+  not a product, not in the items total (stored by name, no migration).
 - **Arithmetic backstop.** If no keyword caught a tax, a product row equal to total minus the printed subtotal, or
   equal to the rate in its own text times the other items, is reclassified as tax. Items are also checked against
   the printed subtotal (or the per-rate `SUBTOTAL 12%` + `SUBTOTAL 0%` bases) and misread rows are dropped.
 - **UI.** The scan screen shows `ProductsTotal` (products only) and `AdjustmentsTotal` (tax, tip, discount, rounding)
   separately; the reconciliation difference is still total minus every line, i.e.
-  products + tax + tip + rounding - discount. `TaxAmount` itself has no dedicated field in the form: it is visible
-  as the Tax lines (and not at all when the tax is included in the prices).
+  products + tax + tip + delivery + rounding - discount. The form has a **Tax total** field filled from `TaxAmount`
+  (also when the tax is included in the prices, flagged "included" and never added). The domain has no tax column,
+  so the field is persisted as the transaction's single Tax line: while the tax is on top of the prices the field
+  and that line move together; included tax is shown but not saved.
+- **One tax, two readers.** After `LayoutLmResultMerger.Overlay` the `TaxAmount` and the Tax lines agree. If the
+  layout model and the heuristics read different taxes, the reading that reconciles with the other lines and the
+  total wins; the other is `TaxAlternative` and the form shows it as a warning.
 - **Measured** (research OCR set, 164 documents, TAX field F1): heuristics 0.05 -> 0.81, LayoutLM 0.91,
   hybrid 0.94. Adjustment-like rows (cash, change, subtotal, GST, rounding, service) read as products in 54 of 164
   documents (78 of 337 items) before, 1 of 164 after.
