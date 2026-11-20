@@ -83,6 +83,20 @@ namespace Pine.Ui.Android
                         await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg), System.Threading.CancellationToken.None);
                     }
 
+                    // Then the LayoutLM model (session, tokenizer and one inference over a dummy page), last and unhurried: it is the biggest
+                    // (128 MB) and its first load cost 1.4 s of the first scan.
+                    if (serviceProvider.GetService(typeof(Pine.Core.Ai.IVisualFieldExtractor)) is Pine.Core.Ai.IVisualFieldExtractor layout)
+                    {
+                        await System.Threading.Tasks.Task.Delay(1000);
+                        Pine.Core.Ai.OcrWord Word(string text, float x, float y) => new()
+                        {
+                            Text = text,
+                            Confidence = 1f,
+                            BoundingBox = new Pine.Core.Ai.BoundingBox { X = x, Y = y, Width = 120, Height = 24 },
+                        };
+                        layout.ExtractFields([Word("SHOP", 40, 20), Word("TOTAL", 40, 300), Word("10.00", 400, 300)], jpeg);
+                    }
+
                     global::Android.Util.Log.Info("PineScan", "warm-up done");
                 }
                 catch (System.Exception ex)

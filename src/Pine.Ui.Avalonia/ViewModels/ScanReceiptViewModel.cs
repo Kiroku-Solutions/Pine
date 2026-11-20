@@ -991,6 +991,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
             Post(() => _status.Clear());
             var sinceAnalysis = System.Diagnostics.Stopwatch.StartNew();
+            var noFrames = System.Diagnostics.Stopwatch.StartNew();
 
             while (!token.IsCancellationRequested)
             {
@@ -1006,9 +1007,23 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
                 if (frame is null)
                 {
-                    await Task.Delay(40, token).ConfigureAwait(false);
+                    // No frame for a few seconds means the camera was taken away (the app was paused, another app took it).
+                    if (noFrames.Elapsed > TimeSpan.FromSeconds(3))
+                    {
+                        Post(() =>
+                        {
+                            CloseCamera();
+                            _error.Set("LiveScanner.Status.CameraFailed");
+                        });
+                        return;
+                    }
+
+                    await Task.Delay(10, token).ConfigureAwait(false);
                     continue;
                 }
+
+                noFrames.Restart();
+                var frameClock = System.Diagnostics.Stopwatch.StartNew();
 
                 if (_edges is not null && sinceAnalysis.Elapsed >= _analysisInterval && Interlocked.CompareExchange(ref _analysing, 1, 0) == 0)
                 {
@@ -1026,8 +1041,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
                 Post(() => LiveFeed = bitmap);
 
-                // About 6 frames a second is plenty for a viewfinder and keeps the CPU free for the scan itself.
-                await Task.Delay(150, token).ConfigureAwait(false);
+                // Paced to about 30 frames a second: the wait is what is left of 33 ms after this frame's own work.
+                var wait = 33 - (int)frameClock.ElapsedMilliseconds;
+                if (wait > 0)
+                {
+                    await Task.Delay(wait, token).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException)

@@ -39,6 +39,13 @@ public class MainActivity : AvaloniaMainActivity
         base.OnDestroy();
     }
 
+    protected override void OnPause()
+    {
+        // Leaving the screen (home, another app, the lock screen): give the camera back instead of letting the system cut it.
+        AndroidCameraSession.PauseActive();
+        base.OnPause();
+    }
+
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
     {
         base.OnRequestPermissionsResult(requestCode, permissions, grantResults);

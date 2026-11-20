@@ -283,6 +283,21 @@ total 9.06, 12 degrees the same, 20 degrees 0 items / tax 15.00 / total 15.00, -
 refused as "no mask" and the crop was lost; model masks now accept 2 % to 100 %. With the still available, camera frames are converted at
 half size in each direction (the viewfinder and analysis need no more; YOLO letterboxes to 640).
 
+**Tried and not kept: recognition batches padded to the widest line.** Sorting lines by width and batching up to 8 within 25 % of the
+first line (zero padding, the convention the tensors already use) changed the recogniser's output slightly (exact match with the Python
+reference 100 % to 98.9 %, CER 0 to 0.09 %, ground-truth recall 92.4 % to 92.7 %) and made the Windows CPU run SLOWER (20 images
+15.3 s to 21.5 s; the 12 MP photo's recognise stage 959 to 1245 ms): compute follows padded area, and ORT's per-call cost is small, so
+batching buys nothing on a CPU. The equal-width grouping stays. NNAPI/XNNPACK were not evaluated (they change numerics and dynamic
+shapes are poorly supported).
+
+**Live camera (Android) as built.** The viewfinder and the edge analysis share one small YUV stream (about 0.5 MP) converted at full
+size, paced to ~30 fps by the reading loop; YOLO uses at most 3 threads so the preview thread is not starved; the camera is released
+in `OnPause` and the page closes it when frames stop for 3 s; LayoutLM is warmed after OCR and YOLO. The viewfinder is still an Avalonia
+bitmap per frame: the native `TextureView` route (Camera2 draws straight to the screen) would remove that cost but sits above all
+Avalonia content (no overlay on top of it) and needs a device session to verify the z-order and permissions flow, so it is the next
+step, not part of this change. Preview fps and jank were NOT measured (the vault was locked); measure with
+`adb shell dumpsys gfxinfo org.pine.app` while the viewfinder runs.
+
 ## 11. Recommendation
 
 **Go for Phase B (B1).** The model question — the part most likely to block — is resolved with no quality loss measured against Pine's current engine, in 13 MB, and the algorithm is already ported to portable code. **Do not promise Android scanning from B1 alone**: the OpenCV-based `ReceiptDetector`/`OpenCvImageProcessor` (§2.1) still need a Skia port (B2) or an explicit "OCR on the original image" milestone, and nothing about the tablet has been measured. Re-evaluate after the C# parity run (B1 step 4) and after the first real-device measurement (C5).

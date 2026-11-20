@@ -39,7 +39,9 @@ namespace Pine.Ui.Android;
 internal sealed class AndroidCameraSource : ICameraSource
 {
     private const int PermissionRequestCode = 4021;
-    private const int MaxPixels = 2_100_000;
+    // The viewfinder and the edge analysis share ONE small YUV stream (about 0.5 MP, e.g. 960 x 540 or 800 x 600): YOLO letterboxes to
+    // 640 anyway, and converting a frame this size is what lets the loop run near 30 fps. The picture that is read comes from the still.
+    private const int MaxPixels = 520_000;
     private static readonly object PermissionLock = new();
     private static TaskCompletionSource<bool>? _permissionRequest;
 
@@ -110,6 +112,17 @@ internal sealed class AndroidCameraSession : ICameraSession
     private CameraCaptureSession? _session;
     private bool _disposed;
     private (int Width, int Height)? _stillSize;
+
+    /// <summary>The open session, so the activity can release the camera when the app is paused (the system would otherwise cut it off mid-read).</summary>
+    internal static AndroidCameraSession? Active { get; private set; }
+
+    /// <summary>Releases the camera now; the reading loop sees no more frames and closes the page's camera.</summary>
+    internal static void PauseActive()
+    {
+        var session = Active;
+        Active = null;
+        session?.Dispose();
+    }
     private ImageReader? _stillReader;
     private Handler? _handler;
     private byte[] _yBuffer = [];
@@ -173,6 +186,7 @@ internal sealed class AndroidCameraSession : ICameraSession
         var handler = new Handler(thread.Looper!);
         var reader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Yuv420888, 3)!;
         var session = new AndroidCameraSession(activity, sensor, thread, reader);
+        Active = session;
         session._stillSize = still is null ? null : (still.Width, still.Height);
         try
         {
@@ -363,7 +377,7 @@ internal sealed class AndroidCameraSession : ICameraSession
 
         // With a camera still available the viewfinder and the analysis need only a quarter of the pixels (YOLO letterboxes to 640 anyway),
         // so every second pixel of every second row is converted; the full-size capture is the still. Without one the frame stays full size.
-        var step = _stillReader is not null ? 2 : 1;
+        var step = 1;
         var outWidth = (rotation is 90 or 270 ? height : width) / step;
         var outHeight = (rotation is 90 or 270 ? width : height) / step;
         // Frames are 8 MB each; reusing their buffers keeps the garbage collector (and its pauses) out of the viewfinder.
@@ -445,6 +459,11 @@ internal sealed class AndroidCameraSession : ICameraSession
         }
 
         _disposed = true;
+        if (ReferenceEquals(Active, this))
+        {
+            Active = null;
+        }
+
         TryRelease(() => _session?.StopRepeating());
         TryRelease(() => _session?.Close());
         TryRelease(() => _device?.Close());

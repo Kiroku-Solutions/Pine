@@ -54,7 +54,7 @@ public sealed class YoloReceiptSegmenter : IDisposable
             // Leave two cores for the UI and the camera; a phone that is all-in on inference drops frames in the viewfinder.
             using var options = new SessionOptions
             {
-                IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount - 2),
+                IntraOpNumThreads = Math.Max(1, Math.Min(3, Environment.ProcessorCount - 2)),
                 InterOpNumThreads = 1,
                 GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
             };
