@@ -42,6 +42,13 @@ public interface ICameraSession : IDisposable
     /// </summary>
     /// <returns>The frame, owned by the caller, or <see langword="null"/> when none was available yet.</returns>
     ICameraFrame? ReadFrame();
+
+    /// <summary>
+    /// Takes a full-resolution still (the camera's own JPEG, EXIF-oriented) if the camera offers one. Blocking; call it off the UI
+    /// thread.
+    /// </summary>
+    /// <returns>The encoded still, or <see langword="null"/> when there is no still capture (use a frame instead).</returns>
+    byte[]? CaptureStill() => null;
 }
 
 /// <summary>

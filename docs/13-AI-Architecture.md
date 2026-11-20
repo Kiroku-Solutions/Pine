@@ -170,7 +170,7 @@ The receipt pipeline contains roughly twenty numeric constants that are **not** 
 the detection confidence and area/aspect cutoffs, letterbox size and anchor count in
 `ReceiptDetector`; the geometry and OCR kernel parameters in `OpenCvImageProcessor`; and the
 zone-detection ratios in `HeuristicFieldExtractor`; and, for the managed ONNX OCR backend, the detector and
-recogniser constants in `OnnxOcrEngine`, `DbPostProcessor` and `SkiaImagePreprocessor` (section 7.3), and the Skia crop in `SkiaReceiptDetector` and `ReceiptQuadFinder` (section 7.4). They stay literals, on purpose.
+recogniser constants in `OnnxOcrEngine`, `DbPostProcessor` and `SkiaImagePreprocessor` (section 7.3), and the Skia crop in `SkiaReceiptDetector`, `ReceiptQuadFinder`, `YoloPostProcessor`, `ReceiptEnhancer` and `ScreenPatternDetector` (section 7.4; measurements in docs/65 section 14). They stay literals, on purpose.
 
 - They are the algorithm, tuned together with the shipped model version. Changing one in isolation
   changes what counts as a receipt.

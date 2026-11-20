@@ -47,7 +47,10 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
 
     /// <summary>Longest side an image is shrunk to before OCR.</summary>
     /// <remarks>Receipt photos are long and thin; 2048 keeps text well above the recogniser's 48 px line height.</remarks>
-    public const int MaxSide = 2048;
+    public const int MaxSide = 3072;
+
+    /// <summary>Longest side of the copy edge detection and the editor work on (speed); the full picture is used for the crop.</summary>
+    private const int DetectionDecodeSide = 2048;
 
     private const int JpegQuality = 95;
 
@@ -69,7 +72,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         return Task.Run(
             () =>
             {
-                using var upright = DecodeUpright(bytes, out _);
+                using var upright = DecodeUpright(bytes, out _, DetectionDecodeSide);
                 return FindQuadWithModel(upright) is null ? 0f : 1f;
             },
             cancellationToken);
@@ -99,8 +102,84 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         return Task.Run(
             () =>
             {
-                using var upright = DecodeUpright(bytes, out _);
+                using var upright = DecodeUpright(bytes, out _, DetectionDecodeSide);
                 return ToNormalized(FindQuadWithModel(upright), upright.Width, upright.Height);
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<ReceiptLiveProbe> ProbeAsync(Stream image, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        var bytes = ReadAll(image);
+        return Task.Run(
+            () =>
+            {
+                using var upright = DecodeUpright(bytes, out _, DetectionDecodeSide);
+                var quad = FindQuadWithModel(upright);
+                var sharpness = RegionSharpness(upright, quad);
+                ScanDiagnostics.Report($"probe found={(quad is not null ? 1 : 0)} sharpness={sharpness:F0}");
+                return new ReceiptLiveProbe(ToNormalized(quad, upright.Width, upright.Height), sharpness);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>Variance of the Laplacian inside the corners' bounding box (or the frame), scaled to a 256 px wide working size so scores compare.</summary>
+    private static double RegionSharpness(SKBitmap upright, (double X, double Y)[]? quad)
+    {
+        var left = 0;
+        var top = 0;
+        var right = upright.Width;
+        var bottom = upright.Height;
+        if (quad is not null)
+        {
+            left = Math.Clamp((int)quad.Min(p => p.X), 0, upright.Width - 2);
+            top = Math.Clamp((int)quad.Min(p => p.Y), 0, upright.Height - 2);
+            right = Math.Clamp((int)quad.Max(p => p.X), left + 1, upright.Width);
+            bottom = Math.Clamp((int)quad.Max(p => p.Y), top + 1, upright.Height);
+        }
+
+        using var region = new SKBitmap(right - left, bottom - top, SKColorType.Bgra8888, SKAlphaType.Opaque);
+        using (var canvas = new SKCanvas(region))
+        {
+            canvas.DrawBitmap(upright, new SKRect(left, top, right, bottom), new SKRect(0, 0, region.Width, region.Height));
+        }
+
+        var ratio = 256.0 / Math.Max(1, region.Width);
+        using var small = region.Resize(
+            new SKImageInfo(256, Math.Max(3, (int)(region.Height * ratio)), SKColorType.Bgra8888, SKAlphaType.Opaque),
+            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+        return small is null ? 0 : ReceiptEnhancer.LaplacianVariance(small);
+    }
+
+    /// <inheritdoc />
+    public Task<Stream> CropOriginalAsync(Stream original, int quarterTurns, ReceiptQuad quad, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(quad);
+        var bytes = ReadAll(original);
+        return Task.Run<Stream>(
+            () =>
+            {
+                var current = DecodeUpright(bytes, out _);
+                for (var turn = 0; turn < ((quarterTurns % 4) + 4) % 4; turn++)
+                {
+                    var next = RotateBitmap(current, clockwise: true);
+                    current.Dispose();
+                    current = next;
+                }
+
+                using var upright = current;
+                (double X, double Y)[] corners =
+                [
+                    (quad.TopLeft.X * upright.Width, quad.TopLeft.Y * upright.Height),
+                    (quad.TopRight.X * upright.Width, quad.TopRight.Y * upright.Height),
+                    (quad.BottomRight.X * upright.Width, quad.BottomRight.Y * upright.Height),
+                    (quad.BottomLeft.X * upright.Width, quad.BottomLeft.Y * upright.Height),
+                ];
+                using var warped = Warp(upright, corners) ?? throw new InvalidOperationException("The selected area is too small to crop.");
+                return new MemoryStream(Encode(warped));
             },
             cancellationToken);
     }
@@ -113,7 +192,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         return Task.Run(
             () =>
             {
-                using var upright = DecodeUpright(bytes, out _);
+                using var upright = DecodeUpright(bytes, out _, DetectionDecodeSide);
                 var quad = FindQuadWithModel(upright);
                 return new ReceiptEdgeResult(Encode(upright), ToNormalized(quad, upright.Width, upright.Height), quad is null ? "none" : "found");
             },
@@ -209,7 +288,7 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
     }
 
     /// <summary>Decodes, shrinks to <see cref="MaxSide"/> and applies the EXIF orientation. <paramref name="unchanged"/> is true when neither was needed.</summary>
-    private static SKBitmap DecodeUpright(byte[] encoded, out bool unchanged)
+    private static SKBitmap DecodeUpright(byte[] encoded, out bool unchanged, int maxSide = MaxSide)
     {
         using var data = SKData.CreateCopy(encoded);
         using var codec = SKCodec.Create(data) ?? throw new InvalidDataException("The image could not be decoded.");
@@ -218,15 +297,15 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         var height = codec.Info.Height;
         var origin = codec.EncodedOrigin;
         var longSide = Math.Max(width, height);
-        unchanged = origin == SKEncodedOrigin.TopLeft && longSide <= MaxSide;
+        unchanged = origin == SKEncodedOrigin.TopLeft && longSide <= maxSide;
 
         // Ask the codec for a cheap power-of-two reduction first (JPEG decodes at 1/2, 1/4, 1/8 directly).
-        var scale = longSide > MaxSide ? (float)MaxSide / longSide : 1f;
+        var scale = longSide > maxSide ? (float)maxSide / longSide : 1f;
         var decodeSize = scale < 1f ? codec.GetScaledDimensions(scale) : codec.Info.Size;
         var info = new SKImageInfo(decodeSize.Width, decodeSize.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
         using var decoded = SKBitmap.Decode(codec, info) ?? throw new InvalidDataException("The image could not be decoded.");
 
-        using var sized = ShrinkTo(decoded, MaxSide);
+        using var sized = ShrinkTo(decoded, maxSide);
         return Orient(sized, origin);
     }
 

@@ -166,11 +166,11 @@ public sealed class SkiaReceiptDetectorTests
     {
         using var detector = new SkiaReceiptDetector();
 
-        var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(null, width: 3000, height: 2000)));
+        var result = await detector.AnalyzeAndCropReceiptAsync(new MemoryStream(Picture(null, width: 4200, height: 3000)));
 
         result.PassedFilters.Should().BeTrue();
         using var scaled = Decode(result.OcrImageStream!);
-        Math.Max(scaled.Width, scaled.Height).Should().BeInRange(1500, SkiaReceiptDetector.MaxSide);
+        Math.Max(scaled.Width, scaled.Height).Should().BeInRange(2000, SkiaReceiptDetector.MaxSide);
     }
 
     [Fact]

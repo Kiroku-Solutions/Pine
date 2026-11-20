@@ -109,6 +109,10 @@ internal sealed class AndroidCameraSession : ICameraSession
     private CameraDevice? _device;
     private CameraCaptureSession? _session;
     private bool _disposed;
+    private (int Width, int Height)? _stillSize;
+    private ImageReader? _stillReader;
+    private Handler? _handler;
+    private CaptureRequest.Builder? _stillRequest;
     private byte[] _yBuffer = [];
     private byte[] _uBuffer = [];
     private byte[] _vBuffer = [];
@@ -158,11 +162,18 @@ internal sealed class AndroidCameraSession : ICameraSession
 
         var sensor = ((Java.Lang.Integer?)characteristics.Get(CameraCharacteristics.SensorOrientation))?.IntValue() ?? 90;
 
+        // The still: the largest JPEG the camera offers up to ~13 MP (memory on a 4 GB device); null when it offers none.
+        var still = (map.GetOutputSizes((int)ImageFormatType.Jpeg) ?? [])
+            .Where(s => (long)s.Width * s.Height <= 13_000_000)
+            .OrderByDescending(s => (long)s.Width * s.Height)
+            .FirstOrDefault();
+
         var thread = new HandlerThread("pine-camera");
         thread.Start();
         var handler = new Handler(thread.Looper!);
         var reader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Yuv420888, 3)!;
         var session = new AndroidCameraSession(activity, sensor, thread, reader);
+        session._stillSize = still is null ? null : (still.Width, still.Height);
         try
         {
             session.Start(manager, id, handler);
@@ -186,23 +197,115 @@ internal sealed class AndroidCameraSession : ICameraSession
 
         _device = opened.Task.Result;
 
-        var configured = new TaskCompletionSource<CameraCaptureSession>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _handler = handler;
         var surface = _reader.Surface ?? throw new InvalidOperationException("no surface");
-#pragma warning disable CA1422, CS0618 // Validate platform compatibility; the list overload is the one that works from API 24 up.
-        _device.CreateCaptureSession([surface], new SessionCallback(configured), handler);
-#pragma warning restore CA1422, CS0618
-        if (!configured.Task.Wait(TimeSpan.FromSeconds(8)))
+
+        // Preview + a full-size JPEG still in one session. Not every device guarantees that combination, so a failure falls back to
+        // the preview alone (stills then come from the viewfinder frame).
+        if (_stillSize is { } size)
         {
-            throw new TimeoutException("camera session timed out");
+            _stillReader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Jpeg, 1);
+            try
+            {
+                _session = ConfigureSession([surface, _stillReader!.Surface!], handler);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or Java.Lang.Exception)
+            {
+                global::Android.Util.Log.Warn("PineCamera", $"preview+still session refused ({ex.GetType().Name}); preview only");
+                _stillReader?.Close();
+                _stillReader = null;
+            }
         }
 
-        _session = configured.Task.Result;
+        _session ??= ConfigureSession([surface], handler);
 
         var request = _device.CreateCaptureRequest(CameraTemplate.Preview)
             ?? throw new InvalidOperationException("no request");
         request.AddTarget(surface);
         request.Set(CaptureRequest.ControlAfMode!, (int)ControlAFMode.ContinuousPicture);
         _session.SetRepeatingRequest(request.Build()!, null, handler);
+    }
+
+    private CameraCaptureSession ConfigureSession(List<Surface> surfaces, Handler handler)
+    {
+        var configured = new TaskCompletionSource<CameraCaptureSession>(TaskCreationOptions.RunContinuationsAsynchronously);
+#pragma warning disable CA1422, CS0618 // Validate platform compatibility; the list overload is the one that works from API 24 up.
+        _device!.CreateCaptureSession(surfaces, new SessionCallback(configured), handler);
+#pragma warning restore CA1422, CS0618
+        if (!configured.Task.Wait(TimeSpan.FromSeconds(8)))
+        {
+            throw new TimeoutException("camera session timed out");
+        }
+
+        return configured.Task.Result;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>One still at the camera's own size, JPEG-compressed by the camera with the orientation set so the picture decodes upright.</remarks>
+    public byte[]? CaptureStill()
+    {
+        if (_disposed || _stillReader is null || _device is null || _session is null || _handler is null)
+        {
+            return null;
+        }
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var received = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var listener = new StillListener(received);
+        _stillReader.SetOnImageAvailableListener(listener, _handler);
+        var request = _device.CreateCaptureRequest(CameraTemplate.StillCapture) ?? throw new InvalidOperationException("no still request");
+        request.AddTarget(_stillReader.Surface!);
+        request.Set(CaptureRequest.ControlAfMode!, (int)ControlAFMode.ContinuousPicture);
+        request.Set(CaptureRequest.JpegOrientation!, UprightRotation());
+        _session.Capture(request.Build()!, null, _handler);
+        if (!received.Task.Wait(TimeSpan.FromSeconds(6)))
+        {
+            global::Android.Util.Log.Warn("PineCamera", "still capture timed out; using the viewfinder frame");
+            return null;
+        }
+
+        var bytes = received.Task.Result;
+        global::Android.Util.Log.Info("PineCamera", $"still bytes={bytes.Length} size={_stillSize?.Width}x{_stillSize?.Height} ms={clock.ElapsedMilliseconds}");
+        return bytes;
+    }
+
+    private int UprightRotation()
+    {
+#pragma warning disable CA1422
+        var display = (_activity.WindowManager?.DefaultDisplay?.Rotation ?? SurfaceOrientation.Rotation0) switch
+        {
+            SurfaceOrientation.Rotation90 => 90,
+            SurfaceOrientation.Rotation180 => 180,
+            SurfaceOrientation.Rotation270 => 270,
+            _ => 0,
+        };
+#pragma warning restore CA1422
+        return (_sensorOrientation - display + 360) % 360;
+    }
+
+    private sealed class StillListener(TaskCompletionSource<byte[]> received) : Java.Lang.Object, ImageReader.IOnImageAvailableListener
+    {
+        public void OnImageAvailable(ImageReader? reader)
+        {
+            var image = reader?.AcquireLatestImage();
+            if (image is null)
+            {
+                return;
+            }
+
+            try
+            {
+                var buffer = image.GetPlanes()![0].Buffer!;
+                var bytes = new byte[buffer.Remaining()];
+                buffer.Get(bytes);
+                received.TrySetResult(bytes);
+            }
+            finally
+            {
+                image.Close();
+                image.Dispose();
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -335,6 +438,7 @@ internal sealed class AndroidCameraSession : ICameraSession
         TryRelease(() => _session?.StopRepeating());
         TryRelease(() => _session?.Close());
         TryRelease(() => _device?.Close());
+        TryRelease(() => _stillReader?.Close());
         TryRelease(() => _reader.Close());
         TryRelease(() => _thread.QuitSafely());
     }

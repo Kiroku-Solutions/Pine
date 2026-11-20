@@ -856,7 +856,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
             using var stream = new MemoryStream(jpeg, writable: false);
-            var quad = await _edges!.DetectEdgesAsync(stream, token).ConfigureAwait(false);
+            var probe = await _edges!.ProbeAsync(stream, token).ConfigureAwait(false);
+            var quad = probe.Quad;
             _analysisInterval = clock.Elapsed * 1.5 > LiveAnalysisInterval ? clock.Elapsed * 1.5 : LiveAnalysisInterval;
             if (token.IsCancellationRequested)
             {
@@ -864,7 +865,15 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             }
 
             var smoothed = quad is null ? null : Smooth(_liveQuad, quad);
-            var steady = smoothed is not null && _liveQuad is not null && quad is not null && MaxCornerMove(_liveQuad, quad) < SteadyMovement;
+            // A frame counts toward the automatic capture only when the outline holds still AND the receipt is nearly as sharp as the
+            // sharpest frame of this session (a moving, blurred frame reads badly and is discarded).
+            if (quad is not null)
+            {
+                _sharpestSeen = Math.Max(_sharpestSeen * 0.98, probe.Sharpness);
+            }
+
+            var sharpEnough = probe.Sharpness >= _sharpestSeen * MinRelativeSharpness;
+            var steady = smoothed is not null && _liveQuad is not null && quad is not null && sharpEnough && MaxCornerMove(_liveQuad, quad) < SteadyMovement;
             _liveQuad = smoothed;
             _steadyCount = steady ? _steadyCount + 1 : 0;
             var capture = _steadyCount >= SteadyFramesToCapture;
@@ -901,6 +910,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private ReceiptQuad? _liveQuad;
     private int _steadyCount;
     private const int SteadyFramesToCapture = 3;
+    private const double MinRelativeSharpness = 0.7;
+    private double _sharpestSeen;
     private const double SteadyMovement = 0.03;
 
     /// <summary>The outline drawn over the viewfinder: smoothed between detections so it does not jitter.</summary>
@@ -940,6 +951,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _error.Clear();
         _liveQuad = null;
         _steadyCount = 0;
+        _sharpestSeen = 0;
         LiveQuad = null;
         _analysisInterval = LiveAnalysisInterval;
         _live.Set("ScanReceipt.Live.Looking");
@@ -1074,9 +1086,32 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private async Task CapturePhotoAsync()
     {
         byte[]? jpeg;
+        ICameraSession? still;
         lock (_cameraLock)
         {
-            jpeg = _latestFrame?.EncodeJpeg();
+            still = _cameraSession;
+            jpeg = null;
+        }
+
+        // The camera's own full-resolution still (about 8 MP) when it offers one; otherwise the last viewfinder frame.
+        if (still is not null)
+        {
+            try
+            {
+                jpeg = await Task.Run(still.CaptureStill);
+            }
+            catch (Exception ex)
+            {
+                _ = UserFacingError.Report(_logger, ex, "camera-still", new UserFacingMessage("ScanReceipt.Failure.CapturedImage"));
+            }
+        }
+
+        if (jpeg is null)
+        {
+            lock (_cameraLock)
+            {
+                jpeg = _latestFrame?.EncodeJpeg();
+            }
         }
 
         CloseCamera();
@@ -1153,6 +1188,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
     private readonly LocalizedMessageSlot? _edgeHint;
     private byte[]? _edgeJpeg;
+    private byte[]? _originalPhoto;
+    private int _edgeTurns;
 
     /// <summary>
     /// The entry for a photo a person picked or the camera captured: through the edge editor when this head has one, otherwise
@@ -1180,7 +1217,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         try
         {
             image.Position = 0;
-            var found = await _edges!.FindEdgesAsync(image);
+            using (var copy = new MemoryStream())
+            {
+                await image.CopyToAsync(copy);
+                _originalPhoto = copy.ToArray();
+            }
+
+            _edgeTurns = 0;
+            var found = await _edges!.FindEdgesAsync(new MemoryStream(_originalPhoto, writable: false));
             await ShowEdgesAsync(found.UprightJpeg, found.Quad);
         }
         catch (Exception ex)
@@ -1220,7 +1264,10 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         Stream? cropped = null;
         try
         {
-            cropped = await _edges!.CropAsync(new MemoryStream(_edgeJpeg, writable: false), EdgeQuad);
+            // The crop comes from the ORIGINAL photo at full resolution, turned as the editor turned its copy.
+            cropped = _originalPhoto is { } original
+                ? await _edges!.CropOriginalAsync(new MemoryStream(original, writable: false), _edgeTurns, EdgeQuad)
+                : await _edges!.CropAsync(new MemoryStream(_edgeJpeg, writable: false), EdgeQuad);
             CloseEdgeEditor();
             IsBusy = false;
             await ProcessReceiptImageAsync(cropped);
@@ -1278,6 +1325,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             using var memory = new MemoryStream();
             await turned.CopyToAsync(memory);
 
+            _edgeTurns = (_edgeTurns + 1) % 4;
+
             // A quarter turn clockwise: the old bottom-left is now top-left, and every point (x, y) is now (1 - y, x).
             static NormalizedPoint T(NormalizedPoint p) => new(1 - p.Y, p.X);
             await ShowEdgesAsync(memory.ToArray(), new ReceiptQuad(T(q.BottomLeft), T(q.TopLeft), T(q.TopRight), T(q.BottomRight)));
@@ -1301,6 +1350,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         EdgeImage = null;
         EdgeQuad = null;
         _edgeJpeg = null;
+        _originalPhoto = null;
+        _edgeTurns = 0;
     }
 
     [RelayCommand(CanExecute = nameof(HasLiveScanner))]

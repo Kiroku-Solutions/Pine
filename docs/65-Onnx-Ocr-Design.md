@@ -232,6 +232,45 @@ Pine.Infrastructure  PaddleOcrEngine : IOcrEngine        (Windows, unchanged beh
 * **YOLO on Android (B2, second step):** the same `yolo-receipt-nano.onnx` as Windows is bundled as an AndroidAsset (13 MB, copied with the OCR models) and run by `YoloReceiptSegmenter` (ONNX Runtime, SkiaSharp letterbox, threads = cores - 2) with the managed `YoloPostProcessor`: best anchor of >= 64 px boxes, confidence >= 0.85, mask = sigmoid(coefficients . prototypes) upsampled bilinear, largest region, maximum-area inscribed quadrilateral, then the same three refusals as `ReceiptDetector` (touches the frame edge, aspect < 1.15, < 10 % of the frame). Chain in `SkiaReceiptDetector`: YOLO, then the classical `ReceiptQuadFinder`, then EXIF + downscale. Capability level stays `OcrOnly` (the head still has no OpenCV crop screen); the detector is an implementation detail behind `IReceiptDetector`. Parity on 80 real photos from `research/data/roboflow`: OpenCV accepted 10, the portable detector accepted 10, and for 9 of those the crop size agreed within 8 % (test `On_real_photos_the_portable_detector_agrees_with_the_opencv_detector`). Per-scan timings: `adb logcat -s PineScan` line `detect source=yolo yolo_infer_ms=...`. Device cost of YOLO per frame is NOT measured yet.
 * **Left:** full-resolution JPEG still capture, continuous preview analysis (auto-capture when a sheet is steady), YOLO crop.
 
+## 14. Image enhancement for OCR, live scanning and photos of screens (Android)
+
+**What Windows does and what Android does now.** After the warp, `ReceiptDetector` makes a sharpened copy for the screen
+(3x3 kernel) and a binarised copy for OCR (grey, Gaussian 5x5, `AdaptiveThreshold` GaussianC, block 21, C 10).
+`ReceiptEnhancer` ports both without OpenCV (separable Gaussian; sharpen is bit-identical to `Filter2D` on 5 research images; the
+managed threshold differs from OpenCV on 0.1 % of pixels, rounding of the blur). The Android detector uses the sharpened
+copy as the display image and sends **the colour crop** to OCR, because the data below say the binarisation hurts.
+
+**Measured, PP-OCRv5 through `OnnxOcrEngine`** (ground-truth word recall, words of 3+ characters, the 20 CORD/SROIE test images;
+`ReceiptEnhancementExperimentTests`). "Screen" is a synthetic photo of a screen made from the same images (sub-pixel stripes,
+a moire beat, glare, gamma 1.4, blur 0.8, noise): it is a stand-in, not a measurement of real screens.
+
+| OCR input | clean | screen |
+|---|---|---|
+| colour as is | 92.2 % | 61.8 % |
+| binarise (Windows) | 78.1 % | 51.2 % |
+| blur 1.5 + binarise | 60.9 % | 32.5 % |
+| flatten (background divided out) | 89.8 % | 66.1 % |
+| blur 1.2 + flatten | 87.8 % | 69.8 % |
+| downscale 0.6 | 90.1 % | 67.9 % |
+| **downscale 0.6 + flatten** | 88.5 % | **73.4 %** |
+
+Decision: clean pictures go as they are; a picture that `ScreenPatternDetector` flags goes through 0.6x downscale + flatten
+(+11.6 points on the synthetic screens, -3.7 on a clean picture wrongly flagged). The detector looks for a sharp peak in the
+row/column power spectrum in the 2-6 px period band (JPEG block bins excluded): clean scans scored 5-340, synthetic screens
+6000-34000, threshold 1500. **Provisional**: no real screen photo was available, and perfectly regular ruled lines also score high
+(the synthetic receipts in the unit tests are flagged). If Windows moves to the ONNX engine, its binarised copy should be
+re-measured the same way (docs/65 section 9, B3). Not done: telling the person "move closer/farther or use the original
+photo" (the detector's verdict is only logged: `PineScan enhance mode=screen screen_score=...`).
+
+**Live scan.** Edge detection runs on a 1024 px copy of the frame about every 0.7 s (adaptive); each probe also returns the
+Laplacian variance of the receipt region at a fixed 256 px width (`PineScan probe ... sharpness=`). A frame counts toward
+the automatic capture only if the outline is steady (corner movement under 3 %) and its sharpness is at least 70 % of the
+sharpest seen in the session. The capture itself is the camera's own JPEG still (largest size up to ~13 MP, Camera2
+`StillCapture` into a second `ImageReader`, JPEG orientation set so it decodes upright); if the device refuses
+preview + still in one session it falls back to the viewfinder frame. The editor works on a 2048 px copy, the crop is taken from
+the original (`CropOriginalAsync`, turns applied) and the pipeline's own cap is 3072 px. **Not verified on a device**: still
+capture, the session combination on this tablet, memory at 8-12 MP, and whether the sharpness gate improves real reads.
+
 ## 11. Recommendation
 
 **Go for Phase B (B1).** The model question — the part most likely to block — is resolved with no quality loss measured against Pine's current engine, in 13 MB, and the algorithm is already ported to portable code. **Do not promise Android scanning from B1 alone**: the OpenCV-based `ReceiptDetector`/`OpenCvImageProcessor` (§2.1) still need a Skia port (B2) or an explicit "OCR on the original image" milestone, and nothing about the tablet has been measured. Re-evaluate after the C# parity run (B1 step 4) and after the first real-device measurement (C5).

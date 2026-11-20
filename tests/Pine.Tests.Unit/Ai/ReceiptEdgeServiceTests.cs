@@ -17,8 +17,14 @@ public sealed class ReceiptEdgeServiceTests(Xunit.Abstractions.ITestOutputHelper
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(new SKColor(60, 60, 60));
+            canvas.Scale(width / 900f, height / 700f); // the same drawing at any size
             using var paper = new SKPaint { Color = new SKColor(240, 240, 240), IsAntialias = true };
             canvas.DrawRect(new SKRect(250, 80, 650, 620), paper); // a tall receipt, 400 x 540
+            using var ink = new SKPaint { Color = new SKColor(150, 150, 150), StrokeWidth = 2 };
+            for (var y = 100f; y < 610; y += 14)
+            {
+                canvas.DrawLine(270, y, 630, y, ink); // print, so there is something to be sharp or blurred
+            }
         }
 
         using var image = SKImage.FromBitmap(bitmap);
@@ -95,6 +101,52 @@ public sealed class ReceiptEdgeServiceTests(Xunit.Abstractions.ITestOutputHelper
         await using var turned = await detector.RotateAsync(new MemoryStream(found.UprightJpeg), clockwise: true);
         using var turnedBitmap = SKBitmap.Decode(turned);
         (turnedBitmap.Width, turnedBitmap.Height).Should().Be((700, 900));
+    }
+
+    [Fact]
+    public async Task The_full_resolution_original_is_cropped_not_the_smaller_editor_copy()
+    {
+        using var detector = new SkiaReceiptDetector();
+        var big = Sheet(2700, 2100); // above the 2048 px editor copy
+        var found = await detector.FindEdgesAsync(new MemoryStream(big));
+        using (var copy = SKBitmap.Decode(found.UprightJpeg))
+        {
+            Math.Max(copy.Width, copy.Height).Should().BeLessThanOrEqualTo(2048);
+        }
+
+        await using var crop = await detector.CropOriginalAsync(new MemoryStream(big), 0, found.Quad!);
+        using var cropped = SKBitmap.Decode(crop);
+        // The sheet is 400 x 540 per 900 x 700 of the picture, so the full-size crop is about 1200 x 1620.
+        cropped.Height.Should().BeGreaterThan(1500);
+
+        // After one clockwise turn in the editor the corners refer to the turned picture.
+        static NormalizedPoint T(NormalizedPoint p) => new(1 - p.Y, p.X);
+        var q = found.Quad!;
+        var turnedQuad = new ReceiptQuad(T(q.BottomLeft), T(q.TopLeft), T(q.TopRight), T(q.BottomRight));
+        await using var turnedCrop = await detector.CropOriginalAsync(new MemoryStream(big), 1, turnedQuad);
+        using var turnedBitmap = SKBitmap.Decode(turnedCrop);
+        turnedBitmap.Width.Should().BeGreaterThan(turnedBitmap.Height); // the same sheet, now lying on its side
+    }
+
+    [Fact]
+    public async Task A_sharp_frame_scores_higher_than_a_blurred_one_and_reports_its_corners()
+    {
+        using var detector = new SkiaReceiptDetector();
+        var sharp = Sheet();
+        using var bitmap = SKBitmap.Decode(sharp);
+        using var blurred = new SKBitmap(bitmap.Width, bitmap.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+        using (var canvas = new SKCanvas(blurred))
+        using (var paint = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(4, 4) })
+        {
+            canvas.DrawBitmap(bitmap, 0, 0, paint);
+        }
+
+        using var blurredImage = SKImage.FromBitmap(blurred);
+        var a = await detector.ProbeAsync(new MemoryStream(sharp));
+        var b = await detector.ProbeAsync(new MemoryStream(blurredImage.Encode(SKEncodedImageFormat.Jpeg, 92).ToArray()));
+
+        a.Quad.Should().NotBeNull();
+        a.Sharpness.Should().BeGreaterThan(b.Sharpness);
     }
 
     [Fact]
