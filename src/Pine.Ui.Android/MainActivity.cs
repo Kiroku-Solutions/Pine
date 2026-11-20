@@ -12,7 +12,12 @@ namespace Pine.Ui.Android;
     Icon = "@mipmap/ic_launcher",
     RoundIcon = "@mipmap/ic_launcher_round",
     MainLauncher = true,
-    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
+    // EVERY change a turn or a window resize can raise, so the activity is never recreated: a recreated activity gave
+    // Avalonia's single MainView a second host and crashed with "already has a visual parent" (seen on the tablet on rotation).
+    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.SmallestScreenSize
+        | ConfigChanges.ScreenLayout | ConfigChanges.UiMode | ConfigChanges.Density | ConfigChanges.KeyboardHidden
+        | ConfigChanges.Keyboard | ConfigChanges.Navigation | ConfigChanges.LayoutDirection | ConfigChanges.FontScale
+        | ConfigChanges.Locale | ConfigChanges.ColorMode)]
 public class MainActivity : AvaloniaMainActivity
 {
     /// <summary>The running activity, for the camera source (permission prompt, display rotation). Null before creation and after destruction.</summary>
