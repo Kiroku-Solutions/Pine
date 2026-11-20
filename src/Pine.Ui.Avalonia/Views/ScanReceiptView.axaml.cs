@@ -37,7 +37,13 @@ public partial class ScanReceiptView : UserControl
             return;
         }
 
+        var first = _stacked is null;
         _stacked = stacked;
+        if (first && !stacked)
+        {
+            return; // the markup already describes the wide layout
+        }
+
         var cols = this.FindControl<Grid>("Cols")!;
         var left = this.FindControl<StackPanel>("LeftPane")!;
         var right = this.FindControl<Grid>("RightPane")!;

@@ -20,9 +20,6 @@ public partial class DashboardView : UserControl
         SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
     }
 
-    /// <summary>Below this width the tiles become one full-width column instead of fixed-size wrapped cards.</summary>
-    private const double StackedWidth = 700;
-
     private bool? _stacked;
 
     private void ApplyLayout(double width)
@@ -32,13 +29,20 @@ public partial class DashboardView : UserControl
             return;
         }
 
-        var stacked = width < (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 900 : StackedWidth);
+        // Touch devices only: the desktop dashboard keeps its wrapped, resizable tiles at any window width.
+        var stacked = (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS()) && width < 900;
         if (_stacked == stacked)
         {
             return;
         }
 
+        var first = _stacked is null;
         _stacked = stacked;
+        if (first && !stacked)
+        {
+            return; // the markup already describes the wide layout
+        }
+
         var items = this.FindControl<ItemsControl>("WidgetsItemsControl")!;
         var source = items.ItemsSource;
         items.ItemsSource = null;

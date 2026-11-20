@@ -69,7 +69,6 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     private ICameraSession? _cameraSession;
     private ICameraFrame? _latestFrame;
     private readonly LocalizedMessageSlot _live;
-    private byte[]? _bestJpeg;
     private int _bestScore = -1;
     private int _analysing;
 
@@ -747,12 +746,21 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// <summary>One analysed frame every ~1.5 s: slow enough for a mid-range tablet, and never two at once.</summary>
     private static readonly TimeSpan LiveAnalysisInterval = TimeSpan.FromMilliseconds(1500);
 
+    /// <summary>Longest side of the picture handed to the analysis. The full frame is kept for the final capture.</summary>
+    private const int AnalysisMaxSide = 1024;
+
+    /// <summary>Current wait between analyses: at least <see cref="LiveAnalysisInterval"/>, and twice the last analysis time so a slow device is never saturated.</summary>
+    private TimeSpan _analysisInterval = LiveAnalysisInterval;
+
     private async Task AnalyseLiveFrameAsync(byte[] jpeg, CancellationToken token)
     {
         try
         {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             using var stream = new MemoryStream(jpeg, writable: false);
             var result = await _mediator.Send(new ScanReceiptCommand(stream), token).ConfigureAwait(false);
+            var took = clock.Elapsed;
+            _analysisInterval = took * 2 > LiveAnalysisInterval ? took * 2 : LiveAnalysisInterval;
             if (token.IsCancellationRequested)
             {
                 return;
@@ -767,7 +775,6 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 if (score >= _bestScore && score > 0)
                 {
                     _bestScore = score;
-                    _bestJpeg = jpeg;
                 }
             }
 
@@ -805,8 +812,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
 
         _error.Clear();
-        _bestJpeg = null;
         _bestScore = -1;
+        _analysisInterval = LiveAnalysisInterval;
         _live.Set("ScanReceipt.Live.Looking");
         IsCameraOpen = true;
         _status.Set("LiveScanner.Status.OpeningCamera");
@@ -863,10 +870,10 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                     continue;
                 }
 
-                if (sinceAnalysis.Elapsed >= LiveAnalysisInterval && Interlocked.CompareExchange(ref _analysing, 1, 0) == 0)
+                if (sinceAnalysis.Elapsed >= _analysisInterval && Interlocked.CompareExchange(ref _analysing, 1, 0) == 0)
                 {
                     sinceAnalysis.Restart();
-                    var jpeg = frame.EncodeJpeg();
+                    var jpeg = frame.EncodeJpeg(AnalysisMaxSide);
                     _ = Task.Run(() => AnalyseLiveFrameAsync(jpeg, token), token);
                 }
 
@@ -897,8 +904,25 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         }
     }
 
-    private static WriteableBitmap ToBitmap(ICameraFrame frame)
+    private readonly WriteableBitmap?[] _feedBuffers = new WriteableBitmap?[2];
+    private int _feedIndex;
+
+    /// <summary>Paints the frame into one of two reusable bitmaps (a fresh 8 MB bitmap per frame was the viewfinder's garbage).</summary>
+    private WriteableBitmap ToBitmap(ICameraFrame frame)
     {
+        _feedIndex ^= 1;
+        var existing = _feedBuffers[_feedIndex];
+        if (existing is not null && existing.PixelSize.Width == frame.Width && existing.PixelSize.Height == frame.Height)
+        {
+            using var reused = existing.Lock();
+            unsafe
+            {
+                frame.CopyBgraTo(new Span<byte>((void*)reused.Address, reused.RowBytes * frame.Height), reused.RowBytes);
+            }
+
+            return existing;
+        }
+
         var bitmap = new WriteableBitmap(
             new global::Avalonia.PixelSize(frame.Width, frame.Height),
             new global::Avalonia.Vector(96, 96),
@@ -911,6 +935,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             frame.CopyBgraTo(new Span<byte>((void*)buffer.Address, buffer.RowBytes * frame.Height), buffer.RowBytes);
         }
 
+        _feedBuffers[_feedIndex] = bitmap;
         return bitmap;
     }
 
@@ -923,7 +948,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         byte[]? jpeg;
         lock (_cameraLock)
         {
-            jpeg = _bestJpeg ?? _latestFrame?.EncodeJpeg();
+            jpeg = _latestFrame?.EncodeJpeg();
         }
 
         CloseCamera();
@@ -961,7 +986,6 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             _cameraSession = null;
             _latestFrame?.Dispose();
             _latestFrame = null;
-            _bestJpeg = null;
             _bestScore = -1;
         }
 
