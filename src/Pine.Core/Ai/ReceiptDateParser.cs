@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -111,7 +112,7 @@ public static class ReceiptDateParser
     /// The preferred reading, flagged when the other reading is equally plausible, or <c>null</c>
     /// when the text holds no plausible date at all.
     /// </returns>
-    public static ReceiptDateCandidate? Parse(string text, CultureInfo? culture = null, DateTimeOffset? now = null)
+    public static ReceiptDateCandidate? Parse(string text, CultureInfo? culture = null, DateTimeOffset? now = null, bool? dayFirst = null)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -121,7 +122,7 @@ public static class ReceiptDateParser
         var match = DatePattern.Match(text);
         if (!match.Success)
         {
-            return null;
+            return ParseWithMonthName(text, now ?? DateTimeOffset.Now);
         }
 
         var token = match.Groups[1].Value;
@@ -134,13 +135,18 @@ public static class ReceiptDateParser
         }
 
         // The machine's region, not the display language: a receipt is printed where the user shops (TD-21).
-        var dayFirstPreferred = PrefersDayFirst(culture ?? Pine.Core.Common.MachineCulture.RegionalFormat);
+        var dayFirstPreferred = dayFirst ?? PrefersDayFirst(culture ?? Pine.Core.Common.MachineCulture.RegionalFormat);
 
         var preferredFormats = dayFirstPreferred ? DayFirstFormats : MonthFirstFormats;
         var otherFormats = dayFirstPreferred ? MonthFirstFormats : DayFirstFormats;
 
         var hasPreferred = TryExact(token, preferredFormats, reference, out var preferred);
+        // A document-level order (another date on the same receipt has a day above 12) settles the question.
         var hasOther = TryExact(token, otherFormats, reference, out var other);
+        if (dayFirst.HasValue && hasPreferred)
+        {
+            hasOther = false;
+        }
 
         if (!hasPreferred && !hasOther)
         {
@@ -159,6 +165,101 @@ public static class ReceiptDateParser
         }
 
         return new ReceiptDateCandidate(preferred, IsAmbiguous: true, Alternative: other);
+    }
+
+    /// <summary>
+    /// Infers the day/month order of the whole receipt from every numeric date on it: "26/02/2019" can only be
+    /// day-first, "02/26/2019" only month-first. Returns null when nothing settles it (or the dates disagree).
+    /// </summary>
+    public static bool? InferDayFirst(IEnumerable<string> texts)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+        bool dayFirst = false, monthFirst = false;
+        foreach (var text in texts)
+        {
+            foreach (Match m in DatePattern.Matches(text ?? string.Empty))
+            {
+                var parts = m.Groups[1].Value.Split('/', '.', '-');
+                if (parts.Length != 3 || parts[0].Length == 4)
+                {
+                    continue;
+                }
+
+                if (int.TryParse(parts[0], out var a) && a is > 12 and <= 31) { dayFirst = true; }
+                if (int.TryParse(parts[1], out var b) && b is > 12 and <= 31) { monthFirst = true; }
+            }
+        }
+
+        return dayFirst == monthFirst ? null : dayFirst;
+    }
+
+    private static readonly Dictionary<string, int> MonthNames = BuildMonthNames();
+
+    private static Dictionary<string, int> BuildMonthNames()
+    {
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        string[][] names =
+        [
+            ["enero", "ene", "january", "jan"], ["febrero", "feb", "february"], ["marzo", "mar", "march"],
+            ["abril", "abr", "april", "apr"], ["mayo", "may"], ["junio", "jun", "june"],
+            ["julio", "jul", "july"], ["agosto", "ago", "august", "aug"],
+            ["septiembre", "setiembre", "sep", "sept", "set", "september"], ["octubre", "oct", "october"],
+            ["noviembre", "nov", "november"], ["diciembre", "dic", "december", "dec"],
+        ];
+        for (var i = 0; i < names.Length; i++)
+        {
+            foreach (var n in names[i]) { map[n] = i + 1; }
+        }
+
+        return map;
+    }
+
+#pragma warning disable SYSLIB1045
+    // "15 de noviembre de 2026", "15-NOV-2026", "15 nov. 2026"
+    private static readonly Regex DayMonthYear = new(
+        @"\b(\d{1,2})(?:\s*(?:del|de)\s*|\s*[-/.\s]\s*)([A-Za-z]{3,10})\.?(?:\s*(?:del|de)\s*|\s*[-/.,\s]\s*)(\d{4})\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    // "noviembre 15, 2026", "Nov 15 2026"
+    private static readonly Regex MonthDayYear = new(
+        @"\b([A-Za-z]{3,10})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+#pragma warning restore SYSLIB1045
+
+    /// <summary>Month-name dates (Spanish and English). They have one reading, so they are never ambiguous.</summary>
+    private static ReceiptDateCandidate? ParseWithMonthName(string text, DateTimeOffset now)
+    {
+        foreach (Match m in DayMonthYear.Matches(text))
+        {
+            if (TryBuild(m.Groups[3].Value, m.Groups[2].Value, m.Groups[1].Value, now, out var d))
+            {
+                return new ReceiptDateCandidate(d, false, null);
+            }
+        }
+
+        foreach (Match m in MonthDayYear.Matches(text))
+        {
+            if (TryBuild(m.Groups[3].Value, m.Groups[1].Value, m.Groups[2].Value, now, out var d))
+            {
+                return new ReceiptDateCandidate(d, false, null);
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryBuild(string year, string month, string day, DateTimeOffset now, out DateTimeOffset result)
+    {
+        result = default;
+        if (!MonthNames.TryGetValue(month.TrimEnd('.'), out var mo)
+            || !int.TryParse(year, out var y) || !int.TryParse(day, out var d)
+            || y <= 2000 || y > now.Year + 1 || d < 1 || d > DateTime.DaysInMonth(y, mo))
+        {
+            return false;
+        }
+
+        result = new DateTimeOffset(new DateTime(y, mo, d, 0, 0, 0, DateTimeKind.Local));
+        return true;
     }
 
     /// <summary>

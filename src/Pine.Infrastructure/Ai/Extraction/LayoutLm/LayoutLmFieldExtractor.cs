@@ -48,9 +48,6 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
     [GeneratedRegex(@"\s{2,}")]
     private static partial Regex MultipleSpaces();
 
-    [GeneratedRegex(@"\d[\d.,]*")]
-    private static partial Regex NumberRegex();
-
     private static readonly Action<ILogger, int, int, int, Exception?> Read = LoggerMessage.Define<int, int, int>(
         LogLevel.Debug,
         new EventId(4102, nameof(Read)),
@@ -94,7 +91,8 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
     public ReceiptExtractionResult ExtractFields(IReadOnlyList<OcrWord> ocrWords, ReadOnlyMemory<byte> encodedImage)
     {
         var prediction = Predict(ocrWords, encodedImage);
-        return ToReceipt(prediction);
+        var lines = ocrWords.Select(w => w.Text).ToList();
+        return ToReceipt(prediction, ReceiptNumberParser.Infer(lines), ReceiptDateParser.InferDayFirst(lines));
     }
 
     /// <summary>Runs the model and decodes the four fields.</summary>
@@ -144,7 +142,8 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
     }
 
     /// <summary>Maps a prediction onto the receipt result: parsed amounts and date, per-field confidence.</summary>
-    public static ReceiptExtractionResult ToReceipt(LayoutLmPrediction prediction)
+    public static ReceiptExtractionResult ToReceipt(
+        LayoutLmPrediction prediction, DecimalSeparator separator = DecimalSeparator.Unknown, bool? dayFirst = null)
     {
         ArgumentNullException.ThrowIfNull(prediction);
         var spans = prediction.Spans;
@@ -163,14 +162,14 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
 
         decimal? total = null;
         var totalConfidence = FieldConfidence.NotFound;
-        if (spans.TryGetValue(LayoutLmField.Total, out var t) && TryParseAmount(t.Text, out var totalValue))
+        if (spans.TryGetValue(LayoutLmField.Total, out var t) && TryParseAmount(t.Text, out var totalValue, separator))
         {
             total = totalValue;
             totalConfidence = Confidence(t.Probability);
         }
 
         decimal? tax = null;
-        if (spans.TryGetValue(LayoutLmField.Tax, out var x) && TryParseAmount(x.Text, out var taxValue))
+        if (spans.TryGetValue(LayoutLmField.Tax, out var x) && TryParseAmount(x.Text, out var taxValue, separator))
         {
             tax = taxValue;
         }
@@ -179,7 +178,7 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
         var dateConfidence = FieldConfidence.NotFound;
         if (spans.TryGetValue(LayoutLmField.Date, out var d))
         {
-            date = ReceiptDateParser.Parse(d.Text);
+            date = ReceiptDateParser.Parse(d.Text, dayFirst: dayFirst);
             if (date is not null)
             {
                 dateConfidence = Confidence(d.Probability);
@@ -198,48 +197,10 @@ public sealed partial class LayoutLmFieldExtractor : IVisualFieldExtractor, IDis
             TaxAmount: tax);
     }
 
-    /// <summary>Parses a printed amount ("$12.50", "1,591,600", "60.000") with the same separator rules the heuristics use.</summary>
-    public static bool TryParseAmount(string text, out decimal amount)
-    {
-        amount = 0m;
-        var match = NumberRegex().Match(text ?? string.Empty);
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        var number = match.Value.TrimEnd('.', ',');
-        if (number.Length == 0)
-        {
-            return false;
-        }
-
-        // "1,591,600" / "1.591.600": one repeated separator with 3-digit groups is thousands, not a decimal point.
-        // The heuristics' normaliser reads the last separator as the decimal one, which is right for "1.234,56" and wrong here.
-        var normalised = IsPureThousands(number)
-            ? number.Replace(".", string.Empty).Replace(",", string.Empty)
-            : HeuristicFieldExtractor.NormalizeDecimalString(number);
-
-        if (!decimal.TryParse(normalised, NumberStyles.Number, CultureInfo.InvariantCulture, out var value) || value <= 0m)
-        {
-            return false;
-        }
-
-        amount = value;
-        return true;
-    }
-
-    private static bool IsPureThousands(string number)
-    {
-        var separator = number.Contains(',', StringComparison.Ordinal) ? ',' : '.';
-        if (number.Contains(',', StringComparison.Ordinal) && number.Contains('.', StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var groups = number.Split(separator);
-        return groups.Length > 2 && groups[0].Length is >= 1 and <= 3 && groups.Skip(1).All(g => g.Length == 3);
-    }
+    /// <summary>Parses a printed amount ("$12.50", "1,591,600", "60.000") with the shared receipt number rules.</summary>
+    /// <param name="separator">The decimal separator inferred from the whole receipt, when known.</param>
+    public static bool TryParseAmount(string text, out decimal amount, DecimalSeparator separator = DecimalSeparator.Unknown) =>
+        ReceiptNumberParser.TryParseAmount(text, separator, out amount);
 
     private static FieldConfidence Confidence(double probability) =>
         new(probability, FieldConfidence.BandFor(probability));

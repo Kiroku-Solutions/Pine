@@ -51,11 +51,17 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     // ===== COMPILED REGEX PATTERNS =====
 
     // Amount pattern: numbers with exactly 2 decimal places (prices)
-    [GeneratedRegex(@"(?:\$|€|£)?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:\$|€|£|EUR|USD)?", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    // The number must stand alone (no digit or separator glued before or after), so "1234,56" is not read as
+    // "234,56" and "12.345" is not read as "12.34"; and a percentage ("12,00%", "6.25%") is a rate, not an amount.
+    [GeneratedRegex(@"(?<![\d.,])(\d+(?:[.,]\d{3})*[.,]\d{2})(?![\d])(?!\s*%)", RegexOptions.Compiled)]
     private static partial Regex AmountRegex();
 
+    // Integer amounts with grouping ("1,591,600", "45.900"); only used once the document's separator is known.
+    [GeneratedRegex(@"(?<![\d.,])(\d{1,3}(?:[.,]\d{3})+)(?![\d])(?![.,]\d)(?!\s*%)", RegexOptions.Compiled)]
+    private static partial Regex GroupedIntegerRegex();
+
     // Number token: isolated number with whitespace boundaries
-    [GeneratedRegex(@"(?<=^|\s)(?:\$|€|£)?\d+(?:[.,]\d+)?(?=$|\s)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"(?<=^|\s)(?:\$|€|£)?\d+(?:[.,]\d+)*(?=$|\s)", RegexOptions.Compiled)]
     private static partial Regex NumberTokenRegex();
 
     // Multiple spaces collapse
@@ -67,8 +73,49 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     private static partial Regex CurrencyRegex();
 
     // Total with number match
-    [GeneratedRegex(@"\bTOTAL\b\s*(?:\$|€|£)?\s*\d+", RegexOptions.Compiled)]
+    [GeneratedRegex(@"\bTOTAL\b\s*[:.]?\s*(?:\$|€|£|S/\.?)?\s*\d+", RegexOptions.Compiled)]
     private static partial Regex TotalWithNumberRegex();
+
+    // Rows that open the totals block of a receipt, in Spanish and English.
+    [GeneratedRegex(@"^\W*(?:SUB\s*-?\s*TOTAL|TOTAL|VALOR TOTAL|IMPORTE|IVA|IGV|TAX|SALES TAX|TARIFA|BASE IMPONIBLE|PROPINA|DESCUENTO|AMOUNT DUE)\b", RegexOptions.Compiled)]
+    private static partial Regex FooterStartRegex();
+
+    // Tax rows (IVA/IGV/ICE/VAT/sales tax) as whole words: "SERVICE", "PRICE" and "TIPO" must not match.
+    [GeneratedRegex(@"\b(?:IVA|IGV|ICE|ITBMS|TAX|VAT|IMPUESTOS?)\b", RegexOptions.Compiled)]
+    private static partial Regex TaxLineRegex();
+
+    // Rows that quote a tax BASE or an untaxed/exempt amount, not the tax itself.
+    [GeneratedRegex(@"\b(?:SUB\s*-?\s*TOTAL|BASE|TARIFA|IMPONIBLE|GRAVADA|EXONERADA|INAFECTA|EXENTO|OBJETO|SIN)\b", RegexOptions.Compiled)]
+    private static partial Regex TaxBaseLineRegex();
+
+    [GeneratedRegex(@"\b(?:PROPINA|SERVICIO|TIP|GRATUITY|SERVICE CHARGE)\b", RegexOptions.Compiled)]
+    private static partial Regex TipLineRegex();
+
+    [GeneratedRegex(@"\b(?:DESCUENTO|DESC|DTO|DISCOUNT)\b", RegexOptions.Compiled)]
+    private static partial Regex DiscountLineRegex();
+
+    [GeneratedRegex(@"^\W*SUB\s*-?\s*TOTAL\b(?!\s*\d+\s*%)", RegexOptions.Compiled)]
+    private static partial Regex SubtotalLineRegex();
+
+    // "SUBTOTAL 12%" / "SUBTOTAL 0%": a base per tax rate (SRI facturas), summed to reach the net subtotal.
+    [GeneratedRegex(@"^\W*SUB\s*-?\s*TOTAL\s*\d+(?:[.,]\d+)?\s*%", RegexOptions.Compiled)]
+    private static partial Regex SubtotalPerRateRegex();
+
+    // Lines that are not a single document-level total.
+    [GeneratedRegex(@"\b(?:SUB\s*-?\s*TOTAL|DESCUENTO|SIN IMPUESTOS?|BASE|TARIFA)\b", RegexOptions.Compiled)]
+    private static partial Regex TotalSkipRegex();
+
+    // Header lines that name an expiry/due date, which is never the receipt date.
+    [GeneratedRegex(@"\b(?:DUE|VENCIMIENTO|VENCE|VTO|EXPIR\w*|CADUC\w*)\b", RegexOptions.Compiled)]
+    private static partial Regex DueDateLineRegex();
+
+    // "NY 12210", "MA 12210", "CP 170150": a postal code, not a quantity or a price.
+    [GeneratedRegex(@"\b(?:[A-Z]{2}|ZIP|CP|C\.P\.)\s+\d{4,6}\b", RegexOptions.Compiled)]
+    private static partial Regex PostalCodeRegex();
+
+    // Document numbering rows: "No. 001-002-0001", "N° 123", "NRO 5".
+    [GeneratedRegex(@"^\W*N(?:O|RO|°|º)\.?\s*[:#]?\s*[\d-]", RegexOptions.Compiled)]
+    private static partial Regex DocumentNumberRowRegex();
 
     // ===== NOISE KEYWORD SETS =====
 
@@ -96,21 +143,26 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // Misc
         "INFORMACION", "ADICIONAL", "SISTEMA", "METODO", "MONEDA",
         "RAZON SOCIAL", "FORMA DE PAGO", "CONSECUTIVO", "NOTA", "OBSERV",
-        "VENCIMIENTO", "EXENTO", "NO OBJETO", "SIN IMPUESTO"
+        "VENCIMIENTO", "EXENTO", "NO OBJETO", "SIN IMPUESTO",
+        // Tax bases and per-rate rows (SRI "TARIFA 0%", Peru "OP. GRAVADA"), tax rows and totals in either language
+        "TARIFA", "BASE IMPONIBLE", "IMPONIBLE", "IGV", "OP. GRAVADA", "OP GRAVADA", "OP. EXONERADA", "OP. INAFECTA",
+        "IMPORTE TOTAL", "TOTAL FACTURA", "TOTAL VENTA", "NETO A PAGAR", "SALES TAX", "TAX", "VAT", "TIP", "GRATUITY",
+        "DISCOUNT", "AMOUNT DUE", "INVOICE", "DUE DATE", "DATE", "P.O.", "BOLETA", "COMPROBANTE", "ENTREGADO"
     };
 
     /// <summary>Keywords that indicate the "TOTAL" line on a receipt.</summary>
     private static readonly string[] TotalKeywords =
     [
         "VALOR TOTAL", "TOTAL A PAGAR", "GRAND TOTAL", "TOTAL GENERAL",
-        "VALOR TOTAL A PAGAR", "TOTAL"
+        "VALOR TOTAL A PAGAR", "IMPORTE TOTAL", "TOTAL FACTURA", "TOTAL VENTA", "TOTAL COMPRA", "NETO A PAGAR",
+        "TOTAL A COBRAR", "AMOUNT DUE", "TOTAL DUE", "TOTAL"
     ];
 
     /// <summary>Keywords that anchor the date field.</summary>
     private static readonly string[] DateKeywords =
     [
         "FECHA/HORA", "FECHA HORA", "FECHA EMISION", "FECHA DE EMISION",
-        "FECHA Y HORA", "FECHA"
+        "FECHA Y HORA", "FECHA", "INVOICE DATE", "DATE"
     ];
 
     /// <summary>Keywords for merchant name filtering.</summary>
@@ -121,6 +173,37 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         "CONTRIBUYENTE", "AUTORIZACION", "CLAVE", "AMBIENTE", "EMISION",
         "NUMERO", "ACCESO", "PRODUCCION"
     ];
+
+    /// <summary>Document-title rows that are only skipped when they START the line (they can sit inside a real name).</summary>
+    private static readonly string[] MerchantPrefixNoise =
+    [
+        "COMPROBANTE", "NOTA DE VENTA", "BOLETA", "DOCUMENTO", "SERIE", "FOLIO", "CAJA", "TELEFONO", "TELF",
+        "CEDULA", "DIRECCION", "SRI", "R.U.C", "INVOICE", "RECEIPT", "BILL TO", "SHIP TO", "DATE", "FECHA"
+    ];
+
+    /// <summary>
+    /// Upper-cases and folds Spanish accents (and ñ) to ASCII, one character for one character, so keyword
+    /// matching works on "DESCRIPCIÓN"/"EMISIÓN" and indexes stay valid in the original text.
+    /// </summary>
+    internal static string FoldUpper(string text)
+    {
+        var chars = text.ToUpperInvariant().ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            chars[i] = chars[i] switch
+            {
+                'Á' or 'À' or 'Ä' or 'Â' => 'A',
+                'É' or 'È' or 'Ë' or 'Ê' => 'E',
+                'Í' or 'Ì' or 'Ï' or 'Î' => 'I',
+                'Ó' or 'Ò' or 'Ö' or 'Ô' => 'O',
+                'Ú' or 'Ù' or 'Ü' or 'Û' => 'U',
+                'Ñ' => 'N',
+                var c => c,
+            };
+        }
+
+        return new string(chars);
+    }
 
     // ===== PUBLIC API =====
 
@@ -135,15 +218,22 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // ===== STEP 2: Detect document zones =====
         var zones = DetectZones(clusteredLines);
 
+        // Document-level reading of numbers and dates: the decimal separator and the day/month order are
+        // properties of the whole receipt, not of each token (see ReceiptNumberParser).
+        var lineTexts = clusteredLines.Select(l => l.Text).ToList();
+        var separator = ReceiptNumberParser.Infer(lineTexts);
+        var dayFirst = ReceiptDateParser.InferDayFirst(lineTexts);
+
         // ===== STEP 3: Extract Line Items FIRST (Needed for math validation) =====
-        var lineItemResults = ExtractLineItems(clusteredLines, zones);
+        var lineItemResults = ExtractLineItems(clusteredLines, zones, separator);
+        lineItemResults = PruneItemsAgainstSubtotal(lineItemResults, clusteredLines, zones, separator);
         var lineItems = lineItemResults.Select(r => r.Item).ToList();
         var lineItemWords = lineItemResults.Select(r => r.Words).ToList();
 
         // ===== STEP 4: Extract fields using spatial anchors and Math Validation =====
         string merchant = ExtractMerchant(clusteredLines, zones, out var merchantWords);
-        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems, out var footerModifiers, out var totalWords);
-        ReceiptDateCandidate? dateCandidate = ExtractDate(clusteredLines, out var dateWords);
+        decimal totalAmount = CrossValidateTotal(clusteredLines, zones, lineItems, separator, out var footerModifiers, out var totalWords);
+        ReceiptDateCandidate? dateCandidate = ExtractDate(clusteredLines, dayFirst, out var dateWords);
         string currency = DetectCurrency(ocrWords);
 
         // ===== STEP 5: Compute per-field confidence from the words each field actually consumed
@@ -182,7 +272,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             Confidence: confidence,
             LineItems: lineItems,
             DateIsAmbiguous: dateCandidate?.IsAmbiguous ?? false,
-            AlternativeDate: dateCandidate?.Alternative
+            AlternativeDate: dateCandidate?.Alternative,
+            TaxAmount: footerModifiers.Taxes > 0m ? footerModifiers.Taxes : null
         );
     }
 
@@ -253,13 +344,17 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     private static DocumentZones DetectZones(List<ClusteredLine> lines)
     {
         // Table header detection: look for lines containing column headers
-        string[] tableHeaderKeywords = ["DESCRIPCION", "PRECIO", "CANT", "CANTIDAD", "UNIT", "P. UNIT", "COD"];
+        string[] tableHeaderKeywords =
+        [
+            "DESCRIPCION", "PRECIO", "CANT", "CANTIDAD", "UNIT", "P. UNIT", "COD",
+            "DESCRIPTION", "QTY", "QUANTITY", "PRICE", "AMOUNT", "DETALLE", "ARTICULO", "IMPORTE", "VALOR",
+        ];
         int tableHeaderIndex = -1;
         int firstTotalIndex = -1;
 
         for (int i = 0; i < lines.Count; i++)
         {
-            string upper = lines[i].Text.ToUpperInvariant();
+            string upper = FoldUpper(lines[i].Text);
 
             // Find the table header row (the row that contains column names)
             if (tableHeaderIndex == -1)
@@ -280,6 +375,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
                 if (upper.Contains("SUBTOTAL", StringComparison.Ordinal) ||
                     upper.Contains("VALOR TOTAL", StringComparison.Ordinal) ||
                     upper.Contains("TOTAL A PAGAR", StringComparison.Ordinal) ||
+                    upper.Contains("IMPORTE TOTAL", StringComparison.Ordinal) ||
+                    FooterStartRegex().IsMatch(upper) ||
                     TotalWithNumberRegex().IsMatch(upper))
                 {
                     firstTotalIndex = i;
@@ -318,13 +415,25 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
             if (line.Text.Contains(':') && line.Text.Any(char.IsDigit) &&
                 !line.Text.Contains("MATRIZ", StringComparison.OrdinalIgnoreCase)) continue;
 
-            string cleanedLine = line.Text;
-            string upper = cleanedLine.ToUpperInvariant();
+            // A row can hold two printed blocks side by side ("East Repair Inc." ... "INVOICE"): a name is the
+            // leftmost block, so cut at the first horizontal gap wider than four text heights.
+            var words = LeftmostBlock(line.Words);
+            string cleanedLine = string.Join(" ", words.Select(w => w.Text));
+            string upper = FoldUpper(cleanedLine);
             bool skipEntireLine = false;
+
+            if (MerchantPrefixNoise.Any(k => upper.StartsWith(k, StringComparison.Ordinal)) ||
+                DocumentNumberRowRegex().IsMatch(upper))
+            {
+                continue;
+            }
 
             foreach (var k in MerchantNoiseKeywords)
             {
-                int idx = upper.IndexOf(k, StringComparison.Ordinal);
+                // Short keywords (TEL, DIR, RUC...) must be whole words: "PASTELERIA" contains TEL.
+                int idx = k.Length <= 4
+                    ? (Regex.Match(upper, $@"{Regex.Escape(k)}", RegexOptions.None, TimeSpan.FromMilliseconds(100)) is { Success: true } wm ? wm.Index : -1)
+                    : upper.IndexOf(k, StringComparison.Ordinal);
                 if (idx == 0)
                 {
                     skipEntireLine = true;
@@ -334,7 +443,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
                 {
                     // Truncate: keep text before the noise keyword
                     cleanedLine = cleanedLine[..idx].Trim();
-                    upper = cleanedLine.ToUpperInvariant();
+                    upper = FoldUpper(cleanedLine);
                 }
             }
 
@@ -344,12 +453,33 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
             if (cleanedLine.Length < 3 || !cleanedLine.Any(char.IsLetter)) continue;
 
+            // A row that is mostly digits is an identifier, not a name.
+            if (cleanedLine.Count(char.IsDigit) > cleanedLine.Count(char.IsLetter)) continue;
+
             merchantWords = line.Words;
             return cleanedLine;
         }
 
         merchantWords = [];
         return "Unknown Merchant";
+    }
+
+    private static List<OcrWord> LeftmostBlock(List<OcrWord> words)
+    {
+        var block = new List<OcrWord> { words[0] };
+        for (var i = 1; i < words.Count; i++)
+        {
+            var previous = words[i - 1].BoundingBox;
+            var gap = words[i].BoundingBox.X - previous.Right;
+            if (gap > Math.Max(previous.Height, words[i].BoundingBox.Height) * 4f)
+            {
+                break;
+            }
+
+            block.Add(words[i]);
+        }
+
+        return block;
     }
 
     // ===== TOTAL AMOUNT EXTRACTION (P0 FIX) =====
@@ -359,7 +489,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// against the sum of line items using the Universal Accounting Equation:
     /// Subtotal - Discounts + Taxes + Tips = Total
     /// </summary>
-    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items, out FooterModifiers modifiers, out List<OcrWord> totalWords)
+    private static decimal CrossValidateTotal(List<ClusteredLine> lines, DocumentZones zones, List<ReceiptLineItem> items, DecimalSeparator separator, out FooterModifiers modifiers, out List<OcrWord> totalWords)
     {
         decimal itemsSum = items.Sum(i => i.TotalPrice);
 
@@ -373,29 +503,28 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         for (int i = zones.FirstTotalIndex; i < lines.Count; i++)
         {
             var line = lines[i];
-            string upper = line.Text.ToUpperInvariant();
+            string upper = FoldUpper(line.Text);
 
-            var matches = AmountRegex().Matches(line.Text);
-            foreach (Match match in matches)
+            foreach (var (val, index) in EnumerateAmounts(line.Text, separator))
             {
-                string numStr = NormalizeDecimalString(match.Groups[1].Value);
-                if (decimal.TryParse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val) && val > 0 && val < 10_000_000)
+                if (val > 0 && val < 10_000_000)
                 {
                     // Approximation of X coordinate for this specific match using interpolation
-                    float xPos = line.MinX + (line.MaxX - line.MinX) * (match.Index / (float)line.Text.Length);
+                    float xPos = line.MinX + (line.MaxX - line.MinX) * (index / (float)line.Text.Length);
                     footerCandidates.Add((val, xPos, line.Y, upper, line.Words));
                 }
             }
 
-            // Extract exact modifiers for the accounting equation
-            decimal? lineAmount = ExtractAmountFromLine(line.Text);
+            // Extract exact modifiers for the accounting equation. Tax BASES (SUBTOTAL 12%, TARIFA 0%,
+            // BASE IMPONIBLE, OP. GRAVADA) are not taxes, and a percentage is a rate, never an amount.
+            decimal? lineAmount = ExtractAmountFromLine(line.Text, separator);
             if (lineAmount.HasValue && lineAmount.Value > 0)
             {
-                if (upper.Contains("DESCUENTO", StringComparison.Ordinal) && !upper.Contains("TOTAL", StringComparison.Ordinal))
+                if (DiscountLineRegex().IsMatch(upper) && !upper.Contains("TOTAL", StringComparison.Ordinal))
                     { sumDiscounts += lineAmount.Value; discountWords.AddRange(line.Words); }
-                else if (upper.Contains("IVA") || upper.Contains("TAX") || upper.Contains("IMPUESTO") || upper.Contains("ICE"))
+                else if (TaxLineRegex().IsMatch(upper) && !TaxBaseLineRegex().IsMatch(upper))
                     { sumTaxes += lineAmount.Value; taxWords.AddRange(line.Words); }
-                else if (upper.Contains("PROPINA") || upper.Contains("SERVICIO") || upper.Contains("TIP"))
+                else if (TipLineRegex().IsMatch(upper))
                     { sumTips += lineAmount.Value; tipWords.AddRange(line.Words); }
             }
         }
@@ -405,9 +534,9 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         List<OcrWord> maxAmountWords = [];
         foreach (var l in lines)
         {
-            foreach (Match m in AmountRegex().Matches(l.Text))
+            foreach (var (v, _) in EnumerateAmounts(l.Text, separator))
             {
-                if (decimal.TryParse(NormalizeDecimalString(m.Groups[1].Value), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal v) && v > maxAmount)
+                if (v > maxAmount)
                 {
                     maxAmount = v;
                     maxAmountWords = l.Words;
@@ -434,10 +563,11 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         // 3. Fallback: Euclidean Distance to "TOTAL" keyword
         var totalKeywordsFound = new List<(float X, float Y)>();
+        List<OcrWord>? lastKeywordLineWords = null;
         for (int i = zones.FirstTotalIndex; i < lines.Count; i++)
         {
-            string upper = lines[i].Text.ToUpperInvariant();
-            if (upper.Contains("SUBTOTAL", StringComparison.Ordinal) || upper.Contains("DESCUENTO", StringComparison.Ordinal))
+            string upper = FoldUpper(lines[i].Text);
+            if (TotalSkipRegex().IsMatch(upper))
                 continue;
 
             foreach (var keyword in TotalKeywords)
@@ -447,12 +577,21 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
                 {
                     float xPos = lines[i].MinX + (lines[i].MaxX - lines[i].MinX) * (idx / (float)lines[i].Text.Length);
                     totalKeywordsFound.Add((xPos, lines[i].Y));
+                    lastKeywordLineWords = lines[i].Words;
                 }
             }
         }
 
         if (totalKeywordsFound.Count > 0 && footerCandidates.Count > 0)
         {
+            // An amount printed on the bottom-most TOTAL row itself beats any nearer-looking amount on the row above.
+            var onKeywordRow = footerCandidates.Where(c => ReferenceEquals(c.Words, lastKeywordLineWords)).OrderByDescending(c => c.X).ToList();
+            if (onKeywordRow.Count > 0)
+            {
+                totalWords = onKeywordRow[0].Words;
+                return onKeywordRow[0].Amount;
+            }
+
             var bestKeyword = totalKeywordsFound.Last(); // Use the bottom-most keyword
             
             var bestCandidate = footerCandidates
@@ -511,25 +650,98 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         return withAdjustments;
     }
 
-    /// <summary>Extracts a decimal amount from a single line of text.</summary>
-    private static decimal? ExtractAmountFromLine(string lineText)
+    /// <summary>
+    /// Every amount printed on a line, in reading order: x,yy and x.yy amounts always, and grouped integers
+    /// (1,591,600 or 45.900) once the document separator says the group mark is not the decimal point.
+    /// </summary>
+    private static List<(decimal Value, int Index)> EnumerateAmounts(string text, DecimalSeparator separator)
     {
-        var matches = AmountRegex().Matches(lineText);
-        decimal? lastAmount = null;
-
-        foreach (Match match in matches)
+        var found = new List<(decimal, int)>();
+        foreach (Match m in AmountRegex().Matches(text))
         {
-            string numStr = match.Groups[1].Value;
-            numStr = NormalizeDecimalString(numStr);
+            if (ReceiptNumberParser.TryParseToken(m.Groups[1].Value, separator, out var v))
+                found.Add((v, m.Index));
+        }
 
-            if (decimal.TryParse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val)
-                && val > 0 && val < 10_000_000)
+        if (separator != DecimalSeparator.Unknown)
+        {
+            foreach (Match m in GroupedIntegerRegex().Matches(text))
             {
-                lastAmount = val; // Take the LAST amount on the line (rightmost = total column)
+                if (ReceiptNumberParser.HasThousandsGrouping(m.Groups[1].Value, separator)
+                    && ReceiptNumberParser.TryParseToken(m.Groups[1].Value, separator, out var v))
+                    found.Add((v, m.Index));
             }
         }
 
+        found.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+        return found;
+    }
+
+    /// <summary>Extracts a decimal amount from a single line of text (the rightmost one).</summary>
+    private static decimal? ExtractAmountFromLine(string lineText, DecimalSeparator separator)
+    {
+        decimal? lastAmount = null;
+        foreach (var (val, _) in EnumerateAmounts(lineText, separator))
+        {
+            if (val > 0 && val < 10_000_000)
+                lastAmount = val; // Take the LAST amount on the line (rightmost = total column)
+        }
+
         return lastAmount;
+    }
+
+    /// <summary>
+    /// Drops items that the arithmetic of the receipt rules out. When the printed subtotal (or the sum of the
+    /// per-rate SUBTOTAL 12% + SUBTOTAL 0% bases) disagrees with the sum of the items, and removing one or
+    /// two items makes them agree, those items were misread rows (an address, a code) and are discarded.
+    /// </summary>
+    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> PruneItemsAgainstSubtotal(
+        List<(ReceiptLineItem Item, List<OcrWord> Words)> items, List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator)
+    {
+        if (items.Count < 2)
+            return items;
+
+        var targets = new List<decimal>();
+        decimal perRate = 0m;
+        for (int i = zones.TableHeaderIndex + 1; i < lines.Count; i++)
+        {
+            var upper = FoldUpper(lines[i].Text);
+            var amount = ExtractAmountFromLine(lines[i].Text, separator);
+            if (amount is null)
+                continue;
+            if (SubtotalPerRateRegex().IsMatch(upper))
+                perRate += amount.Value;
+            else if (SubtotalLineRegex().IsMatch(upper))
+                targets.Add(amount.Value);
+        }
+
+        if (perRate > 0)
+            targets.Add(perRate);
+        if (targets.Count == 0)
+            return items;
+
+        static decimal Sum(IEnumerable<(ReceiptLineItem Item, List<OcrWord> Words)> xs) => xs.Sum(x => x.Item.TotalPrice);
+        bool Matches(decimal sum) => targets.Any(t => Math.Abs(t - sum) <= 0.02m);
+
+        if (Matches(Sum(items)))
+            return items;
+
+        for (int a = 0; a < items.Count; a++)
+        {
+            var without = items.Where((_, k) => k != a).ToList();
+            if (Matches(Sum(without)))
+                return without;
+        }
+
+        for (int a = 0; a < items.Count; a++)
+            for (int b = a + 1; b < items.Count; b++)
+            {
+                var without = items.Where((_, k) => k != a && k != b).ToList();
+                if (without.Count > 0 && Matches(Sum(without)))
+                    return without;
+            }
+
+        return items;
     }
 
     // ===== DATE EXTRACTION (P1 FIX) =====
@@ -539,16 +751,16 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// 1. Look for lines containing "FECHA" and extract the date from that line
     /// 2. Fallback: find the first date-like pattern anywhere
     /// </summary>
-    private static ReceiptDateCandidate? ExtractDate(List<ClusteredLine> lines, out List<OcrWord> dateWords)
+    private static ReceiptDateCandidate? ExtractDate(List<ClusteredLine> lines, bool? dayFirst, out List<OcrWord> dateWords)
     {
         // Strategy 1: Keyword-anchored — find "FECHA" and extract date from same line
         foreach (var keyword in DateKeywords)
         {
             foreach (var line in lines)
             {
-                if (line.Text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                if (FoldUpper(line.Text).Contains(keyword, StringComparison.Ordinal) && !DueDateLineRegex().IsMatch(FoldUpper(line.Text)))
                 {
-                    var dateResult = ReceiptDateParser.Parse(line.Text);
+                    var dateResult = ReceiptDateParser.Parse(line.Text, dayFirst: dayFirst);
                     if (dateResult.HasValue)
                     {
                         dateWords = line.Words;
@@ -561,7 +773,8 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         // Strategy 2: Find any date pattern in the document
         foreach (var line in lines)
         {
-            var dateResult = ReceiptDateParser.Parse(line.Text);
+            if (DueDateLineRegex().IsMatch(FoldUpper(line.Text))) continue;
+            var dateResult = ReceiptDateParser.Parse(line.Text, dayFirst: dayFirst);
             if (dateResult.HasValue)
             {
                 dateWords = line.Words;
@@ -610,7 +823,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Extracts line items ONLY from the Product Zone (between table header and first total).
     /// This eliminates false positives from header/footer metadata.
     /// </summary>
-    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> ExtractLineItems(List<ClusteredLine> lines, DocumentZones zones)
+    private static List<(ReceiptLineItem Item, List<OcrWord> Words)> ExtractLineItems(List<ClusteredLine> lines, DocumentZones zones, DecimalSeparator separator)
     {
         var lineItems = new List<(ReceiptLineItem Item, List<OcrWord> Words)>();
 
@@ -620,7 +833,7 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
 
         for (int i = start; i < end && i < lines.Count; i++)
         {
-            var item = TryParseLineItem(lines[i].Text);
+            var item = TryParseLineItem(lines[i].Text, separator);
             if (item != null)
             {
                 lineItems.Add((item, lines[i].Words));
@@ -634,12 +847,16 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     /// Parses a single line into a ReceiptLineItem using format-agnostic heuristics.
     /// P2 Fix: Uses word-boundary matching for noise keywords.
     /// </summary>
-    private static ReceiptLineItem? TryParseLineItem(string lineText)
+    private static ReceiptLineItem? TryParseLineItem(string lineText, DecimalSeparator separator)
     {
         if (string.IsNullOrWhiteSpace(lineText) || lineText.Length < 4)
             return null;
 
-        string upper = lineText.ToUpperInvariant();
+        string upper = FoldUpper(lineText);
+
+        // A row opening with a totals word, or carrying a postal code, is never a product.
+        if (FooterStartRegex().IsMatch(upper) || PostalCodeRegex().IsMatch(upper))
+            return null;
 
         // P2 Fix: Check noise keywords with word-boundary awareness
         foreach (var keyword in LineItemNoiseKeywords)
@@ -668,9 +885,12 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
         foreach (Match m in numberMatches)
         {
             string numStr = m.Value.Replace("$", "").Replace("€", "").Replace("£", "").Trim();
-            numStr = NormalizeDecimalString(numStr);
 
-            if (decimal.TryParse(numStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val) && val >= 0)
+            // Five or more bare digits (12210, 1790016919001) are identifiers (ZIP, RUC, invoice no.), not prices.
+            if (numStr.Length >= 5 && numStr.All(char.IsDigit))
+                continue;
+
+            if (ReceiptNumberParser.TryParseToken(numStr, separator, out decimal val) && val >= 0)
             {
                 numbers.Add((val, m.Index, m.Index + m.Length));
             }
@@ -770,37 +990,6 @@ public sealed partial class HeuristicFieldExtractor : INlpFieldExtractor
     }
 
     // ===== HELPERS =====
-
-    /// <summary>
-    /// Normalizes a decimal string by handling thousand separators vs decimal separators.
-    /// "1.000" → "1000" (thousand separator), "40.25" → "40.25" (decimal)
-    /// </summary>
-    internal static string NormalizeDecimalString(string numStr)
-    {
-        // First unify: replace comma with dot
-        numStr = numStr.Replace(",", ".");
-
-        // If there's exactly one dot and exactly 3 digits after it, it's a thousand separator
-        if (numStr.Count(c => c == '.') == 1)
-        {
-            int dotIdx = numStr.IndexOf('.');
-            int afterDot = numStr.Length - dotIdx - 1;
-            if (afterDot == 3)
-            {
-                numStr = numStr.Replace(".", "");
-            }
-        }
-        // If there are multiple dots, the last one is decimal and the rest are thousands
-        else if (numStr.Count(c => c == '.') > 1)
-        {
-            int lastDot = numStr.LastIndexOf('.');
-            string integerPart = numStr[..lastDot].Replace(".", "");
-            string decimalPart = numStr[(lastDot + 1)..];
-            numStr = integerPart + "." + decimalPart;
-        }
-
-        return numStr;
-    }
 
     /// <summary>
     /// Reads the per-word OCR confidences for the words that produced one field, clamped to the
