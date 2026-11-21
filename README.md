@@ -136,3 +136,7 @@ respective `dotnet` workloads installed.
 
 ## Contributing
 Please see our [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details on how to help out.
+
+## Research model attribution
+
+Pine's optional LayoutLMv3 receipt extractor uses weights adapted from Microsoft's LayoutLMv3 Base for academic research. See the [LayoutLMv3 attribution and license notice](research/docs/LAYOUTLMV3-NOTICE.md). The adapted weights are separate from the repository and Android APK.

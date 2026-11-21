@@ -94,10 +94,7 @@ FN = GT presente no acertado. Match: merchant sin mayusculas/puntuacion/espacios
 
 - CORD-v2: CC BY 4.0 (atribucion a NAVER CLOVA).
 - SROIE: datos de la competicion ICDAR 2019; el espejo HF declara MIT, pero la licencia de origen no esta clara -> revisar.
-- **LayoutLMv3 (pesos de Microsoft): CC BY-NC-SA 4.0** (no comercial + share-alike). Pine es **GPLv3**. NC es incompatible con las
-  libertades de GPL (no se puede restringir uso comercial) y SA no equivale a GPL. Resolver ANTES de integrar o distribuir pesos
-  (alternativas: modelo con licencia permisiva, entrenar desde cero sobre arquitectura permisiva, o pedir licencia).
-  Entrenar/evaluar para investigacion interna no es redistribucion, pero tampoco lo cubre este documento: no es asesoria legal.
+- **LayoutLMv3:** los pesos originales y su adaptación para Pine están bajo **CC BY-NC-SA 4.0**. Pine usa el modelo en investigación académica y mantiene los pesos fuera del repositorio y del APK. El [aviso de atribución y licencia](docs/LAYOUTLMV3-NOTICE.md) documenta el crédito a Microsoft y a los autores, así como los cambios hechos por Pine. Consulta [cómo compartir el modelo](docs/risks_and_deviations.md#sharing-the-model) para preparar una copia de investigación.
 
 ## Estado Fase 1
 

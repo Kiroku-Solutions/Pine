@@ -32,7 +32,7 @@ f3d92f0f721439c493fed4264ed92238a9ccf3aa5d18cc3da67b3b6b8036c3c3  tokenizer.json
 End-to-end value-level F1 on PaddleOCR output through Pine's C# extractor: `reports/phase5_report.md`.
 
 ## Licence and attribution
-Fine-tuned from `microsoft/layoutlmv3-base` (Huang et al., 2022, CC BY-NC-SA 4.0). These weights and every ONNX/quantized variant are distributed under **CC BY-NC-SA 4.0**: research / non-commercial use only, attribution required, share-alike. Fine-tuned and quantized by the Pine project; not endorsed by Microsoft. Training-data licences are unverified (see `risks_and_deviations.md`).
+See the [LayoutLMv3 attribution and license notice](LAYOUTLMV3-NOTICE.md) for the original model, authors, and Pine's modifications. Include a copy of that notice alongside the weights whenever they are shared under CC BY-NC-SA 4.0. The Pine repository and APK exclude the adapted weights. Training-data licence review is pending before public distribution. See [risks and deviations](risks_and_deviations.md#open-risks).
 
 ## Intended use and limits
 Extracting four fields from photographed/scanned receipts, mostly English/Latin script. Not evaluated on Spanish receipts, handwriting, or multi-receipt images. WildReceipt MERCHANT (0.77) and TOTAL (0.73) show the model is the limiting factor, not the quantization.

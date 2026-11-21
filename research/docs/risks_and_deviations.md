@@ -22,4 +22,4 @@ Status: 2026-11-19. Nothing here is resolved by this document; it only records t
 9. **Stray file** `J:\tmp_dry.zip` (5.9 MB) outside the repo, created by a path typo.
 
 ## Sharing the model
-The `.onnx` files are deliberately **not** in git (`research/.gitignore`: `colab/onnx/`, `models/`). To share or swap a model, give the recipient the three files below and verify the checksums (`docs/model_card.md`). Share only under CC BY-NC-SA 4.0, for research use.
+Pine keeps the experimental `.onnx` files outside git (`research/.gitignore`: `colab/onnx/`, `models/`). For a noncommercial research handoff, include the ONNX file, its matching `tokenizer.json`, and the [LayoutLMv3 attribution and license notice](LAYOUTLMV3-NOTICE.md). Verify the model and tokenizer against the [model card checksums](model_card.md#checksums-sha-256). Public distribution of the weights is pending review of the training-data licenses.
