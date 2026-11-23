@@ -7,18 +7,26 @@ transaction and its receipt in an encrypted local vault.
 On Android, Pine uses Camera2 to capture the receipt, Skia to straighten it, and ONNX Runtime
 to run the models. [Android project](src/Pine.Ui.Android/Pine.Ui.Android.csproj)
 
+## Setup
+
+Install Git LFS and the .NET SDK version in [global.json](global.json). From the repository root
+in PowerShell, download the model files:
+
+```powershell
+git lfs install
+git lfs pull
+```
+
 ## Run on Android
 
-Use the .NET SDK version in [global.json](global.json), Git LFS, a JDK, and the Android SDK with
-Platform-Tools (`adb`). Connect an ARM64 Android device with USB debugging enabled.
+Install a JDK and the Android SDK with Platform-Tools (`adb`). Connect an ARM64 Android device
+with USB debugging enabled.
 
 ### 1. Build and install
 
 From the repository root in PowerShell:
 
 ```powershell
-git lfs install
-git lfs pull
 dotnet workload restore src/Pine.Ui.Android/Pine.Ui.Android.csproj
 dotnet publish src/Pine.Ui.Android/Pine.Ui.Android.csproj -c Release -r android-arm64
 adb devices
@@ -42,6 +50,31 @@ Create or unlock a vault and select an account. Open **Scan Receipt**, take a ph
 a saved receipt, review the extracted fields, and save the transaction. The scan runs in
 airplane mode after setup. During a USB test, `adb logcat -s PineScan` shows `layoutlm=ok`
 when LayoutLMv3 contributes to the scan.
+
+## Run on Windows
+
+From the repository root in PowerShell, select ONNX OCR and the local LayoutLMv3 checkpoint, then
+launch the [Windows app](src/Pine.Ui.Windows/Pine.Ui.Windows.csproj):
+
+```powershell
+$env:PINE_Pine__Ai__OcrBackend = 'Onnx'
+$env:PINE_Pine__Ai__LayoutLmModelPath = (Resolve-Path 'research/checkpoints/layoutlmv3/model.onnx').Path
+$env:PINE_Pine__Ai__LayoutLmTokenizerPath = (Resolve-Path 'research/checkpoints/layoutlmv3/tokenizer.json').Path
+dotnet run --project src/Pine.Ui.Windows/Pine.Ui.Windows.csproj
+```
+
+## Run tests
+
+From the repository root in PowerShell, point the model-dependent tests to the checkpoint and
+run the [unit](tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj) and
+[integration](tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj) suites:
+
+```powershell
+$env:PINE_LAYOUTLM_MODEL = (Resolve-Path 'research/checkpoints/layoutlmv3/model.onnx').Path
+$env:PINE_LAYOUTLM_TOKENIZER = (Resolve-Path 'research/checkpoints/layoutlmv3/tokenizer.json').Path
+dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
+dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
+```
 
 ## Model files and credits
 
