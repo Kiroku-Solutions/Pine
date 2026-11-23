@@ -42,6 +42,13 @@ public interface ICameraSession : IDisposable
     /// </summary>
     /// <returns>The frame, owned by the caller, or <see langword="null"/> when none was available yet.</returns>
     ICameraFrame? ReadFrame();
+
+    /// <summary>
+    /// Takes a full-resolution still (the camera's own JPEG, EXIF-oriented) if the camera offers one. Blocking; call it off the UI
+    /// thread.
+    /// </summary>
+    /// <returns>The encoded still, or <see langword="null"/> when there is no still capture (use a frame instead).</returns>
+    byte[]? CaptureStill() => null;
 }
 
 /// <summary>
@@ -65,6 +72,14 @@ public interface ICameraFrame : IDisposable
     /// <summary>Encodes the frame as a JPEG, for detection.</summary>
     /// <returns>The encoded bytes.</returns>
     byte[] EncodeJpeg();
+
+    /// <summary>
+    /// Encodes the frame as a JPEG whose longer side is at most <paramref name="maxSide"/>, for a cheap analysis pass.
+    /// The default ignores the limit; a camera that can shrink while encoding overrides it.
+    /// </summary>
+    /// <param name="maxSide">Longest side in pixels.</param>
+    /// <returns>The encoded bytes.</returns>
+    byte[] EncodeJpeg(int maxSide) => EncodeJpeg();
 
     /// <summary>Encodes the frame as a PNG, lossless, for the crop and OCR screens.</summary>
     /// <returns>The encoded bytes.</returns>

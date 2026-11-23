@@ -169,17 +169,146 @@ under the user's control.
 The receipt pipeline contains roughly twenty numeric constants that are **not** configuration:
 the detection confidence and area/aspect cutoffs, letterbox size and anchor count in
 `ReceiptDetector`; the geometry and OCR kernel parameters in `OpenCvImageProcessor`; and the
-zone-detection ratios in `HeuristicFieldExtractor`. They stay literals, on purpose.
+zone-detection ratios in `HeuristicFieldExtractor`; and, for the managed ONNX OCR backend, the detector and
+recogniser constants in `OnnxOcrEngine`, `DbPostProcessor` and `SkiaImagePreprocessor` (section 7.3), and the Skia crop in `SkiaReceiptDetector`, `ReceiptQuadFinder`, `YoloPostProcessor`, `ReceiptEnhancer` and `ScreenPatternDetector` (section 7.4; measurements in docs/65 section 14). They stay literals, on purpose.
 
 - They are the algorithm, tuned together with the shipped model version. Changing one in isolation
   changes what counts as a receipt.
 - They are not in `PineOptions`. Exposing them would let a user break detection and report the
   result as a bug. Limits a user can reasonably own (paths, sizes, timeouts, thresholds that do not
   encode model behaviour) are options; these are not.
-- Each of the three classes carries a `TUNED-CONSTANTS BOUNDARY (TD-118)` remark pointing back to
+- Each of the classes above carries a `TUNED-CONSTANTS BOUNDARY (TD-118)` remark pointing back to
   this section, and `TunedConstantsBoundaryTests` fails if a marker or this section disappears.
 - A change to any of these constants requires re-evaluating the whole pipeline against the
   fixtures, in the same change that updates the model or its version.
+
+### 7.2 Optional layout model (LayoutLMv3 field extraction)
+
+`LayoutLmFieldExtractor` (Pine.Infrastructure, `Ai/Extraction/LayoutLm/`) runs a LayoutLMv3
+token-classification model through ONNX Runtime, offline, and reads Merchant, Date, Total and Tax
+from the OCR lines **and** the page image. `INlpFieldExtractor` takes no image, so the model has its
+own port, `IVisualFieldExtractor` (Pine.Core); `DefaultLocalAiProvider` is the one place that holds both
+the words and the image, runs the heuristics first, and overlays the fields the model found. A missing
+model, a failed load or an inference exception logs a warning (no receipt text) and returns the
+heuristic result; after three consecutive failures the model is left alone for the process. Tax is
+reported in `ReceiptExtractionResult.TaxAmount` (the heuristics keep emitting tax as an adjustment line).
+
+- **Not shipped.** The int8 model is about 128 MB and its licence (LayoutLMv3: CC BY-NC-SA) is
+  unresolved: the weights are CC BY-NC-SA 4.0 (research use) and are never bundled or committed.
+  It is configured by path, with no code change, through `Pine:Ai:LayoutLmModelPath` and optionally
+  `Pine:Ai:LayoutLmTokenizerPath` (`PineAiOptions`; default null = off). The composition root copies them
+  into `PineInfrastructureOptions.LayoutLm`. When the tokenizer path is omitted, `tokenizer.json` must sit
+  beside the model file. Without a path the pipeline is unchanged; a path to a missing file is not a startup
+  error (warning without the path or receipt text, heuristic result). Only the Windows head has receipt vision.
+- **Trying it.** Put the keys in the user's `appsettings.json` (see `packaging/appsettings.example.json`) or set
+  `PINE_Pine__Ai__LayoutLmModelPath` to the absolute model path, restart Pine and scan a receipt.
+- **Interchangeable.** Inputs `input_ids`, `bbox` (0..1000), `attention_mask` (int64, dynamic length) and
+  `pixel_values` (float32 [1,3,224,224]); output logits [1,S,9]; labels O, B/I-MERCHANT, B/I-DATE,
+  B/I-TOTAL, B/I-TAX. Windows of 512 tokens with stride 128; a word takes the label of its first sub-token.
+- **Parity.** The tokenizer is a byte-level BPE read from `tokenizer.json`; unit tests compare its ids and
+  windows with Hugging Face `tokenizers`, and the image resize with PIL (within 1 grey level). The window,
+  stride and image size are literals under the same boundary as 7.1 (`TUNED-CONSTANTS BOUNDARY (TD-118)`).
+- **Tests.** The integration tests use `PINE_LAYOUTLM_MODEL` / `PINE_LAYOUTLM_TOKENIZER` or the files under
+  `research/`, and are reported as skipped when they are absent.
+
+### 7.2.1 Spanish receipts, number formats and the limits of the layout model
+
+- **One number reader.** Every amount is parsed by `Pine.Core.Ai.ReceiptNumberParser` (heuristics, LayoutLM
+  decoding, tests). The decimal separator is inferred once per receipt from all its numbers
+  (`ReceiptNumberParser.Infer`) and only then used to read ambiguous tokens: with `2,08`-style amounts a
+  `1,000`/`2,500` is a three-decimal quantity, with `1,591,600` or `60.000` and no other evidence it is a
+  thousands group. Percentages (`12,00%`, `6.25%`) are rates, never amounts; five or more bare digits in an
+  item row (ZIP, RUC, invoice number) are identifiers, not prices.
+- **Day/month order per receipt.** `ReceiptDateParser.InferDayFirst` reads every numeric date on the receipt:
+  `26/02/2019` proves `11/02/2019` is 11 February, so the date is no longer offered as ambiguous.
+  Month-name dates (`20 de noviembre de 2026`, `18-NOV-2026`, `Nov 15, 2026`) parse in Spanish and English.
+- **Spanish and English keywords.** The heuristics fold accents (`DESCRIPCIÓN`, `EMISIÓN`) and recognise
+  TOTAL / VALOR TOTAL / TOTAL A PAGAR / IMPORTE TOTAL, SUBTOTAL, IVA / IGV / ICE, PROPINA / SERVICIO,
+  DESCUENTO, plus tax BASES (`SUBTOTAL 12%`, `TARIFA 0%`, `BASE IMPONIBLE`, `OP. GRAVADA`) that are neither
+  taxes nor items. Item rows are cross-checked against the printed subtotal; one or two rows whose removal
+  makes the sums agree are discarded.
+- **What is NOT known.** The LayoutLMv3 model was fine-tuned on WildReceipt, CORD and SROIE (English,
+  Indonesian, Malaysian receipts). Its accuracy on Spanish text is **unmeasured**: no labelled Spanish photo
+  exists in the repository, and `LayoutLmResultMerger.Overlay` lets the model override the heuristics whenever it
+  finds a field. The OCR recogniser (`dict_latin_v5`) does cover accents and ñ. The regression corpus under
+  `tests/Pine.Tests.Unit/Ai/SpanishReceipts` is hand-written text (no OCR, no model), so it guards the text
+  stage only. Recommended next step, not started: label a few hundred real Spanish receipts and fine-tune or
+  at least evaluate the model on them before trusting the overlay.
+
+### 7.2.2 Tax model of a scanned receipt
+
+- **A tax is never a Product.** `ReceiptExtractionResult.TaxAmount` is the sum of every tax row printed on the
+  receipt (IVA, IGV, ITBMS, ISV, VAT, GST, HST, PST, QST, PB1/PPN, sales/state tax, `TAX 1`/`TAX 2`, ICE when it
+  stands alone as a row, tolerant of OCR such as `T4X` and `I.V.A.`). When the tax is charged on top of the
+  prices, each row also becomes its own `LineItemKind.Tax` line, labelled as printed (`Sales Tax 6.25%`), so the
+  breakdown survives. A "total tax" row that repeats the sum of the others is not counted twice.
+- **Tax already inside the prices** (`IVA INCLUIDO`, `GST (Included)`, or items that already add up to the printed
+  total) is reported in `TaxAmount` only; adding it as a line would push the lines past the total.
+- **Not taxes:** tax bases and exempt rows (`SUBTOTAL 12%`, `TARIFA 0%`, `BASE IMPONIBLE`, `OP. GRAVADA`, `EXENTO`),
+  totals "with tax" (`Total with GST`), a bare rate without an amount (`IVA 15%`), and `ICE CREAM`.
+- **Other kinds.** Tip/service charge (`PROPINA`, `SERVICIO 10%`, `Service Charge`), discount, rounding
+  (`ROUNDING`, `REDONDEO`, signed) have their own `LineItemKind`; cash, change, card and net/final-total rows are
+  not lines at all. Tax-code flags printed after a price (`3.99 F`) are dropped from the description.
+  Delivery, shipping and freight (`ENVIO`, `DOMICILIO`, `DELIVERY`, `SHIPPING`, `FLETE`) are `LineItemKind.Delivery`:
+  not a product, not in the items total (stored by name, no migration).
+- **Arithmetic backstop.** If no keyword caught a tax, a product row equal to total minus the printed subtotal, or
+  equal to the rate in its own text times the other items, is reclassified as tax. Items are also checked against
+  the printed subtotal (or the per-rate `SUBTOTAL 12%` + `SUBTOTAL 0%` bases) and misread rows are dropped.
+- **UI.** The scan screen shows `ProductsTotal` (products only) and `AdjustmentsTotal` (tax, tip, discount, rounding)
+  separately; the reconciliation difference is still total minus every line, i.e.
+  products + tax + tip + delivery + rounding - discount. The form has a **Tax total** field filled from `TaxAmount`
+  (also when the tax is included in the prices, flagged "included" and never added). The domain has no tax column,
+  so the field is persisted as the transaction's single Tax line: while the tax is on top of the prices the field
+  and that line move together; included tax is shown but not saved.
+- **One tax, two readers.** After `LayoutLmResultMerger.Overlay` the `TaxAmount` and the Tax lines agree. If the
+  layout model and the heuristics read different taxes, the reading that reconciles with the other lines and the
+  total wins; the other is `TaxAlternative` and the form shows it as a warning.
+- **Measured** (research OCR set, 164 documents, TAX field F1): heuristics 0.05 -> 0.81, LayoutLM 0.91,
+  hybrid 0.94. Adjustment-like rows (cash, change, subtotal, GST, rounding, service) read as products in 54 of 164
+  documents (78 of 337 items) before, 1 of 164 after.
+
+### 7.3 OCR backend (`IOcrEngine`, docs/65)
+
+`DefaultLocalAiProvider` receives its OCR engine by constructor (`IOcrEngine`, Pine.Core) instead of constructing
+one. Two implementations exist and the backend is chosen by configuration, `Pine:Ai:OcrBackend` (`PineAiOptions`,
+composition root -> `PineInfrastructureOptions.OcrBackend`):
+
+- `Paddle` (default): `PaddleOcrEngine`, Sdcb.PaddleOCR on Paddle Inference + OpenCV. Windows only.
+- `Onnx`: `OnnxOcrEngine`, the same PP-OCRv5 weights as two ONNX models (`det.onnx`, `rec.onnx`, plus
+  `dict_latin_v5.txt`, shipped in `Assets/Ai/ocr/`) run by ONNX Runtime, with `SkiaImagePreprocessor` (decode, resize,
+  deskew), `DbPostProcessor` (probability map to boxes) and `CtcDecoder` as pure managed code. `Pine:Ai:OcrModelDirectory`
+  overrides the model folder. These three classes and the engine carry the `TUNED-CONSTANTS BOUNDARY (TD-118)` remark:
+  limit side 960, binarisation 0.3, box score 0.7, unclip 1.5, recogniser height 48 and widths 320..3200 are literals.
+- Parity (docs/65 section 5 and 9): on the 20 test images the C# engine reproduces the Python reference exactly
+  (565/565 lines, 0.00 % CER); against Paddle Inference it matches 99.3 % of lines. The golden fixtures are generated by
+  `research/scripts/gen_onnx_ocr_csharp_fixtures.py`; the research-data parity run is skipped when `research/data` is absent.
+- The default stays `Paddle` until the Windows switch (docs/65 section 9, B3). Only heads that scan receipts read the key.
+
+### 7.4 Receipt vision levels (`ReceiptVisionLevel`, docs/65 phase C)
+
+`PineHeadCapabilities.ReceiptVision` is `None`, `OcrOnly` or `Full`. `HasReceiptScan` (`OcrOnly` or `Full`) gates the scan
+page, its nav button and the dashboard shortcut and chooses `DefaultLocalAiProvider` over `PortableAiProvider`;
+`HasReceiptVision` (`Full` only) gates the live scanner, the manual crop screen, the retake button, and every
+OpenCV registration (`ReceiptDetector`, `OpenCvImageProcessor`, `OpenCvCameraSource`).
+
+| Head | Level | Detect/crop stage (`IReceiptDetector`) | OCR |
+|---|---|---|---|
+| Windows | `Full` | `ReceiptDetector` (YOLO + OpenCV) | `Pine:Ai:OcrBackend` (Paddle default) |
+| Android | `OcrOnly` | `SkiaReceiptDetector`: `YoloReceiptSegmenter` (same model and thresholds as Windows, managed post-processing), then `ReceiptQuadFinder`, then EXIF + downscale to 2048 px; Skia homography crop | `OnnxOcrEngine`, forced |
+| macOS, iOS | `None` | n/a | n/a |
+
+`SkiaReceiptDetector` (docs/65 B2) runs YOLO first (`YoloReceiptSegmenter`, `YoloPostProcessor`, same literals as `ReceiptDetector`), and its fallback is classical: Otsu threshold, largest region, convex hull, maximum-area inscribed quadrilateral,
+then a 4-point homography drawn by Skia. It answers "a sheet-like quadrilateral covering 12-95 % of the frame", never "certainly a receipt".
+Its constants are literals under the 7.1 boundary (`ReceiptQuadFinder.cs`). The YOLO model stays Windows-only.
+
+Camera on an `OcrOnly` head (docs/65 phase D): the head may register an `ICameraSource` (Android: `AndroidCameraSource`, Camera2, CAMERA permission
+requested on the first Take Photo tap, no INTERNET permission, frames in memory only). `ScanReceiptViewModel.HasCameraCapture` is true only when a
+camera source exists and the head has no live scanner page; it shows a viewfinder, Capture and Cancel, and the captured frame runs through the same
+pipeline as a picked file. `HasLiveScanner` keeps its meaning (Windows, `Full`).
+
+On an `OcrOnly` head nothing that names an OpenCvSharp type is registered or constructed
+(`AndroidOcrOnlyCompositionTests`). LayoutLM's image decode is Skia on every head. The Android head copies the OCR models
+from APK assets to its files directory on first run; the LayoutLM model is never bundled (see docs/65 section 12).
 
 ## 8. Assistant Architecture (high level)
 

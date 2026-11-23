@@ -12,7 +12,8 @@
              x:DataType="vm:ScanReceiptViewModel">
 
   <Grid>
-    <Border CornerRadius="12"
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
+    <Border x:Name="Card" CornerRadius="12"
             MaxWidth="1100"
             HorizontalAlignment="Center" VerticalAlignment="Stretch"
             Background="{DynamicResource PineSurface}"
@@ -21,14 +22,14 @@
             Margin="0,20"
             BoxShadow="0 8 24 0 #20000000">
 
-        <Grid ColumnDefinitions="*, 30, 400">
+        <Grid x:Name="Cols" ColumnDefinitions="*, 30, 400">
             <!-- Left Side: Image Preview & Actions -->
-            <StackPanel Grid.Column="0" Spacing="15">
+            <StackPanel x:Name="LeftPane" Grid.Column="0" Spacing="15">
                 <TextBlock Text="{loc:Tr ScanReceipt.Title}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                 <TextBlock Text="{loc:Tr ScanReceipt.Description}"
                            TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
                 
-                <Border CornerRadius="8" Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                <Border x:Name="Preview" CornerRadius="8" Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
                         Height="400" VerticalAlignment="Stretch" ClipToBounds="True">
                     <Grid>
                         <!-- Empty State -->
@@ -42,6 +43,15 @@
                         <Image Source="{Binding ReceiptImage}" Stretch="Uniform"
                                Cursor="Hand" PointerPressed="OnPreviewImageClicked" />
 
+                        <!-- Viewfinder while the device camera is open (Android). Frames stay in memory. -->
+                        <controls:QuadEditorControl Source="{Binding LiveFeed}" Quad="{Binding LiveQuad}" IsEditable="False"
+                                                    IsVisible="{Binding IsCameraOpen}" />
+                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Margin="8"
+                                Background="{DynamicResource PineScrim}" CornerRadius="6" Padding="10,6"
+                                IsHitTestVisible="False" IsVisible="{Binding IsCameraOpen}">
+                            <TextBlock Text="{Binding LiveStatus}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                        </Border>
+
                         <!-- Enlarge hint -->
                         <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8"
                                 Background="{DynamicResource PineScrim}" CornerRadius="6" Padding="8,4"
@@ -52,19 +62,32 @@
                     </Grid>
                 </Border>
                 
-                <Grid ColumnDefinitions="*, 10, *">
-                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.SelectImage}" x:Name="SelectImageButton" Click="OnSelectImageClicked"
+                <UniformGrid Rows="1">
+                    <Button Margin="0,0,5,0" Content="{loc:Tr ScanReceipt.SelectImage}" x:Name="SelectImageButton" Click="OnSelectImageClicked"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
-                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}"
+                    <Button Margin="5,0,0,0" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}" IsVisible="{Binding HasLiveScanner}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                </UniformGrid>
+
+                <!-- Take the photo with the device camera (heads with a camera source and no live scanner page). -->
+                <Grid ColumnDefinitions="*, 10, *" IsVisible="{Binding HasCameraCapture}">
+                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.LiveScan}" Command="{Binding OpenCameraCommand}"
+                            IsVisible="{Binding !IsCameraOpen}" Grid.ColumnSpan="3"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+                    <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Camera.Capture}" Command="{Binding CapturePhotoCommand}"
+                            IsVisible="{Binding IsCameraOpen}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                    <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Camera.Close}" Command="{Binding CloseCameraCommand}"
+                            IsVisible="{Binding IsCameraOpen}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
                 </Grid>
             </StackPanel>
 
             <!-- Right Side: Extracted Fields -->
-            <Grid Grid.Column="2" RowDefinitions="*, Auto" VerticalAlignment="Stretch">
+            <Grid x:Name="RightPane" Grid.Column="2" RowDefinitions="*, Auto" VerticalAlignment="Stretch">
 
                 <!-- Scrollable field area — prevents overlap when the panel is short -->
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
+                <ScrollViewer x:Name="FieldsScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
                     <StackPanel Spacing="16">
 
                         <StackPanel Spacing="6">
@@ -158,6 +181,15 @@
                         </StackPanel>
 
                         <StackPanel Spacing="5">
+                            <TextBlock Text="{loc:Tr ScanReceipt.Field.Tax}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                            <NumericUpDown Value="{Binding TaxTotal}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" Minimum="0" />
+                            <CheckBox IsChecked="{Binding IsTaxIncluded}" Content="{loc:Tr ScanReceipt.Field.TaxIncluded}" FontSize="12" IsEnabled="{Binding !IsBusy}" />
+                            <TextBlock IsVisible="{Binding TaxWarningMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Text="{Binding TaxWarningMessage}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource PineWarning}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="5">
                             <TextBlock Text="{loc:Tr ScanReceipt.Field.Category}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                             <TextBox Text="{Binding Category}" PlaceholderText="{loc:Tr ScanReceipt.Field.CategoryPlaceholder}" IsEnabled="{Binding !IsBusy}" />
                         </StackPanel>
@@ -222,7 +254,13 @@
                                     <Grid ColumnDefinitions="*, Auto">
                                         <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.ItemsTotal}" FontSize="13"
                                                    Foreground="{DynamicResource PineTextMuted}" />
-                                        <TextBlock Grid.Column="1" Text="{Binding LineItemsTotal}" FontSize="13"
+                                        <TextBlock Grid.Column="1" Text="{Binding ProductsTotal}" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Reconciliation.AdjustmentsTotal}" FontSize="13"
+                                                   Foreground="{DynamicResource PineTextMuted}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AdjustmentsTotal}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
                                     </Grid>
                                     <Grid ColumnDefinitions="*, Auto">
@@ -283,6 +321,27 @@
             </Grid>
         </Grid>
     </Border>
+    </ScrollViewer>
+
+    <!-- Edge editor (Android): the photo with the detected outline; drag a corner, then Crop and read. -->
+    <Grid IsVisible="{Binding IsEditingEdges}" ZIndex="40" RowDefinitions="Auto,*,Auto"
+          Background="{DynamicResource PineBackground}">
+      <StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="4">
+        <TextBlock Text="{loc:Tr ScanReceipt.Edges.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+        <TextBlock Text="{Binding EdgeHint}" FontSize="14" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+      </StackPanel>
+      <controls:QuadEditorControl Grid.Row="1" Margin="8" Source="{Binding EdgeImage}" Quad="{Binding EdgeQuad, Mode=TwoWay}" IsEditable="True" />
+      <Grid Grid.Row="2" Margin="16,8,16,16" ColumnDefinitions="*,8,*,8,*,8,2*">
+        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Edges.Rotate}" Command="{Binding RotateEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Edges.Retry}" Command="{Binding RetryEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Edges.Cancel}" Command="{Binding CancelEdgesCommand}" Classes="pine-outline"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="6" Content="{loc:Tr ScanReceipt.Edges.Confirm}" Command="{Binding ConfirmEdgesCommand}" Classes="pine-accent"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+      </Grid>
+    </Grid>
 
     <!--
       Busy overlay.

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Pine.Ui.Avalonia.ViewModels;
 using Pine.Ui.Avalonia.ViewModels.Widgets;
 using System;
+using System.Linq;
 
 namespace Pine.Ui.Avalonia.Views;
 
@@ -16,6 +17,64 @@ public partial class DashboardView : UserControl
     public DashboardView()
     {
         InitializeComponent();
+        SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
+    }
+
+    private bool? _stacked;
+
+    private void ApplyLayout(double width)
+    {
+        if (width <= 0)
+        {
+            return;
+        }
+
+        // Touch devices only: the desktop dashboard keeps its wrapped, resizable tiles at any window width.
+        var stacked = (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS()) && width < 900;
+        if (_stacked == stacked)
+        {
+            return;
+        }
+
+        var first = _stacked is null;
+        _stacked = stacked;
+        if (first && !stacked)
+        {
+            return; // the markup already describes the wide layout
+        }
+
+        var items = this.FindControl<ItemsControl>("WidgetsItemsControl")!;
+        var source = items.ItemsSource;
+        items.ItemsSource = null;
+        items.ItemsPanel = stacked
+            ? new global::Avalonia.Controls.Templates.FuncTemplate<Panel?>(() => new StackPanel())
+            : new global::Avalonia.Controls.Templates.FuncTemplate<Panel?>(() => new WrapPanel());
+        items.ItemsSource = source;
+        if (stacked)
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(StretchTiles, global::Avalonia.Threading.DispatcherPriority.Loaded);
+            items.ContainerPrepared += (_, _) => global::Avalonia.Threading.Dispatcher.UIThread.Post(StretchTiles, global::Avalonia.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    /// <summary>A tile's width comes from its view model (a desktop gesture); stacked, each takes the full column. Setting it locally replaces the binding until the list is rebuilt.</summary>
+    private void StretchTiles()
+    {
+        if (_stacked != true)
+        {
+            return;
+        }
+
+        foreach (var card in global::Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(this).OfType<Border>())
+        {
+            if (card.Classes.Contains("card") && card.DataContext is IDashboardWidgetViewModel)
+            {
+                card.Width = double.NaN;
+                card.Height = double.NaN;
+                card.MaxWidth = double.PositiveInfinity;
+                card.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
+            }
+        }
     }
 
     private void ResizeThumb_DragDelta(object? sender, VectorEventArgs e)
@@ -42,6 +101,9 @@ public partial class DashboardView : UserControl
 
         var pointerPoint = e.GetCurrentPoint(this);
         if (!pointerPoint.Properties.IsLeftButtonPressed) return;
+
+        // A finger on a tile is a scroll, not a reorder: capturing the pointer would freeze the page under it.
+        if (e.Pointer.Type == PointerType.Touch) return;
 
         _draggedControl = control;
         _draggedWidget = widget;

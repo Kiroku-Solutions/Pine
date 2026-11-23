@@ -1,0 +1,182 @@
+{
+ "total_docs": 3391,
+ "per_split": {
+  "train": {
+   "docs": 1321,
+   "gt_MERCHANT": 522,
+   "words_MERCHANT": 522,
+   "gt_DATE": 522,
+   "words_DATE": 522,
+   "gt_TOTAL": 1295,
+   "words_TOTAL": 1295,
+   "gt_TAX": 357,
+   "words_TAX": 358
+  },
+  "test": {
+   "docs": 164,
+   "gt_MERCHANT": 63,
+   "words_MERCHANT": 63,
+   "gt_DATE": 63,
+   "words_DATE": 63,
+   "gt_TOTAL": 163,
+   "words_TOTAL": 163,
+   "gt_TAX": 41,
+   "words_TAX": 41
+  },
+  "val": {
+   "docs": 167,
+   "gt_MERCHANT": 67,
+   "words_MERCHANT": 67,
+   "gt_DATE": 67,
+   "words_DATE": 67,
+   "gt_TOTAL": 165,
+   "words_TOTAL": 165,
+   "gt_TAX": 46,
+   "words_TAX": 46
+  },
+  "extra_test": {
+   "docs": 472,
+   "gt_MERCHANT": 472,
+   "words_MERCHANT": 472,
+   "gt_DATE": 398,
+   "words_DATE": 398,
+   "gt_TOTAL": 422,
+   "words_TOTAL": 422,
+   "gt_TAX": 318,
+   "words_TAX": 318
+  },
+  "extra_train": {
+   "docs": 1267,
+   "gt_MERCHANT": 836,
+   "words_MERCHANT": 836,
+   "gt_DATE": 1072,
+   "words_DATE": 1072,
+   "gt_TOTAL": 1118,
+   "words_TOTAL": 1118,
+   "gt_TAX": 853,
+   "words_TAX": 853
+  }
+ },
+ "per_source": {
+  "cord": {
+   "docs": 1000,
+   "gt_MERCHANT": 0,
+   "words_MERCHANT": 0,
+   "gt_DATE": 0,
+   "words_DATE": 0,
+   "gt_TOTAL": 972,
+   "words_TOTAL": 972,
+   "gt_TAX": 444,
+   "words_TAX": 445
+  },
+  "sroie": {
+   "docs": 652,
+   "gt_MERCHANT": 652,
+   "words_MERCHANT": 652,
+   "gt_DATE": 652,
+   "words_DATE": 652,
+   "gt_TOTAL": 651,
+   "words_TOTAL": 651,
+   "gt_TAX": 0,
+   "words_TAX": 0
+  },
+  "wildreceipt": {
+   "docs": 1739,
+   "gt_MERCHANT": 1308,
+   "words_MERCHANT": 1308,
+   "gt_DATE": 1470,
+   "words_DATE": 1470,
+   "gt_TOTAL": 1540,
+   "words_TOTAL": 1540,
+   "gt_TAX": 1171,
+   "words_TAX": 1171
+  }
+ },
+ "coverage_per_field": {
+  "MERCHANT": 0.578,
+  "DATE": 0.6258,
+  "TOTAL": 0.9328,
+  "TAX": 0.4763
+ },
+ "problem_counts": {
+  "box_out_of_range": 204,
+  "labeled_words_without_gt": 1
+ },
+ "problem_examples": {
+  "box_out_of_range": [
+   "cord_test_00034#17",
+   "cord_test_00034#19",
+   "cord_test_00079#11",
+   "cord_train_00219#42",
+   "cord_train_00222#0",
+   "cord_train_00222#3",
+   "cord_train_00222#6",
+   "cord_train_00354#11",
+   "cord_train_00354#14",
+   "cord_train_00496#21"
+  ],
+  "labeled_words_without_gt": [
+   "cord_train_00692:TAX"
+  ]
+ },
+ "duplicate_hash_groups": 27,
+ "duplicate_examples": {
+  "93f7c52bd265ee82baf912731f9d948978b2d760a75c7e5a9976b20ea17205bb": [
+   "cord_train_00058",
+   "cord_train_00109"
+  ],
+  "dc938784b79790a7b8679f851552170ced08f7ab7116afae001aab27115d090a": [
+   "cord_train_00265",
+   "cord_train_00285"
+  ],
+  "7cf413ea5a7832b91226b84c68ee0182a41aff46d844fcb244110ba292ebca32": [
+   "sroie_train_00012",
+   "sroie_train_00015"
+  ],
+  "fb2b8f9d6490b3455eb4607ae9a45e93c7c6e060174980b6ff615ae90e86b4fa": [
+   "sroie_train_00016",
+   "sroie_train_00018"
+  ],
+  "df8d3010d3c811b2d395e1c84828a5dad41ae4bf147185d033e08863704ecf81": [
+   "sroie_train_00025",
+   "sroie_train_00026"
+  ]
+ },
+ "duplicates_crossing_splits": 0,
+ "field_combinations": {
+  "MERCHANT,DATE,TOTAL": 937,
+  "MERCHANT,DATE,TOTAL,TAX": 740,
+  "TOTAL": 551,
+  "TOTAL,TAX": 498,
+  "DATE,TOTAL,TAX": 218,
+  "MERCHANT,TOTAL,TAX": 101,
+  "MERCHANT,DATE": 75,
+  "DATE,TOTAL": 73,
+  "MERCHANT,TOTAL": 45,
+  "none": 36,
+  "DATE": 34,
+  "MERCHANT,DATE,TAX": 31,
+  "MERCHANT": 25,
+  "DATE,TAX": 14,
+  "TAX": 7,
+  "MERCHANT,TAX": 6
+ },
+ "all4_docs": 740,
+ "per_source_all4": {
+  "cord": {
+   "docs": 1000,
+   "all4": 0,
+   "merchant+date+total+tax>=3": 0
+  },
+  "sroie": {
+   "docs": 652,
+   "all4": 0,
+   "merchant+date+total+tax>=3": 651
+  },
+  "wildreceipt": {
+   "docs": 1739,
+   "all4": 740,
+   "merchant+date+total+tax>=3": 1376
+  }
+ }
+}

@@ -1,3 +1,4 @@
+using Pine.Core.Ai;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -319,6 +320,40 @@ public sealed class PineAiOptions
 
     /// <summary>How often the trainer checks whether a retraining pass is due.</summary>
     public TimeSpan TrainingInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Absolute path to an optional LayoutLMv3 ONNX model that reads Merchant, Date, Total and Tax from a receipt.
+    /// <see langword="null"/> (the default) leaves the model off and receipts use the heuristic extraction.
+    /// </summary>
+    /// <remarks>
+    /// The model is not shipped with Pine (its weights are CC BY-NC-SA 4.0, research use) and is never bundled;
+    /// this is the only way to turn it on. A path to a file that does not exist is not an error: scanning logs
+    /// a warning and falls back to the heuristics. A path only, no tuned constants (docs/13 section 7.1).
+    /// </remarks>
+    public string? LayoutLmModelPath { get; set; }
+
+    /// <summary>
+    /// Absolute path to the model's <c>tokenizer.json</c>. <see langword="null"/> means <c>tokenizer.json</c>
+    /// in the same directory as <see cref="LayoutLmModelPath"/>.
+    /// </summary>
+    public string? LayoutLmTokenizerPath { get; set; }
+
+    /// <summary>
+    /// Which engine reads receipt text: <see cref="OcrBackend.Paddle"/> (default, Windows) or
+    /// <see cref="OcrBackend.Onnx"/> (managed, portable). Bound from <c>Pine:Ai:OcrBackend</c>.
+    /// </summary>
+    /// <remarks>
+    /// Only consulted by a head that has receipt vision. The default stays Paddle until the ONNX engine's
+    /// parity run has been accepted (docs/65 section 9, item B3). A path or a mode, no tuned constants
+    /// (docs/13 section 7.1).
+    /// </remarks>
+    public OcrBackend OcrBackend { get; set; } = OcrBackend.Paddle;
+
+    /// <summary>
+    /// Directory holding <c>det.onnx</c>, <c>rec.onnx</c> and <c>dict_latin_v5.txt</c> for the ONNX backend.
+    /// <see langword="null"/> means <c>Assets/Ai/ocr</c> beside the application.
+    /// </summary>
+    public string? OcrModelDirectory { get; set; }
 
     /// <summary>Checks this section.</summary>
     /// <returns>One sentence per problem; empty when usable.</returns>

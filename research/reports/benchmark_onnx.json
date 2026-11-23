@@ -1,0 +1,46 @@
+{
+ "machine": {
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+  "cpu_count": 16,
+  "python": "3.12.0"
+ },
+ "models": {
+  "model_fp32.onnx": {
+   "load_s": 0.887,
+   "median_s": 0.6513,
+   "p95_s": 0.7912,
+   "min_s": 0.6263,
+   "max_s": 0.7935,
+   "peak_rss_mb": 806.0,
+   "runs": 30,
+   "ort": "1.32.0",
+   "threads": 16,
+   "size_mb": 501.6
+  },
+  "model_int8.onnx": {
+   "load_s": 0.46,
+   "median_s": 0.5128,
+   "p95_s": 0.5967,
+   "min_s": 0.482,
+   "max_s": 0.6197,
+   "peak_rss_mb": 618.8,
+   "runs": 30,
+   "ort": "1.32.0",
+   "threads": 16,
+   "size_mb": 247.0
+  },
+  "model_int8_emb.onnx": {
+   "load_s": 0.408,
+   "median_s": 0.5258,
+   "p95_s": 0.61,
+   "min_s": 0.481,
+   "max_s": 0.6183,
+   "peak_rss_mb": 511.4,
+   "runs": 30,
+   "ort": "1.32.0",
+   "threads": 16,
+   "size_mb": 128.4
+  }
+ }
+}

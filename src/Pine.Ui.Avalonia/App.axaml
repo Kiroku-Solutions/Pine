@@ -159,6 +159,48 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
+        <!-- ═══ Touch devices (class "touch" is set on the shell by ShellView on Android/iOS) ═══
+             Targets of at least 44 dp, body text of at least 16, more air between rows. Desktop never gets the class. -->
+        <Style Selector="SplitView.touch Button">
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="FontSize" Value="16" />
+        </Style>
+        <Style Selector="SplitView.touch Button.pine-nav">
+            <Setter Property="MinHeight" Value="48" />
+        </Style>
+        <Style Selector="SplitView.touch TextBox, SplitView.touch ComboBox, SplitView.touch NumericUpDown, SplitView.touch DatePicker">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="FontSize" Value="16" />
+        </Style>
+        <Style Selector="SplitView.touch ComboBox">
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- ═══ Bottom tab bar buttons: "pine-tab" ═══ -->
+        <Style Selector="Button.pine-tab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PineTextMuted}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="4,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="SplitView.touch Button.pine-tab">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="MinHeight" Value="52" />
+        </Style>
+        <Style Selector="Button.pine-tab.active">
+            <Setter Property="Background" Value="{DynamicResource PineAccentGradient}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
         <!-- ═══ Password strength meter bands (TD-11) ═══
              Applied to both the meter's ProgressBar (whose indicator template-binds to Foreground)
              and its status TextBlock, so the pass/fail state is never colour-only: the same class

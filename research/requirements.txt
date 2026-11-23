@@ -1,0 +1,11 @@
+# Fase 1 (datos, OCR, evaluacion). No incluye entrenamiento (Fase 2).
+# Versiones exactas tomadas de research/.venv: Python 3.12, CPU (Windows).
+# Verificado funcionando: paddlepaddle 3.3.1 + paddleocr 3.7.0 (requiere enable_mkldnn=False, ver README).
+datasets==3.6.0                # HF datasets; CORD-v2 (parquet) y SROIE
+pillow==13.0.0
+numpy==2.3.5
+opencv-python-headless==5.1.0.95
+paddleocr==3.7.0               # solo para ocr_dump.py (requiere paddlepaddle)
+paddlepaddle==3.3.1            # CPU
+paddlex==3.7.2                 # dependencia directa de paddleocr 3.x (modelos PP-OCRv6)
+pytest==9.2.0

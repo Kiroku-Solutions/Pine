@@ -1,0 +1,12 @@
+data/
+ocr/
+predictions/
+__pycache__/
+.pytest_cache/
+.venv/
+baseline_dotnet/bin/
+baseline_dotnet/obj/
+.venv-ls/
+colab/dist/
+models/
+colab/onnx/

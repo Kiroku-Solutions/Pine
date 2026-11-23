@@ -197,6 +197,12 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddSingleton<IVaultDatabaseOpener, ScopedVaultDatabaseOpener>();
     }
 
+    // Its own method so that a head which never takes the OpenCV branch never JIT-resolves ReceiptDetector
+    // (whose body names OpenCvSharp) while compiling AddAi.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static Pine.Infrastructure.Ai.Vision.ReceiptDetector CreateOpenCvDetector()
+        => new Pine.Infrastructure.Ai.Vision.ReceiptDetector();
+
     private static void AddAi(IServiceCollection services, PineInfrastructureOptions options)
     {
         // The categoriser, its model store and the file cipher that seals the model (TD-16). Both
@@ -205,6 +211,54 @@ public static class PineInfrastructureServiceCollectionExtensions
 
         if (options.IncludeReceiptVision)
         {
+            if (options.LayoutLm.IsConfigured)
+            {
+                // Optional, offline, loaded on first scan. The provider falls back to the heuristics if it cannot run.
+                var layoutOptions = options.LayoutLm;
+                services.TryAddSingleton<Pine.Core.Ai.IVisualFieldExtractor>(sp =>
+                    new Pine.Infrastructure.Ai.Extraction.LayoutLm.LayoutLmFieldExtractor(
+                        layoutOptions,
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Extraction.LayoutLm.LayoutLmFieldExtractor>>()));
+            }
+
+            // The OCR engine is a singleton the container owns (and disposes); the provider takes it by
+            // constructor instead of constructing it (docs/65 section 6.1).
+            if (options.OcrBackend == Pine.Core.Ai.OcrBackend.Onnx)
+            {
+                var ocrModelDirectory = options.OcrModelDirectory;
+                services.TryAddSingleton<Pine.Core.Ai.IOcrEngine>(sp =>
+                    new Pine.Infrastructure.Ai.Vision.OnnxOcrEngine(
+                        Pine.Infrastructure.Ai.Vision.OnnxOcrOptions.ForDirectory(ocrModelDirectory),
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Vision.OnnxOcrEngine>>()));
+            }
+            else
+            {
+                services.TryAddSingleton<Pine.Core.Ai.IOcrEngine>(sp =>
+                    new Pine.Infrastructure.Ai.Vision.PaddleOcrEngine(
+                        sp.GetService<Microsoft.Extensions.Logging.ILogger<Pine.Infrastructure.Ai.Vision.PaddleOcrEngine>>()));
+            }
+
+            if (!options.UseOpenCvVision)
+            {
+                // OCR-only head (Android, docs/65 phase C): decode + EXIF + downscale in Skia, no crop. Nothing
+                // below names an OpenCvSharp type; IImageProcessor and ICameraSource stay unregistered because
+                // their consumers (the crop screen, the live scanner) are refused by the factory on such a head.
+                // B2 (a Skia document detector) replaces SkiaReceiptDetector here.
+                // The YOLO model (same file as Windows) is tried first when it is present in the models directory, then the
+                // classical finder, then EXIF + downscale only (docs/65 section 13).
+                var yoloDirectory = options.OcrModelDirectory;
+                services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector>(_ =>
+                    new Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector(
+                        Pine.Infrastructure.Ai.Vision.YoloReceiptSegmenter.TryCreate(yoloDirectory)));
+
+                // The edge editor's service is the same object: one YOLO session, not two.
+                services.TryAddSingleton<IReceiptEdgeService>(sp =>
+                    (Pine.Infrastructure.Ai.Vision.SkiaReceiptDetector)sp.GetRequiredService<Pine.Infrastructure.Ai.Vision.IReceiptDetector>());
+                services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
+                return;
+            }
+
+            services.TryAddSingleton<Pine.Infrastructure.Ai.Vision.IReceiptDetector>(_ => CreateOpenCvDetector());
             services.TryAddSingleton<IAIProvider, DefaultLocalAiProvider>();
             services.TryAddSingleton<IImageProcessor, OpenCvImageProcessor>();
 

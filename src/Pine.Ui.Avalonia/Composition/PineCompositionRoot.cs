@@ -111,7 +111,17 @@ public static class PineCompositionRoot
         // Persistence, vault cryptography, logging, diagnostics and the AI subsystem (TD-29).
         services.AddPineInfrastructure(infrastructure =>
         {
-            infrastructure.IncludeReceiptVision = capabilities.HasReceiptVision;
+            infrastructure.IncludeReceiptVision = capabilities.HasReceiptScan;
+            infrastructure.UseOpenCvVision = capabilities.HasReceiptVision;
+
+            // Optional LayoutLMv3 model: paths only, null = off. Enabled keeps its default.
+            infrastructure.LayoutLm.ModelPath = options.Ai.LayoutLmModelPath;
+            infrastructure.LayoutLm.TokenizerPath = options.Ai.LayoutLmTokenizerPath;
+
+            // Which OCR engine reads the receipt (docs/65). Paddle unless configured otherwise.
+            // An OCR-only head (Android) has no Paddle native library, so the setting cannot select it there.
+            infrastructure.OcrBackend = capabilities.HasReceiptVision ? options.Ai.OcrBackend : Pine.Core.Ai.OcrBackend.Onnx;
+            infrastructure.OcrModelDirectory = options.Ai.OcrModelDirectory;
 
             // The log directory is now a fact about Pine's data directory rather than a second,
             // independently computed answer to the same question. PineLoggingOptions STAYS a plain
@@ -219,6 +229,23 @@ public static class PineCompositionRoot
     }
 
     /// <summary>
+    /// Gives a head its platform camera (Android's Camera2 source). A head passes this through <c>Build</c>'s
+    /// <c>configureHeadServices</c>; it registers nothing else of its own (TD-29). Where a camera source already exists
+    /// (the OpenCV one on Windows) it does nothing.
+    /// </summary>
+    /// <typeparam name="TCamera">The head's camera implementation.</typeparam>
+    /// <param name="services">The service collection being composed.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection UseCameraSource<TCamera>(this IServiceCollection services)
+        where TCamera : class, Pine.Core.Ai.ICameraSource
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions
+            .TryAddSingleton<Pine.Core.Ai.ICameraSource, TCamera>(services);
+        return services;
+    }
+
+    /// <summary>
     /// Starts every <see cref="IHostedService"/> in the container -- the auto-lock watchdog on all
     /// heads, plus categoriser training where the head has it.
     /// </summary>
@@ -294,9 +321,13 @@ public static class PineCompositionRoot
             typeof(TransactionsViewModel),
         };
 
-        if (capabilities.HasReceiptVision)
+        if (capabilities.HasReceiptScan)
         {
             targets.Add(typeof(ScanReceiptViewModel));
+        }
+
+        if (capabilities.HasReceiptVision)
+        {
             targets.Add(typeof(LiveScannerViewModel));
         }
 

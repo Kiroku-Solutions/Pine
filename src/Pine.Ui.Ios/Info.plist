@@ -4,6 +4,10 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Pine</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>XSAppIconAssets</key>
+	<string>Resources/Assets.xcassets/AppIcon.appiconset</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.pine.app</string>
 	<key>CFBundleShortVersionString</key>

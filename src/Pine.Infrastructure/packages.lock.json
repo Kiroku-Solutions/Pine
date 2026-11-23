@@ -165,6 +165,16 @@
         "resolved": "3.3.1",
         "contentHash": "7bk+OJ/NJKQNrb88H4Gek2OI2LjRuUQF2YD+FsUfNhF9cqnuAnUsvCRJ4jFQxIdbNPiaHmDD9fZMBK/JB60NSg=="
       },
+      "SkiaSharp": {
+        "type": "Direct",
+        "requested": "[3.119.4, )",
+        "resolved": "3.119.4",
+        "contentHash": "53NOSUZ1Us+91Sm0uCkIivh/k7jOowRErZT2sIWwPFN9mLUvdxnE6rS4sWo4255+Rd2MWUSF+j0NMZHD6Cke+Q==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "3.119.4",
+          "SkiaSharp.NativeAssets.macOS": "3.119.4"
+        }
+      },
       "SQLitePCLRaw.bundle_e_sqlcipher": {
         "type": "Direct",
         "requested": "[2.1.11, )",
@@ -351,6 +361,16 @@
         "resolved": "2.7.0.1",
         "contentHash": "b1h41loXb9w3sgcXRBMtsMPkYI1bN/r+eKpKkFrsopEdUpUQXNRhr2GZ0SqNq9SbN7YzMacVTE4H1O6hBZqx0A=="
       },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "fgBOWEqbY012x7gMfJU4ezgz6dfhJb30Z6YdW35h85Zoe39+a8YNbAAwL29ihPfWoppg5AjvyKNzD1oCvlqWwA=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "XOpbx/4CReO2wYsq2s6rbvdauc6dntG4Zv499sHGTJ87bwZaFXszFkwql3+FIZMc8kUPeaj3Mx2ezIJmo8a1Kg=="
+      },
       "SQLitePCLRaw.core": {
         "type": "Transitive",
         "resolved": "2.1.12",
@@ -444,6 +464,88 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11"
         }
+      }
+    },
+    "net10.0/android-arm64": {
+      "Microsoft.ML": {
+        "type": "Direct",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "clHLX6bjcRpuHDRkXwkm/gSILifT0DOXXzgor4kBhjTkz5G419BCXhZ1xVk/GsMH6koqWwMONjQKzSSCSVZrIQ==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "9.0.4",
+          "Microsoft.ML.CpuMath": "5.0.0",
+          "Microsoft.ML.DataView": "5.0.0",
+          "Newtonsoft.Json": "13.0.3",
+          "System.CodeDom": "9.0.4",
+          "System.Numerics.Tensors": "9.0.4"
+        }
+      },
+      "Microsoft.ML.FastTree": {
+        "type": "Direct",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "ZcqAHfHlG9AMNlDd5OXuuw2uv+ZWa3c43yf1RNWqIRaLbwsLOpKja7kZ8Q0xkyyo2z9Bb2zKhsHtc8wV1CJojg==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "9.0.4",
+          "Microsoft.ML": "5.0.0",
+          "Newtonsoft.Json": "13.0.3",
+          "System.CodeDom": "9.0.4"
+        }
+      },
+      "Microsoft.ML.OnnxRuntime": {
+        "type": "Direct",
+        "requested": "[1.29.0, )",
+        "resolved": "1.29.0",
+        "contentHash": "bUO3Ryc42UVkDGByBIYU9/ogRURGHeMOEq96LMWnDBVMQGZpIahBhPRCeu+Qq6+EJh/dfxzFJBKZa0/+yMmpWQ==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime.Managed": "1.29.0"
+        }
+      },
+      "OpenCvSharp4.runtime.win": {
+        "type": "Direct",
+        "requested": "[4.13.0.20260627, )",
+        "resolved": "4.13.0.20260627",
+        "contentHash": "POIxR+CTpwHJIdam6wd8U2fprWv5QnIUw50jw79WEGb37He3T1h11SdtwSj9p2PLSfrzonMjO2t71wqi5uFsoQ=="
+      },
+      "Sdcb.PaddleInference.runtime.win64.mkl": {
+        "type": "Direct",
+        "requested": "[3.3.1.70, )",
+        "resolved": "3.3.1.70",
+        "contentHash": "61agzGclpUorMzQW0TfpAMehIl0GgHvU5qL1jfmpStjM372BiEGyAwKzuKGvlrBcC+wci1jI3hQIm/KUL2A/eA=="
+      },
+      "SkiaSharp": {
+        "type": "Direct",
+        "requested": "[3.119.4, )",
+        "resolved": "3.119.4",
+        "contentHash": "53NOSUZ1Us+91Sm0uCkIivh/k7jOowRErZT2sIWwPFN9mLUvdxnE6rS4sWo4255+Rd2MWUSF+j0NMZHD6Cke+Q==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "3.119.4",
+          "SkiaSharp.NativeAssets.macOS": "3.119.4"
+        }
+      },
+      "Microsoft.ML.CpuMath": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "Qv0OeYmFkzDC9AjfJfUUTiIYcnb49K5oGtUUOIkr0BrApqWm6niHZqCrD3iJJi2BORbto/eEfP7/+uNqHxGvYg==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.4"
+        }
+      },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "fgBOWEqbY012x7gMfJU4ezgz6dfhJb30Z6YdW35h85Zoe39+a8YNbAAwL29ihPfWoppg5AjvyKNzD1oCvlqWwA=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "XOpbx/4CReO2wYsq2s6rbvdauc6dntG4Zv499sHGTJ87bwZaFXszFkwql3+FIZMc8kUPeaj3Mx2ezIJmo8a1Kg=="
+      },
+      "SQLitePCLRaw.lib.e_sqlcipher": {
+        "type": "Transitive",
+        "resolved": "2.1.11",
+        "contentHash": "Cg6UPeDbH8jyaOs1vqXYIgeewH0wYrBnmbC5Ml3GYBo+GKzNmyxrWSO52JV68bfB7Addt/PZLMekJV1RH2ftWQ=="
       }
     }
   }

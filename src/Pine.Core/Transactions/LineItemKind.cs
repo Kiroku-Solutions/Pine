@@ -64,4 +64,11 @@ public enum LineItemKind
     /// silently dropped.
     /// </summary>
     Unattributed = 6,
+
+    /// <summary>
+    /// A delivery, shipping or freight charge (ENVIO, DOMICILIO, DELIVERY, FLETE). It is paid on top of what was
+    /// bought, so it is not a <see cref="Product"/> and does not count towards the items total. Stored by name, so
+    /// no migration is needed.
+    /// </summary>
+    Delivery = 7,
 }

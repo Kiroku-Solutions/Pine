@@ -7,6 +7,7 @@ using Pine.Core.Ai;
 using Pine.Infrastructure.Ai.Vision;
 using Pine.Infrastructure.Ai.Extraction;
 using Pine.Infrastructure.Ai.Categorisation;
+using Pine.Infrastructure.Ai.Extraction.LayoutLm;
 
 namespace Pine.Infrastructure.Ai;
 
@@ -16,10 +17,13 @@ namespace Pine.Infrastructure.Ai;
 /// </summary>
 public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 {
-    private readonly ReceiptDetector _detector;
-    private readonly PaddleOcrEngine _ocr;
+    private readonly IReceiptDetector _detector;
+    private readonly bool _ownsDetector;
+    private readonly IOcrEngine _ocr;
+    private readonly bool _ownsOcr;
     private readonly HeuristicFieldExtractor _extractor;
     private readonly IMlNetCategorizer _categorizer;
+    private readonly VisualExtractionGuard _visualGuard;
 
     /// <summary>Builds the on-device pipeline.</summary>
     /// <param name="categorizer">
@@ -48,18 +52,44 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// must be exactly one object and the container must own it.
     /// </para>
     /// </remarks>
-    public DefaultLocalAiProvider(IMlNetCategorizer categorizer, ILoggerFactory? loggerFactory = null)
+    /// <param name="visualExtractor">
+    /// The optional layout model (LayoutLMv3). When it is registered, its fields overlay the heuristic ones;
+    /// when it is absent, cannot load or throws, extraction is exactly the heuristic one and a warning is logged.
+    /// </param>
+    /// <param name="detector">
+    /// The detect/crop stage. The container supplies the OpenCV one or, on an OCR-only head, the Skia
+    /// pass-through one, and owns it. When <see langword="null"/> the provider builds the OpenCV detector
+    /// itself, as before, and disposes it.
+    /// </param>
+    /// <param name="ocrEngine">
+    /// The OCR backend (docs/65). The container supplies the one chosen by <c>Pine:Ai:OcrBackend</c> and
+    /// OWNS it. When it is <see langword="null"/> (hand-constructed callers, older tests) the provider falls
+    /// back to the Paddle engine it always used, and then disposes it itself.
+    /// </param>
+    public DefaultLocalAiProvider(
+        IMlNetCategorizer categorizer,
+        ILoggerFactory? loggerFactory = null,
+        IVisualFieldExtractor? visualExtractor = null,
+        IOcrEngine? ocrEngine = null,
+        IReceiptDetector? detector = null)
     {
         ArgumentNullException.ThrowIfNull(categorizer);
 
-        _detector = new ReceiptDetector();
-        _ocr = new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
+        _ownsDetector = detector is null;
+        _detector = detector ?? CreateOpenCvDetector();
+        _ownsOcr = ocrEngine is null;
+        _ocr = ocrEngine ?? new PaddleOcrEngine(loggerFactory?.CreateLogger<PaddleOcrEngine>());
         // No logger and no LoadModel call any more (TD-36): the extractor's only log record was a
         // failure to load an ONNX model that was never used for inference, and whose file has never
         // existed in this repository. Extraction was always heuristic.
         _extractor = new HeuristicFieldExtractor();
         _categorizer = categorizer;
+        _visualGuard = new VisualExtractionGuard(visualExtractor, loggerFactory?.CreateLogger<DefaultLocalAiProvider>());
     }
+
+    // Separate method: only a caller that really falls back to OpenCV resolves ReceiptDetector (Android never does).
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static ReceiptDetector CreateOpenCvDetector() => new();
 
     public async Task<bool> DetectReceiptAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
@@ -78,8 +108,9 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
 
     public async Task<ReceiptExtractionResult> ExtractReceiptDataAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
-        // P0 FIX: Preprocess image before OCR using the ReceiptDetector's
-        // adaptive threshold pipeline when possible.
+        // P0 FIX: Preprocess image before OCR using the detector's stage when possible (OpenCV crop and
+        // binarise on Windows; EXIF + downscale only on an OCR-only head).
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         Stream ocrStream = imageStream;
         try
         {
@@ -87,7 +118,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
             var analysis = await _detector.AnalyzeAndCropReceiptAsync(imageStream, cancellationToken);
             if (analysis.PassedFilters && analysis.OcrImageStream != null)
             {
-                // Use the binarized, perspective-corrected image for OCR
+                // Use the preprocessed (upright, downscaled or cropped + binarised) image for OCR
                 ocrStream = analysis.OcrImageStream;
             }
             else
@@ -104,12 +135,41 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
             ocrStream = imageStream;
         }
 
+        var prepMs = clock.ElapsedMilliseconds;
+        clock.Restart();
+
         // Execute OCR on the (potentially preprocessed) image
         ocrStream.Position = 0;
-        var textBlocks = await _ocr.ExtractTextAsync(ocrStream, cancellationToken);
+        byte[] ocrBytes;
+        using (var copy = new MemoryStream())
+        {
+            await ocrStream.CopyToAsync(copy, cancellationToken);
+            ocrBytes = copy.ToArray();
+        }
+
+        // Read; if the text runs at more than 3 degrees, level the picture and read again, so the row grouping and LayoutLM both work
+        // on a level page (docs/65 section 14).
+        var read = await ReceiptDeskew.ReadLevelAsync(_ocr, ocrBytes, cancellationToken);
+        var textBlocks = read.Words;
+        if (read.RemovedDegrees != 0)
+        {
+            ocrStream = new MemoryStream(read.Image, writable: false);
+        }
+
+        ocrStream.Position = 0;
+        var ocrMs = clock.ElapsedMilliseconds;
+        clock.Restart();
 
         // Extract fields using layout-aware heuristics
-        return _extractor.ExtractFields(textBlocks);
+        var heuristic = _extractor.ExtractFields(textBlocks);
+        var heuristicMs = clock.ElapsedMilliseconds;
+        clock.Restart();
+        var result = await _visualGuard.OverlayAsync(heuristic, textBlocks, ocrStream, cancellationToken);
+
+        // Counts and timings only -- never a recognised word (30-Observability section 4.3).
+        ScanDiagnostics.Report(
+            $"scan prep_ms={prepMs} ocr_ms={ocrMs} lines={textBlocks.Count} heuristics_ms={heuristicMs} layoutlm_ms={clock.ElapsedMilliseconds} layoutlm={_visualGuard.LastOutcome}");
+        return result;
     }
 
     public async Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)
@@ -130,7 +190,14 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     /// </remarks>
     public void Dispose()
     {
-        _detector?.Dispose();
-        _ocr?.Dispose();
+        if (_ownsDetector)
+        {
+            _detector.Dispose();
+        }
+
+        if (_ownsOcr && _ocr is IDisposable ocr)
+        {
+            ocr.Dispose();
+        }
     }
 }

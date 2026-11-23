@@ -8,6 +8,7 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Pine.Ui.Avalonia.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        Icon="avares://Pine.Ui.Avalonia/Assets/PineIcon.png"
         Title="{loc:Tr MainWindow.Title}"
         Width="900" Height="600"
         MinWidth="720" MinHeight="480"
@@ -18,61 +19,6 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Window.DataTemplates>
-        <DataTemplate DataType="{x:Type vm:SetupViewModel}">
-            <views:SetupView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:UnlockViewModel}">
-            <views:UnlockView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:VaultSelectionViewModel}">
-            <views:VaultSelectionView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:ShellViewModel}">
-            <views:ShellView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-            <views:DashboardView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:TransactionsViewModel}">
-            <views:TransactionsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-            <views:SettingsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
-            <views:DiagnosticsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:BudgetsViewModel}">
-            <views:BudgetsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:RulesViewModel}">
-            <views:RulesView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SyncConflictsViewModel}">
-            <views:SyncConflictsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SyncPairingViewModel}">
-            <views:SyncPairingView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SyncRunViewModel}">
-            <views:SyncRunView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:ScanReceiptViewModel}">
-            <views:ScanReceiptView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:LiveScannerViewModel}">
-            <views:LiveScannerView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:CropReceiptViewModel}">
-            <views:CropReceiptView />
-        </DataTemplate>
-    </Window.DataTemplates>
-
-    <TransitioningContentControl Content="{Binding CurrentPage}">
-        <TransitioningContentControl.PageTransition>
-            <CrossFade Duration="0:0:0.25" />
-        </TransitioningContentControl.PageTransition>
-    </TransitioningContentControl>
+    <views:MainView />
 
 </Window>

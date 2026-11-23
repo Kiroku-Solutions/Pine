@@ -39,6 +39,22 @@ public enum PineHeadProfile
     // Adding a value back here is therefore not a small edit. It is a scope change.
 }
 
+/// <summary>How much of the receipt pipeline a head runs.</summary>
+public enum ReceiptVisionLevel
+{
+    /// <summary>No receipt scanning; the provider only categorises.</summary>
+    None,
+
+    /// <summary>
+    /// Scan from a file, managed stack only: decode, EXIF, downscale, ONNX OCR, heuristics, optional
+    /// LayoutLM. No document crop, no live camera, no OpenCV types are loaded.
+    /// </summary>
+    OcrOnly,
+
+    /// <summary>The whole pipeline: OpenCV crop and enhance, live camera, manual crop screen.</summary>
+    Full,
+}
+
 /// <summary>
 /// What a given head can actually do, resolved once from its <see cref="PineHeadProfile"/> and
 /// registered as a singleton so the shell can ask rather than guess (TD-85).
@@ -77,26 +93,38 @@ public enum PineHeadProfile
 /// </remarks>
 public sealed class PineHeadCapabilities
 {
-    private PineHeadCapabilities(PineHeadProfile profile, bool hasReceiptVision, bool hasBackgroundTraining)
+    private PineHeadCapabilities(PineHeadProfile profile, ReceiptVisionLevel receiptVision, bool hasBackgroundTraining)
     {
         Profile = profile;
-        HasReceiptVision = hasReceiptVision;
+        ReceiptVision = receiptVision;
         HasBackgroundTraining = hasBackgroundTraining;
     }
 
     /// <summary>The head these capabilities were resolved for.</summary>
     public PineHeadProfile Profile { get; }
 
+    /// <summary>How much of the on-device receipt pipeline this head runs (docs/65 section 6.1).</summary>
+    public ReceiptVisionLevel ReceiptVision { get; }
+
     /// <summary>
-    /// Whether the on-device receipt pipeline -- detection, cropping and OCR -- can run here.
+    /// Whether the receipt scan page exists here: a person can choose an image file and have it read
+    /// (OCR, heuristics, optional LayoutLM). True for <see cref="ReceiptVisionLevel.OcrOnly"/> and
+    /// <see cref="ReceiptVisionLevel.Full"/>. Gates <c>ScanReceiptViewModel</c>, its nav button, the
+    /// dashboard shortcut, and the choice between <c>DefaultLocalAiProvider</c> and <c>PortableAiProvider</c>.
+    /// </summary>
+    public bool HasReceiptScan => ReceiptVision != ReceiptVisionLevel.None;
+
+    /// <summary>
+    /// Whether the full native-OpenCV pipeline can run here -- live camera scanning, document detection
+    /// and cropping, and the manual crop screen.
     /// </summary>
     /// <remarks>
-    /// Gates three view models (<c>ScanReceiptViewModel</c>, <c>LiveScannerViewModel</c>,
-    /// <c>CropReceiptViewModel</c>), their two nav buttons, and the choice between
-    /// <c>DefaultLocalAiProvider</c> and <c>PortableAiProvider</c>. Categorisation is NOT gated by
-    /// it: that half of the AI subsystem is portable and every head gets it.
+    /// Gates <c>LiveScannerViewModel</c>, <c>CropReceiptViewModel</c>, the live-scanner nav button, the
+    /// scan page's retake button, and the OpenCV registrations. The scan page itself is gated by
+    /// <see cref="HasReceiptScan"/>. Categorisation is NOT gated by either: that half of the AI
+    /// subsystem is portable and every head gets it.
     /// </remarks>
-    public bool HasReceiptVision { get; }
+    public bool HasReceiptVision => ReceiptVision == ReceiptVisionLevel.Full;
 
     /// <summary>
     /// Whether this head runs a background training service.
@@ -128,20 +156,24 @@ public sealed class PineHeadCapabilities
         // libraries are. Stating a true reason and a false one is worse than stating one reason,
         // because the false half is what a reader checks against and finds confirmed by a file
         // that is genuinely there.
-        PineHeadProfile.Windows => new PineHeadCapabilities(profile, hasReceiptVision: true, hasBackgroundTraining: true),
+        PineHeadProfile.Windows => new PineHeadCapabilities(profile, receiptVision: ReceiptVisionLevel.Full, hasBackgroundTraining: true),
 
         // macOS is a DESKTOP head and still has no vision, which is the surprising row in this
         // table and therefore the one worth stating: Pine.Infrastructure references the win-only
         // native runtime packages and no osx equivalents, so the managed OpenCvSharp wrappers here
         // would P/Invoke into a library that was never restored. Naming it false is the honest
         // reading of the package graph, not a decision to withhold the feature.
-        PineHeadProfile.MacOs => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
+        PineHeadProfile.MacOs => new PineHeadCapabilities(profile, receiptVision: ReceiptVisionLevel.None, hasBackgroundTraining: false),
 
         // Android and iOS are narrower than macOS, not wider: OpenCvSharp and Sdcb.PaddleInference
         // publish no android or ios runtime package at all, so unlike the desktop RIDs this is not
         // a pin this project chose to omit.
-        PineHeadProfile.Android => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
-        PineHeadProfile.Ios => new PineHeadCapabilities(profile, hasReceiptVision: false, hasBackgroundTraining: false),
+        // ANDROID IS OcrOnly (docs/65 phase C). The OpenCV and Paddle natives still do not exist there, so no
+        // crop, no live camera; but the managed stack (ONNX Runtime + SkiaSharp) does, so a person can pick a
+        // receipt image from the system file picker and have it read on the device. Not asserted by hand: the
+        // composition tests prove the container resolves the scan page and provider without touching OpenCV.
+        PineHeadProfile.Android => new PineHeadCapabilities(profile, ReceiptVisionLevel.OcrOnly, hasBackgroundTraining: false),
+        PineHeadProfile.Ios => new PineHeadCapabilities(profile, receiptVision: ReceiptVisionLevel.None, hasBackgroundTraining: false),
 
         _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown head profile."),
     };

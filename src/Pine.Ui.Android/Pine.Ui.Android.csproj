@@ -4,7 +4,7 @@
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <!--
       REAL APPLICATION IDENTITY, iteration 31 (TD-109, first half).
@@ -25,12 +25,29 @@
     <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <!-- Phones are arm64; x64 is the emulator. Dropping armeabi-v7a/x86 shrinks the APK and the build. -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <!-- A Debug APK must run when installed with plain `adb install` (no IDE fast-deployment session). -->
+    <EmbedAssembliesIntoApk Condition="'$(Configuration)' == 'Debug'">true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
+  <!--
+    ONNX OCR MODELS AS APK ASSETS (docs/65 section 7). The three files are the ones Pine.Infrastructure ships as
+    named Content for the desktop heads; Content does not reach an APK, so they are linked here as AndroidAsset
+    (named, not globbed: the TD-41 rule). They are stored UNCOMPRESSED so the first-run copy to the files
+    directory (OcrModelInstaller) can compare sizes with AssetManager.OpenFd and skip the copy next time.
+    The LayoutLM model is NOT bundled: it is CC BY-NC-SA research-only and ~128 MB. The YOLO receipt detector
+    IS bundled (below): its pre/post-processing is managed code now (YoloReceiptSegmenter).
+  -->
+  <PropertyGroup>
+    <AndroidStoreUncompressedFileExtensions>$(AndroidStoreUncompressedFileExtensions);.onnx</AndroidStoreUncompressedFileExtensions>
+  </PropertyGroup>
   <ItemGroup>
-    <AndroidResource Include="Icon.png">
-      <Link>Resources\drawable\Icon.png</Link>
-    </AndroidResource>
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\det.onnx" Link="Assets\ocr\det.onnx" />
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\rec.onnx" Link="Assets\ocr\rec.onnx" />
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\ocr\dict_latin_v5.txt" Link="Assets\ocr\dict_latin_v5.txt" />
+    <!-- The receipt detector model, the same file Windows ships (docs/65 section 13): 13 MB, copied with the OCR models. -->
+    <AndroidAsset Include="..\Pine.Infrastructure\Assets\Ai\yolo-receipt-nano.onnx" Link="Assets\yolo\yolo-receipt-nano.onnx" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,166 @@
+{
+ "split": "test",
+ "source": "all",
+ "docs_without_prediction_file": 0,
+ "n_docs": 164,
+ "per_field": {
+  "MERCHANT": {
+   "tp": 28,
+   "fp": 35,
+   "fn": 35,
+   "gt_docs": 63,
+   "pred_docs": 63,
+   "precision": 0.4444,
+   "recall": 0.4444,
+   "f1": 0.4444,
+   "status": "ok"
+  },
+  "DATE": {
+   "tp": 56,
+   "fp": 3,
+   "fn": 7,
+   "gt_docs": 63,
+   "pred_docs": 59,
+   "precision": 0.9492,
+   "recall": 0.8889,
+   "f1": 0.918,
+   "status": "ok"
+  },
+  "TOTAL": {
+   "tp": 31,
+   "fp": 130,
+   "fn": 132,
+   "gt_docs": 163,
+   "pred_docs": 161,
+   "precision": 0.1925,
+   "recall": 0.1902,
+   "f1": 0.1914,
+   "status": "ok"
+  },
+  "TAX": {
+   "tp": 0,
+   "fp": 0,
+   "fn": 41,
+   "gt_docs": 41,
+   "pred_docs": 0,
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": 0.0,
+   "status": "unsupported_by_system"
+  }
+ },
+ "macro_f1_4_fields (unsupported fields count as 0)": 0.3885,
+ "macro_f1_supported_fields (MERCHANT,DATE,TOTAL)": 0.5179,
+ "excluded_no_gt": [],
+ "by_source": {
+  "cord": {
+   "n_docs": 101,
+   "per_field": {
+    "MERCHANT": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 0,
+     "gt_docs": 0,
+     "pred_docs": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "status": "no_ground_truth"
+    },
+    "DATE": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 0,
+     "gt_docs": 0,
+     "pred_docs": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "status": "no_ground_truth"
+    },
+    "TOTAL": {
+     "tp": 4,
+     "fp": 94,
+     "fn": 96,
+     "gt_docs": 100,
+     "pred_docs": 98,
+     "precision": 0.0408,
+     "recall": 0.04,
+     "f1": 0.0404,
+     "status": "ok"
+    },
+    "TAX": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 41,
+     "gt_docs": 41,
+     "pred_docs": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "status": "unsupported_by_system"
+    }
+   },
+   "macro_f1_4_fields (unsupported fields count as 0)": 0.0202,
+   "macro_f1_supported_fields (MERCHANT,DATE,TOTAL)": 0.0404,
+   "excluded_no_gt": [
+    "MERCHANT",
+    "DATE"
+   ]
+  },
+  "sroie": {
+   "n_docs": 63,
+   "per_field": {
+    "MERCHANT": {
+     "tp": 28,
+     "fp": 35,
+     "fn": 35,
+     "gt_docs": 63,
+     "pred_docs": 63,
+     "precision": 0.4444,
+     "recall": 0.4444,
+     "f1": 0.4444,
+     "status": "ok"
+    },
+    "DATE": {
+     "tp": 56,
+     "fp": 3,
+     "fn": 7,
+     "gt_docs": 63,
+     "pred_docs": 59,
+     "precision": 0.9492,
+     "recall": 0.8889,
+     "f1": 0.918,
+     "status": "ok"
+    },
+    "TOTAL": {
+     "tp": 27,
+     "fp": 36,
+     "fn": 36,
+     "gt_docs": 63,
+     "pred_docs": 63,
+     "precision": 0.4286,
+     "recall": 0.4286,
+     "f1": 0.4286,
+     "status": "ok"
+    },
+    "TAX": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 0,
+     "gt_docs": 0,
+     "pred_docs": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "status": "no_ground_truth"
+    }
+   },
+   "macro_f1_4_fields (unsupported fields count as 0)": 0.597,
+   "macro_f1_supported_fields (MERCHANT,DATE,TOTAL)": 0.597,
+   "excluded_no_gt": [
+    "TAX"
+   ]
+  }
+ }
+}

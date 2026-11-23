@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Pine.Ui.Avalonia.Views;
 using System;
@@ -31,7 +33,28 @@ public partial class App : global::Avalonia.Application
     public override void OnFrameworkInitializationCompleted()
     {
         // Setup Dependency Injection from the host if it's set, otherwise this might crash if missing
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        {
+            // Android and iOS have no window: the lifetime wants a view. Without this branch those
+            // two heads start, build the container and show a blank screen.
+            var mainViewModel = Services?.Main;
+            mainViewModel?.Initialize();
+
+            var mainView = new MainView { DataContext = mainViewModel };
+
+            // The idle auto-lock watchdog (TD-11) needs real input, same as MainWindow does.
+            var session = Services?.VaultSession;
+            if (session is not null)
+            {
+                void OnUserActivity(object? sender, RoutedEventArgs e) => session.ReportActivity();
+                mainView.AddHandler(InputElement.PointerPressedEvent, OnUserActivity, RoutingStrategies.Tunnel);
+                mainView.AddHandler(InputElement.PointerMovedEvent, OnUserActivity, RoutingStrategies.Tunnel);
+                mainView.AddHandler(InputElement.KeyDownEvent, OnUserActivity, RoutingStrategies.Tunnel);
+            }
+
+            singleView.MainView = mainView;
+        }
+        else if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var mainViewModel = Services?.Main;
             mainViewModel?.Initialize();

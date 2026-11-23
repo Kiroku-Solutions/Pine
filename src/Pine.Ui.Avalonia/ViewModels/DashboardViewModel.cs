@@ -113,7 +113,8 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         IShellNavigator shell,
         PineHeadCapabilities capabilities,
         ILogger<DashboardViewModel>? logger = null,
-        ILocalizer? localizer = null)
+        ILocalizer? localizer = null,
+        Pine.Core.Ai.ICameraSource? camera = null)
     {
         ArgumentNullException.ThrowIfNull(shell);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -121,7 +122,8 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         _mediator = mediator;
         _viewModels = viewModels;
         _shell = shell;
-        HasReceiptVision = capabilities.HasReceiptVision;
+        HasReceiptScan = capabilities.HasReceiptScan;
+        HasInlineLiveScan = camera is not null && HasReceiptScan && !capabilities.HasReceiptVision;
         _logger = logger;
         _localizer = localizer ?? Localizer.Instance;
         _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
@@ -277,7 +279,18 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// page at all -- so a visible button always has a page behind it, and a head without the
     /// pipeline shows neither the button nor a button that would throw.
     /// </remarks>
-    public bool HasReceiptVision { get; }
+    public bool HasReceiptScan { get; }
+
+    /// <summary>Whether the dashboard offers Live Scan (a head with a camera and the OCR-only scan page).</summary>
+    public bool HasInlineLiveScan { get; }
+
+    [RelayCommand(CanExecute = nameof(HasInlineLiveScan))]
+    private void OpenLiveScan()
+    {
+        var scan = _viewModels.CreateScanReceipt(_shell);
+        _shell.NavigateTo(scan);
+        scan.StartLiveScan();
+    }
 
     /// <summary>
     /// Opens the receipt page in the shell -- what the dashboard's Scan Receipt button has always
@@ -300,7 +313,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     [RelayCommand(CanExecute = nameof(CanOpenScanReceipt))]
     private void OpenScanReceipt() => _shell.NavigateTo(_viewModels.CreateScanReceipt(_shell));
 
-    private bool CanOpenScanReceipt() => HasReceiptVision;
+    private bool CanOpenScanReceipt() => HasReceiptScan;
 
     // The two dialogs only close themselves now. What they wrote reaches the tiles through
     // DataChangedMessage -- CreateAccountViewModel has always sent it, and the import wizard does as

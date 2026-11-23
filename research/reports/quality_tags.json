@@ -1,0 +1,2134 @@
+{
+ "cord_test_00001": {
+  "blur_score": 18.18514158967071,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 134.1721728515625,
+   "p5": 12.0,
+   "p95": 207.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_test_00021": {
+  "blur_score": 290.75840503572823,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 135.5441064453125,
+   "p5": 101.0,
+   "p95": 167.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_test_00041": {
+  "blur_score": 195.450047827538,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 156.6301453725137,
+   "p5": 49.0,
+   "p95": 211.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 648,
+  "height": 1152
+ },
+ "cord_test_00058": {
+  "blur_score": 15.22755035841719,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 157.80955808930327,
+   "p5": 108.0,
+   "p95": 209.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1836,
+  "height": 3264
+ },
+ "cord_test_00077": {
+  "blur_score": 53.486005362443386,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 187.67191918691,
+   "p5": 44.0,
+   "p95": 228.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_test_00080": {
+  "blur_score": 699.4983308381516,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 105.8284715077732,
+   "p5": 1.0,
+   "p95": 179.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 432,
+  "height": 648
+ },
+ "cord_test_00081": {
+  "blur_score": 26.573838551080158,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 172.4598512649536,
+   "p5": 64.0,
+   "p95": 224.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_test_00082": {
+  "blur_score": 510.5215871549063,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 120.85170896204846,
+   "p5": 58.0,
+   "p95": 167.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_test_00087": {
+  "blur_score": 213.87280216584665,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 153.57463759573616,
+   "p5": 29.0,
+   "p95": 217.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_test_00095": {
+  "blur_score": 264.0879617159381,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 164.27936742684042,
+   "p5": 9.0,
+   "p95": 204.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00023": {
+  "blur_score": 629.9707533201235,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 128.22092214827674,
+   "p5": 17.0,
+   "p95": 224.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00058": {
+  "blur_score": 169.10981255071383,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 130.15019950988798,
+   "p5": 33.0,
+   "p95": 167.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00064": {
+  "blur_score": 187.56849838235382,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 199.49081401209676,
+   "p5": 115.0,
+   "p95": 253.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 930,
+  "height": 1280
+ },
+ "cord_train_00074": {
+  "blur_score": 138.4199013676671,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 111.12254050925925,
+   "p5": 37.0,
+   "p95": 157.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00076": {
+  "blur_score": 100.51161894661216,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 153.89546092678327,
+   "p5": 28.0,
+   "p95": 205.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00105": {
+  "blur_score": 68.09300913976516,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 146.83935546875,
+   "p5": 122.0,
+   "p95": 173.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00109": {
+  "blur_score": 169.10981255071383,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 130.15019950988798,
+   "p5": 33.0,
+   "p95": 167.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00121": {
+  "blur_score": 85.62815769146017,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 117.20371084819388,
+   "p5": 56.0,
+   "p95": 160.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00140": {
+  "blur_score": 634.7858651107905,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 139.94469159915124,
+   "p5": 13.0,
+   "p95": 210.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00154": {
+  "blur_score": 24.226174008133434,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 117.22211848481379,
+   "p5": 72.0,
+   "p95": 151.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1536,
+  "height": 2730
+ },
+ "cord_train_00155": {
+  "blur_score": 444.283012136149,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 133.6803405510545,
+   "p5": 37.0,
+   "p95": 223.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00156": {
+  "blur_score": 876.7935458244193,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 132.57795219264403,
+   "p5": 11.0,
+   "p95": 221.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00166": {
+  "blur_score": 88.18236843543042,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 89.09722400834477,
+   "p5": 2.0,
+   "p95": 196.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00194": {
+  "blur_score": 214.35245038210564,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 224.49819374384842,
+   "p5": 177.0,
+   "p95": 252.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 1016,
+  "height": 1280
+ },
+ "cord_train_00196": {
+  "blur_score": 1741.637894693479,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 112.4064357567444,
+   "p5": 31.0,
+   "p95": 190.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00197": {
+  "blur_score": 1363.2552029935068,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 124.72053835519547,
+   "p5": 40.0,
+   "p95": 254.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00198": {
+  "blur_score": 202.51872943213158,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 162.3168603716564,
+   "p5": 144.0,
+   "p95": 180.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00200": {
+  "blur_score": 179.61952096170546,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 117.83928558670553,
+   "p5": 51.0,
+   "p95": 154.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00209": {
+  "blur_score": 532.8683797095006,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 177.81735110882488,
+   "p5": 62.0,
+   "p95": 224.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00216": {
+  "blur_score": 705.4758153417056,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 154.3606087641461,
+   "p5": 104.0,
+   "p95": 195.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00231": {
+  "blur_score": 164.5379490212043,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 140.35567251841226,
+   "p5": 47.0,
+   "p95": 239.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_train_00232": {
+  "blur_score": 242.71629995458937,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 186.83135383946498,
+   "p5": 146.0,
+   "p95": 214.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_train_00243": {
+  "blur_score": 90.65689988974161,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 166.13548326352145,
+   "p5": 91.0,
+   "p95": 202.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 3024,
+  "height": 4032
+ },
+ "cord_train_00244": {
+  "blur_score": 102.35222169013296,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 126.84308288323045,
+   "p5": 4.0,
+   "p95": 160.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00246": {
+  "blur_score": 210.19982147142863,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 148.13344032207362,
+   "p5": 109.0,
+   "p95": 173.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00257": {
+  "blur_score": 1024.9467933813835,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 110.51484133873457,
+   "p5": 31.0,
+   "p95": 183.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00268": {
+  "blur_score": 517.8373385123466,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 116.5527846096965,
+   "p5": 2.0,
+   "p95": 185.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00294": {
+  "blur_score": 45.89370195838544,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 141.46886393229167,
+   "p5": 74.0,
+   "p95": 177.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_train_00299": {
+  "blur_score": 119.6372646479167,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 191.13358683067665,
+   "p5": 137.0,
+   "p95": 220.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_train_00304": {
+  "blur_score": 446.14529379543694,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 168.07028124285551,
+   "p5": 80.0,
+   "p95": 206.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00317": {
+  "blur_score": 560.436651417108,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 147.77235644933128,
+   "p5": 35.0,
+   "p95": 219.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00324": {
+  "blur_score": 161.19598571338278,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 132.5298979052355,
+   "p5": 30.0,
+   "p95": 200.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00326": {
+  "blur_score": 178.41868517291945,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 183.66671409310072,
+   "p5": 115.0,
+   "p95": 222.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_train_00332": {
+  "blur_score": 198.51321615832885,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 163.2863422353681,
+   "p5": 73.0,
+   "p95": 195.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00336": {
+  "blur_score": 44.4930386000475,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 105.51197306315105,
+   "p5": 25.0,
+   "p95": 239.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_train_00341": {
+  "blur_score": 376.5771310197298,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 144.60017468278463,
+   "p5": 68.0,
+   "p95": 209.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00343": {
+  "blur_score": 69.5251923473487,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 155.63080480363635,
+   "p5": 20.0,
+   "p95": 231.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_train_00353": {
+  "blur_score": 64.11712298059807,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 172.35555627000457,
+   "p5": 89.0,
+   "p95": 218.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00371": {
+  "blur_score": 765.1289073583764,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 132.6702192644033,
+   "p5": 104.0,
+   "p95": 168.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00373": {
+  "blur_score": 907.8160975918354,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 131.59614519032922,
+   "p5": 106.0,
+   "p95": 148.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00389": {
+  "blur_score": 279.5351976096417,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 144.2731059510031,
+   "p5": 119.0,
+   "p95": 162.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00397": {
+  "blur_score": 687.8929719643952,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 148.8472999185528,
+   "p5": 55.0,
+   "p95": 203.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00398": {
+  "blur_score": 127.79441659365479,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 137.8542613311614,
+   "p5": 70.0,
+   "p95": 164.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00404": {
+  "blur_score": 768.821334430674,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 157.4681210615998,
+   "p5": 34.0,
+   "p95": 215.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00410": {
+  "blur_score": 197.55682950744273,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 136.82488787615742,
+   "p5": 109.0,
+   "p95": 156.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00419": {
+  "blur_score": 23.755495581811665,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 123.33197998046874,
+   "p5": 8.0,
+   "p95": 168.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_train_00423": {
+  "blur_score": 769.824704909648,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 105.13200338648834,
+   "p5": 55.0,
+   "p95": 150.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00451": {
+  "blur_score": 229.12537350281016,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 155.34432861328125,
+   "p5": 123.0,
+   "p95": 181.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_train_00459": {
+  "blur_score": 67.95360371812465,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 156.38065944090792,
+   "p5": 9.0,
+   "p95": 218.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1152,
+  "height": 1728
+ },
+ "cord_train_00481": {
+  "blur_score": 127.20164827311424,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 138.1126677169067,
+   "p5": 91.0,
+   "p95": 178.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00487": {
+  "blur_score": 187.67996136031675,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 241.3345701877083,
+   "p5": 185.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 582,
+  "height": 1592
+ },
+ "cord_train_00493": {
+  "blur_score": 138.12548127381126,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 165.2320278742284,
+   "p5": 77.0,
+   "p95": 207.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1080,
+  "height": 1920
+ },
+ "cord_train_00508": {
+  "blur_score": 1840.7741412368684,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 128.224709844393,
+   "p5": 82.0,
+   "p95": 155.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00514": {
+  "blur_score": 241.47033401237584,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 138.5132816072245,
+   "p5": 97.0,
+   "p95": 171.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00515": {
+  "blur_score": 246.92242018628454,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 158.66592118377056,
+   "p5": 6.0,
+   "p95": 219.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00524": {
+  "blur_score": 61.158569146987794,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 188.59205348724737,
+   "p5": 145.0,
+   "p95": 220.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_train_00529": {
+  "blur_score": 149.8017157776456,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 154.48809372603236,
+   "p5": 99.0,
+   "p95": 206.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_train_00544": {
+  "blur_score": 107.24199459391308,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 148.700712394976,
+   "p5": 54.0,
+   "p95": 218.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 648,
+  "height": 1152
+ },
+ "cord_train_00554": {
+  "blur_score": 122.88065392981026,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 83.9338196945016,
+   "p5": 0.0,
+   "p95": 143.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00556": {
+  "blur_score": 356.15511349195936,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 150.59458031400968,
+   "p5": 74.0,
+   "p95": 181.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 368,
+  "height": 720
+ },
+ "cord_train_00558": {
+  "blur_score": 418.54114041581903,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 143.82391372200362,
+   "p5": 87.0,
+   "p95": 164.0,
+   "tag": "ok"
+  },
+  "layout": "long_narrow",
+  "width": 413,
+  "height": 1024
+ },
+ "cord_train_00559": {
+  "blur_score": 100.19011463093162,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 154.2597810872396,
+   "p5": 111.0,
+   "p95": 177.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_train_00562": {
+  "blur_score": 396.85100236297734,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 159.37594485882488,
+   "p5": 11.0,
+   "p95": 228.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00593": {
+  "blur_score": 57.22659237161896,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 152.57547908359103,
+   "p5": 63.0,
+   "p95": 220.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_train_00602": {
+  "blur_score": 190.00697550458483,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 127.04609535751028,
+   "p5": 94.0,
+   "p95": 150.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00604": {
+  "blur_score": 838.8385534551488,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 123.62910317001028,
+   "p5": 68.0,
+   "p95": 150.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00627": {
+  "blur_score": 158.58177137284525,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 117.9922991326589,
+   "p5": 12.0,
+   "p95": 162.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00630": {
+  "blur_score": 505.80627013228076,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 128.61510845336076,
+   "p5": 59.0,
+   "p95": 152.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00642": {
+  "blur_score": 96.97780229052907,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 145.08183232060185,
+   "p5": 116.0,
+   "p95": 171.0,
+   "tag": "low_contrast"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1152
+ },
+ "cord_train_00646": {
+  "blur_score": 68.92447584167745,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 189.27173979052355,
+   "p5": 125.0,
+   "p95": 220.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00648": {
+  "blur_score": 540.9455193700176,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 92.0348186728395,
+   "p5": 1.0,
+   "p95": 177.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 432,
+  "height": 648
+ },
+ "cord_train_00658": {
+  "blur_score": 724.0445167387445,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 135.09082075903063,
+   "p5": 79.0,
+   "p95": 190.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 432,
+  "height": 648
+ },
+ "cord_train_00666": {
+  "blur_score": 277.66623109268284,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 156.93245442708334,
+   "p5": 107.0,
+   "p95": 196.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_train_00672": {
+  "blur_score": 77.1923330607666,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 107.16728734425011,
+   "p5": 6.0,
+   "p95": 231.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00675": {
+  "blur_score": 205.63276982156032,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 115.43247206504344,
+   "p5": 22.0,
+   "p95": 165.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00676": {
+  "blur_score": 56.925786004695645,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 183.96726305298353,
+   "p5": 134.0,
+   "p95": 210.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00711": {
+  "blur_score": 398.97075463739765,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 174.74354085286458,
+   "p5": 142.0,
+   "p95": 204.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 960,
+  "height": 1280
+ },
+ "cord_train_00720": {
+  "blur_score": 319.9076987290045,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 119.03715760030865,
+   "p5": 11.0,
+   "p95": 202.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00723": {
+  "blur_score": 99.36187692558293,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 133.33681537922953,
+   "p5": 93.0,
+   "p95": 164.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00728": {
+  "blur_score": 530.0696891138316,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 112.90827278377915,
+   "p5": 21.0,
+   "p95": 162.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00732": {
+  "blur_score": 656.9232842281756,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 107.11370456104252,
+   "p5": 3.0,
+   "p95": 166.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 432,
+  "height": 648
+ },
+ "cord_train_00745": {
+  "blur_score": 33.211868503589116,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 118.27454236301892,
+   "p5": 45.0,
+   "p95": 176.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1536,
+  "height": 2730
+ },
+ "cord_train_00746": {
+  "blur_score": 315.08350564970516,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 131.6258885959648,
+   "p5": 40.0,
+   "p95": 179.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_train_00766": {
+  "blur_score": 48.87281130912005,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 142.93804359436035,
+   "p5": 17.0,
+   "p95": 237.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_train_00799": {
+  "blur_score": 21.18243471283897,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 150.93220673576255,
+   "p5": 81.0,
+   "p95": 192.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1551,
+  "height": 2701
+ },
+ "cord_validation_00015": {
+  "blur_score": 252.21038665325116,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 173.70017659731417,
+   "p5": 123.0,
+   "p95": 215.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 1108,
+  "height": 1478
+ },
+ "cord_validation_00060": {
+  "blur_score": 709.1722032215289,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 120.03399080504116,
+   "p5": 12.0,
+   "p95": 215.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_validation_00069": {
+  "blur_score": 292.5686259849772,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 185.4918311685528,
+   "p5": 132.0,
+   "p95": 211.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "cord_validation_00085": {
+  "blur_score": 47.317857209672184,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 143.7116609149509,
+   "p5": 104.0,
+   "p95": 185.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 2304,
+  "height": 4096
+ },
+ "cord_validation_00090": {
+  "blur_score": 976.6385431927621,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 129.8498605484825,
+   "p5": 12.0,
+   "p95": 208.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 576,
+  "height": 864
+ },
+ "cord_validation_00096": {
+  "blur_score": 152.54557559952562,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 118.034026527492,
+   "p5": 12.0,
+   "p95": 162.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 864,
+  "height": 1296
+ },
+ "sroie_train_00011": {
+  "blur_score": 1611.2802429141457,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 190.8171074064464,
+   "p5": 56.0,
+   "p95": 225.0,
+   "tag": "ok"
+  },
+  "layout": "long_narrow",
+  "width": 752,
+  "height": 2214
+ },
+ "sroie_train_00012": {
+  "blur_score": 1966.6425048577498,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 197.1639295614943,
+   "p5": 73.0,
+   "p95": 225.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 747,
+  "height": 1412
+ },
+ "sroie_train_00015": {
+  "blur_score": 1966.6425048577498,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 197.1639295614943,
+   "p5": 73.0,
+   "p95": 225.0,
+   "tag": "ok"
+  },
+  "layout": "standard",
+  "width": 747,
+  "height": 1412
+ },
+ "sroie_train_00023": {
+  "blur_score": 661.4756199169827,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 249.67605902923793,
+   "p5": 246.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 2481,
+  "height": 3508
+ },
+ "sroie_train_00041": {
+  "blur_score": 780.8920851491719,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 248.69958533843555,
+   "p5": 214.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 619,
+  "height": 1131
+ },
+ "sroie_train_00048": {
+  "blur_score": 1116.2217207536964,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 253.8311594993815,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 1080,
+  "height": 1527
+ },
+ "sroie_train_00053": {
+  "blur_score": 7888.642773908432,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 244.884255017452,
+   "p5": 168.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 1080,
+  "height": 1528
+ },
+ "sroie_train_00101": {
+  "blur_score": 5491.1288954132315,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 234.80516055074955,
+   "p5": 81.0,
+   "p95": 251.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 681,
+  "height": 1737
+ },
+ "sroie_train_00103": {
+  "blur_score": 5740.675832860309,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 242.9503166678737,
+   "p5": 191.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 741,
+  "height": 1733
+ },
+ "sroie_train_00158": {
+  "blur_score": 1794.1644021311383,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 229.622691591127,
+   "p5": 68.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1192
+ },
+ "sroie_train_00170": {
+  "blur_score": 208.43793112326,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 225.1833253702819,
+   "p5": 137.0,
+   "p95": 248.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 884,
+  "height": 1610
+ },
+ "sroie_train_00172": {
+  "blur_score": 544.8324459927103,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 238.57979113688674,
+   "p5": 159.0,
+   "p95": 251.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 932,
+  "height": 1708
+ },
+ "sroie_train_00176": {
+  "blur_score": 318.05097116296116,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 242.65962788971538,
+   "p5": 169.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 884,
+  "height": 1963
+ },
+ "sroie_train_00180": {
+  "blur_score": 275.8549214308004,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 231.78169466362638,
+   "p5": 169.0,
+   "p95": 251.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 940,
+  "height": 2594
+ },
+ "sroie_train_00191": {
+  "blur_score": 5802.417008618711,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 240.25990093028875,
+   "p5": 83.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 744,
+  "height": 1335
+ },
+ "sroie_train_00193": {
+  "blur_score": 6665.344613231823,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 238.62025680912615,
+   "p5": 41.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 744,
+  "height": 1970
+ },
+ "sroie_train_00196": {
+  "blur_score": 460.861151670922,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 246.32682055010298,
+   "p5": 179.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 786,
+  "height": 2184
+ },
+ "sroie_train_00202": {
+  "blur_score": 2260.798515318959,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 191.2182289287346,
+   "p5": 46.0,
+   "p95": 228.0,
+   "tag": "ok"
+  },
+  "layout": "long_narrow",
+  "width": 704,
+  "height": 2587
+ },
+ "sroie_train_00203": {
+  "blur_score": 2121.1631053865076,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 195.9266219857666,
+   "p5": 56.0,
+   "p95": 231.0,
+   "tag": "ok"
+  },
+  "layout": "long_narrow",
+  "width": 706,
+  "height": 1640
+ },
+ "sroie_train_00228": {
+  "blur_score": 3256.223095695035,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 212.18601411294898,
+   "p5": 68.0,
+   "p95": 246.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 747,
+  "height": 1180
+ },
+ "sroie_train_00234": {
+  "blur_score": 1258.7219994884251,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 184.7290168113261,
+   "p5": 4.0,
+   "p95": 224.0,
+   "tag": "ok"
+  },
+  "layout": "long_narrow",
+  "width": 724,
+  "height": 2007
+ },
+ "sroie_train_00266": {
+  "blur_score": 5241.724772500589,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 239.20738868026447,
+   "p5": 53.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 696,
+  "height": 2213
+ },
+ "sroie_train_00267": {
+  "blur_score": 6165.202167748763,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 236.33796121626247,
+   "p5": 21.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 684,
+  "height": 1674
+ },
+ "sroie_train_00282": {
+  "blur_score": 4080.398863140307,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 230.06331876956196,
+   "p5": 44.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 524,
+  "height": 1078
+ },
+ "sroie_train_00291": {
+  "blur_score": 142.52172147908155,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 230.63847678661475,
+   "p5": 86.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 888,
+  "height": 2269
+ },
+ "sroie_train_00304": {
+  "blur_score": 3179.1016652207145,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 234.49656954130342,
+   "p5": 111.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 743,
+  "height": 1454
+ },
+ "sroie_train_00313": {
+  "blur_score": 872.896670655974,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 253.24285671108075,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00315": {
+  "blur_score": 353.0039090430603,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 252.6288242758969,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4912,
+  "height": 6888
+ },
+ "sroie_train_00318": {
+  "blur_score": 1339.9825962921277,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 252.1222115741093,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00323": {
+  "blur_score": 1422.0084705170111,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 252.69805822358524,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00325": {
+  "blur_score": 2241.2994877145497,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 250.73699833042085,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00327": {
+  "blur_score": 1787.2824385935871,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 251.62636242279288,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00328": {
+  "blur_score": 1788.953405893219,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 251.5578159587772,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00337": {
+  "blur_score": 2286.143757141626,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 239.89521284941574,
+   "p5": 124.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 621,
+  "height": 975
+ },
+ "sroie_train_00354": {
+  "blur_score": 1478.9757077300706,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 235.39990622655665,
+   "p5": 117.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 620,
+  "height": 1204
+ },
+ "sroie_train_00379": {
+  "blur_score": 1582.542437035531,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 238.39415175160974,
+   "p5": 132.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1190
+ },
+ "sroie_train_00392": {
+  "blur_score": 1471.095195393345,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 236.12178841991343,
+   "p5": 132.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1200
+ },
+ "sroie_train_00398": {
+  "blur_score": 1626.2564692685341,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 235.5583730218457,
+   "p5": 121.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1208
+ },
+ "sroie_train_00400": {
+  "blur_score": 1658.5278138589254,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 230.45067799847212,
+   "p5": 111.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1224
+ },
+ "sroie_train_00404": {
+  "blur_score": 183.5367258922045,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 221.38781594094095,
+   "p5": 105.0,
+   "p95": 248.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 888,
+  "height": 2160
+ },
+ "sroie_train_00415": {
+  "blur_score": 352.69983297099094,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 231.32725681413652,
+   "p5": 182.0,
+   "p95": 248.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 884,
+  "height": 1688
+ },
+ "sroie_train_00418": {
+  "blur_score": 90.27738229670169,
+  "blur_tag": "blurry",
+  "illumination": {
+   "mean": 228.54128036080925,
+   "p5": 179.0,
+   "p95": 245.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 884,
+  "height": 1838
+ },
+ "sroie_train_00426": {
+  "blur_score": 405.9789853411808,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 238.77178241684297,
+   "p5": 162.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 936,
+  "height": 1321
+ },
+ "sroie_train_00464": {
+  "blur_score": 1368.2271287881279,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 252.31928641465,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00482": {
+  "blur_score": 1449.7844604796855,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 234.1980629593275,
+   "p5": 113.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 616,
+  "height": 1032
+ },
+ "sroie_train_00489": {
+  "blur_score": 1151.0445766028615,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 252.9516555242637,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00492": {
+  "blur_score": 1543.917842270508,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 223.07034887398785,
+   "p5": 73.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 608,
+  "height": 1040
+ },
+ "sroie_train_00527": {
+  "blur_score": 6155.7013435944355,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 232.10849745610128,
+   "p5": 62.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 619,
+  "height": 1607
+ },
+ "sroie_train_00528": {
+  "blur_score": 5954.329566870885,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 233.7173493896551,
+   "p5": 78.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 623,
+  "height": 1511
+ },
+ "sroie_train_00535": {
+  "blur_score": 1833.4279062108537,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 225.6017372812562,
+   "p5": 147.0,
+   "p95": 247.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 591,
+  "height": 1803
+ },
+ "sroie_train_00550": {
+  "blur_score": 1420.47926822373,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 251.6056820738821,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00564": {
+  "blur_score": 5655.154403319668,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 250.85812720060255,
+   "p5": 254.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00568": {
+  "blur_score": 1887.2494485493119,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 251.62794673021978,
+   "p5": 255.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 4961,
+  "height": 7016
+ },
+ "sroie_train_00579": {
+  "blur_score": 276.13872366799734,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 245.0424196877541,
+   "p5": 187.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 791,
+  "height": 1334
+ },
+ "sroie_train_00583": {
+  "blur_score": 242.74679341692476,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 236.0603398674656,
+   "p5": 130.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 928,
+  "height": 1738
+ },
+ "sroie_train_00597": {
+  "blur_score": 292.6096585745223,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 238.28523389138888,
+   "p5": 154.0,
+   "p95": 254.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 932,
+  "height": 2722
+ },
+ "sroie_train_00606": {
+  "blur_score": 259.2298667709627,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 228.75252624419292,
+   "p5": 147.0,
+   "p95": 253.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 936,
+  "height": 1665
+ },
+ "sroie_train_00613": {
+  "blur_score": 6876.410918222196,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 241.91125206839493,
+   "p5": 126.95000000000437,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 532,
+  "height": 1295
+ },
+ "sroie_train_00616": {
+  "blur_score": 1111.848931552807,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 240.21220024054392,
+   "p5": 122.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 622,
+  "height": 1310
+ },
+ "sroie_train_00628": {
+  "blur_score": 304.0071544547141,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 241.38705824072562,
+   "p5": 151.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "long_narrow",
+  "width": 928,
+  "height": 2110
+ },
+ "sroie_train_00644": {
+  "blur_score": 325.04351186569437,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 243.46827541329037,
+   "p5": 185.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 790,
+  "height": 1634
+ },
+ "sroie_train_00647": {
+  "blur_score": 275.749894150505,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 245.2321673214187,
+   "p5": 191.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 795,
+  "height": 1705
+ },
+ "sroie_train_00648": {
+  "blur_score": 321.8978162822943,
+  "blur_tag": "sharp",
+  "illumination": {
+   "mean": 245.86743803513014,
+   "p5": 187.0,
+   "p95": 255.0,
+   "tag": "bright"
+  },
+  "layout": "standard",
+  "width": 793,
+  "height": 1636
+ }
+}

@@ -63,20 +63,14 @@ Your money. Your data. Your control.
 
 ### What is not true yet
 
-- **Windows is the only head that is built, packaged and used.** The shared UI is OS-agnostic and
-  macOS, Android and iOS heads exist as projects, but only Windows has a packaging path. Treat the
-  other three as source, not as supported platforms (TD-109).
+- **Windows and Android are the targets for the academic demo.** The Android build was tested on a
+  Galaxy Tab S6 Lite. The macOS and iOS projects share the UI and are outside the scope of this demo.
 - **There is no WebAssembly head, and that is now a decision rather than an omission.** One existed
   until the Phase 3 platform review, and it could not run the product on three independent counts:
   the browser runtime provides no AES-GCM, so no vault could ever be unwrapped there; OpenCV and
   PaddleInference publish no WebAssembly build, so receipt scanning could never exist there; and
   `docs/02-Product-Scope` already listed browser-only distribution as an explicit non-goal. It was
   deleted rather than left as source, because a head that compiles is a head that looks supported.
-- **Receipt scanning is Windows-only, and the blocker is a test machine, not a package.** The
-  macOS- and Linux-native builds of OpenCV and PaddleInference are published at the exact versions
-  this repository already pins. They are deliberately not referenced: nothing in this project can
-  execute a macOS or Linux binary, so adding them would replace an honest "unsupported" with an
-  untested "supported" (TD-44).
 - **A transaction cannot be edited.** Correction is void-and-re-enter, which is the right default
   for a ledger and costs two rows with no link between them (TD-68).
 - **The budgets screen does not compute anything.** Its progress bar is hard-coded to zero (TD-99).
@@ -101,28 +95,74 @@ Pine was engineered from the ground up using strict **Clean / Hexagonal Architec
 ## Getting Started
 
 ### Prerequisites
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- IDE of your choice (Visual Studio, Rider, VS Code)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), using the version in [`global.json`](global.json).
+- [Git LFS](https://git-lfs.com/) for the ONNX weights and LayoutLMv3 tokenizer. From the repository root, run `git lfs install` and `git lfs pull`.
+- For an Android build, install the .NET Android workload (`dotnet workload restore src/Pine.Ui.Android/Pine.Ui.Android.csproj`), Android SDK and JDK. For USB setup and diagnostics, use [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools).
 
-### Running the app
-From the repository root:
+### Run on Windows
+
+From the repository root in PowerShell, run these commands to use ONNX OCR and the optional LayoutLMv3 extractor:
+
+```powershell
+$env:PINE_Pine__Ai__OcrBackend = 'Onnx'
+$env:PINE_Pine__Ai__LayoutLmModelPath = (Resolve-Path 'research/checkpoints/layoutlmv3/model.onnx').Path
+$env:PINE_Pine__Ai__LayoutLmTokenizerPath = (Resolve-Path 'research/checkpoints/layoutlmv3/tokenizer.json').Path
+dotnet run --project src/Pine.Ui.Windows
+```
+
+For OCR with heuristic extraction, launch Pine without the LayoutLMv3 settings. In the app, create
+or unlock a vault, open **Scan Receipt**, select a local receipt, then review the fields before saving.
+
+### Run on an Android tablet
+
+Build and install the signed ARM64 APK from the repository root. If Pine is already installed on
+the tablet, start with the model setup below.
+
+```powershell
+dotnet publish src/Pine.Ui.Android/Pine.Ui.Android.csproj -c Release -r android-arm64
+adb install -r src/Pine.Ui.Android/bin/Release/net10.0-android/android-arm64/publish/org.pine.app-Signed.apk
+```
+
+Open Pine once, then copy the research files to its app directory and reopen Pine:
+
+```powershell
+$modelDir = '/sdcard/Android/data/org.pine.app/files/layoutlm'
+adb shell mkdir -p $modelDir
+adb push research/checkpoints/layoutlmv3/model.onnx "$modelDir/model.onnx"
+adb push research/checkpoints/layoutlmv3/tokenizer.json "$modelDir/tokenizer.json"
+adb logcat -s PineScan
+```
+
+After a scan, `layoutlm=ok` confirms that the model contributed to extraction. Once the files are
+on the tablet, the demo can run in airplane mode. Use the live camera or a receipt saved on the device.
+The APK packages YOLO and OCR. Pine loads LayoutLMv3 from the local research files when available.
+
+### Run tests
 
 ```bash
-# Run the Windows Composition Root — the only head that is regularly built and used
-dotnet run --project src/Pine.Ui.Windows
-
-# Print the version, which is resolved from the build and the commit
-dotnet run --project src/Pine.Cli -- --version
-
-# Run the test suites (1054 tests: 855 unit + 199 integration)
 dotnet test tests/Pine.Tests.Unit/Pine.Tests.Unit.csproj
 dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
 ```
 
-The macOS, Android and iOS heads build from the same shared UI. CI compiles all of them on every
-pull request into `main`, which is the whole of what is verified about them: none has been run on a
-device and none has been packaged. Android and iOS additionally need their
-respective `dotnet` workloads installed.
+## Receipt scanning research
+
+Pine finds the receipt and corrects its perspective, uses OCR to read the text, then extracts the
+merchant, date, total and tax. The user reviews these fields before saving the transaction and its
+receipt. Android uses Camera2 for capture, Skia for image preparation, and ONNX Runtime for inference.
+
+| Model used in the demo | File size | Role and credit |
+| --- | ---: | --- |
+| [YOLOv8n-seg](src/Pine.Infrastructure/Assets/Ai/yolo-receipt-nano.onnx) | 13.3 MB | Receipt detection. [Ultralytics](https://github.com/ultralytics/ultralytics), adapted to receipts by Pine. |
+| [PP-OCRv5 mobile detector](src/Pine.Infrastructure/Assets/Ai/ocr/det.onnx) | 4.8 MB | Text-line detection. [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export from [RapidOCR](https://github.com/RapidAI/RapidOCR). |
+| [PP-OCRv5 Latin recognizer](src/Pine.Infrastructure/Assets/Ai/ocr/rec.onnx) | 8.1 MB | Text recognition. PaddleOCR weights, converted to ONNX by Pine using the RapidOCR graph. |
+| [LayoutLMv3 INT8](research/checkpoints/layoutlmv3/model.onnx) | 128.4 MB | Field extraction. Microsoft and Huang et al., fine-tuned and quantized by Pine. See the [model card](research/docs/model_card.md) and [CC BY-NC-SA 4.0 attribution notice](research/docs/LAYOUTLMV3-NOTICE.md). |
+
+In the Deliverable 2 experiment, all extractors received the same OCR output for 164 receipts from
+CORD and SROIE. Macro-F1 across the four fields was **0.702** for the corrected rules, **0.894** for
+LayoutLMv3, and **0.904** for the hybrid. The reported Android scan took about **8.9 s** in one run.
+See the [reproduction steps](research/README.md#reproducir-la-tabla-del-entregable-2), the
+[Android implementation notes](docs/65-Onnx-Ocr-Design.md), and the
+[paper repository](https://github.com/camiloo1210/Pine-Docs).
 
 ---
 

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -60,6 +61,16 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </summary>
     private readonly IViewModelFactory _viewModels;
     private readonly ILogger<ScanReceiptViewModel>? _logger;
+
+    /// <summary>The platform camera, or null when this head has none (Windows uses the live scanner page instead).</summary>
+    private readonly ICameraSource? _camera;
+    private readonly IReceiptEdgeService? _edges;
+    private readonly object _cameraLock = new();
+    private CancellationTokenSource? _cameraCts;
+    private ICameraSession? _cameraSession;
+    private ICameraFrame? _latestFrame;
+    private readonly LocalizedMessageSlot _live;
+    private int _analysing;
 
     [ObservableProperty]
     public partial Account? SelectedAccount { get; set; }
@@ -199,6 +210,73 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
     partial void OnAlternativeDateChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(DateAmbiguityMessage));
 
+    // ===== TAX FIELD =====
+    // The receipt's tax as one editable figure. It is persisted as the transaction's Tax line (the domain has no
+    // separate tax column): while the tax is on top of the prices, this field and the single Tax line move together,
+    // so the reconciliation (products + tax + tip + delivery + rounding - discount = total) is always the grid's.
+    // Tax already included in the prices is shown and flagged but never added, and therefore never saved as a line.
+    private bool _syncingTax;
+
+    /// <summary>The tax read from the receipt (or typed by the person).</summary>
+    [ObservableProperty]
+    public partial decimal TaxTotal { get; set; }
+
+    /// <summary>True when the tax is already inside the prices and is not added to the total.</summary>
+    [ObservableProperty]
+    public partial bool IsTaxIncluded { get; set; }
+
+    /// <summary>The other tax reading (layout model versus heuristics) that did not reconcile, if any.</summary>
+    [ObservableProperty]
+    public partial decimal? TaxAlternative { get; set; }
+
+    /// <summary>Warning shown when the two readings of the tax disagree.</summary>
+    public string? TaxWarningMessage =>
+        TaxAlternative.HasValue ? _localizer.Format("ScanReceipt.TaxAlternativeWarning", TaxAlternative.Value) : null;
+
+    partial void OnTaxAlternativeChanged(decimal? value) => OnPropertyChanged(nameof(TaxWarningMessage));
+
+    partial void OnTaxTotalChanged(decimal value) => SyncTaxLine();
+
+    partial void OnIsTaxIncludedChanged(bool value) => SyncTaxLine();
+
+    private void SyncTaxLine()
+    {
+        if (_syncingTax)
+        {
+            return;
+        }
+
+        var taxLines = LineItems.Where(li => li.Kind == LineItemKind.Tax).ToList();
+        if (IsTaxIncluded || TaxTotal <= 0m)
+        {
+            // Included tax is not a charge; a zero tax is no line. Only a lone line is ours to remove.
+            if (taxLines.Count == 1)
+            {
+                LineItems.Remove(taxLines[0]);
+            }
+
+            return;
+        }
+
+        if (taxLines.Count == 0)
+        {
+            LineItems.Add(new ReceiptLineItemViewModel
+            {
+                Kind = LineItemKind.Tax,
+                Description = _localizer["LineItemKind.Tax"],
+                Quantity = 1,
+                UnitPrice = TaxTotal,
+                TotalPrice = TaxTotal,
+            });
+        }
+        else if (taxLines.Count == 1)
+        {
+            taxLines[0].UnitPrice = TaxTotal;
+            taxLines[0].TotalPrice = TaxTotal;
+        }
+        // Several printed tax rows: the breakdown stays as read and the field is the figure to compare it with.
+    }
+
     public ObservableCollection<Account> Accounts { get; } = new();
 
     public ObservableCollection<ReceiptLineItemViewModel> LineItems { get; } = new();
@@ -206,6 +284,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// <summary>The sum of every line item, in receipt sign.</summary>
     [ObservableProperty]
     public partial decimal LineItemsTotal { get; private set; }
+
+    /// <summary>The sum of the product lines only: tax, tip, discount, rounding and deposit rows are not "items".</summary>
+    [ObservableProperty]
+    public partial decimal ProductsTotal { get; private set; }
+
+    /// <summary>Tax, tip, discount, rounding and the other typed adjustment rows, in receipt sign.</summary>
+    [ObservableProperty]
+    public partial decimal AdjustmentsTotal { get; private set; }
 
     /// <summary>
     /// What the itemisation is missing: <see cref="Amount"/> minus <see cref="LineItemsTotal"/>.
@@ -235,6 +321,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         LineItemKind.Tip,
         LineItemKind.Discount,
         LineItemKind.Deposit,
+        LineItemKind.Delivery,
         LineItemKind.Rounding,
         LineItemKind.Unattributed,
     };
@@ -248,8 +335,16 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         IShellNavigator navigationService,
         IViewModelFactory viewModels,
         ILocalizer localizer,
-        ILogger<ScanReceiptViewModel>? logger = null)
+        ILogger<ScanReceiptViewModel>? logger = null,
+        Pine.Ui.Avalonia.Composition.PineHeadCapabilities? capabilities = null,
+        ICameraSource? camera = null,
+        IReceiptEdgeService? edges = null)
     {
+        HasLiveScanner = capabilities?.HasReceiptVision ?? true;
+        _camera = camera;
+        HasCameraCapture = camera is not null && !HasLiveScanner;
+        _edges = edges;
+        HasEdgeEditor = edges is not null && !HasLiveScanner;
         ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
         _navigationService = navigationService;
@@ -257,6 +352,8 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _localizer = localizer;
         _status = new LocalizedMessageSlot(localizer, text => StatusMessage = text ?? string.Empty);
         _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
+        _live = new LocalizedMessageSlot(localizer, text => LiveStatus = text ?? string.Empty);
+        _edgeHint = new LocalizedMessageSlot(localizer, text => EdgeHint = text ?? string.Empty);
         _duplicate = new LocalizedMessageSlot(localizer, text => DuplicateWarning = text ?? string.Empty);
         _localizer.LanguageChanged += OnLanguageChanged;
         _logger = logger;
@@ -511,6 +608,24 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
                 }
             }
 
+            // The tax field: filled from the extraction, flagged when it is already inside the prices.
+            _syncingTax = true;
+            try
+            {
+                TaxTotal = result.TaxAmount ?? 0m;
+                IsTaxIncluded = result.TaxIncluded;
+                TaxAlternative = result.TaxAlternative;
+            }
+            finally
+            {
+                _syncingTax = false;
+            }
+
+            if (LineItems.Count > 0)
+            {
+                SyncTaxLine();
+            }
+
             // Suggest category if merchant is known
             if (!string.IsNullOrWhiteSpace(Merchant))
             {
@@ -698,7 +813,567 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _navigationService.NavigateTo(_viewModels.CreateTransactions());
     }
 
+    /// <summary>
+    /// Whether the Retake button exists. It opens the live scanner, so a head with no live camera (an
+    /// OCR-only head such as Android) does not show it; choosing another file is the retake there.
+    /// </summary>
+    public bool HasLiveScanner { get; }
+
+    /// <summary>
+    /// Whether this page offers to take the receipt photo with the device camera itself (Android, docs/65 phase D):
+    /// the head registers an <see cref="ICameraSource"/> but has no full live scanner. False on Windows, where the
+    /// Retake button opens the live scanner page, and on any head without a camera.
+    /// </summary>
+    public bool HasCameraCapture { get; }
+
+    /// <summary>True while the camera is open and the viewfinder is showing.</summary>
+    [ObservableProperty]
+    public partial bool IsCameraOpen { get; private set; }
+
+    /// <summary>The most recent camera frame, for the viewfinder. Never saved: frames live in memory only.</summary>
+    [ObservableProperty]
+    public partial WriteableBitmap? LiveFeed { get; private set; }
+
+    /// <summary>What the live scan has read so far (merchant, date, total), or that it is still looking.</summary>
+    [ObservableProperty]
+    public partial string LiveStatus { get; private set; } = string.Empty;
+
+    /// <summary>Starts the live scan (opens the camera). The sidebar and dashboard entries call this after navigating here.</summary>
+    public void StartLiveScan() => OpenCamera();
+
+    /// <summary>One analysed frame every ~1.5 s: slow enough for a mid-range tablet, and never two at once.</summary>
+    private static readonly TimeSpan LiveAnalysisInterval = TimeSpan.FromMilliseconds(700);
+
+    /// <summary>Longest side of the picture handed to the analysis. The full frame is kept for the final capture.</summary>
+    private const int AnalysisMaxSide = 1024;
+
+    /// <summary>Current wait between analyses: at least <see cref="LiveAnalysisInterval"/>, and twice the last analysis time so a slow device is never saturated.</summary>
+    private TimeSpan _analysisInterval = LiveAnalysisInterval;
+
+    private async Task AnalyseLiveFrameAsync(byte[] jpeg, CancellationToken token)
+    {
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var stream = new MemoryStream(jpeg, writable: false);
+            var probe = await _edges!.ProbeAsync(stream, token).ConfigureAwait(false);
+            var quad = probe.Quad;
+            _analysisInterval = clock.Elapsed * 1.5 > LiveAnalysisInterval ? clock.Elapsed * 1.5 : LiveAnalysisInterval;
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var smoothed = quad is null ? null : Smooth(_liveQuad, quad);
+            // A frame counts toward the automatic capture only when the outline holds still AND the receipt is nearly as sharp as the
+            // sharpest frame of this session (a moving, blurred frame reads badly and is discarded).
+            if (quad is not null)
+            {
+                _sharpestSeen = Math.Max(_sharpestSeen * 0.98, probe.Sharpness);
+            }
+
+            var sharpEnough = probe.Sharpness >= _sharpestSeen * MinRelativeSharpness;
+            var steady = smoothed is not null && _liveQuad is not null && quad is not null && sharpEnough && MaxCornerMove(_liveQuad, quad) < SteadyMovement;
+            _liveQuad = smoothed;
+            _steadyCount = steady ? _steadyCount + 1 : 0;
+            var capture = _steadyCount >= SteadyFramesToCapture;
+            Post(() =>
+            {
+                if (!IsCameraOpen)
+                {
+                    return;
+                }
+
+                LiveQuad = smoothed;
+                _live.Set(smoothed is null ? "ScanReceipt.Live.Looking" : capture ? "ScanReceipt.Live.Capturing" : "ScanReceipt.Live.Steady");
+                if (capture)
+                {
+                    _steadyCount = 0;
+                    _ = CapturePhotoAsync();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            // A frame that cannot be read is not an error worth showing; the next one gets another go.
+            _ = UserFacingError.Report(_logger, ex, "live-frame", new UserFacingMessage("ScanReceipt.Failure.CapturedImage"));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _analysing, 0);
+        }
+    }
+
+    private ReceiptQuad? _liveQuad;
+    private int _steadyCount;
+    private const int SteadyFramesToCapture = 3;
+    private const double MinRelativeSharpness = 0.7;
+    private double _sharpestSeen;
+    private const double SteadyMovement = 0.03;
+
+    /// <summary>The outline drawn over the viewfinder: smoothed between detections so it does not jitter.</summary>
+    [ObservableProperty]
+    public partial ReceiptQuad? LiveQuad { get; private set; }
+
+    public static double MaxCornerMove(ReceiptQuad a, ReceiptQuad b)
+    {
+        static double D(NormalizedPoint p, NormalizedPoint q) => Math.Sqrt(((p.X - q.X) * (p.X - q.X)) + ((p.Y - q.Y) * (p.Y - q.Y)));
+        return new[] { D(a.TopLeft, b.TopLeft), D(a.TopRight, b.TopRight), D(a.BottomRight, b.BottomRight), D(a.BottomLeft, b.BottomLeft) }.Max();
+    }
+
+    /// <summary>Exponential smoothing of each corner (half old, half new); the first detection is taken as is.</summary>
+    public static ReceiptQuad Smooth(ReceiptQuad? previous, ReceiptQuad next)
+    {
+        if (previous is null)
+        {
+            return next;
+        }
+
+        static NormalizedPoint Mix(NormalizedPoint p, NormalizedPoint n) => new((p.X + n.X) / 2, (p.Y + n.Y) / 2);
+        return new ReceiptQuad(
+            Mix(previous.TopLeft, next.TopLeft),
+            Mix(previous.TopRight, next.TopRight),
+            Mix(previous.BottomRight, next.BottomRight),
+            Mix(previous.BottomLeft, next.BottomLeft));
+    }
+
+    [RelayCommand(CanExecute = nameof(HasCameraCapture))]
+    private void OpenCamera()
+    {
+        if (_camera is null || IsCameraOpen || IsBusy)
+        {
+            return;
+        }
+
+        _error.Clear();
+        _liveQuad = null;
+        _steadyCount = 0;
+        _sharpestSeen = 0;
+        LiveQuad = null;
+        _analysisInterval = LiveAnalysisInterval;
+        _live.Set("ScanReceipt.Live.Looking");
+        IsCameraOpen = true;
+        _status.Set("LiveScanner.Status.OpeningCamera");
+        var cts = new CancellationTokenSource();
+        _cameraCts = cts;
+        _ = Task.Run(() => CameraLoopAsync(_camera, cts.Token));
+    }
+
+    /// <summary>Opens the camera (the Android head asks for the CAMERA permission here) and feeds the viewfinder until closed.</summary>
+    private async Task CameraLoopAsync(ICameraSource camera, CancellationToken token)
+    {
+        try
+        {
+            var session = camera.OpenDefault();
+            if (session is null)
+            {
+                Post(() =>
+                {
+                    CloseCamera();
+                    _error.Set("LiveScanner.Status.CameraFailed");
+                });
+                return;
+            }
+
+            lock (_cameraLock)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    session.Dispose();
+                    return;
+                }
+
+                _cameraSession = session;
+            }
+
+            Post(() => _status.Clear());
+            var sinceAnalysis = System.Diagnostics.Stopwatch.StartNew();
+            var noFrames = System.Diagnostics.Stopwatch.StartNew();
+
+            while (!token.IsCancellationRequested)
+            {
+                ICameraFrame? frame;
+                lock (_cameraLock)
+                {
+                    frame = _cameraSession?.ReadFrame();
+                    if (_cameraSession is null)
+                    {
+                        break;
+                    }
+                }
+
+                if (frame is null)
+                {
+                    // No frame for a few seconds means the camera was taken away (the app was paused, another app took it).
+                    if (noFrames.Elapsed > TimeSpan.FromSeconds(3))
+                    {
+                        Post(() =>
+                        {
+                            CloseCamera();
+                            _error.Set("LiveScanner.Status.CameraFailed");
+                        });
+                        return;
+                    }
+
+                    await Task.Delay(10, token).ConfigureAwait(false);
+                    continue;
+                }
+
+                noFrames.Restart();
+                var frameClock = System.Diagnostics.Stopwatch.StartNew();
+
+                if (_edges is not null && sinceAnalysis.Elapsed >= _analysisInterval && Interlocked.CompareExchange(ref _analysing, 1, 0) == 0)
+                {
+                    sinceAnalysis.Restart();
+                    var jpeg = frame.EncodeJpeg(AnalysisMaxSide);
+                    _ = Task.Run(() => AnalyseLiveFrameAsync(jpeg, token), token);
+                }
+
+                var bitmap = ToBitmap(frame);
+                lock (_cameraLock)
+                {
+                    _latestFrame?.Dispose();
+                    _latestFrame = frame;
+                }
+
+                Post(() => LiveFeed = bitmap);
+
+                // Paced to about 30 frames a second: the wait is what is left of 33 ms after this frame's own work.
+                var wait = 33 - (int)frameClock.ElapsedMilliseconds;
+                if (wait > 0)
+                {
+                    await Task.Delay(wait, token).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            var failure = UserFacingError.Report(_logger, ex, "camera-loop", new UserFacingMessage("ScanReceipt.Failure.CameraReadFormat", ex.GetType().Name));
+            Post(() =>
+            {
+                CloseCamera();
+                _error.Set(failure);
+            });
+        }
+    }
+
+    private readonly WriteableBitmap?[] _feedBuffers = new WriteableBitmap?[2];
+    private int _feedIndex;
+
+    /// <summary>Paints the frame into one of two reusable bitmaps (a fresh 8 MB bitmap per frame was the viewfinder's garbage).</summary>
+    private WriteableBitmap ToBitmap(ICameraFrame frame)
+    {
+        _feedIndex ^= 1;
+        var existing = _feedBuffers[_feedIndex];
+        if (existing is not null && existing.PixelSize.Width == frame.Width && existing.PixelSize.Height == frame.Height)
+        {
+            using var reused = existing.Lock();
+            unsafe
+            {
+                frame.CopyBgraTo(new Span<byte>((void*)reused.Address, reused.RowBytes * frame.Height), reused.RowBytes);
+            }
+
+            return existing;
+        }
+
+        var bitmap = new WriteableBitmap(
+            new global::Avalonia.PixelSize(frame.Width, frame.Height),
+            new global::Avalonia.Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul);
+
+        using var buffer = bitmap.Lock();
+        unsafe
+        {
+            frame.CopyBgraTo(new Span<byte>((void*)buffer.Address, buffer.RowBytes * frame.Height), buffer.RowBytes);
+        }
+
+        _feedBuffers[_feedIndex] = bitmap;
+        return bitmap;
+    }
+
+    private static void Post(Action action) => global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
+
+    /// <summary>Takes the frame on screen, closes the camera and runs it through the same pipeline as a picked file.</summary>
     [RelayCommand]
+    private async Task CapturePhotoAsync()
+    {
+        byte[]? jpeg;
+        ICameraSession? still;
+        lock (_cameraLock)
+        {
+            still = _cameraSession;
+            jpeg = null;
+        }
+
+        // The camera's own full-resolution still (about 8 MP) when it offers one; otherwise the last viewfinder frame.
+        if (still is not null)
+        {
+            try
+            {
+                jpeg = await Task.Run(still.CaptureStill);
+            }
+            catch (Exception ex)
+            {
+                _ = UserFacingError.Report(_logger, ex, "camera-still", new UserFacingMessage("ScanReceipt.Failure.CapturedImage"));
+            }
+        }
+
+        if (jpeg is null)
+        {
+            lock (_cameraLock)
+            {
+                jpeg = _latestFrame?.EncodeJpeg();
+            }
+        }
+
+        CloseCamera();
+        if (jpeg is null)
+        {
+            _error.Set("ScanReceipt.Failure.CapturedImage");
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(jpeg, writable: false);
+            await HandlePickedImageAsync(stream);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-process",
+                new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseCamera()
+    {
+        _cameraCts?.Cancel();
+        _cameraCts?.Dispose();
+        _cameraCts = null;
+        ICameraSession? closing;
+        lock (_cameraLock)
+        {
+            closing = _cameraSession;
+            _cameraSession = null;
+            _latestFrame?.Dispose();
+            _latestFrame = null;
+        }
+
+        // Closing a Camera2 device waits for the camera service; on the UI thread that is a visible stall.
+        if (closing is not null)
+        {
+            _ = Task.Run(closing.Dispose);
+        }
+
+        LiveQuad = null;
+        IsCameraOpen = false;
+        _live.Clear();
+        LiveFeed = null;
+        _status.Clear();
+    }
+
+    // ----- Edge editor (Android): detect, show the outline, let the person move it, then crop and read -----
+
+    /// <summary>Whether a picked or captured photo goes through the edge editor before it is read (a head with the edge service and no live scanner page).</summary>
+    public bool HasEdgeEditor { get; }
+
+    /// <summary>True while the edge editor is showing.</summary>
+    [ObservableProperty]
+    public partial bool IsEditingEdges { get; private set; }
+
+    /// <summary>The upright photo the outline is drawn on.</summary>
+    [ObservableProperty]
+    public partial Bitmap? EdgeImage { get; private set; }
+
+    /// <summary>The outline, two-way with the editor control.</summary>
+    [ObservableProperty]
+    public partial ReceiptQuad? EdgeQuad { get; set; }
+
+    /// <summary>One sentence about the outline: found, or not found and to drag the corners.</summary>
+    [ObservableProperty]
+    public partial string EdgeHint { get; private set; } = string.Empty;
+
+    private readonly LocalizedMessageSlot? _edgeHint;
+    private byte[]? _edgeJpeg;
+    private byte[]? _originalPhoto;
+    private int _edgeTurns;
+
+    /// <summary>
+    /// The entry for a photo a person picked or the camera captured: through the edge editor when this head has one, otherwise
+    /// straight to the scan.
+    /// </summary>
+    /// <param name="image">The encoded photo.</param>
+    /// <returns>When the editor is showing, or the scan has finished.</returns>
+    public async Task HandlePickedImageAsync(Stream image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (!HasEdgeEditor)
+        {
+            await ProcessReceiptImageAsync(image);
+            return;
+        }
+
+        await BeginEdgeEditAsync(image);
+    }
+
+    private async Task BeginEdgeEditAsync(Stream image)
+    {
+        IsBusy = true;
+        _error.Clear();
+        _status.Set("ScanReceipt.Edges.Working");
+        try
+        {
+            image.Position = 0;
+            using (var copy = new MemoryStream())
+            {
+                await image.CopyToAsync(copy);
+                _originalPhoto = copy.ToArray();
+            }
+
+            _edgeTurns = 0;
+            var found = await _edges!.FindEdgesAsync(new MemoryStream(_originalPhoto, writable: false));
+            await ShowEdgesAsync(found.UprightJpeg, found.Quad);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "edge-find", new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+        }
+        finally
+        {
+            IsBusy = false;
+            _status.Clear();
+        }
+    }
+
+    private async Task ShowEdgesAsync(byte[] uprightJpeg, ReceiptQuad? quad)
+    {
+        var bitmap = await Task.Run(() => new Bitmap(new MemoryStream(uprightJpeg, writable: false)));
+        _edgeJpeg = uprightJpeg;
+        EdgeImage = bitmap;
+        EdgeQuad = quad ?? DefaultQuad;
+        _edgeHint?.Set(quad is null ? "ScanReceipt.Edges.NotFound" : "ScanReceipt.Edges.Found");
+        IsEditingEdges = true;
+    }
+
+    private static readonly ReceiptQuad DefaultQuad = new(
+        new NormalizedPoint(0.1, 0.1), new NormalizedPoint(0.9, 0.1), new NormalizedPoint(0.9, 0.9), new NormalizedPoint(0.1, 0.9));
+
+    [RelayCommand]
+    private async Task ConfirmEdgesAsync()
+    {
+        if (_edgeJpeg is null || EdgeQuad is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        _status.Set("ScanReceipt.Edges.Cropping");
+        Stream? cropped = null;
+        try
+        {
+            // The crop comes from the ORIGINAL photo at full resolution, turned as the editor turned its copy.
+            cropped = _originalPhoto is { } original
+                ? await _edges!.CropOriginalAsync(new MemoryStream(original, writable: false), _edgeTurns, EdgeQuad)
+                : await _edges!.CropAsync(new MemoryStream(_edgeJpeg, writable: false), EdgeQuad);
+            CloseEdgeEditor();
+            IsBusy = false;
+            await ProcessReceiptImageAsync(cropped);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "edge-crop", new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+            IsBusy = false;
+        }
+        finally
+        {
+            cropped?.Dispose();
+            _status.Clear();
+        }
+    }
+
+    [RelayCommand]
+    private async Task RetryEdgesAsync()
+    {
+        if (_edgeJpeg is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        _status.Set("ScanReceipt.Edges.Working");
+        try
+        {
+            var found = await _edges!.FindEdgesAsync(new MemoryStream(_edgeJpeg, writable: false));
+            await ShowEdgesAsync(found.UprightJpeg, found.Quad);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "edge-retry", new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+        }
+        finally
+        {
+            IsBusy = false;
+            _status.Clear();
+        }
+    }
+
+    [RelayCommand]
+    private async Task RotateEdgesAsync()
+    {
+        if (_edgeJpeg is null || EdgeQuad is not { } q)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            await using var turned = await _edges!.RotateAsync(new MemoryStream(_edgeJpeg, writable: false), clockwise: true);
+            using var memory = new MemoryStream();
+            await turned.CopyToAsync(memory);
+
+            _edgeTurns = (_edgeTurns + 1) % 4;
+
+            // A quarter turn clockwise: the old bottom-left is now top-left, and every point (x, y) is now (1 - y, x).
+            static NormalizedPoint T(NormalizedPoint p) => new(1 - p.Y, p.X);
+            await ShowEdgesAsync(memory.ToArray(), new ReceiptQuad(T(q.BottomLeft), T(q.TopLeft), T(q.TopRight), T(q.BottomRight)));
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "edge-rotate", new UserFacingMessage("ScanReceipt.Failure.CapturedImage")));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelEdges() => CloseEdgeEditor();
+
+    private void CloseEdgeEditor()
+    {
+        IsEditingEdges = false;
+        EdgeImage = null;
+        EdgeQuad = null;
+        _edgeJpeg = null;
+        _originalPhoto = null;
+        _edgeTurns = 0;
+    }
+
+    [RelayCommand(CanExecute = nameof(HasLiveScanner))]
     private void Retake()
     {
         _navigationService.NavigateTo(_viewModels.CreateLiveScanner(_navigationService));
@@ -833,6 +1508,7 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             // NO ACCOUNT AND NO BASE CURRENCY (an empty vault): there is genuinely no scale to round to,
             // and nothing can be saved in that state anyway, so the exact figure is the honest one.
             LineItemsTotal = LineItems.Sum(li => li.TotalPrice);
+            ProductsTotal = LineItems.Where(li => li.Kind == LineItemKind.Product).Sum(li => li.TotalPrice);
             UnreconciledDifference = Amount - LineItemsTotal;
         }
         else
@@ -843,8 +1519,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
             var total = Money.FromRounded(Amount, currency);
 
             LineItemsTotal = sum.Amount;
+            ProductsTotal = LineItems.Where(li => li.Kind == LineItemKind.Product)
+                .Aggregate(Money.Zero(currency), (running, li) => running + Money.FromRounded(li.TotalPrice, currency)).Amount;
             UnreconciledDifference = (total - sum).Amount;
         }
+
+        AdjustmentsTotal = LineItemsTotal - ProductsTotal;
 
         IsReconciled = !HasLineItems || UnreconciledDifference == 0m;
     }
@@ -861,9 +1541,12 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     /// </remarks>
     public void Dispose()
     {
+        CloseCamera();
         _localizer.LanguageChanged -= OnLanguageChanged;
         _status.Dispose();
         _error.Dispose();
+        _live.Dispose();
+        _edgeHint?.Dispose();
         _duplicate.Dispose();
         GC.SuppressFinalize(this);
     }

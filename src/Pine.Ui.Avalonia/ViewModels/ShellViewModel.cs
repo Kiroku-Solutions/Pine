@@ -38,19 +38,80 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     /// </remarks>
     public bool HasReceiptVision { get; }
 
+    /// <summary>
+    /// Whether the Scan Receipt page (choose an image file, read it) is offered. True on Windows and, with
+    /// the managed OCR stack, on Android (docs/65 phase C).
+    /// </summary>
+    public bool HasReceiptScan { get; }
+
+    /// <summary>
+    /// Whether to tell the person that receipt scanning is unavailable here, instead of the receipt
+    /// buttons silently not being in the list.
+    /// </summary>
+    public bool ShowReceiptVisionNote => !HasReceiptScan;
+
+    /// <summary>
+    /// Whether to tell the person that scanning from a file works here but live scanning and the crop
+    /// screen do not (an OCR-only head).
+    /// </summary>
+    public bool ShowLiveScanNote => HasReceiptScan && !HasReceiptVision && !HasInlineLiveScan;
+
+    /// <summary>
+    /// Whether the live scan runs inside the Scan Receipt page (an OCR-only head that has a camera, Android):
+    /// the sidebar then offers Live Scan, which opens that page with the camera already running.
+    /// </summary>
+    public bool HasInlineLiveScan { get; }
+
+    /// <summary>
+    /// Whether the window is too narrow for a permanent sidebar (a phone, or a tablet held in
+    /// portrait). Set by <c>ShellView</c> from its width; the sidebar then becomes an overlay
+    /// drawer opened from a menu button, instead of taking 240 of ~600 available pixels.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsCompact { get; set; }
+
+    /// <summary>Whether the sidebar is showing. Always true when not compact.</summary>
+    [ObservableProperty]
+    public partial bool IsPaneOpen { get; set; } = true;
+
+    partial void OnIsCompactChanged(bool value)
+    {
+        IsPaneOpen = !value;
+        OnPropertyChanged(nameof(ShowMenuBar));
+    }
+
+    /// <summary>
+    /// Whether a bottom tab bar replaces the sidebar (a narrow touch screen). Set by <c>ShellView</c>; always false on
+    /// desktop, where a narrow window keeps the menu button and drawer it had.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool UseBottomNav { get; set; }
+
+    partial void OnUseBottomNavChanged(bool value) => OnPropertyChanged(nameof(ShowMenuBar));
+
+    /// <summary>The top menu button: only when the sidebar is a drawer and there is no bottom bar to open it from.</summary>
+    public bool ShowMenuBar => IsCompact && !UseBottomNav;
+
+    /// <summary>Opens or closes the sidebar drawer.</summary>
+    [RelayCommand]
+    private void TogglePane() => IsPaneOpen = !IsPaneOpen;
+
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
     public ShellViewModel(
         IViewModelFactory viewModels,
         IVaultSession vaultSession,
-        PineHeadCapabilities capabilities)
+        PineHeadCapabilities capabilities,
+        Pine.Core.Ai.ICameraSource? camera = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
         _viewModels = viewModels;
         _vaultSession = vaultSession;
         HasReceiptVision = capabilities.HasReceiptVision;
+        HasReceiptScan = capabilities.HasReceiptScan;
+        HasInlineLiveScan = camera is not null && HasReceiptScan && !HasReceiptVision;
 
         // Start on the Dashboard
         NavigateToDashboard();
@@ -109,6 +170,10 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
         CurrentPage = page;
 
         UpdateActiveStates(page);
+
+        // A drawer that stays open over the page you just chose would hide it.
+        if (IsCompact)
+            IsPaneOpen = false;
     }
 
     /// <summary>
@@ -329,6 +394,14 @@ public partial class ShellViewModel : ObservableRecipient, IShellNavigator
     private void NavigateToScanReceipt()
     {
         NavigateTo(_viewModels.CreateScanReceipt(this));
+    }
+
+    [RelayCommand]
+    private void NavigateToInlineLiveScan()
+    {
+        var scan = _viewModels.CreateScanReceipt(this);
+        NavigateTo(scan);
+        scan.StartLiveScan();
     }
 
     [RelayCommand]

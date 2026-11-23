@@ -43,6 +43,13 @@ public record ReceiptLineItem(
 /// <see cref="DateIsAmbiguous"/> and <see cref="AlternativeDate"/> surface the other reading instead
 /// of silently guessing, so the person holding the receipt can make the call the parser cannot.
 /// </para>
+/// <para>
+/// <see cref="TaxAmount"/> IS THE TAX THE MODEL READ AS ONE FIELD, AND IT IS NOT A LINE ITEM. The
+/// heuristic extractor reports tax as an adjustment line (TD-19); the layout model labels a single tax
+/// figure instead. It is a trailing optional parameter so every existing construction and
+/// deconstruction keeps compiling, and <c>null</c> means "no tax field was extracted", which is what
+/// the heuristic path always returns.
+/// </para>
 /// </remarks>
 public record ReceiptExtractionResult(
     string? Merchant,
@@ -52,7 +59,10 @@ public record ReceiptExtractionResult(
     ReceiptConfidence Confidence,
     System.Collections.Generic.IReadOnlyList<ReceiptLineItem>? LineItems = null,
     bool DateIsAmbiguous = false,
-    System.DateTimeOffset? AlternativeDate = null
+    System.DateTimeOffset? AlternativeDate = null,
+    decimal? TaxAmount = null,
+    bool TaxIncluded = false,
+    decimal? TaxAlternative = null
 );
 
 /// <summary>

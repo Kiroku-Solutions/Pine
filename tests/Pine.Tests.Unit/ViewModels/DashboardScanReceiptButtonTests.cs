@@ -135,7 +135,6 @@ public class DashboardScanReceiptButtonTests
     /// </remarks>
     [Theory]
     [InlineData(PineHeadProfile.MacOs)]
-    [InlineData(PineHeadProfile.Android)]
     [InlineData(PineHeadProfile.Ios)]
     public Task OnAHeadWithoutReceiptVision_TheButtonIsNotThere(PineHeadProfile profile) => InEnglish(localizer =>
     {
@@ -147,7 +146,7 @@ public class DashboardScanReceiptButtonTests
 
             button.IsVisible.Should().BeFalse($"{profile} has no receipt pipeline, so the button must not be offered");
             button.Command!.CanExecute(null).Should().BeFalse("and it must refuse to run if something reaches it anyway");
-            dashboard.HasReceiptVision.Should().BeFalse();
+            dashboard.HasReceiptScan.Should().BeFalse();
 
             shell.CurrentPage = null!;
         }
