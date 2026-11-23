@@ -1,10 +1,35 @@
-# research/ - KIE de recibos (Fase 1: datos, baseline y metricas)
+# Investigación de extracción de campos en recibos
 
-Objetivo final: LayoutLMv3 para KIE de 4 campos (MERCHANT, DATE, TOTAL, TAX) sobre documentos en ingles,
-dentro del pipeline YOLO(document) -> PaddleOCR -> extractor. **Esta carpeta es solo Fase 1** (no hay entrenamiento).
-Todo vive en `research/`; no toca `src/`, `tests/`, `Pine.slnx` ni los `Directory.*.props` de la raiz.
+Esta carpeta contiene la preparación de datos, el entrenamiento, la exportación a ONNX y la evaluación
+de los cuatro campos de Pine: comercio, fecha, total e impuesto. La aplicación comparte el extractor
+C# con el evaluador.
 
-## Como correr todo
+## Reproducir la tabla del Entregable 2
+
+Desde la raíz del repositorio, ejecuta `git lfs install` y `git lfs pull` para obtener los modelos.
+Usa el [modelo INT8 y su tokenizador](checkpoints/layoutlmv3/), con los [hashes de la ficha del modelo](docs/model_card.md#checksums-sha-256).
+La comparación usa el split fijo de `splits.json` con 164 recibos de CORD y SROIE. Las tres variantes
+reciben exactamente la misma salida de PaddleOCR 3.7.
+
+En PowerShell, prepara el entorno y descarga los datos siguiendo los comandos de la sección siguiente,
+hasta terminar `convert_sroie.py`. Después, desde `research/`, ejecuta:
+
+```powershell
+python scripts/ocr_dump.py --split test --out data/deliverable2/ocr
+$modelDir = 'checkpoints/layoutlmv3'
+dotnet run --project baseline_dotnet -c Release -- data/deliverable2/ocr data/deliverable2/rules
+dotnet run --project baseline_dotnet -c Release -- data/deliverable2/ocr data/deliverable2/layoutlm --layoutlm "$modelDir/model.onnx" "$modelDir/tokenizer.json"
+python scripts/eval_fields.py --split test --pred data/deliverable2/rules --out data/deliverable2/rules-scores.json
+python scripts/eval_fields.py --split test --pred data/deliverable2/layoutlm --out data/deliverable2/layoutlm-scores.json
+python scripts/eval_fields.py --split test --pred data/deliverable2/layoutlm-hybrid --out data/deliverable2/hybrid-scores.json
+```
+
+El segundo comando de .NET genera las predicciones del modelo y las del híbrido. La clave
+`macro_f1_4_fields (unsupported fields count as 0)` promedia el F1 de los cuatro campos. Los valores
+del Entregable 2, redondeados a tres decimales, son **0,702** para las reglas corregidas, **0,894**
+para LayoutLMv3 y **0,904** para el híbrido. El evaluador genera un reporte JSON por variante.
+
+## Preparar datos y ejecutar la línea base
 
 ```powershell
 cd research
@@ -94,7 +119,7 @@ FN = GT presente no acertado. Match: merchant sin mayusculas/puntuacion/espacios
 
 - CORD-v2: CC BY 4.0 (atribucion a NAVER CLOVA).
 - SROIE: datos de la competicion ICDAR 2019; el espejo HF declara MIT, pero la licencia de origen no esta clara -> revisar.
-- **LayoutLMv3:** los pesos originales y su adaptación para Pine están bajo **CC BY-NC-SA 4.0**. Pine usa el modelo en investigación académica y mantiene los pesos fuera del repositorio y del APK. El [aviso de atribución y licencia](docs/LAYOUTLMV3-NOTICE.md) documenta el crédito a Microsoft y a los autores, así como los cambios hechos por Pine. Consulta [cómo compartir el modelo](docs/risks_and_deviations.md#sharing-the-model) para preparar una copia de investigación.
+- **LayoutLMv3:** los pesos originales y su adaptación para Pine están bajo **CC BY-NC-SA 4.0**. El [artefacto de investigación](checkpoints/layoutlmv3/) se gestiona con Git LFS y se carga como archivo local independiente del APK. El [aviso de atribución y licencia](docs/LAYOUTLMV3-NOTICE.md) documenta el crédito a Microsoft y a los autores, así como los cambios hechos por Pine. Consulta [las condiciones de distribución](docs/risks_and_deviations.md#sharing-the-model).
 
 ## Estado Fase 1
 
@@ -147,4 +172,4 @@ Detalle en [`docs/roboflow_ingest.md`](docs/roboflow_ingest.md).
 ## Sigue siendo manual
 
 - Verificar a mano en Label Studio las 150 imagenes del test congelado (hasta entonces no hay baseline definitivo).
-- Licencia: LayoutLMv3 es CC BY-NC-SA 4.0 y Pine es GPLv3 (ver "Licencias"); resolver antes de integrar o distribuir pesos.
+- Verificar los términos de los datasets de entrenamiento antes de distribuir públicamente el modelo adaptado (ver «Licencias»).
