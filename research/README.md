@@ -1,18 +1,14 @@
-# Investigación de extracción de campos en recibos
+# Receipt Field Extraction Research
 
-Esta carpeta contiene la preparación de datos, el entrenamiento, la exportación a ONNX y la evaluación
-de los cuatro campos de Pine: comercio, fecha, total e impuesto. La aplicación comparte el extractor
-C# con el evaluador.
+This directory contains data preparation, training, ONNX export, and evaluation for Pine's four receipt fields: merchant, date, total, and tax. The application shares its C# extractor with the evaluator.
 
-## Reproducir la tabla del Entregable 2
+## Reproducing the Deliverable 2 Table
 
-Desde la raíz del repositorio, ejecuta `git lfs install` y `git lfs pull` para obtener los modelos.
-Usa el [modelo INT8 y su tokenizador](checkpoints/layoutlmv3/), con los [hashes de la ficha del modelo](docs/model_card.md#checksums-sha-256).
-La comparación usa el split fijo de `splits.json` con 164 recibos de CORD y SROIE. Las tres variantes
-reciben exactamente la misma salida de PaddleOCR 3.7.
+From the repository root, run `git lfs install` and `git lfs pull` to fetch the models.
+Use the [INT8 model and tokenizer](checkpoints/layoutlmv3/), with checksums in the [model card](docs/model_card.md#checksums-sha-256).
+The comparison uses the fixed `splits.json` split with 164 receipts from CORD and SROIE. All three variants receive the exact same PaddleOCR 3.7 output.
 
-En PowerShell, prepara el entorno y descarga los datos siguiendo los comandos de la sección siguiente,
-hasta terminar `convert_sroie.py`. Después, desde `research/`, ejecuta:
+In PowerShell, set up the environment and download the datasets following the commands in the next section, through `convert_sroie.py`. Then, from `research/`, run:
 
 ```powershell
 python scripts/ocr_dump.py --split test --out data/deliverable2/ocr
@@ -24,35 +20,32 @@ python scripts/eval_fields.py --split test --pred data/deliverable2/layoutlm --o
 python scripts/eval_fields.py --split test --pred data/deliverable2/layoutlm-hybrid --out data/deliverable2/hybrid-scores.json
 ```
 
-El segundo comando de .NET genera las predicciones del modelo y las del híbrido. La clave
-`macro_f1_4_fields (unsupported fields count as 0)` promedia el F1 de los cuatro campos. Los valores
-del Entregable 2, redondeados a tres decimales, son **0,702** para las reglas corregidas, **0,894**
-para LayoutLMv3 y **0,904** para el híbrido. El evaluador genera un reporte JSON por variante.
+The second .NET command generates both the model predictions and the hybrid predictions. The `macro_f1_4_fields (unsupported fields count as 0)` key averages F1 across all four fields. Rounded to three decimal places, the Deliverable 2 values are **0.702** for the corrected rules baseline, **0.894** for LayoutLMv3, and **0.904** for the hybrid extractor. The evaluator writes one JSON report per variant.
 
-## Preparar datos y ejecutar la línea base
+## Preparing Data and Running the Baseline
 
 ```powershell
 cd research
 py -3.12 -m venv .venv ; .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt            # versiones exactas (Python 3.12, CPU); paddleocr/paddlepaddle solo para ocr_dump.py
+pip install -r requirements.txt            # exact versions (Python 3.12, CPU); paddleocr/paddlepaddle only needed for ocr_dump.py
 
-python scripts/download_datasets.py        # idempotente -> data/raw/ (ignorado por git)
+python scripts/download_datasets.py        # idempotent -> data/raw/ (gitignored)
 python scripts/convert_cord.py             # -> data/processed/cord/{images,labels}
 python scripts/convert_sroie.py            # -> data/processed/sroie/{images,labels}
-python scripts/make_splits.py              # congela splits.json (NO se regenera si existe)
+python scripts/make_splits.py              # freezes splits.json (not regenerated if it already exists)
 python scripts/audit_labels.py             # -> reports/audit.json + audit.md
 
 python scripts/ocr_dump.py --split test    # PaddleOCR -> data/ocr/<id>.json
 dotnet run --project baseline_dotnet -- data/ocr data/predictions   # HeuristicFieldExtractor
 python scripts/eval_fields.py --pred data/predictions --split test  # P/R/F1 + Macro-F1
-python scripts/quality_tags.py --split test                         # esqueleto Fase 5
+python scripts/quality_tags.py --split test                         # image quality breakdown
 
-python -m pytest tests -q                  # tests con datos sinteticos, sin red
+python -m pytest tests -q                  # synthetic unit tests, offline
 ```
 
-`splits.json` se versiona (es el manifiesto congelado); `data/`, `.venv/` y `bin/obj` estan en `research/.gitignore`.
+`splits.json` is versioned (frozen manifest); `data/`, `.venv/`, and `bin/obj` are listed in `research/.gitignore`.
 
-## Formato de etiquetas (FUNSD-BIO, un JSON por documento)
+## Label Format (FUNSD-BIO, one JSON per document)
 
 `data/processed/<source>/labels/<id>.json`:
 
@@ -67,109 +60,94 @@ python -m pytest tests -q                  # tests con datos sinteticos, sin red
 }
 ```
 
-- `box` en pixeles de la imagen (x0,y0,x1,y1), `image` relativo a la carpeta del source.
-- `label` BIO: `O`, `B-/I-MERCHANT`, `B-/I-DATE`, `B-/I-TOTAL`, `B-/I-TAX`.
-- `ground_truth` = valor final por campo (`null` si el dataset no lo tiene); base del F1 a nivel de campo.
-  Se toma del campo estructurado del dataset, no se reconstruye desde las palabras.
+- `box` is in image pixels `(x0, y0, x1, y1)`; `image` is relative to the source folder.
+- BIO `label`: `O`, `B-/I-MERCHANT`, `B-/I-DATE`, `B-/I-TOTAL`, `B-/I-TAX`.
+- `ground_truth`: final field value (`null` if absent in the dataset); used for field-level F1. Taken from the dataset's structured ground truth, not reconstructed from word tokens.
 
-Salida de OCR (`ocr_dump.py`, mismo esquema que `Pine.Core.Ai.OcrWord`):
+OCR output (`ocr_dump.py`, matching `Pine.Core.Ai.OcrWord`):
 `{"id", "words": [{"text", "confidence", "box": {"x","y","width","height"}}]}`.
-Predicciones del baseline: `{"id", "merchant", "total", "date", "tax": null, "tax_supported": false}`.
+Baseline predictions: `{"id", "merchant", "total", "date", "tax": null, "tax_supported": false}`.
 
-## Mapeo origen -> 4 campos
+## Source-to-Field Mapping
 
-| Dataset | Origen | Campo |
+| Dataset | Source field | Target field |
 |---|---|---|
 | CORD-v2 | `total.total_price` | TOTAL |
-| CORD-v2 | `sub_total.tax_price` (y `total.tax_price` si existe) | TAX |
-| CORD-v2 | (no existe) | MERCHANT, DATE = `null` |
+| CORD-v2 | `sub_total.tax_price` (and `total.tax_price` if present) | TAX |
+| CORD-v2 | (not present) | MERCHANT, DATE = `null` |
 | SROIE | `company` | MERCHANT |
 | SROIE | `date` | DATE |
 | SROIE | `total` | TOTAL |
-| SROIE | `address` | descartado (`O`) |
+| SROIE | `address` | discarded (`O`) |
 
-Nota: en CORD real el impuesto vive en `sub_total.tax_price`; `total.tax_price` se acepta por si una variante lo trae.
-SROIE se descarga del espejo HF `arvindrajan92/sroie_document_understanding` (ver `convert_sroie.py` para el esquema que asume).
+Note: in CORD, tax lives in `sub_total.tax_price`; `total.tax_price` is accepted as a fallback.
+SROIE is downloaded from the Hugging Face mirror `arvindrajan92/sroie_document_understanding` (see `convert_sroie.py` for the expected schema).
 
-## Limitaciones
+## Limitations
 
-- CORD: recibos indonesios (rupias, separador de miles `,`), sin merchant ni fecha fiables -> solo TOTAL y TAX tienen GT.
-- SROIE: recibos malayos, sin TAX. Fecha numerica ambigua: la normalizacion asume dia primero.
-- Ningun dataset cubre los 4 campos a la vez: el Macro-F1 se calcula sobre los campos con GT del subconjunto evaluado
-  (los excluidos se listan en `excluded_no_gt`, nunca cuentan como 0 ni como 1).
-- Normalizacion de importes: heuristica (separador unico + 3 digitos = miles). `0.001` seria mal leido; los importes reales tienen 2 decimales.
-- Los espejos HF de SROIE no son oficiales; verificar que coinciden con la competicion ICDAR 2019 antes de publicar resultados.
+- CORD: Indonesian receipts (rupiah, `,` thousands separator), no reliable merchant or date -> only TOTAL and TAX have ground truth.
+- SROIE: Malaysian receipts, no TAX. Ambiguous numeric dates: normalization assumes day-first.
+- Neither dataset covers all 4 fields at once: Macro-F1 is computed over fields with ground truth in the evaluated subset (excluded fields are listed in `excluded_no_gt`, never counted as 0 or 1).
+- Amount normalization: heuristic (single separator + 3 digits = thousands). `0.001` would be misread; real amounts have 2 decimal places.
+- Hugging Face SROIE mirrors are unofficial; verify alignment with the ICDAR 2019 competition before publishing results.
 
 ## Baseline (C#)
 
-`baseline_dotnet/` es una consola independiente (NO esta en `Pine.slnx`) que referencia `src/Pine.Infrastructure` por `ProjectReference`
-y ejecuta `HeuristicFieldExtractor`. Los `Directory.Build.props`/Central Package Management de la raiz se aplican tal cual (no hizo falta
-archivo local); compilarlo genera `baseline_dotnet/packages.lock.json` (lo exige el lock file global; esta en `research/`).
-El baseline es heuristico y esta afinado para recibos en espanol (`FECHA`, `IVA`...), asi que sobre documentos en ingles se espera que rinda mal:
-es la linea base a superar, no un objetivo.
+`baseline_dotnet/` is a standalone console app (not in `Pine.slnx`) that references `src/Pine.Infrastructure` via `ProjectReference` and runs `HeuristicFieldExtractor`. Root `Directory.Build.props` and Central Package Management apply directly; building it generates `baseline_dotnet/packages.lock.json`.
+The heuristic baseline is tuned for Spanish receipts (`FECHA`, `IVA`, etc.), so it is expected to perform poorly on English documents—it is a baseline to beat, not a target.
 
-**TAX = N/A explicito.** `ReceiptExtractionResult` no expone Tax (los impuestos se anaden como lineas de ajuste en `LineItems`,
-detectadas por palabras clave en espanol). Derivarlo de ahi no es honesto sobre recibos en ingles, asi que el baseline emite `tax: null`.
-`eval_fields.py` reporta dos Macro-F1 etiquetados: `macro_f1_4_fields` (tax cuenta como 0 si hay GT) y `macro_f1_supported_fields` (MERCHANT, DATE, TOTAL).
+**Explicit `TAX = N/A`.** `ReceiptExtractionResult` does not expose Tax (taxes are added as adjustment lines in `LineItems`, detected by Spanish keywords). Deriving it from there is unreliable on English receipts, so the baseline emits `tax: null`.
+`eval_fields.py` reports two Macro-F1 scores: `macro_f1_4_fields` (tax counts as 0 when GT exists) and `macro_f1_supported_fields` (MERCHANT, DATE, TOTAL).
 
-Metricas: Precision/Recall/F1 por campo; TP = prediccion que coincide; FP = prediccion presente y erronea o sin GT;
-FN = GT presente no acertado. Match: merchant sin mayusculas/puntuacion/espacios extra; total y tax decimal con tolerancia 0.01; fecha ISO.
+Metrics: per-field Precision/Recall/F1; TP = matching prediction; FP = wrong prediction or missing GT; FN = missed GT. Matching: merchant normalized for case/punctuation/whitespace; total and tax decimal within 0.01 tolerance; ISO date.
 
-## Licencias (riesgo abierto)
+## Licenses (Open Considerations)
 
-- CORD-v2: CC BY 4.0 (atribucion a NAVER CLOVA).
-- SROIE: datos de la competicion ICDAR 2019; el espejo HF declara MIT, pero la licencia de origen no esta clara -> revisar.
-- **LayoutLMv3:** los pesos originales y su adaptación para Pine están bajo **CC BY-NC-SA 4.0**. El [artefacto de investigación](checkpoints/layoutlmv3/) se gestiona con Git LFS y se carga como archivo local independiente del APK. El [aviso de atribución y licencia](docs/LAYOUTLMV3-NOTICE.md) documenta el crédito a Microsoft y a los autores, así como los cambios hechos por Pine. Consulta [las condiciones de distribución](docs/risks_and_deviations.md#sharing-the-model).
+- CORD-v2: CC BY 4.0 (attribution to NAVER CLOVA).
+- SROIE: ICDAR 2019 competition data; the HF mirror states MIT, but upstream licensing is unclear -> verify before redistribution.
+- **LayoutLMv3:** original weights and Pine's fine-tuned adaptation are under **CC BY-NC-SA 4.0**. The [research artifact](checkpoints/layoutlmv3/) is managed via Git LFS and loaded as a local file outside the APK. The [attribution and license notice](docs/LAYOUTLMV3-NOTICE.md) documents credit to Microsoft, the authors, and Pine's modifications. See [distribution terms](docs/risks_and_deviations.md#sharing-the-model).
 
-## Estado Fase 1
+## Oracle OCR Verification (Not Real OCR)
 
-Ver el reporte de entrega para lo verificado de verdad. Pendiente: Fase 2 (entrenamiento) y Fase 5 (analisis por calidad de imagen).
+To test the C# -> eval pipeline without PaddleOCR, `data/ocr_oracle/` was generated from annotation lines (confidence 1.0); results are in `reports/baseline_eval_oracle_ocr.json`. This is an optimistic upper bound, not a real pipeline measurement.
 
-### Verificacion con OCR "oracle" (no es OCR real)
+## Real OCR with PaddleOCR
 
-Para probar la cadena C# -> eval sin PaddleOCR se genero `data/ocr_oracle/` desde las lineas de las anotaciones (confianza 1.0);
-resultado en `reports/baseline_eval_oracle_ocr.json`. Es un techo optimista del baseline, no una medicion de pipeline real.
-
-## OCR real con PaddleOCR
-
-Verificado: Python 3.12, CPU, Windows, `paddlepaddle==3.3.1` + `paddleocr==3.7.0` (+ `paddlex==3.7.2`), todo fijado en `requirements.txt`.
+Verified on Python 3.12, CPU, Windows, `paddlepaddle==3.3.1` + `paddleocr==3.7.0` (+ `paddlex==3.7.2`), pinned in `requirements.txt`.
 
 ```powershell
 pip install -r requirements.txt
 python scripts/ocr_dump.py --split test --out data/ocr_paddle
 ```
 
-- **Workaround obligatorio: `enable_mkldnn=False`.** En Paddle 3.3.1 CPU/Windows el backend oneDNN/PIR falla con
-  `NotImplementedError: ConvertPirAttribute2RuntimeAttribute`. `ocr_dump.py` ya lo pasa al construir `PaddleOCR`; no lo quites.
-- Modelos PP-OCRv6 medium (deteccion y reconocimiento) se descargan en la primera ejecucion y quedan cacheados en `~/.paddlex`.
-  La primera descarga es lenta si la red es lenta; luego es offline.
-- Poca RAM: correr en lotes de 40 imagenes (`--limit 40`; es idempotente, los JSON ya existentes no cuentan contra el limite, asi que se repite el comando hasta terminar).
+- **Required workaround: `enable_mkldnn=False`.** On Paddle 3.3.1 CPU/Windows, the oneDNN/PIR backend fails with `NotImplementedError: ConvertPirAttribute2RuntimeAttribute`. `ocr_dump.py` already passes this when constructing `PaddleOCR`.
+- PP-OCR models are downloaded on first run and cached in `~/.paddlex` (offline afterwards).
+- Low RAM: run in batches of 40 images (`--limit 40`; idempotent, existing JSON files are skipped).
 
-## Baseline real (PaddleOCR + HeuristicFieldExtractor)
+## Real Baseline (PaddleOCR + HeuristicFieldExtractor)
 
-Fuente: `reports/baseline_eval_paddleocr.md` / `.json`. Split test: 164 docs (CORD 101, SROIE 63).
+Source: `reports/baseline_eval_paddleocr.md` / `.json`. Test split: 164 docs (CORD 101, SROIE 63).
 
-| Campo | F1 |
+| Field | F1 |
 |---|---|
-| MERCHANT (solo SROIE) | 0.444 |
-| DATE (solo SROIE) | 0.918 |
+| MERCHANT (SROIE only) | 0.444 |
+| DATE (SROIE only) | 0.918 |
 | TOTAL | 0.191 |
-| TAX (solo CORD, no soportado por el baseline) | 0 |
+| TAX (CORD only, unsupported by baseline) | 0 |
 
-Macro-F1 4 campos (TAX cuenta como 0): **0.3885**. Macro-F1 3 campos soportados: **0.5179**.
+Macro-F1 4 fields (TAX counted as 0): **0.3885**. Macro-F1 3 supported fields: **0.5179**.
 
-**Advertencia:** CORD (indonesio) y SROIE (malayo) no son recibos en ingles tipicos, y el heuristico esta afinado para espanol; estas cifras
-NO son el baseline definitivo. El baseline definitivo se recalcula sobre el test verificado a mano de Roboflow.
+**Note:** CORD (Indonesian) and SROIE (Malaysian) are not typical English receipts, and the heuristic extractor is tuned for Spanish; the definitive baseline is evaluated on the manually verified Roboflow test set.
 
-## Flujo Roboflow
+## Roboflow Pipeline
 
-Detalle en [`docs/roboflow_ingest.md`](docs/roboflow_ingest.md).
+Details in [`docs/roboflow_ingest.md`](docs/roboflow_ingest.md).
 
-- Descarga en formato **COCO**: el export yolov8 del proyecto de segmentacion salio vacio.
-- 12004 imagenes -> 11999 tras descartar 5 sin caja -> 7207 grupos unicos tras deduplicar (las aumentaciones de Roboflow generan casi-duplicados; pHash, hamming 6).
-- Muestreo con semilla 42: test congelado de 150 imagenes (`data/roboflow/labeling/test_to_verify.json`, no se sobrescribe) y rondas de etiquetado de 200 / 250 / 250.
+- Downloaded in **COCO** format (the YOLOv8 export from the segmentation project was empty).
+- 12,004 images -> 11,999 after dropping 5 without boxes -> 7,207 unique groups after deduplication (Roboflow augmentations create near-duplicates; pHash, Hamming distance 6).
+- Seed 42 sampling: frozen test set of 150 images (`data/roboflow/labeling/test_to_verify.json`, never overwritten) and labeling rounds of 200 / 250 / 250.
 
-## Sigue siendo manual
+## Remaining Manual Steps
 
-- Verificar a mano en Label Studio las 150 imagenes del test congelado (hasta entonces no hay baseline definitivo).
-- Verificar los términos de los datasets de entrenamiento antes de distribuir públicamente el modelo adaptado (ver «Licencias»).
+- Manually verify the 150 images of the frozen test set in Label Studio.
+- Review upstream training dataset terms before public model distribution (see Licenses).
