@@ -96,11 +96,11 @@ dotnet test tests/Pine.Tests.Integration/Pine.Tests.Integration.csproj
 
 | File | Size | Role and credit | Training data |
 | --- | ---: | --- | --- |
-| [YOLOv8n-seg](src/Pine.Infrastructure/Assets/Ai/yolo-receipt-nano.onnx) | 13.3 MB | Finds the receipt. [Ultralytics](https://github.com/ultralytics/ultralytics), adapted to receipts by Pine. | Private Roboflow receipt segmentation dataset (curated by Pine). |
-| [PP-OCRv5 detector](src/Pine.Infrastructure/Assets/Ai/ocr/det.onnx) | 4.8 MB | Finds text lines. [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export by [RapidOCR](https://github.com/RapidAI/RapidOCR). | Pre-trained PaddleOCR public scene-text / document detection datasets. |
-| [PP-OCRv5 Latin recognizer](src/Pine.Infrastructure/Assets/Ai/ocr/rec.onnx) | 8.1 MB | Reads the text lines. PaddleOCR weights converted to ONNX by Pine using a RapidOCR graph. | Pre-trained PaddleOCR public Latin text-recognition datasets. |
+| [YOLOv8n-seg](src/Pine.Infrastructure/Assets/Ai/yolo-receipt-nano.onnx) | 13.3 MB | Finds the receipt. [Ultralytics](https://github.com/ultralytics/ultralytics), adapted to receipts by Pine. | Private [Roboflow](https://roboflow.com/) receipt segmentation dataset (curated by Pine). |
+| [PP-OCRv5 detector](src/Pine.Infrastructure/Assets/Ai/ocr/det.onnx) | 4.8 MB | Finds text lines. [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export by [RapidOCR](https://github.com/RapidAI/RapidOCR). | Pre-trained [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) public scene-text / document detection datasets. |
+| [PP-OCRv5 Latin recognizer](src/Pine.Infrastructure/Assets/Ai/ocr/rec.onnx) | 8.1 MB | Reads the text lines. PaddleOCR weights converted to ONNX by Pine using a RapidOCR graph. | Pre-trained [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) public Latin text-recognition datasets. |
 | [PP-OCRv5 Latin dictionary](src/Pine.Infrastructure/Assets/Ai/ocr/dict_latin_v5.txt) | 2.6 KB | Character dictionary for the PaddleOCR recognizer. | — |
-| [LayoutLMv3 INT8](research/checkpoints/layoutlmv3/model.onnx) | 128.4 MB | Extracts receipt fields. [Microsoft](https://huggingface.co/microsoft/layoutlmv3-base) and [Huang et al.](https://doi.org/10.1145/3503161.3548112), fine-tuned, exported to ONNX, and quantized by Pine. [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). | Public receipt datasets: **CORD**, **SROIE**, and **WildReceipt**. |
+| [LayoutLMv3 INT8](research/checkpoints/layoutlmv3/model.onnx) | 128.4 MB | Extracts receipt fields. [Microsoft](https://huggingface.co/microsoft/layoutlmv3-base) and [Huang et al.](https://doi.org/10.1145/3503161.3548112), fine-tuned, exported to ONNX, and quantized by Pine. [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). | Public receipt datasets: [CORD](https://github.com/clovaai/cord), [SROIE](https://rrc.cvc.uab.es/?ch=13), and [WildReceipt](https://opendatalab.com/OpenDataLab/WildReceipt). |
 | [LayoutLMv3 tokenizer](research/checkpoints/layoutlmv3/tokenizer.json) | 3.6 MB | Converts OCR text into tokens for the LayoutLMv3 checkpoint. | — |
 
 ## Project structure
