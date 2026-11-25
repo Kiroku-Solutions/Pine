@@ -29,24 +29,24 @@
 
     <Grid x:Name="Root">
         <!-- Main Content Area -->
-        <Grid RowDefinitions="Auto, *" Margin="40">
+        <Grid x:Name="MainGrid" RowDefinitions="Auto, *" Margin="40">
 
             <!-- Header -->
-            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
+            <Grid x:Name="HeaderGrid" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="{loc:Tr Transactions.Header.Title}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="{loc:Tr Transactions.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+                    <TextBlock x:Name="HeaderTitle" Text="{loc:Tr Transactions.Header.Title}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+                    <TextBlock Text="{loc:Tr Transactions.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                     <!-- TD-71: voided rows are hidden by default; this brings them back. -->
                     <CheckBox Content="{loc:Tr Transactions.ShowVoided}" IsChecked="{Binding ShowVoided}" VerticalAlignment="Center" />
-                    <Button Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" MinHeight="44" Padding="15,10" CornerRadius="8" FontSize="14" />
                 </StackPanel>
             </Grid>
 
             <!-- Transactions List -->
-            <Border Grid.Row="1" Padding="20" CornerRadius="12"
+            <Border x:Name="ListBorder" Grid.Row="1" Padding="20" CornerRadius="12"
                     Background="{DynamicResource PineSurface}"
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1"
@@ -66,114 +66,110 @@
                         <ItemsControl ItemsSource="{Binding Transactions}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="core:Transaction">
-                                    <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="Transparent" CornerRadius="8" Padding="15,10" Margin="0,5">
-                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto, Auto, Auto">
+                                    <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,10">
+                                        <Grid RowDefinitions="Auto, Auto">
+                                            <!-- Row 0: Avatar + Payee/Meta + Bold Amount -->
+                                            <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto">
+                                                <Border Grid.Column="0" Classes="tx-avatar" Width="40" Height="40" CornerRadius="20" Background="{DynamicResource PinePrimary}" Margin="0,0,12,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" TextTrimming="CharacterEllipsis" />
+                                                </Border>
 
-                                            <Border Grid.Column="0" Classes="tx-avatar" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PinePrimary}" Margin="0,0,15,0">
-                                                <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" />
-                                            </Border>
+                                                <!-- Details -->
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" Margin="0,0,8,0">
+                                                    <WrapPanel>
+                                                        <TextBlock Classes="tx-primary" Text="{Binding Payee}" FontWeight="SemiBold" FontSize="15" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,6,0" />
 
-                                            <!-- Details -->
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <TextBlock Classes="tx-primary" Text="{Binding Payee}" FontWeight="Medium" FontSize="15" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" />
+                                                        <!-- The badge carries the reason in its tooltip: the "why" is the
+                                                             thing a void is for, and hiding it behind another screen would
+                                                             make the audit trail unreadable in practice. -->
+                                                        <Border IsVisible="{Binding IsVoided}"
+                                                                Background="{DynamicResource PineDangerContainer}"
+                                                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                ToolTip.Tip="{Binding VoidReason}">
+                                                            <TextBlock Text="{loc:Tr Transactions.VoidedBadge}" FontSize="10" FontWeight="Bold" Opacity="1"
+                                                                       Foreground="{DynamicResource PineDanger}" />
+                                                        </Border>
 
-                                                    <!-- The badge carries the reason in its tooltip: the "why" is the
-                                                         thing a void is for, and hiding it behind another screen would
-                                                         make the audit trail unreadable in practice. -->
-                                                    <Border IsVisible="{Binding IsVoided}"
-                                                            Background="{DynamicResource PineDangerContainer}"
-                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
-                                                            ToolTip.Tip="{Binding VoidReason}">
-                                                        <TextBlock Text="{loc:Tr Transactions.VoidedBadge}" FontSize="10" FontWeight="Bold" Opacity="1"
-                                                                   Foreground="{DynamicResource PineDanger}" />
-                                                    </Border>
-
-                                                    <!-- Zero-amount import marker: often a bank authorization the person may want to hide. -->
-                                                    <Border IsVisible="{Binding IsZeroAmountImport}"
-                                                            Background="{DynamicResource PineSurfaceElevated}"
-                                                            BorderThickness="1" BorderBrush="{DynamicResource PineBorder}"
-                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
-                                                            ToolTip.Tip="{loc:Tr ImportReview.ImportedZeroAmount}">
-                                                        <TextBlock Text="{loc:Tr ImportWizard.Legend.ZeroAmount}" FontSize="10" FontWeight="Bold"
-                                                                   Foreground="{DynamicResource PineTextMuted}" />
-                                                    </Border>
+                                                        <!-- Zero-amount import marker: often a bank authorization the person may want to hide. -->
+                                                        <Border IsVisible="{Binding IsZeroAmountImport}"
+                                                                Background="{DynamicResource PineSurface}"
+                                                                BorderThickness="1" BorderBrush="{DynamicResource PineBorder}"
+                                                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                                                ToolTip.Tip="{loc:Tr ImportReview.ImportedZeroAmount}">
+                                                            <TextBlock Text="{loc:Tr ImportWizard.Legend.ZeroAmount}" FontSize="10" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource PineTextMuted}" />
+                                                        </Border>
+                                                    </WrapPanel>
+                                                    <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+                                                    <TextBlock Text="{Binding Notes}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextTrimming="CharacterEllipsis"
+                                                               IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
-                                            </StackPanel>
 
-                                            <!-- Notes -->
-                                            <TextBlock Grid.Column="2" Text="{Binding Notes}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" Margin="0,0,20,0" MaxWidth="150" TextTrimming="CharacterEllipsis" />
+                                                <!-- Amount -->
+                                                <TextBlock Grid.Column="2" Classes="tx-primary" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{DynamicResource PineText}" />
+                                            </Grid>
 
-                                            <!-- Amount -->
-                                            <TextBlock Grid.Column="3" Classes="tx-primary" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource PineText}" />
+                                            <!-- Row 1: Wrapping action buttons — never collides on narrow phones -->
+                                            <WrapPanel Grid.Row="1" Margin="0,10,0,0">
+                                                <!-- Receipt marker. Visible only when this transaction has
+                                                     evidence attached; clicking it opens the image. The
+                                                     marker is driven by a set of ids the page loads with
+                                                     each page of transactions, so no receipt is read from
+                                                     the database to draw it. -->
+                                                <Button Classes="pine-outline"
+                                                        Content="{loc:Tr Transactions.ViewReceipt}"
+                                                        FontSize="12" MinHeight="36" Padding="10,6" Margin="0,0,8,6"
+                                                        AutomationProperties.Name="{loc:Tr Transactions.ViewReceiptAutomationName}"
+                                                        Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).ViewReceiptCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.IsVisible>
+                                                        <MultiBinding Converter="{x:Static conv:Converters.IsInIdSet}">
+                                                            <Binding Path="Id" />
+                                                            <Binding Path="#Root.((vm:TransactionsViewModel)DataContext).TransactionsWithReceipts" />
+                                                        </MultiBinding>
+                                                    </Button.IsVisible>
+                                                </Button>
 
-                                            <!-- Void action. Bound to the page view model through the named root,
-                                                 because the row's own DataContext is the Transaction. Hidden once the
-                                                 transaction is void: there is no second void. -->
-                                            <!-- Receipt marker. Visible only when this transaction has
-                                                 evidence attached; clicking it opens the image. The
-                                                 marker is driven by a set of ids the page loads with
-                                                 each page of transactions, so no receipt is read from
-                                                 the database to draw it. -->
-                                            <Button Grid.Column="4" Classes="pine-outline"
-                                                    Content="{loc:Tr Transactions.ViewReceipt}"
-                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    AutomationProperties.Name="{loc:Tr Transactions.ViewReceiptAutomationName}"
-                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).ViewReceiptCommand}"
-                                                    CommandParameter="{Binding}">
-                                                <Button.IsVisible>
-                                                    <MultiBinding Converter="{x:Static conv:Converters.IsInIdSet}">
-                                                        <Binding Path="Id" />
-                                                        <Binding Path="#Root.((vm:TransactionsViewModel)DataContext).TransactionsWithReceipts" />
-                                                    </MultiBinding>
-                                                </Button.IsVisible>
-                                            </Button>
+                                                <!-- Edit action (TD-68). Sits next to Void so a correction never has
+                                                     to go through void-then-re-enter. Hidden exactly where the
+                                                     command would refuse: voided, a transfer leg, or more than one
+                                                     split (see Converters.CanEditTransaction). -->
+                                                <Button Classes="pine-outline"
+                                                        Content="{loc:Tr Transactions.EditAction}"
+                                                        FontSize="12" MinHeight="36" Padding="10,6" Margin="0,0,8,6"
+                                                        IsVisible="{Binding ., Converter={x:Static conv:Converters.CanEditTransaction}}"
+                                                        AutomationProperties.Name="{loc:Tr Transactions.EditAutomationName}"
+                                                        Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginEditCommand}"
+                                                        CommandParameter="{Binding}" />
 
-                                            <!-- Edit action (TD-68). Sits next to Void so a correction never has
-                                                 to go through void-then-re-enter. Hidden exactly where the
-                                                 command would refuse: voided, a transfer leg, or more than one
-                                                 split (see Converters.CanEditTransaction). -->
-                                            <Button Grid.Column="5" Classes="pine-outline"
-                                                    Content="{loc:Tr Transactions.EditAction}"
-                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    IsVisible="{Binding ., Converter={x:Static conv:Converters.CanEditTransaction}}"
-                                                    AutomationProperties.Name="{loc:Tr Transactions.EditAutomationName}"
-                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginEditCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                <Button Classes="pine-outline"
+                                                        Content="{loc:Tr Transactions.VoidAction}"
+                                                        FontSize="12" MinHeight="36" Padding="10,6" Margin="0,0,8,6"
+                                                        IsVisible="{Binding !IsVoided}"
+                                                        AutomationProperties.Name="{loc:Tr Transactions.VoidAutomationName}"
+                                                        Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginVoidCommand}"
+                                                        CommandParameter="{Binding}" />
 
-                                            <Button Grid.Column="6" Classes="pine-outline"
-                                                    Content="{loc:Tr Transactions.VoidAction}"
-                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    IsVisible="{Binding !IsVoided}"
-                                                    AutomationProperties.Name="{loc:Tr Transactions.VoidAutomationName}"
-                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).BeginVoidCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                <!-- Unvoid action (TD-69). Shares the Void slot: exactly one of the two
+                                                     is ever visible. -->
+                                                <Button Classes="pine-outline"
+                                                        Content="{loc:Tr Transactions.UnvoidAction}"
+                                                        FontSize="12" MinHeight="36" Padding="10,6" Margin="0,0,8,6"
+                                                        IsVisible="{Binding IsVoided}"
+                                                        AutomationProperties.Name="{loc:Tr Transactions.UnvoidAutomationName}"
+                                                        Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).UnvoidCommand}"
+                                                        CommandParameter="{Binding}" />
 
-                                            <!-- Unvoid action (TD-69). Shares the Void cell: exactly one of the two
-                                                 is ever visible. -->
-                                            <Button Grid.Column="6" Classes="pine-outline"
-                                                    Content="{loc:Tr Transactions.UnvoidAction}"
-                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    IsVisible="{Binding IsVoided}"
-                                                    AutomationProperties.Name="{loc:Tr Transactions.UnvoidAutomationName}"
-                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).UnvoidCommand}"
-                                                    CommandParameter="{Binding}" />
-
-                                            <!-- Attach a file (TD-141, FR-TXN-02). Opens the file picker the
-                                                 view supplies; always available, since any transaction may
-                                                 gain evidence. -->
-                                            <Button Grid.Column="7" Classes="pine-outline"
-                                                    Content="{loc:Tr Transactions.AttachAction}"
-                                                    FontSize="12" Padding="10,5" Margin="16,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    AutomationProperties.Name="{loc:Tr Transactions.AttachAutomationName}"
-                                                    Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).AttachFileCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                <!-- Attach a file (TD-141, FR-TXN-02). Opens the file picker the
+                                                     view supplies; always available, since any transaction may
+                                                     gain evidence. -->
+                                                <Button Classes="pine-outline"
+                                                        Content="{loc:Tr Transactions.AttachAction}"
+                                                        FontSize="12" MinHeight="36" Padding="10,6" Margin="0,0,0,6"
+                                                        AutomationProperties.Name="{loc:Tr Transactions.AttachAutomationName}"
+                                                        Command="{Binding #Root.((vm:TransactionsViewModel)DataContext).AttachFileCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </WrapPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

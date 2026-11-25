@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Input.Platform;
@@ -12,9 +14,54 @@ namespace Pine.Ui.Avalonia.Views;
 
 public partial class DiagnosticsView : UserControl
 {
+    private int _lastColumns = -1;
+
     public DiagnosticsView()
     {
         InitializeComponent();
+        SizeChanged += (_, e) => ApplyLayout(e.NewSize.Width);
+    }
+
+    private void ApplyLayout(double width)
+    {
+        if (width <= 0)
+            return;
+
+        var columns = width < 520 ? 1 : width < 840 ? 2 : 4;
+        if (_lastColumns == columns)
+            return;
+
+        _lastColumns = columns;
+        var rootGrid = this.FindControl<Grid>("RootGrid");
+        var headerGrid = this.FindControl<Grid>("HeaderGrid");
+        var headerTitle = this.FindControl<TextBlock>("HeaderTitle");
+        var headerActions = this.FindControl<StackPanel>("HeaderActions");
+        var metricsGrid = this.FindControl<UniformGrid>("MetricsGrid");
+        if (rootGrid is null || headerGrid is null || headerTitle is null || headerActions is null || metricsGrid is null)
+            return;
+
+        var compact = columns == 1;
+        rootGrid.Margin = compact ? new Thickness(16) : columns == 2 ? new Thickness(24) : new Thickness(40);
+        headerTitle.FontSize = compact ? 24 : 32;
+        metricsGrid.Columns = columns;
+        metricsGrid.Margin = compact ? new Thickness(0, 0, 0, 12) : new Thickness(0, 0, 0, 24);
+
+        if (compact)
+        {
+            headerGrid.ColumnDefinitions = new ColumnDefinitions("*");
+            headerGrid.RowDefinitions = new RowDefinitions("Auto,12,Auto");
+            headerGrid.Margin = new Thickness(0, 0, 0, 16);
+            Grid.SetColumn(headerActions, 0);
+            Grid.SetRow(headerActions, 2);
+        }
+        else
+        {
+            headerGrid.ColumnDefinitions = new ColumnDefinitions("*, Auto");
+            headerGrid.RowDefinitions = new RowDefinitions();
+            headerGrid.Margin = new Thickness(0, 0, 0, 24);
+            Grid.SetColumn(headerActions, 1);
+            Grid.SetRow(headerActions, 0);
+        }
     }
 
     private void InitializeComponent()
