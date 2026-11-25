@@ -106,23 +106,72 @@
                 <Button Content="{loc:Tr Shell.Menu}" Command="{Binding TogglePaneCommand}"
                         Classes="pine-nav" HorizontalAlignment="Left" FontSize="18" />
             </Border>
-            <!-- Bottom tab bar (narrow touch screens): the four things done most, then More, which opens the drawer. -->
+            <!-- Bottom tab bar (narrow touch screens): icon + concise 1-word label, Material 3 pill indicator. -->
             <Border DockPanel.Dock="Bottom" IsVisible="{Binding UseBottomNav}"
                     Background="{DynamicResource PineSidebar}"
-                    BorderBrush="{DynamicResource PineSidebarBorder}" BorderThickness="0,1,0,0" Padding="4,4">
+                    BorderBrush="{DynamicResource PineSidebarBorder}" BorderThickness="0,1,0,0" Padding="4,6,4,8">
                 <UniformGrid Rows="1">
-                    <Button Content="{loc:Tr Shell.Nav.Dashboard}" Command="{Binding NavigateToDashboardCommand}"
-                            Classes="pine-tab" Classes.active="{Binding IsDashboardActive}" />
-                    <Button Content="{loc:Tr Shell.Nav.Transactions}" Command="{Binding NavigateToTransactionsCommand}"
-                            Classes="pine-tab" Classes.active="{Binding IsTransactionsActive}" />
-                    <Button Content="{loc:Tr Shell.Nav.ScanReceipt}" Command="{Binding NavigateToScanReceiptCommand}"
+                    <Button Command="{Binding NavigateToDashboardCommand}"
+                            AutomationProperties.Name="{loc:Tr Shell.Nav.Dashboard}"
+                            Classes="pine-tab" Classes.active="{Binding IsDashboardActive}">
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <Border Classes="tab-pill">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1zm0 8h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1zm10 0h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1zm0-18v4a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1z" />
+                            </Border>
+                            <TextBlock Text="{loc:Tr Shell.Tab.Dashboard}" FontSize="11" HorizontalAlignment="Center" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding NavigateToTransactionsCommand}"
+                            AutomationProperties.Name="{loc:Tr Shell.Nav.Transactions}"
+                            Classes="pine-tab" Classes.active="{Binding IsTransactionsActive}">
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <Border Classes="tab-pill">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+                            </Border>
+                            <TextBlock Text="{loc:Tr Shell.Tab.Transactions}" FontSize="11" HorizontalAlignment="Center" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding NavigateToScanReceiptCommand}"
+                            AutomationProperties.Name="{loc:Tr Shell.Nav.ScanReceipt}"
                             IsVisible="{Binding HasReceiptScan}"
-                            Classes="pine-tab" Classes.active="{Binding IsScanReceiptActive}" />
-                    <Button Content="{loc:Tr Shell.Nav.LiveScan}" Command="{Binding NavigateToInlineLiveScanCommand}"
+                            Classes="pine-tab" Classes.active="{Binding IsScanReceiptActive}">
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <Border Classes="tab-pill">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2v14H3v3c0 1.66 1.34 3 3 3h12c1.66 0 3-1.34 3-3V2l-1.5 1.5zM15 20H6c-.55 0-1-.45-1-1v-1h10v2zm4-1c0 .55-.45 1-1 1s-1-.45-1-1v-3H8V5h11v14zM9 7h6v2H9V7zm0 4h6v2H9v-2z" />
+                            </Border>
+                            <TextBlock Text="{loc:Tr Shell.Tab.ScanReceipt}" FontSize="11" HorizontalAlignment="Center" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding NavigateToInlineLiveScanCommand}"
+                            AutomationProperties.Name="{loc:Tr Shell.Nav.LiveScan}"
                             IsVisible="{Binding HasInlineLiveScan}"
-                            Classes="pine-tab" />
-                    <Button Content="{loc:Tr Shell.Nav.More}" Command="{Binding TogglePaneCommand}"
-                            Classes="pine-tab" />
+                            Classes="pine-tab">
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <Border Classes="tab-pill">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+                            </Border>
+                            <TextBlock Text="{loc:Tr Shell.Tab.LiveScan}" FontSize="11" HorizontalAlignment="Center" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding TogglePaneCommand}"
+                            AutomationProperties.Name="{loc:Tr Shell.Nav.More}"
+                            Classes="pine-tab">
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <Border Classes="tab-pill">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
+                            </Border>
+                            <TextBlock Text="{loc:Tr Shell.Tab.More}" FontSize="11" HorizontalAlignment="Center" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
                 </UniformGrid>
             </Border>
             <!-- Main Content Area -->

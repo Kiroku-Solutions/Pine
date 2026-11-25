@@ -160,10 +160,10 @@
         </Style>
 
         <!-- ═══ Touch devices (class "touch" is set on the shell by ShellView on Android/iOS) ═══
-             Targets of at least 44 dp, body text of at least 16, more air between rows. Desktop never gets the class. -->
+             Targets of at least 44-48 dp, crisp tap feedback without sticky hover lift, and slim scroll indicators. -->
         <Style Selector="SplitView.touch Button">
             <Setter Property="MinHeight" Value="44" />
-            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontSize" Value="15" />
         </Style>
         <Style Selector="SplitView.touch Button.pine-nav">
             <Setter Property="MinHeight" Value="48" />
@@ -175,30 +175,124 @@
         <Style Selector="SplitView.touch ComboBox">
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+        <!-- Prevent sticky hover scale/lift after tapping on touch screens -->
+        <Style Selector="SplitView.touch Border.card:pointerover">
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
+            <Setter Property="Background" Value="{DynamicResource PineSurface}" />
+        </Style>
+        <Style Selector="SplitView.touch Button.pine-accent:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1)" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="SplitView.touch Button.pine-outline:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1)" />
+        </Style>
 
-        <!-- ═══ Bottom tab bar buttons: "pine-tab" ═══ -->
+        <!-- ═══ Clean, unobtrusive scrollbars (especially on mobile touch screens) ═══ -->
+        <Style Selector="ScrollViewer">
+            <Setter Property="AllowAutoHide" Value="True" />
+        </Style>
+        <Style Selector="SplitView.touch ScrollBar">
+            <Setter Property="AllowAutoHide" Value="True" />
+            <Setter Property="Opacity" Value="0.35" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="SplitView.touch ScrollBar:vertical">
+            <Setter Property="Width" Value="4" />
+            <Setter Property="MinWidth" Value="4" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Track Name="PART_Track"
+                           Minimum="{TemplateBinding Minimum}"
+                           Maximum="{TemplateBinding Maximum}"
+                           Value="{TemplateBinding Value, Mode=TwoWay}"
+                           ViewportSize="{TemplateBinding ViewportSize}"
+                           Orientation="Vertical"
+                           IsDirectionReversed="True"
+                           Margin="0,6,2,6">
+                        <Track.Thumb>
+                            <Thumb MinHeight="24">
+                                <Thumb.Template>
+                                    <ControlTemplate>
+                                        <Border Background="{DynamicResource PineTextMuted}" CornerRadius="2" />
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="SplitView.touch ScrollBar:horizontal">
+            <Setter Property="Height" Value="4" />
+            <Setter Property="MinHeight" Value="4" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Track Name="PART_Track"
+                           Minimum="{TemplateBinding Minimum}"
+                           Maximum="{TemplateBinding Maximum}"
+                           Value="{TemplateBinding Value, Mode=TwoWay}"
+                           ViewportSize="{TemplateBinding ViewportSize}"
+                           Orientation="Horizontal"
+                           Margin="6,0,6,2">
+                        <Track.Thumb>
+                            <Thumb MinWidth="24">
+                                <Thumb.Template>
+                                    <ControlTemplate>
+                                        <Border Background="{DynamicResource PineTextMuted}" CornerRadius="2" />
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- ═══ Bottom tab bar buttons: Material 3 icon + label pill ("pine-tab") ═══ -->
         <Style Selector="Button.pine-tab">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource PineTextMuted}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="MinHeight" Value="56" />
             <Setter Property="MinWidth" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="4,6" />
+            <Setter Property="Padding" Value="2,4" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ClipToBounds" Value="True" />
         </Style>
         <Style Selector="SplitView.touch Button.pine-tab">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="MinHeight" Value="56" />
+        </Style>
+        <Style Selector="Button.pine-tab:pressed">
+            <Setter Property="Opacity" Value="0.72" />
+        </Style>
+        <Style Selector="Button.pine-tab Border.tab-pill">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="14,5" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Button.pine-tab.active">
-            <Setter Property="Background" Value="{DynamicResource PineAccentGradient}" />
-            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.pine-tab.active Border.tab-pill">
+            <Setter Property="Background" Value="{DynamicResource PineAccentGradient}" />
+        </Style>
+        <Style Selector="Button.pine-tab.active PathIcon">
+            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
         </Style>
 
         <!-- ═══ Password strength meter bands (TD-11) ═══
