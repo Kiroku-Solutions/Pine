@@ -6,110 +6,176 @@
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="Pine.Ui.Avalonia.Views.SetupView"
-             x:DataType="vm:SetupViewModel">
+             x:DataType="vm:SetupViewModel"
+             Background="{DynamicResource PineBackground}">
 
-    <Grid ColumnDefinitions="4*,6*">
-        <!-- Left Side: Branding Banner -->
-        <Border Grid.Column="0" Background="{DynamicResource PineAccentGradient}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15" Margin="40">
-                
-                <Image Source="avares://Pine.Ui.Avalonia/Assets/PineLogo.png" Width="120" Height="120" HorizontalAlignment="Center" />
-                
-                <TextBlock Text="Pine" FontSize="72" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
-                <TextBlock Text="{loc:Tr Setup.Banner.Tagline}" FontSize="20" Foreground="White" Opacity="0.85" FontWeight="Medium" HorizontalAlignment="Center" />
-
-                <StackPanel Spacing="10" Margin="0,30,0,0" HorizontalAlignment="Center">
-                    <TextBlock Text="{loc:Tr Setup.Banner.LocalFirst}" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
-                    <TextBlock Text="{loc:Tr Setup.Banner.Encryption}" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
-                    <TextBlock Text="{loc:Tr Setup.Banner.AiAssistance}" Foreground="White" Opacity="0.9" FontWeight="Medium" FontSize="16"/>
-                </StackPanel>
-                
-            </StackPanel>
-        </Border>
-
-        <!-- Right Side: Interactive Setup -->
-        <Border Grid.Column="1" Background="{DynamicResource PineBackground}" Padding="60,40">
-          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <Grid>
-                <!-- Step 1: Storage Mode -->
-                <StackPanel Spacing="25" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep1}">
-                    <TextBlock Text="{loc:Tr Setup.Storage.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="{loc:Tr Setup.Storage.Description}" TextWrapping="Wrap" FontSize="16" Foreground="{DynamicResource PineTextMuted}" />
-
-                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PinePrimary}" BorderThickness="2" BoxShadow="0 4 20 0 #10000000">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="{loc:Tr Setup.Storage.LocalOnly.Label}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                            <TextBlock Text="{loc:Tr Setup.Storage.LocalOnly.Description}" Foreground="{DynamicResource PineTextMuted}"/>
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid x:Name="RootGrid" ColumnDefinitions="4*,6*">
+            <!-- Branding Banner: left side on tablet/desktop, compact top hero on phone -->
+            <Border x:Name="BannerBorder" Grid.Column="0" Background="{DynamicResource PineAccentGradient}">
+                <StackPanel x:Name="BannerStack" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15" Margin="40">
+                    <StackPanel x:Name="BrandHeader" Spacing="12" HorizontalAlignment="Center">
+                        <Image x:Name="BrandLogo" Source="avares://Pine.Ui.Avalonia/Assets/PineLogo.png" Width="120" Height="120" HorizontalAlignment="Center" />
+                        <StackPanel x:Name="BrandTitleStack" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="BrandTitle" Text="Pine" FontSize="72" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="BrandTagline" Text="{loc:Tr Setup.Banner.Tagline}" FontSize="20" Foreground="White" Opacity="0.9" FontWeight="Medium" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
-                    </Border>
+                    </StackPanel>
 
-                    <Button Content="{loc:Tr Setup.Storage.ContinueButton}" Command="{Binding NextStepCommand}" Classes="pine-accent" HorizontalAlignment="Right" HorizontalContentAlignment="Center" FontSize="16" Padding="25,12" Margin="0,20,0,0"/>
+                    <StackPanel x:Name="BannerFeatures" Spacing="10" Margin="0,30,0,0" HorizontalAlignment="Center">
+                        <TextBlock Text="{loc:Tr Setup.Banner.LocalFirst}" Foreground="White" Opacity="0.92" FontWeight="Medium" FontSize="16" TextWrapping="Wrap"/>
+                        <TextBlock Text="{loc:Tr Setup.Banner.Encryption}" Foreground="White" Opacity="0.92" FontWeight="Medium" FontSize="16" TextWrapping="Wrap"/>
+                        <TextBlock Text="{loc:Tr Setup.Banner.AiAssistance}" Foreground="White" Opacity="0.92" FontWeight="Medium" FontSize="16" TextWrapping="Wrap"/>
+                    </StackPanel>
                 </StackPanel>
+            </Border>
 
-                <!-- Step 2: Master Password -->
-                <StackPanel Spacing="25" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep2}">
-                    <TextBlock Text="{loc:Tr Setup.Security.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
-                    <TextBlock Text="{loc:Tr Setup.Security.Description}" TextWrapping="Wrap" FontSize="16" Foreground="{DynamicResource PineTextMuted}" />
+            <!-- Interactive Setup -->
+            <Border x:Name="FormBorder" Grid.Column="1" Background="{DynamicResource PineBackground}" Padding="60,40">
+                <ScrollViewer x:Name="FormScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid>
+                        <!-- Step 1: Storage Mode -->
+                        <StackPanel x:Name="Step1Stack" Spacing="24" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep1}">
+                            <!-- 2-step progress indicator -->
+                            <Grid ColumnDefinitions="*,8,*">
+                                <Border Grid.Column="0" Height="4" CornerRadius="2" Background="{DynamicResource PinePrimary}" />
+                                <Border Grid.Column="2" Height="4" CornerRadius="2" Background="{DynamicResource PineBorder}" />
+                            </Grid>
 
-                    <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" BoxShadow="0 4 20 0 #10000000">
-                        <StackPanel Spacing="15">
-                            <TextBlock Text="{loc:Tr Setup.Security.VaultNameLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-                            <TextBox PlaceholderText="{loc:Tr Setup.Security.VaultNamePlaceholder}"
-                                     Text="{Binding VaultName}"
-                                     IsEnabled="{Binding !IsBusy}"
-                                     FontSize="16"
-                                     Padding="15" />
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="Step1Title" Text="{loc:Tr Setup.Storage.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+                                <TextBlock Text="{loc:Tr Setup.Storage.Description}" TextWrapping="Wrap" FontSize="15" Foreground="{DynamicResource PineTextMuted}" />
+                            </StackPanel>
 
-                            <TextBlock Text="{loc:Tr Setup.Security.PasswordLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,10,0,0" />
-                            <TextBox PlaceholderText="{loc:Tr Setup.Security.PasswordPlaceholder}"
-                                     Text="{Binding MasterPassword}"
-                                     PasswordChar="●"
-                                     IsEnabled="{Binding !IsBusy}"
-                                     FontSize="16"
-                                     Padding="15" />
+                            <Border Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PinePrimary}" BorderThickness="2" BoxShadow="0 4 20 0 #10000000">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="{loc:Tr Setup.Storage.LocalOnly.Label}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{loc:Tr Setup.Storage.LocalOnly.Description}" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" FontSize="14" />
+                                </StackPanel>
+                            </Border>
 
-                            <!-- Strength meter (TD-11). Value/colour move as the user types; the
-                                 pass/fail state is also carried in PasswordStrengthStatusText below,
-                                 so nothing here relies on colour alone. -->
-                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding PasswordStrengthFraction}"
-                                         Height="6" CornerRadius="3" Margin="0,4,0,0"
-                                         Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
-                                         Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
-                                         Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
-                            <TextBlock Text="{Binding PasswordStrengthStatusText}"
-                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
-                                       IsVisible="{Binding PasswordStrengthStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                       Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
-                                       Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
-                                       Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
-                            <TextBlock Text="{Binding PasswordAdviceText}"
-                                       TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
-                                       IsVisible="{Binding PasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-                            <TextBlock Text="{loc:Tr Setup.Security.ConfirmPasswordLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,10,0,0" />
-                            <TextBox PlaceholderText="{loc:Tr Setup.Security.ConfirmPasswordPlaceholder}"
-                                     Text="{Binding ConfirmPassword}"
-                                     PasswordChar="●"
-                                     IsEnabled="{Binding !IsBusy}"
-                                     FontSize="16"
-                                     Padding="15" />
-                            <TextBlock Text="{loc:Tr Setup.Security.PasswordMismatch}"
-                                       TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
-                                       Foreground="{DynamicResource PineDanger}"
-                                       IsVisible="{Binding !PasswordsMatch}" />
+                            <Button x:Name="Step1ContinueButton"
+                                    Content="{loc:Tr Setup.Storage.ContinueButton}"
+                                    Command="{Binding NextStepCommand}"
+                                    Classes="pine-accent"
+                                    HorizontalAlignment="Right"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    MinHeight="48"
+                                    FontSize="16"
+                                    Padding="25,12"
+                                    Margin="0,12,0,0"/>
                         </StackPanel>
-                    </Border>
 
-                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource PinePrimary}" FontWeight="Medium" />
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" Foreground="{DynamicResource PinePrimary}" />
-                    
-                    <Grid ColumnDefinitions="*,20,Auto" Margin="0,20,0,0">
-                        <Button Grid.Column="0" Content="{loc:Tr Setup.Security.BackButton}" Command="{Binding BackStepCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="16" Padding="15" Background="{DynamicResource PineSurfaceHover}" Foreground="{DynamicResource PineText}" BorderThickness="1" BorderBrush="{DynamicResource PineBorder}" CornerRadius="10"/>
-                        <Button Grid.Column="2" Content="{loc:Tr Setup.Security.InitializeButton}" Command="{Binding InitializeVaultCommand}" IsDefault="True" IsEnabled="{Binding !IsBusy}" Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="16" Padding="25,15"/>
+                        <!-- Step 2: Master Password -->
+                        <StackPanel x:Name="Step2Stack" Spacing="24" VerticalAlignment="Center" MaxWidth="450" IsVisible="{Binding IsStep2}">
+                            <!-- 2-step progress indicator -->
+                            <Grid ColumnDefinitions="*,8,*">
+                                <Border Grid.Column="0" Height="4" CornerRadius="2" Background="{DynamicResource PinePrimary}" />
+                                <Border Grid.Column="2" Height="4" CornerRadius="2" Background="{DynamicResource PinePrimary}" />
+                            </Grid>
+
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="Step2Title" Text="{loc:Tr Setup.Security.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+                                <TextBlock Text="{loc:Tr Setup.Security.Description}" TextWrapping="Wrap" FontSize="15" Foreground="{DynamicResource PineTextMuted}" />
+                            </StackPanel>
+
+                            <Border x:Name="Step2Card" Background="{DynamicResource PineSurface}" CornerRadius="12" Padding="20" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" BoxShadow="0 4 20 0 #10000000">
+                                <StackPanel Spacing="14">
+                                    <TextBlock Text="{loc:Tr Setup.Security.VaultNameLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                                    <TextBox PlaceholderText="{loc:Tr Setup.Security.VaultNamePlaceholder}"
+                                             Text="{Binding VaultName}"
+                                             IsEnabled="{Binding !IsBusy}"
+                                             MinHeight="48"
+                                             FontSize="16"
+                                             Padding="14,12" />
+
+                                    <TextBlock Text="{loc:Tr Setup.Security.PasswordLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                                    <TextBox PlaceholderText="{loc:Tr Setup.Security.PasswordPlaceholder}"
+                                             Text="{Binding MasterPassword}"
+                                             PasswordChar="●"
+                                             IsEnabled="{Binding !IsBusy}"
+                                             MinHeight="48"
+                                             FontSize="16"
+                                             Padding="14,12" />
+
+                                    <!-- Strength meter (TD-11). Value/colour move as the user types; the
+                                         pass/fail state is also carried in PasswordStrengthStatusText below,
+                                         so nothing here relies on colour alone. -->
+                                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding PasswordStrengthFraction}"
+                                                 Height="6" CornerRadius="3" Margin="0,4,0,0"
+                                                 Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                                 Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                                 Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                                    <TextBlock Text="{Binding PasswordStrengthStatusText}"
+                                               TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                               IsVisible="{Binding PasswordStrengthStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               Classes.pine-strength-danger="{Binding IsPasswordStrengthDanger}"
+                                               Classes.pine-strength-warning="{Binding IsPasswordStrengthWarning}"
+                                               Classes.pine-strength-success="{Binding IsPasswordStrengthSuccess}" />
+                                    <TextBlock Text="{Binding PasswordAdviceText}"
+                                               TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource PineTextMuted}"
+                                               IsVisible="{Binding PasswordAdviceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                    <TextBlock Text="{loc:Tr Setup.Security.ConfirmPasswordLabel}" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,6,0,0" />
+                                    <TextBox PlaceholderText="{loc:Tr Setup.Security.ConfirmPasswordPlaceholder}"
+                                             Text="{Binding ConfirmPassword}"
+                                             PasswordChar="●"
+                                             IsEnabled="{Binding !IsBusy}"
+                                             MinHeight="48"
+                                             FontSize="16"
+                                             Padding="14,12" />
+                                    <TextBlock Text="{loc:Tr Setup.Security.PasswordMismatch}"
+                                               TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
+                                               Foreground="{DynamicResource PineDanger}"
+                                               IsVisible="{Binding !PasswordsMatch}" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="{Binding StatusMessage}"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="{DynamicResource PinePrimary}"
+                                       FontWeight="Medium"
+                                       IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+
+                            <Grid x:Name="Step2ActionsGrid" ColumnDefinitions="*,16,Auto" Margin="0,8,0,0">
+                                <Button x:Name="BackButton"
+                                        Grid.Column="0"
+                                        Content="{loc:Tr Setup.Security.BackButton}"
+                                        Command="{Binding BackStepCommand}"
+                                        IsEnabled="{Binding !IsBusy}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        MinHeight="48"
+                                        FontSize="16"
+                                        Padding="16,12"
+                                        Background="{DynamicResource PineSurfaceHover}"
+                                        Foreground="{DynamicResource PineText}"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource PineBorder}"
+                                        CornerRadius="10"/>
+                                <Button x:Name="InitButton"
+                                        Grid.Column="2"
+                                        Content="{loc:Tr Setup.Security.InitializeButton}"
+                                        Command="{Binding InitializeVaultCommand}"
+                                        IsDefault="True"
+                                        IsEnabled="{Binding !IsBusy}"
+                                        Classes="pine-accent"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        MinHeight="48"
+                                        FontSize="16"
+                                        Padding="20,12"/>
+                            </Grid>
+                        </StackPanel>
                     </Grid>
-                </StackPanel>
-            </Grid>
-          </ScrollViewer>
-        </Border>
-    </Grid>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </ScrollViewer>
 </UserControl>
