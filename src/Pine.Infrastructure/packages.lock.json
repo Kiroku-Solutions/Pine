@@ -514,16 +514,6 @@
         "resolved": "3.3.1.70",
         "contentHash": "61agzGclpUorMzQW0TfpAMehIl0GgHvU5qL1jfmpStjM372BiEGyAwKzuKGvlrBcC+wci1jI3hQIm/KUL2A/eA=="
       },
-      "SkiaSharp": {
-        "type": "Direct",
-        "requested": "[3.119.4, )",
-        "resolved": "3.119.4",
-        "contentHash": "53NOSUZ1Us+91Sm0uCkIivh/k7jOowRErZT2sIWwPFN9mLUvdxnE6rS4sWo4255+Rd2MWUSF+j0NMZHD6Cke+Q==",
-        "dependencies": {
-          "SkiaSharp.NativeAssets.Win32": "3.119.4",
-          "SkiaSharp.NativeAssets.macOS": "3.119.4"
-        }
-      },
       "Microsoft.ML.CpuMath": {
         "type": "Transitive",
         "resolved": "5.0.0",

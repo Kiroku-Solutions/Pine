@@ -12,19 +12,20 @@
         <vm:BudgetsViewModel/>
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="16">
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,24">
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="{loc:Tr Budgets.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
-                <TextBlock Text="{loc:Tr Budgets.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+        <WrapPanel Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel Margin="0,0,16,8">
+                <TextBlock Text="{loc:Tr Budgets.Header.Title}" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap"/>
+                <TextBlock Text="{loc:Tr Budgets.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
             </StackPanel>
             <!-- TD-152: until this button, nothing in the product could create a budget. -->
-            <Button Grid.Column="1" VerticalAlignment="Center" Classes="pine-accent"
+            <Button VerticalAlignment="Center" Classes="pine-accent"
+                    Padding="16,10"
                     Content="{loc:Tr Budgets.Create.Button}"
                     Command="{Binding BeginCreateCommand}"
                     IsVisible="{Binding !IsCreating}"/>
-        </Grid>
+        </WrapPanel>
 
         <!-- Why the form did not open, or why a load failed: both were silent before. -->
         <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">

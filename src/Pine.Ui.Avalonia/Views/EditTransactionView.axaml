@@ -8,17 +8,18 @@
              x:Class="Pine.Ui.Avalonia.Views.EditTransactionView"
              x:DataType="vm:EditTransactionViewModel">
 
-    <Border CornerRadius="12"
+    <Border CornerRadius="14"
             Classes="reveal"
             MaxWidth="450" MaxHeight="650"
-            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Margin="12"
+            HorizontalAlignment="Stretch" VerticalAlignment="Center"
             Background="{DynamicResource PineSurface}"
             BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
-            Padding="30"
+            Padding="20"
             BoxShadow="0 8 24 0 #20000000">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Spacing="15">
-                <TextBlock Text="{loc:Tr EditTransaction.Title}" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
+            <StackPanel Spacing="14">
+                <TextBlock Text="{loc:Tr EditTransaction.Title}" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,6" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
 
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 

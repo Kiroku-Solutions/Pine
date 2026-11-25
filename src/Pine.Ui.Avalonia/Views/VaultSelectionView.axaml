@@ -4,17 +4,20 @@
              xmlns:sec="using:Pine.Application.Security"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              x:DataType="vm:VaultSelectionViewModel"
-             x:Class="Pine.Ui.Avalonia.Views.VaultSelectionView">
+             x:Class="Pine.Ui.Avalonia.Views.VaultSelectionView"
+             Background="{DynamicResource PineBackground}">
 
   <Design.DataContext>
     <vm:VaultSelectionViewModel />
   </Design.DataContext>
 
-  <Grid RowDefinitions="Auto,*,Auto" Margin="40">
-    <StackPanel Spacing="20" Margin="0,0,0,20">
-      <TextBlock Text="{loc:Tr VaultSelection.Title}"
+  <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="40">
+    <StackPanel Spacing="16" Margin="0,0,0,20">
+      <TextBlock x:Name="TitleText"
+                 Text="{loc:Tr VaultSelection.Title}"
                  FontSize="32"
-                 FontWeight="SemiBold" />
+                 FontWeight="SemiBold"
+                 TextWrapping="Wrap" />
 
       <!-- TD-11: shown only after a lock brought the user back to this screen; see
            VaultSelectionViewModel.LockNotice. -->
@@ -44,39 +47,47 @@
     </StackPanel>
 
     <ListBox Grid.Row="1"
-             ItemsSource="{Binding Vaults}" 
-             Background="Transparent">
+             ItemsSource="{Binding Vaults}"
+             Background="Transparent"
+             Padding="0">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="sec:VaultProfile">
           <Border BorderBrush="{DynamicResource PineBorder}"
                   BorderThickness="1"
-                  CornerRadius="8"
-                  Padding="20"
+                  CornerRadius="12"
+                  Padding="16"
                   Margin="0,0,0,10"
                   Background="{DynamicResource PineSurface}">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel>
-                <TextBlock Text="{Binding Name}" FontSize="20" FontWeight="Medium"/>
-                <TextBlock Text="{Binding Path}" FontSize="12" Opacity="0.5" Margin="0,5,0,0"/>
+            <Grid ColumnDefinitions="*,12,Auto">
+              <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Medium" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Path}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <Button Grid.Column="1"
+              <Button Grid.Column="2"
                       Content="{loc:Tr VaultSelection.OpenButton}"
                       Command="{Binding $parent[UserControl].((vm:VaultSelectionViewModel)DataContext).SelectVaultCommand}"
                       CommandParameter="{Binding}"
                       Classes="pine-accent"
-                      Padding="20,10"
-                      VerticalAlignment="Center"/>
+                      MinHeight="44"
+                      Padding="18,10"
+                      VerticalAlignment="Center"
+                      VerticalContentAlignment="Center" />
             </Grid>
           </Border>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
 
-    <Button Grid.Row="2"
+    <Button x:Name="CreateVaultButton"
+            Grid.Row="2"
             Content="{loc:Tr VaultSelection.CreateNewVaultButton}"
-            Command="{Binding CreateNewVaultCommand}" 
-            HorizontalAlignment="Right" 
-            Margin="0,20,0,0"
-            Padding="20,10"/>
+            Command="{Binding CreateNewVaultCommand}"
+            Classes="pine-outline"
+            HorizontalAlignment="Right"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center"
+            MinHeight="48"
+            Margin="0,16,0,0"
+            Padding="20,12"/>
   </Grid>
 </UserControl>

@@ -16,7 +16,7 @@
         while its handler did nothing at all. Both are gone; Refresh below is the only action the
         header offers, and it only reads.
     -->
-    <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="40">
+    <Grid x:Name="RootGrid" RowDefinitions="Auto, Auto, *, Auto" Margin="40">
     <!-- TD-35: this handler was `async void` with no try/catch, so a clipboard failure
          rethrew on the UI thread. It now reports here. -->
     <Border Grid.Row="3"
@@ -34,20 +34,20 @@
 
 
         <!-- Header -->
-        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,32">
+        <Grid x:Name="HeaderGrid" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,32">
             <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="{loc:Tr Diagnostics.Header.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
-                <TextBlock Text="{loc:Tr Diagnostics.Header.Description}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <TextBlock x:Name="HeaderTitle" Text="{loc:Tr Diagnostics.Header.Title}" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
+                <TextBlock Text="{loc:Tr Diagnostics.Header.Description}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                 <Button Content="{loc:Tr Diagnostics.Refresh.Label}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsLoading}" Classes="pine-accent" Padding="16,10" CornerRadius="8" FontSize="14" ToolTip.Tip="{loc:Tr Diagnostics.Refresh.Tooltip}" />
             </StackPanel>
         </Grid>
 
         <!-- System Metrics Cards -->
-        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,32">
+        <UniformGrid x:Name="MetricsGrid" Grid.Row="1" Columns="4" Margin="0,0,0,32">
             <!-- App Version -->
-            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,16,0" BoxShadow="0 4 16 0 #18000000">
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,12,12" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="{loc:Tr Diagnostics.Metrics.AppVersion}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
                     <TextBlock Text="{Binding AppVersion}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" TextWrapping="Wrap" />
@@ -55,7 +55,7 @@
             </Border>
 
             <!-- Host Environment -->
-            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,16,0" BoxShadow="0 4 16 0 #18000000">
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,12,12" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="{loc:Tr Diagnostics.Metrics.HostEnvironment}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
                     <TextBlock Text="{Binding OsDescription}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" TextWrapping="Wrap" />
@@ -63,7 +63,7 @@
             </Border>
 
             <!-- Database Status -->
-            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,16,0" BoxShadow="0 4 16 0 #18000000">
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,12,12" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="{loc:Tr Diagnostics.Metrics.VaultDbStatus}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" />
                     <TextBlock Text="{Binding DatabaseStatus}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PinePrimary}" Margin="0,4,0,0" TextWrapping="Wrap" />
@@ -76,7 +76,7 @@
                 against Task Manager under the old label was being told something false about a
                 true number (TD-15).
             -->
-            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,0,0" BoxShadow="0 4 16 0 #18000000">
+            <Border Background="{DynamicResource PineSurface}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,12" BoxShadow="0 4 16 0 #18000000">
                 <StackPanel>
                     <TextBlock Text="{loc:Tr Diagnostics.Metrics.ManagedHeap}" FontSize="13" Foreground="{DynamicResource PineTextMuted}" FontWeight="Medium" ToolTip.Tip="{loc:Tr Diagnostics.Metrics.ManagedHeapTooltip}" />
                     <TextBlock Text="{Binding ManagedMemory}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" Margin="0,4,0,0" />

@@ -10,18 +10,18 @@
              x:DataType="vm:RulesViewModel">
 
     <ScrollViewer>
-        <StackPanel Spacing="24" Margin="40">
+        <StackPanel x:Name="ContentStack" Spacing="24" Margin="40">
 
             <StackPanel Spacing="4">
-                <TextBlock Text="{loc:Tr Rules.Title}" FontSize="28" FontWeight="SemiBold"
-                           Foreground="{DynamicResource PineText}" />
+                <TextBlock x:Name="RulesTitle" Text="{loc:Tr Rules.Title}" FontSize="28" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
                 <TextBlock Text="{loc:Tr Rules.Subtitle}" FontSize="14"
                            Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
             </StackPanel>
 
             <!-- The form. The first condition is always present; further ones (up to the engine's
                  eight, TD-143) are added below it and ANDed. -->
-            <Border Background="{DynamicResource PineSurface}"
+            <Border x:Name="FormCard" Background="{DynamicResource PineSurface}"
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1" CornerRadius="12" Padding="24">
                 <StackPanel Spacing="16">
@@ -29,8 +29,8 @@
                                Foreground="{DynamicResource PineText}" />
                     <Border Height="1" Background="{DynamicResource PineBorder}" />
 
-                    <Grid ColumnDefinitions="*, 12, *" RowDefinitions="Auto, Auto">
-                        <StackPanel Grid.Column="0" Grid.Row="0" Spacing="4">
+                    <Grid x:Name="TitleCategoryGrid" ColumnDefinitions="*, 12, *" RowDefinitions="Auto, Auto">
+                        <StackPanel x:Name="TitleFieldStack" Grid.Column="0" Grid.Row="0" Spacing="4">
                             <TextBlock Text="{loc:Tr Rules.New.TitleLabel}" FontSize="13"
                                        Foreground="{DynamicResource PineTextMuted}" />
                             <TextBox Text="{Binding NewTitle}"
@@ -38,7 +38,7 @@
                                      AutomationProperties.Name="{loc:Tr Rules.New.TitleLabel}" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="2" Grid.Row="0" Spacing="4">
+                        <StackPanel x:Name="CategoryFieldStack" Grid.Column="2" Grid.Row="0" Spacing="4">
                             <TextBlock Text="{loc:Tr Rules.New.CategoryLabel}" FontSize="13"
                                        Foreground="{DynamicResource PineTextMuted}" />
                             <TextBox Text="{Binding NewCategory}"
@@ -47,12 +47,12 @@
                         </StackPanel>
                     </Grid>
 
-                    <Grid ColumnDefinitions="Auto, 12, Auto, 12, *, 12, Auto">
+                    <Grid x:Name="PrimaryConditionGrid" ColumnDefinitions="Auto, 12, Auto, 12, *, 12, Auto">
                         <!-- TD-150: a bare ItemsSource over these enums rendered the raw member
                              name ("Payee", "GreaterThan", ...) instead of the same Rules.Field.*/
                              Rules.Operator.* words the condition summary already renders through. -->
-                        <ComboBox Grid.Column="0" ItemsSource="{Binding Fields}"
-                                  SelectedItem="{Binding SelectedField}" MinWidth="130"
+                        <ComboBox x:Name="FieldCombo" Grid.Column="0" ItemsSource="{Binding Fields}"
+                                  SelectedItem="{Binding SelectedField}" MinWidth="130" HorizontalAlignment="Stretch"
                                   AutomationProperties.Name="{loc:Tr Rules.New.FieldLabel}">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -67,8 +67,8 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <ComboBox Grid.Column="2" ItemsSource="{Binding Operators}"
-                                  SelectedItem="{Binding SelectedOperator}" MinWidth="140"
+                        <ComboBox x:Name="OperatorCombo" Grid.Column="2" ItemsSource="{Binding Operators}"
+                                  SelectedItem="{Binding SelectedOperator}" MinWidth="140" HorizontalAlignment="Stretch"
                                   AutomationProperties.Name="{loc:Tr Rules.New.OperatorLabel}">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -83,11 +83,11 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <TextBox Grid.Column="4" Text="{Binding NewValue}"
+                        <TextBox x:Name="ValueBox" Grid.Column="4" Text="{Binding NewValue}"
                                  PlaceholderText="{loc:Tr Rules.New.ValuePlaceholder}"
                                  AutomationProperties.Name="{loc:Tr Rules.New.ValueLabel}" />
-                        <NumericUpDown Grid.Column="6" Value="{Binding NewPriority}"
-                                       Minimum="0" Maximum="1000" Increment="10" Width="120"
+                        <NumericUpDown x:Name="PriorityBox" Grid.Column="6" Value="{Binding NewPriority}"
+                                       Minimum="0" Maximum="1000" Increment="10" MinWidth="120" HorizontalAlignment="Stretch"
                                        AutomationProperties.Name="{loc:Tr Rules.New.PriorityLabel}" />
                     </Grid>
 

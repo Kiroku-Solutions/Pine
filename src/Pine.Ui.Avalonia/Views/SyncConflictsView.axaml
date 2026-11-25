@@ -10,19 +10,19 @@
              x:Name="Page">
 
     <!-- Post-audit plan item 3.1c: the changes a merge would not apply on its own, and a decision for each. -->
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*" Margin="16">
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,24">
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="{loc:Tr SyncConflicts.Header.Title}" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource PineText}"/>
+        <WrapPanel Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel Margin="0,0,16,8">
+                <TextBlock Text="{loc:Tr SyncConflicts.Header.Title}" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap"/>
                 <TextBlock Text="{loc:Tr SyncConflicts.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap"/>
             </StackPanel>
-            <Button Grid.Column="1" VerticalAlignment="Center"
+            <Button VerticalAlignment="Center"
                     Content="{loc:Tr SyncConflicts.Refresh}"
                     Command="{Binding LoadCommand}"
                     IsEnabled="{Binding !IsResolving}"
                     AutomationProperties.Name="{loc:Tr SyncConflicts.Refresh}"/>
-        </Grid>
+        </WrapPanel>
 
         <!-- A load failure and a refused decision: both are said, neither is silent. -->
         <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">
@@ -81,19 +81,19 @@
                                     <TextBlock Text="{loc:Tr SyncConflicts.ConfirmConsent}" TextWrapping="Wrap"/>
                                 </CheckBox>
 
-                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
-                                    <Button Content="{Binding KeepLocalLabel}"
+                                <WrapPanel Margin="0,4,0,0">
+                                    <Button Content="{Binding KeepLocalLabel}" Margin="0,0,8,8"
                                             AutomationProperties.Name="{Binding KeepLocalAutomationName}"
                                             Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).KeepLocalCommand}"
                                             CommandParameter="{Binding}"
                                             IsEnabled="{Binding !#Page.((vm:SyncConflictsViewModel)DataContext).IsResolving}"/>
-                                    <Button Content="{Binding TakeRemoteLabel}" Classes="pine-accent"
+                                    <Button Content="{Binding TakeRemoteLabel}" Classes="pine-accent" Margin="0,0,0,8"
                                             AutomationProperties.Name="{Binding TakeRemoteAutomationName}"
                                             Command="{Binding #Page.((vm:SyncConflictsViewModel)DataContext).TakeRemoteCommand}"
                                             CommandParameter="{Binding}"
                                             IsVisible="{Binding CanTakeRemote}"
                                             IsEnabled="{Binding CanPressTakeRemote}"/>
-                                </StackPanel>
+                                </WrapPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Platform;
 
 namespace Pine.Ui.Avalonia.Views;
 
@@ -13,8 +14,36 @@ namespace Pine.Ui.Avalonia.Views;
 /// </remarks>
 public partial class MainView : UserControl
 {
+    private IInsetsManager? _insetsManager;
+
     public MainView()
     {
         InitializeComponent();
+        AttachedToVisualTree += OnAttachedToVisualTree;
+        DetachedFromVisualTree += OnDetachedFromVisualTree;
+    }
+
+    private void OnAttachedToVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        _insetsManager = TopLevel.GetTopLevel(this)?.InsetsManager;
+        if (_insetsManager is null)
+            return;
+
+        Padding = _insetsManager.SafeAreaPadding;
+        _insetsManager.SafeAreaChanged += OnSafeAreaChanged;
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        if (_insetsManager is not null)
+        {
+            _insetsManager.SafeAreaChanged -= OnSafeAreaChanged;
+            _insetsManager = null;
+        }
+    }
+
+    private void OnSafeAreaChanged(object? sender, SafeAreaChangedArgs e)
+    {
+        Padding = e.SafeAreaPadding;
     }
 }

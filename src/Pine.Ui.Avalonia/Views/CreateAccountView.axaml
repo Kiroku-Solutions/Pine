@@ -11,17 +11,18 @@
 
     <Border Background="{DynamicResource PineSurface}"
             Classes="reveal"
-            CornerRadius="12"
+            CornerRadius="14"
             BorderBrush="{DynamicResource PineBorder}"
             BorderThickness="1"
-            Padding="30"
+            Margin="12"
+            Padding="20"
             BoxShadow="0 8 24 0 #20000000"
-            MaxWidth="400" MaxHeight="550"
-            HorizontalAlignment="Center" VerticalAlignment="Center">
+            MaxWidth="420" MaxHeight="580"
+            HorizontalAlignment="Stretch" VerticalAlignment="Center">
 
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="15">
-            <TextBlock Text="{loc:Tr CreateAccount.Title}" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="{DynamicResource PineText}" />
+        <StackPanel Spacing="14">
+            <TextBlock Text="{loc:Tr CreateAccount.Title}" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,6" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
 
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource PineError}" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
 

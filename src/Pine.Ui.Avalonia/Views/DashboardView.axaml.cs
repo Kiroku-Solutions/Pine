@@ -21,6 +21,7 @@ public partial class DashboardView : UserControl
     }
 
     private bool? _stacked;
+    private double _lastWidth;
 
     private void ApplyLayout(double width)
     {
@@ -28,6 +29,9 @@ public partial class DashboardView : UserControl
         {
             return;
         }
+
+        _lastWidth = width;
+        ApplyHeaderLayout(width);
 
         // Touch devices only: the desktop dashboard keeps its wrapped, resizable tiles at any window width.
         var stacked = (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS()) && width < 900;
@@ -57,6 +61,46 @@ public partial class DashboardView : UserControl
         }
     }
 
+    private void ApplyHeaderLayout(double width)
+    {
+        var mainGrid = this.FindControl<Grid>("MainGrid");
+        var headerWrap = this.FindControl<WrapPanel>("HeaderWrap");
+        var greetingText = this.FindControl<TextBlock>("GreetingText");
+        var actionsPanel = this.FindControl<WrapPanel>("ActionsPanel");
+        if (mainGrid is null || headerWrap is null || greetingText is null || actionsPanel is null)
+            return;
+
+        var compact = width < 700;
+        mainGrid.Margin = compact ? new Thickness(16, 12, 16, 0) : new Thickness(24);
+        headerWrap.Margin = compact ? new Thickness(0, 0, 0, 12) : new Thickness(0, 0, 0, 20);
+        greetingText.FontSize = compact ? 24 : 28;
+
+        // On compact phones, size visible quick-action buttons into a balanced 2-column grid so nothing clips or wraps unevenly.
+        var contentWidth = Math.Max(200, width - 32);
+        var halfWidth = Math.Floor((contentWidth - 8) / 2);
+        var visibleIndex = 0;
+        foreach (var child in actionsPanel.Children.OfType<Button>())
+        {
+            if (compact)
+            {
+                child.Width = halfWidth;
+                child.FontSize = 13;
+                if (child.IsVisible)
+                {
+                    var isRightColumn = (visibleIndex % 2) == 1;
+                    child.Margin = isRightColumn ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 8, 8);
+                    visibleIndex++;
+                }
+            }
+            else
+            {
+                child.Width = double.NaN;
+                child.FontSize = 14;
+                child.Margin = new Thickness(0, 0, 8, 8);
+            }
+        }
+    }
+
     /// <summary>A tile's width comes from its view model (a desktop gesture); stacked, each takes the full column. Setting it locally replaces the binding until the list is rebuilt.</summary>
     private void StretchTiles()
     {
@@ -71,9 +115,17 @@ public partial class DashboardView : UserControl
             {
                 card.Width = double.NaN;
                 card.Height = double.NaN;
+                card.MinHeight = 116;
                 card.MaxWidth = double.PositiveInfinity;
+                card.Margin = new Thickness(0, 0, 0, 12);
                 card.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
             }
+        }
+
+        // Hide desktop resize handles when tiles are stacked for touch screens.
+        foreach (var thumb in global::Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(this).OfType<Thumb>())
+        {
+            thumb.IsVisible = false;
         }
     }
 
