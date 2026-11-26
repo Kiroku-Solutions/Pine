@@ -1,5 +1,8 @@
+using System;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Platform;
+using Avalonia.VisualTree;
 
 namespace Pine.Ui.Avalonia.Views;
 
@@ -23,8 +26,15 @@ public partial class MainView : UserControl
         DetachedFromVisualTree += OnDetachedFromVisualTree;
     }
 
-    private void OnAttachedToVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
+    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        // CrossFade on Android can stall with an empty/grey surface when the EGL surface is
+        // recreated across background/foreground transitions. Use crisp instant swaps on Android.
+        if (OperatingSystem.IsAndroid() && this.FindControl<TransitioningContentControl>("PageHost") is { } host)
+        {
+            host.PageTransition = null;
+        }
+
         _insetsManager = TopLevel.GetTopLevel(this)?.InsetsManager;
         if (_insetsManager is null)
             return;
@@ -33,7 +43,7 @@ public partial class MainView : UserControl
         _insetsManager.SafeAreaChanged += OnSafeAreaChanged;
     }
 
-    private void OnDetachedFromVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         if (_insetsManager is not null)
         {
@@ -45,5 +55,36 @@ public partial class MainView : UserControl
     private void OnSafeAreaChanged(object? sender, SafeAreaChangedArgs e)
     {
         Padding = e.SafeAreaPadding;
+    }
+
+    /// <summary>
+    /// Forces a clean layout and repaint pass after a mobile EGL surface resumes from background.
+    /// </summary>
+    public void RefreshVisualTree()
+    {
+        var insets = TopLevel.GetTopLevel(this)?.InsetsManager;
+        if (insets is not null)
+        {
+            Padding = insets.SafeAreaPadding;
+        }
+
+        InvalidateMeasure();
+        InvalidateArrange();
+        InvalidateVisual();
+
+        if (this.FindControl<TransitioningContentControl>("PageHost") is { } host)
+        {
+            host.InvalidateMeasure();
+            host.InvalidateArrange();
+            host.InvalidateVisual();
+
+            foreach (var descendant in host.GetVisualDescendants())
+            {
+                if (descendant is Visual visual)
+                {
+                    visual.InvalidateVisual();
+                }
+            }
+        }
     }
 }

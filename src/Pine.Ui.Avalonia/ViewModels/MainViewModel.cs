@@ -30,6 +30,9 @@ public partial class MainViewModel : ObservableObject, INavigationService
     /// </remarks>
     private readonly IVaultManager _vaultManager;
 
+    private bool _isBackgrounded;
+    private VaultLockReason? _pendingLockReason;
+
     [ObservableProperty]
     public partial ObservableObject CurrentPage { get; set; } = null!;
 
@@ -60,8 +63,17 @@ public partial class MainViewModel : ObservableObject, INavigationService
     /// or any view model from here; the Application layer cannot do this marshalling itself
     /// because it must not reference Avalonia.
     /// </summary>
-    private void OnVaultLocked(object? sender, VaultLockedEventArgs e) =>
-        Dispatcher.UIThread.Post(() => HandleVaultLocked(e.Reason));
+    private void OnVaultLocked(object? sender, VaultLockedEventArgs e)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            HandleVaultLocked(e.Reason);
+            return;
+        }
+
+        // Render priority ensures lock navigation runs before any queued visual refresh on resume.
+        Dispatcher.UIThread.Post(() => HandleVaultLocked(e.Reason), DispatcherPriority.Render);
+    }
 
     private void HandleVaultLocked(VaultLockReason reason)
     {
@@ -111,6 +123,79 @@ public partial class MainViewModel : ObservableObject, INavigationService
             shell.CurrentPage = null!;
         }
 
+        // On mobile (Android/iOS), switching to another app pauses the render loop and tears down
+        // the EGL surface. Running a page transition while backgrounded leaves the screen blank/grey
+        // when the user returns; record the reason and complete navigation once the surface resumes.
+        if (_isBackgrounded)
+        {
+            _pendingLockReason = reason;
+            return;
+        }
+
+        NavigateToVaultPickerWithNotice(reason);
+    }
+
+    /// <summary>
+    /// Called when the host moves to the background (e.g. Android <c>OnStop</c> or
+    /// <c>IActivatableLifetime.Deactivated</c>). Pauses the polling timer without resetting
+    /// <see cref="IVaultSession.LastActivityUtc"/> so elapsed background time is still enforced on resume.
+    /// </summary>
+    public void OnAppBackgrounded()
+    {
+        _isBackgrounded = true;
+        _autoLockService.StopMonitoring();
+    }
+
+    /// <summary>
+    /// Called when the host returns to the foreground (e.g. Android <c>OnResume</c> or
+    /// <c>IActivatableLifetime.Activated</c>). Enforces idle timeout immediately on the live UI thread
+    /// and reconciles any lock or page state that changed while backgrounded.
+    /// </summary>
+    public void OnAppResumed()
+    {
+        var wasBackgrounded = _isBackgrounded;
+        _isBackgrounded = false;
+
+        if (_pendingLockReason is { } pendingReason)
+        {
+            _pendingLockReason = null;
+            NavigateToVaultPickerWithNotice(pendingReason);
+            return;
+        }
+
+        if (!wasBackgrounded && _vaultSession.IsUnlocked)
+        {
+            return;
+        }
+
+        if (_vaultSession.IsUnlocked)
+        {
+            if (_autoLockService.CheckNow())
+            {
+                return;
+            }
+
+            if (CurrentPage is ShellViewModel)
+            {
+                _autoLockService.StartMonitoring();
+            }
+
+            return;
+        }
+
+        if (CurrentPage is not (null or VaultSelectionViewModel or SetupViewModel or UnlockViewModel))
+        {
+            if (CurrentPage is ShellViewModel shell)
+            {
+                shell.CurrentPage = null!;
+            }
+
+            NavigateToVaultPickerWithNotice(VaultLockReason.ApplicationSuspended);
+        }
+    }
+
+    private void NavigateToVaultPickerWithNotice(VaultLockReason reason)
+    {
         var message = reason switch
         {
             VaultLockReason.IdleTimeout =>
