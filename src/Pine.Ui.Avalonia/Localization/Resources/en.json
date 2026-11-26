@@ -995,5 +995,7 @@
   "ScanReceipt.Tagging.Cancel": "Cancel",
   "ScanReceipt.Tagging.ApplyAndTrain": "Apply & train",
   "ScanReceipt.Tagging.TrainedStatus": "Local AI updated in background ({0} tagged receipt(s)).",
-  "ScanReceipt.Tagging.TrainFailed": "The tagged values were applied, but background training could not save."
+  "ScanReceipt.Tagging.TrainFailed": "The tagged values were applied, but background training could not save.",
+  "ScanReceipt.LineItems.DescriptionPlaceholder": "Item description...",
+  "ScanReceipt.LineItems.EmptyHint": "No itemized lines yet. Tap Add Item if you want to break down this receipt."
 }

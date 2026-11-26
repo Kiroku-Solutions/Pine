@@ -995,5 +995,7 @@
   "ScanReceipt.Tagging.Cancel": "Cancelar",
   "ScanReceipt.Tagging.ApplyAndTrain": "Aplicar y entrenar",
   "ScanReceipt.Tagging.TrainedStatus": "Modelo local actualizado en segundo plano ({0} factura(s) etiquetada(s)).",
-  "ScanReceipt.Tagging.TrainFailed": "Los valores se aplicaron, pero no se pudo guardar el entrenamiento en segundo plano."
+  "ScanReceipt.Tagging.TrainFailed": "Los valores se aplicaron, pero no se pudo guardar el entrenamiento en segundo plano.",
+  "ScanReceipt.LineItems.DescriptionPlaceholder": "Descripción del artículo...",
+  "ScanReceipt.LineItems.EmptyHint": "Aún no hay artículos desglosados. Pulsa + Agregar artículo si deseas detallar este recibo."
 }

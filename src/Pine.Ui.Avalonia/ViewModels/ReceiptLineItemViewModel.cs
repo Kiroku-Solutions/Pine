@@ -55,6 +55,10 @@ public partial class ReceiptLineItemViewModel : ObservableObject
                 TotalPrice = Quantity * UnitPrice;
             }
         }
+        else if (e.PropertyName == nameof(TotalPrice) && IsAdjustment && UnitPrice != TotalPrice)
+        {
+            UnitPrice = TotalPrice;
+        }
 
         if (e.PropertyName == nameof(Kind))
         {

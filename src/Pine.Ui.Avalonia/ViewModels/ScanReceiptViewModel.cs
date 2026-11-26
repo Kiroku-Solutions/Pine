@@ -1693,6 +1693,23 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     {
         if (e.PropertyName == nameof(ReceiptLineItemViewModel.TotalPrice))
         {
+            if (!_syncingTax
+                && sender is ReceiptLineItemViewModel changed
+                && changed.Kind == LineItemKind.Tax
+                && LineItems.Count(li => li.Kind == LineItemKind.Tax) == 1
+                && TaxTotal != changed.TotalPrice)
+            {
+                _syncingTax = true;
+                try
+                {
+                    TaxTotal = Math.Max(0m, changed.TotalPrice);
+                }
+                finally
+                {
+                    _syncingTax = false;
+                }
+            }
+
             RecomputeReconciliation();
         }
     }
