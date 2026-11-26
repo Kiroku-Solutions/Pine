@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Pine.Core.Sync;
 using Pine.Infrastructure.Sync;
 using System.IO;
@@ -210,6 +210,9 @@ public static class PineInfrastructureServiceCollectionExtensions
         // The categoriser, its model store and the file cipher that seals the model (TD-16). Both
         // providers below forward categorisation to the one instance this registers.
         services.AddPineCategorisation();
+
+        // Local per-vault receipt layout learner trained from interactive bounding-box tags.
+        services.TryAddSingleton<IReceiptFieldLearner, Pine.Infrastructure.Ai.Extraction.LocalReceiptFieldLearner>();
 
         if (options.IncludeReceiptVision)
         {

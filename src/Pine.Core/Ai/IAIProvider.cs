@@ -62,7 +62,11 @@ public record ReceiptExtractionResult(
     System.DateTimeOffset? AlternativeDate = null,
     decimal? TaxAmount = null,
     bool TaxIncluded = false,
-    decimal? TaxAlternative = null
+    decimal? TaxAlternative = null,
+    System.Collections.Generic.IReadOnlyList<OcrWord>? OcrWords = null,
+    int OcrImageWidth = 0,
+    int OcrImageHeight = 0,
+    byte[]? OcrAlignedImageBytes = null
 );
 
 /// <summary>

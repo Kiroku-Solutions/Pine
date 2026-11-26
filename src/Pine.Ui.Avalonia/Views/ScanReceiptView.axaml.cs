@@ -142,4 +142,12 @@ public partial class ScanReceiptView : UserControl
         if (DataContext is ScanReceiptViewModel vm && vm.ReceiptImage is not null)
             vm.IsImagePreviewOpen = true;
     }
+
+    private void OnReceiptTagBoxDrawn(object? sender, Controls.ReceiptBoxDrawnEventArgs e)
+    {
+        if (DataContext is ScanReceiptViewModel vm)
+        {
+            vm.RecordDrawnBox(e.Field, e.Box);
+        }
+    }
 }

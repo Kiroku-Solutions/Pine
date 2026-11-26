@@ -330,6 +330,62 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
     [ObservableProperty]
     public partial LineItemKind SelectedAdjustmentKind { get; set; } = LineItemKind.Tax;
 
+    // ===== INTERACTIVE BOUNDING-BOX TAGGING & LOCAL MODEL LEARNING =====
+
+    [ObservableProperty]
+    public partial bool IsEditingTags { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTagMerchantActive))]
+    [NotifyPropertyChangedFor(nameof(IsTagTotalActive))]
+    [NotifyPropertyChangedFor(nameof(IsTagDateActive))]
+    [NotifyPropertyChangedFor(nameof(IsTagTaxActive))]
+    public partial ReceiptTagField ActiveTagField { get; set; } = ReceiptTagField.Total;
+
+    public bool IsTagMerchantActive => ActiveTagField == ReceiptTagField.Merchant;
+    public bool IsTagTotalActive => ActiveTagField == ReceiptTagField.Total;
+    public bool IsTagDateActive => ActiveTagField == ReceiptTagField.Date;
+    public bool IsTagTaxActive => ActiveTagField == ReceiptTagField.Tax;
+
+    [ObservableProperty]
+    public partial IReadOnlyList<OcrWord>? LastOcrWords { get; private set; }
+
+    [ObservableProperty]
+    public partial int LastOcrImageWidth { get; private set; }
+
+    [ObservableProperty]
+    public partial int LastOcrImageHeight { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTaggedBoxes))]
+    public partial IReadOnlyList<ReceiptFieldBox> TaggedBoxes { get; private set; } = Array.Empty<ReceiptFieldBox>();
+
+    public bool HasTaggedBoxes => TaggedBoxes.Count > 0;
+
+    [ObservableProperty]
+    public partial string TagMerchantPreview { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TagTotalPreview { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TagDatePreview { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TagTaxPreview { get; private set; } = string.Empty;
+
+    private readonly LocalizedMessageSlot _trainingBanner;
+
+    [ObservableProperty]
+    public partial Bitmap? TagEditorImage { get; private set; }
+
+    [ObservableProperty]
+    public partial string TrainingBannerMessage { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial IReadOnlyDictionary<ReceiptTagField, string> TagFieldLabels { get; private set; } =
+        new Dictionary<ReceiptTagField, string>();
+
     public ScanReceiptViewModel(
         IMediator mediator,
         IShellNavigator navigationService,
@@ -355,8 +411,10 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _live = new LocalizedMessageSlot(localizer, text => LiveStatus = text ?? string.Empty);
         _edgeHint = new LocalizedMessageSlot(localizer, text => EdgeHint = text ?? string.Empty);
         _duplicate = new LocalizedMessageSlot(localizer, text => DuplicateWarning = text ?? string.Empty);
+        _trainingBanner = new LocalizedMessageSlot(localizer, text => TrainingBannerMessage = text ?? string.Empty);
         _localizer.LanguageChanged += OnLanguageChanged;
         _logger = logger;
+        RefreshTagFieldLabels();
 
         // Reconciliation has to track the grid as it is edited, not only as it is loaded: the user
         // fixes a mistyped price and the difference must move with it. CollectionChanged catches
@@ -577,6 +635,20 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
 
             _status.Set("ScanReceipt.Status.FillingDetails");
 
+            LastOcrWords = result.OcrWords;
+            LastOcrImageWidth = result.OcrImageWidth;
+            LastOcrImageHeight = result.OcrImageHeight;
+            TagEditorImage = result.OcrAlignedImageBytes is { Length: > 0 } alignedBytes
+                ? await Task.Run(() =>
+                {
+                    using var alignedMs = new MemoryStream(alignedBytes, writable: false);
+                    return new Bitmap(alignedMs);
+                })
+                : ReceiptImage;
+            TaggedBoxes = Array.Empty<ReceiptFieldBox>();
+            _trainingBanner.Clear();
+            UpdateTagPreviews();
+
             Merchant = result.Merchant ?? string.Empty;
             Amount = result.TotalAmount ?? 0m;
             Date = result.Date ?? DateTimeOffset.Now;
@@ -670,6 +742,147 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         ScanReceiptStage.ExtractingText => "ScanReceipt.Status.ExtractingText",
         _ => "ScanReceipt.Status.Working",
     };
+
+    private void RefreshTagFieldLabels()
+    {
+        TagFieldLabels = new Dictionary<ReceiptTagField, string>
+        {
+            [ReceiptTagField.Merchant] = _localizer["ScanReceipt.Tagging.Field.Merchant"],
+            [ReceiptTagField.Total] = _localizer["ScanReceipt.Tagging.Field.Total"],
+            [ReceiptTagField.Date] = _localizer["ScanReceipt.Tagging.Field.Date"],
+            [ReceiptTagField.Tax] = _localizer["ScanReceipt.Tagging.Field.Tax"],
+        };
+    }
+
+    [RelayCommand]
+    private void OpenTagEditor()
+    {
+        if (ReceiptImage is null)
+        {
+            return;
+        }
+
+        TagEditorImage ??= ReceiptImage;
+        RefreshTagFieldLabels();
+        UpdateTagPreviews();
+        IsEditingTags = true;
+    }
+
+    [RelayCommand]
+    private void CancelTagEditor()
+    {
+        IsEditingTags = false;
+    }
+
+    [RelayCommand]
+    private void SelectTagField(string? fieldName)
+    {
+        if (Enum.TryParse<ReceiptTagField>(fieldName, ignoreCase: true, out var field))
+        {
+            ActiveTagField = field;
+        }
+    }
+
+    [RelayCommand]
+    private void ClearTaggedBoxes()
+    {
+        TaggedBoxes = Array.Empty<ReceiptFieldBox>();
+        UpdateTagPreviews();
+    }
+
+    public void RecordDrawnBox(ReceiptTagField field, NormalizedRect box)
+    {
+        var extracted = ReceiptBoxExtractor.Extract(field, box, LastOcrWords, LastOcrImageWidth, LastOcrImageHeight);
+        var updated = TaggedBoxes
+            .Where(b => b.Field != field)
+            .Append(extracted)
+            .ToList();
+
+        TaggedBoxes = updated;
+        UpdateTagPreviews();
+    }
+
+    [RelayCommand]
+    private async Task ApplyTagsAndTrainAsync()
+    {
+        if (TaggedBoxes.Count == 0)
+        {
+            IsEditingTags = false;
+            return;
+        }
+
+        var ocrLines = LastOcrWords?.Select(w => w.Text) ?? Array.Empty<string>();
+        var separator = ReceiptNumberParser.Infer(ocrLines);
+        var dayFirst = ReceiptDateParser.InferDayFirst(ocrLines);
+
+        foreach (var box in TaggedBoxes)
+        {
+            if (string.IsNullOrWhiteSpace(box.ExtractedText))
+            {
+                continue;
+            }
+
+            switch (box.Field)
+            {
+                case ReceiptTagField.Merchant:
+                    Merchant = box.ExtractedText.Trim();
+                    MerchantConfidence = ConfidenceBand.High;
+                    break;
+                case ReceiptTagField.Total:
+                    if (ReceiptBoxExtractor.TryParseAmount(box.ExtractedText, separator) is { } parsedTotal && parsedTotal > 0m)
+                    {
+                        Amount = parsedTotal;
+                        TotalConfidence = ConfidenceBand.High;
+                    }
+                    break;
+                case ReceiptTagField.Date:
+                    if (ReceiptDateParser.Parse(box.ExtractedText, dayFirst: dayFirst) is { } parsedDate)
+                    {
+                        Date = parsedDate.Value;
+                        IsDateAmbiguous = parsedDate.IsAmbiguous;
+                        AlternativeDate = parsedDate.Alternative;
+                        DateConfidence = ConfidenceBand.High;
+                    }
+                    break;
+                case ReceiptTagField.Tax:
+                    if (ReceiptBoxExtractor.TryParseAmount(box.ExtractedText, separator) is { } parsedTax && parsedTax >= 0m)
+                    {
+                        TaxTotal = parsedTax;
+                    }
+                    break;
+            }
+        }
+
+        IsEditingTags = false;
+
+        try
+        {
+            var annotation = new ReceiptLayoutAnnotation(
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                string.IsNullOrWhiteSpace(Merchant) ? null : Merchant.Trim(),
+                TaggedBoxes.ToList());
+
+            var status = await _mediator.Send(new LearnReceiptLayoutCommand(annotation));
+            _trainingBanner.Set("ScanReceipt.Tagging.TrainedStatus", status.SampleCount);
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(
+                _logger,
+                ex,
+                "receipt-layout-train",
+                new UserFacingMessage("ScanReceipt.Tagging.TrainFailed")));
+        }
+    }
+
+    private void UpdateTagPreviews()
+    {
+        TagMerchantPreview = TaggedBoxes.FirstOrDefault(b => b.Field == ReceiptTagField.Merchant)?.ExtractedText ?? string.Empty;
+        TagTotalPreview = TaggedBoxes.FirstOrDefault(b => b.Field == ReceiptTagField.Total)?.ExtractedText ?? string.Empty;
+        TagDatePreview = TaggedBoxes.FirstOrDefault(b => b.Field == ReceiptTagField.Date)?.ExtractedText ?? string.Empty;
+        TagTaxPreview = TaggedBoxes.FirstOrDefault(b => b.Field == ReceiptTagField.Tax)?.ExtractedText ?? string.Empty;
+    }
 
     [RelayCommand]
     private async Task SaveTransactionAsync()
@@ -1548,9 +1761,14 @@ public partial class ScanReceiptViewModel : ObservableRecipient, IRecipient<Rece
         _live.Dispose();
         _edgeHint?.Dispose();
         _duplicate.Dispose();
+        _trainingBanner.Dispose();
         GC.SuppressFinalize(this);
     }
 
-    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(DateAmbiguityMessage));
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(DateAmbiguityMessage));
+        RefreshTagFieldLabels();
+    }
 
 }

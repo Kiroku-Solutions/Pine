@@ -24,6 +24,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
     private readonly HeuristicFieldExtractor _extractor;
     private readonly IMlNetCategorizer _categorizer;
     private readonly VisualExtractionGuard _visualGuard;
+    private readonly IReceiptFieldLearner? _receiptLearner;
 
     /// <summary>Builds the on-device pipeline.</summary>
     /// <param name="categorizer">
@@ -71,7 +72,8 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         ILoggerFactory? loggerFactory = null,
         IVisualFieldExtractor? visualExtractor = null,
         IOcrEngine? ocrEngine = null,
-        IReceiptDetector? detector = null)
+        IReceiptDetector? detector = null,
+        IReceiptFieldLearner? receiptLearner = null)
     {
         ArgumentNullException.ThrowIfNull(categorizer);
 
@@ -85,6 +87,7 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         _extractor = new HeuristicFieldExtractor();
         _categorizer = categorizer;
         _visualGuard = new VisualExtractionGuard(visualExtractor, loggerFactory?.CreateLogger<DefaultLocalAiProvider>());
+        _receiptLearner = receiptLearner;
     }
 
     // Separate method: only a caller that really falls back to OpenCV resolves ReceiptDetector (Android never does).
@@ -166,10 +169,49 @@ public sealed class DefaultLocalAiProvider : IAIProvider, IDisposable
         clock.Restart();
         var result = await _visualGuard.OverlayAsync(heuristic, textBlocks, ocrStream, cancellationToken);
 
+        var (imgWidth, imgHeight) = ReadImageBounds(read.Image);
+        if (_receiptLearner is not null)
+        {
+            result = _receiptLearner.ApplyLearnedModel(result, textBlocks, imgWidth, imgHeight);
+        }
+
+        result = result with
+        {
+            OcrWords = textBlocks,
+            OcrImageWidth = imgWidth,
+            OcrImageHeight = imgHeight,
+            OcrAlignedImageBytes = read.Image,
+        };
+
         // Counts and timings only -- never a recognised word (30-Observability section 4.3).
         ScanDiagnostics.Report(
             $"scan prep_ms={prepMs} ocr_ms={ocrMs} lines={textBlocks.Count} heuristics_ms={heuristicMs} layoutlm_ms={clock.ElapsedMilliseconds} layoutlm={_visualGuard.LastOutcome}");
         return result;
+    }
+
+    private static (int Width, int Height) ReadImageBounds(byte[] imageBytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(imageBytes, writable: false);
+            using var codec = SkiaSharp.SKCodec.Create(ms);
+            if (codec is not null)
+            {
+                var swapped = codec.EncodedOrigin is SkiaSharp.SKEncodedOrigin.RightTop
+                    or SkiaSharp.SKEncodedOrigin.LeftBottom
+                    or SkiaSharp.SKEncodedOrigin.LeftTop
+                    or SkiaSharp.SKEncodedOrigin.RightBottom;
+                return swapped
+                    ? (codec.Info.Height, codec.Info.Width)
+                    : (codec.Info.Width, codec.Info.Height);
+            }
+        }
+        catch
+        {
+            // Non-fatal: fallback to OCR bounding box extent.
+        }
+
+        return (0, 0);
     }
 
     public async Task<CategorisationResult> CategorizeTransactionAsync(string transactionText, decimal amount, CancellationToken cancellationToken = default)

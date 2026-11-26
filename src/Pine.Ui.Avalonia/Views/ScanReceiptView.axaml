@@ -11,6 +11,24 @@
              x:Class="Pine.Ui.Avalonia.Views.ScanReceiptView"
              x:DataType="vm:ScanReceiptViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="Button.tag-field-chip">
+      <Setter Property="Background" Value="{DynamicResource PineSurfaceElevated}" />
+      <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="MinHeight" Value="38" />
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.active">
+      <Setter Property="Background" Value="{DynamicResource PinePrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PinePrimary}" />
+    </Style>
+  </UserControl.Styles>
+
   <Grid>
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
     <Border x:Name="Card" CornerRadius="12"
@@ -68,6 +86,24 @@
                     <Button Margin="5,0,0,0" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}" IsVisible="{Binding HasLiveScanner}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                 </UniformGrid>
+
+                <!-- Interactive bounding-box tagging & local model training -->
+                <Button Content="{loc:Tr ScanReceipt.Tagging.OpenButton}"
+                        Command="{Binding OpenTagEditorCommand}"
+                        IsVisible="{Binding ReceiptImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Classes="pine-outline"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        MinHeight="44" CornerRadius="10"
+                        IsEnabled="{Binding !IsBusy}" />
+
+                <Border IsVisible="{Binding TrainingBannerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        Background="{DynamicResource PineSuccessContainer}"
+                        CornerRadius="8" Padding="10,8">
+                    <TextBlock Text="{Binding TrainingBannerMessage}"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PineSuccess}"
+                               TextWrapping="Wrap" />
+                </Border>
 
                 <!-- Take the photo with the device camera (heads with a camera source and no live scanner page). -->
                 <Grid ColumnDefinitions="*, 10, *" IsVisible="{Binding HasCameraCapture}">
@@ -391,6 +427,69 @@
         </StackPanel>
       </Border>
     </Border>
+
+    <!-- Interactive Bounding-Box Tagging & Local Model Training Overlay -->
+    <Grid IsVisible="{Binding IsEditingTags}" ZIndex="45" RowDefinitions="Auto,*,Auto"
+          Background="{DynamicResource PineBackground}">
+      <StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="8">
+        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Instruction}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+        <WrapPanel Orientation="Horizontal">
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Merchant}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Merchant"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagMerchantActive}"
+                  BorderBrush="{DynamicResource PineSuccess}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Total}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Total"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagTotalActive}"
+                  BorderBrush="{DynamicResource PineWarning}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Date}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Date"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagDateActive}"
+                  BorderBrush="{DynamicResource PineInfo}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Tax}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Tax"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagTaxActive}"
+                  BorderBrush="{DynamicResource PinePrimary}" />
+        </WrapPanel>
+
+        <!-- Live extracted previews from drawn boxes -->
+        <WrapPanel Orientation="Horizontal" IsVisible="{Binding HasTaggedBoxes}">
+          <Border IsVisible="{Binding TagMerchantPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineSuccessContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagMerchantPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
+          </Border>
+          <Border IsVisible="{Binding TagTotalPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineWarningContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagTotalPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+          </Border>
+          <Border IsVisible="{Binding TagDatePreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineInfoContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagDatePreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}" />
+          </Border>
+          <Border IsVisible="{Binding TagTaxPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                  CornerRadius="6" Padding="8,4" Margin="0,0,0,4">
+            <TextBlock Text="{Binding TagTaxPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+          </Border>
+        </WrapPanel>
+      </StackPanel>
+
+      <controls:ReceiptTagOverlayControl Grid.Row="1" Margin="8"
+                                         Source="{Binding TagEditorImage}"
+                                         ActiveField="{Binding ActiveTagField}"
+                                         TaggedBoxes="{Binding TaggedBoxes}"
+                                         OcrWords="{Binding LastOcrWords}"
+                                         OcrImageWidth="{Binding LastOcrImageWidth}"
+                                         OcrImageHeight="{Binding LastOcrImageHeight}"
+                                         FieldLabels="{Binding TagFieldLabels}"
+                                         BoxDrawn="OnReceiptTagBoxDrawn" />
+
+      <Grid Grid.Row="2" Margin="16,8,16,16" ColumnDefinitions="*,8,*,8,2*">
+        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Tagging.Clear}" Command="{Binding ClearTaggedBoxesCommand}"
+                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Tagging.Cancel}" Command="{Binding CancelTagEditorCommand}"
+                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Tagging.ApplyAndTrain}" Command="{Binding ApplyTagsAndTrainCommand}"
+                Classes="pine-accent" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+      </Grid>
+    </Grid>
 
     <!-- Reusable full-size receipt viewer (zoom + pan) -->
     <controls:ImageLightbox Source="{Binding ReceiptImage}" IsOpen="{Binding IsImagePreviewOpen}" />
