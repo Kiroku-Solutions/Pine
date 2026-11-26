@@ -1,48 +1,60 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
-             xmlns:core="using:Pine.Core.Accounts"
-             xmlns:conv="using:Pine.Ui.Avalonia.Utils"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              x:Class="Pine.Ui.Avalonia.Views.Widgets.BalanceWidgetView"
              x:DataType="vm:BalanceWidgetViewModel">
-    
-    <Grid RowDefinitions="Auto, *">
+
+    <Grid RowDefinitions="Auto, *" Margin="10,0,10,10">
         <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
-                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="10,0,10,6" />
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Accounts}">
+            <ItemsControl ItemsSource="{Binding AccountRows}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="core:Account">
-                        <Border Padding="10,8" Margin="0,0,0,5" CornerRadius="6" Background="{DynamicResource PineSurfaceElevated}">
-                            <Grid ColumnDefinitions="Auto, *, Auto">
-                                <!-- Placeholder Icon -->
-                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="{DynamicResource PineAccentHover}" Margin="0,0,10,0">
-                                    <TextBlock Text="{Binding Name, Converter={x:Static conv:Converters.InitialLetter}}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineText}"/>
+                    <DataTemplate x:DataType="vm:AccountBalanceShareRow">
+                        <Border Padding="12,10" Margin="0,0,0,8" CornerRadius="10"
+                                Background="{DynamicResource PineSurfaceElevated}"
+                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="Auto, *, Auto">
+                                    <Border Grid.Column="0" Width="34" Height="34" CornerRadius="17"
+                                            Background="{Binding AccentBrush}" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding InitialLetter}" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" FontWeight="Bold"
+                                                   Foreground="{DynamicResource PineButtonText}" />
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                                   Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding ShareText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <TextBlock Text="{Binding BalanceText}" FontWeight="Bold" FontSize="14"
+                                                   Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                        <TextBlock Text="{Binding CurrencyCode}" FontSize="11"
+                                                   Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Share of Total Balance Bar -->
+                                <ProgressBar Value="{Binding SharePercentage}" Maximum="100" Height="6" CornerRadius="3"
+                                             Background="{DynamicResource PineChartTrack}" Foreground="{Binding AccentBrush}" />
+
+                                <!-- Scoped Budget Remaining Pill (if linked) -->
+                                <Border Classes="pine-pill-info" HorizontalAlignment="Left" IsVisible="{Binding HasBudgetLeft}">
+                                    <TextBlock Text="{Binding BudgetLeftText}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource PineInfo}" />
                                 </Border>
-                                
-                                <!-- Account Info -->
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource PineText}" />
-                                    <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
-                                </StackPanel>
-                                
-                                <!-- Balance -->
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                    <TextBlock Text="{Binding Balance, Converter={x:Static conv:Converters.MoneyAmount}}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
-                                    <TextBlock Text="{Binding Balance.Currency.Value}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
-                                </StackPanel>
-                            </Grid>
+                            </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
-                
             </ItemsControl>
         </ScrollViewer>
-            
-        <!-- Bound to IsEmpty, not to the count (item 1.3): an empty list before the first read, or after
-             a failed one, is not "you have none". -->
+
         <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,30,0,0" IsVisible="{Binding IsEmpty}">
             <TextBlock Text="{loc:Tr BalanceWidget.EmptyState}" Foreground="{DynamicResource PineTextMuted}" FontSize="13" />
         </StackPanel>

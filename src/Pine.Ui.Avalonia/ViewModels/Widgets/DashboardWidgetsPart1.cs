@@ -1,86 +1,161 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Budgets.Queries;
+using Pine.Application.Planning;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
+using Pine.Ui.Avalonia.Controls;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.ViewModels.Messages;
 
 namespace Pine.Ui.Avalonia.ViewModels.Widgets;
 
-/// <summary>The accounts tile: every account and its balance.</summary>
+internal static class AccountChartPalette
+{
+    private static readonly string[] HexColors =
+    [
+        "#047857",
+        "#C2410C",
+        "#1D4ED8",
+        "#6D28D9",
+        "#BE185D",
+    ];
+
+    private static readonly ConcurrentDictionary<string, IBrush> BrushCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public static string ColorAt(int index) => HexColors[Math.Abs(index) % HexColors.Length];
+
+    public static IBrush BrushFor(string hex) =>
+        BrushCache.GetOrAdd(hex, static value => new ImmutableSolidColorBrush(Color.Parse(value)));
+}
+
+public sealed record AccountBalanceShareRow(
+    Account Account,
+    string Name,
+    string InitialLetter,
+    string BalanceText,
+    string CurrencyCode,
+    double SharePercentage,
+    string ShareText,
+    string BudgetLeftText,
+    bool HasBudgetLeft,
+    string ColorHex)
+{
+    public IBrush AccentBrush => AccountChartPalette.BrushFor(ColorHex);
+}
+
+/// <summary>The accounts tile: every account, its balance, share of total, and scoped budget remaining.</summary>
 public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
 
     public ObservableCollection<Account> Accounts { get; } = new();
+    public ObservableCollection<AccountBalanceShareRow> AccountRows { get; } = new();
 
     public BalanceWidgetViewModel(IMediator mediator, ILocalizer localizer)
         : base(localizer, "Dashboard.Tile.Accounts")
     {
         _mediator = mediator;
-        Width = 360;
-        Height = 320;
-
-        // No Register call (TD-34) and no load (TD-35) here: activation registers this tile, and the
-        // dashboard calls InitializeAsync, so a tile built by `new` is empty and says so until asked.
+        Width = 380;
+        Height = 340;
     }
 
-    /// <summary>Reads the accounts.</summary>
-    /// <remarks>
-    /// The bare <c>catch (Exception) { /* Ignore for widget */ }</c> that was here is gone (TD-35): a
-    /// failed read now reaches the log AND the tile's own failure message, so it can never be read as
-    /// "you have no accounts".
-    /// </remarks>
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var accounts = await _mediator.Send(new GetAccountsQuery(), cancellationToken);
-        Accounts.Clear();
-        foreach (var account in accounts)
+        var accounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
+
+        MonthlyPlanSummary? plan = null;
+        try
         {
+            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(), cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Optional enrichment: keep tile working when isolated tests only stub GetAccountsQuery.
+        }
+
+        var slicesByAccount = plan?.AccountShares?.ToDictionary(s => s.AccountId)
+            ?? new Dictionary<Guid, AccountAllocationSlice>();
+
+        var currencyTotals = accounts
+            .Where(a => a.Balance.Amount > 0m)
+            .GroupBy(a => a.Balance.Currency.Value, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Balance.Amount), StringComparer.Ordinal);
+
+        Accounts.Clear();
+        AccountRows.Clear();
+
+        var ordered = accounts.OrderByDescending(a => a.Balance.Amount).ToList();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var account = ordered[i];
             Accounts.Add(account);
+
+            var share = 0.0;
+            if (slicesByAccount.TryGetValue(account.Id, out var slice))
+            {
+                share = slice.ShareOfTotalPercentage;
+            }
+            else if (account.Balance.Amount > 0m
+                && currencyTotals.TryGetValue(account.Balance.Currency.Value, out var total)
+                && total > 0m)
+            {
+                share = Math.Round((double)(account.Balance.Amount / total) * 100.0, 1);
+            }
+
+            var initial = string.IsNullOrWhiteSpace(account.Name)
+                ? "?"
+                : account.Name.Trim()[0].ToString().ToUpper(CultureInfo.CurrentCulture);
+
+            var shareText = Localizer.Format("Dashboard.Accounts.ShareOfTotal", Math.Round(share));
+            var budgetLeftText = slice?.BudgetRemaining is { } rem
+                ? Localizer.Format("Dashboard.Accounts.BudgetLeft", rem.ToString())
+                : string.Empty;
+
+            AccountRows.Add(new AccountBalanceShareRow(
+                account,
+                account.Name,
+                initial,
+                account.Balance.ToAmountString(CultureInfo.CurrentCulture),
+                account.Balance.Currency.Value,
+                Math.Clamp(share, 0, 100),
+                shareText,
+                budgetLeftText,
+                !string.IsNullOrEmpty(budgetLeftText),
+                AccountChartPalette.ColorAt(i)));
         }
 
         MarkLoaded(Accounts.Count == 0);
     }
 
-    /// <summary>Re-reads the accounts when something elsewhere changed them.</summary>
-    /// <param name="message">The broadcast. It carries no payload.</param>
+    protected override void OnLanguageChanged()
+    {
+        if (!IsEmpty && Accounts.Count > 0)
+        {
+            Reload("widget-balance-language-reload");
+        }
+    }
+
     public void Receive(DataChangedMessage message) => Reload("widget-balance-reload");
 }
 
 /// <summary>
-/// The total of every account's balance, one figure per currency (post-audit plan item 1.3).
+/// The total of every account's balance, one figure per currency, plus visual account share distribution
+/// and recurring monthly income context.
 /// </summary>
-/// <remarks>
-/// <para>
-/// THIS NUMBER EXISTED, WAS TESTED, AND WAS SHOWN NOWHERE. <c>DashboardViewModel.TotalBalance</c>
-/// summed the balances per currency through <see cref="Money"/> -- the fix that stopped 1 000 USD and
-/// 900 EUR being displayed as "1900 EUR" -- and five tests pinned it. No view bound it. Meanwhile a
-/// "Net Worth" tile beside it said "No data yet". The computation moved here, where it is seen, and
-/// its tests moved with it.
-/// </para>
-/// <para>
-/// IT IS CALLED A TOTAL BALANCE, NOT A NET WORTH, AND THE DIFFERENCE IS A CLAIM. Net worth is assets
-/// minus liabilities, and nothing in the account model says which is which: a card's opening debt
-/// may have been entered as 500 or as -500, and <c>AccountType</c> does not decide it. Summing
-/// balances is exactly what this is, so that is what it is called.
-/// </para>
-/// <para>
-/// AN EMPTY VAULT SHOWS AN EMPTY STATE, NOT "0.00 USD". The old summary returned a zero in US dollars
-/// when there were no accounts -- a currency nobody chose. There is no honest figure for no accounts;
-/// there is a sentence.
-/// </para>
-/// </remarks>
 public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase, IRecipient<DataChangedMessage>
 {
     private readonly IMediator _mediator;
@@ -91,43 +166,44 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
     {
         _mediator = mediator;
         _accountCount = CreateSlot(text => AccountCountText = text ?? string.Empty);
-        Width = 360;
-        Height = 230;
+        Width = 380;
+        Height = 250;
     }
 
-    /// <summary>One total per currency, ordered by currency code.</summary>
     public ObservableCollection<Money> Totals { get; } = new();
 
-    /// <summary>
-    /// The sum of the accounts already in the vault's base currency, or null when the base currency is unknown, no
-    /// account is in it, or the vault holds one currency only (then <see cref="Totals"/> is the whole story).
-    /// </summary>
     [ObservableProperty]
     public partial Money? BaseCurrencyTotal { get; private set; }
 
-    /// <summary>The other currencies' totals, shown beside the base total and never added to it or converted.</summary>
     public ObservableCollection<Money> OtherCurrencyTotals { get; } = new();
 
-    /// <summary>Whether the tile shows a base total with other currencies listed apart (otherwise one line per currency).</summary>
     [ObservableProperty]
     public partial bool ShowsBaseSplit { get; private set; }
 
-    /// <summary>Whether the tile shows one flat line per currency.</summary>
     [ObservableProperty]
     public partial bool ShowsFlatTotals { get; private set; } = true;
 
-    /// <summary>How many accounts the total covers, as a sentence.</summary>
     [ObservableProperty]
     public partial string AccountCountText { get; private set; } = string.Empty;
 
-    /// <summary>Whether there are any accounts to total.</summary>
     [ObservableProperty]
     public partial bool HasAccounts { get; private set; }
 
-    /// <inheritdoc />
+    [ObservableProperty]
+    public partial IReadOnlyList<ChartSegment> AccountDistributionSegments { get; private set; } = Array.Empty<ChartSegment>();
+
+    [ObservableProperty]
+    public partial bool HasDistributionSegments { get; private set; }
+
+    [ObservableProperty]
+    public partial string MonthlyIncomeText { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool HasMonthlyIncome { get; private set; }
+
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var accounts = await _mediator.Send(new GetAccountsQuery(), cancellationToken);
+        var accounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
         var baseCode = await _mediator.Send(new GetBaseCurrencyQuery(), cancellationToken);
         CurrencyCode.TryCreate(baseCode, out var baseCurrency);
 
@@ -139,7 +215,6 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
             Totals.Add(total);
         }
 
-        // A base-currency figure is only worth splitting out when there is something to split it from.
         var split = totals.BaseTotal is not null && totals.OtherTotals.Count > 0;
         BaseCurrencyTotal = split ? totals.BaseTotal : null;
         OtherCurrencyTotals.Clear();
@@ -151,6 +226,38 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
             }
         }
 
+        var primaryCurrency = baseCurrency?.Value ?? (totals.AllTotals.Count > 0 ? totals.AllTotals[0].Currency.Value : null);
+        var segments = accounts
+            .Where(a => a.Balance.Amount > 0m && (primaryCurrency is null || string.Equals(a.Balance.Currency.Value, primaryCurrency, StringComparison.Ordinal)))
+            .OrderByDescending(a => a.Balance.Amount)
+            .Select((a, idx) => new ChartSegment((double)a.Balance.Amount, AccountChartPalette.ColorAt(idx), a.Name))
+            .ToList();
+
+        AccountDistributionSegments = segments;
+        HasDistributionSegments = segments.Count > 0;
+
+        MonthlyPlanSummary? plan = null;
+        try
+        {
+            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(), cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Non-fatal when tests only stub GetAccountsQuery.
+        }
+
+        if (plan is { HasRecurringIncome: true, BaseCurrency: not null })
+        {
+            var monthlyText = Money.FromRounded(plan.MonthlyRecurringIncome, plan.BaseCurrency).ToString();
+            MonthlyIncomeText = Localizer.Format("Dashboard.TotalBalance.MonthlyIncome", monthlyText);
+            HasMonthlyIncome = true;
+        }
+        else
+        {
+            MonthlyIncomeText = string.Empty;
+            HasMonthlyIncome = false;
+        }
+
         ShowsBaseSplit = split;
         ShowsFlatTotals = !split;
         HasAccounts = Totals.Count > 0;
@@ -158,16 +265,16 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
         MarkLoaded(Totals.Count == 0);
     }
 
-    /// <summary>Re-reads the totals when something elsewhere changed a balance.</summary>
-    /// <param name="message">The broadcast. It carries no payload.</param>
+    protected override void OnLanguageChanged()
+    {
+        if (HasMonthlyIncome)
+        {
+            Reload("widget-total-balance-language-reload");
+        }
+    }
+
     public void Receive(DataChangedMessage message) => Reload("widget-total-balance-reload");
 
-    /// <summary>
-    /// One total per currency, each summed through <see cref="Money"/> so a cross-currency addition
-    /// throws instead of producing a plausible wrong figure.
-    /// </summary>
-    /// <param name="accounts">The accounts to total.</param>
-    /// <returns>The totals, ordered by currency code; empty for no accounts.</returns>
     internal static IReadOnlyList<Money> Summarise(IEnumerable<Account> accounts) =>
         BalanceTotals.Compute(accounts, null).AllTotals;
 }

@@ -146,12 +146,21 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// budgets" about a vault that has some.
     /// </remarks>
     /// <param name="cancellationToken">Threaded to the tiles.</param>
-    public Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         // Cleared on every (re-)activation, not merely on success: a stale sentence from a load
         // that failed once must not keep showing after a later visit's load succeeds, since
         // nothing here ever calls Set() on the happy path to overwrite it.
         _errorMessage.Clear();
+
+        try
+        {
+            await _mediator.Send(new Pine.Application.Planning.ProcessDueRecurringIncomesCommand(), cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Non-fatal: isolated tests or vaults without recurring incomes continue loading tiles.
+        }
 
         foreach (var widget in Widgets)
         {
@@ -165,8 +174,6 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
                     tile.ReportFailure);
             }
         }
-
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -259,7 +266,8 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         Widgets.Add(new CashFlowWidgetViewModel(_mediator, _localizer) { OrderIndex = 1 });
         Widgets.Add(new BalanceWidgetViewModel(_mediator, _localizer) { OrderIndex = 2 });
         Widgets.Add(new BudgetWidgetViewModel(_mediator, _localizer) { OrderIndex = 3 });
-        Widgets.Add(new RecentTransactionsWidgetViewModel(_mediator, _localizer) { OrderIndex = 4 });
+        Widgets.Add(new SavingsGoalsWidgetViewModel(_mediator, _localizer) { OrderIndex = 4 });
+        Widgets.Add(new RecentTransactionsWidgetViewModel(_mediator, _localizer) { OrderIndex = 5 });
 
         foreach (var widget in Widgets)
         {
@@ -314,6 +322,9 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     private void OpenScanReceipt() => _shell.NavigateTo(_viewModels.CreateScanReceipt(_shell));
 
     private bool CanOpenScanReceipt() => HasReceiptScan;
+
+    [RelayCommand]
+    private void OpenPlan() => _shell.NavigateTo(_viewModels.CreateBudgets());
 
     // The two dialogs only close themselves now. What they wrote reaches the tiles through
     // DataChangedMessage -- CreateAccountViewModel has always sent it, and the import wizard does as

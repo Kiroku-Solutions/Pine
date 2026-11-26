@@ -22,12 +22,22 @@
                     <SolidColorBrush x:Key="PineButtonText" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="PineSidebar" Color="#F5F0EB" />
                     <SolidColorBrush x:Key="PineSidebarBorder" Color="#E5DDD6" />
-                    <SolidColorBrush x:Key="PineDanger" Color="#DC3545" />
-                    <SolidColorBrush x:Key="PineDangerHover" Color="#C82333" />
-                    <SolidColorBrush x:Key="PineError" Color="#DC3545" />
+                    <SolidColorBrush x:Key="PineDanger" Color="#B91C1C" />
+                    <SolidColorBrush x:Key="PineDangerHover" Color="#991B1B" />
+                    <SolidColorBrush x:Key="PineError" Color="#B91C1C" />
                     <SolidColorBrush x:Key="PineDangerContainer" Color="#FDECEC" />
-                    <SolidColorBrush x:Key="PineWarning" Color="#E8940C" />
-                    <SolidColorBrush x:Key="PineSuccess" Color="#2E9E5B" />
+                    <SolidColorBrush x:Key="PineWarning" Color="#9A3412" />
+                    <SolidColorBrush x:Key="PineWarningContainer" Color="#FEF3C7" />
+                    <SolidColorBrush x:Key="PineSuccess" Color="#166534" />
+                    <SolidColorBrush x:Key="PineSuccessContainer" Color="#E6F6EC" />
+                    <SolidColorBrush x:Key="PineInfo" Color="#1D4ED8" />
+                    <SolidColorBrush x:Key="PineInfoContainer" Color="#E8F0FE" />
+                    <SolidColorBrush x:Key="PineChartTrack" Color="#EAE2DA" />
+                    <SolidColorBrush x:Key="PineChart1" Color="#047857" />
+                    <SolidColorBrush x:Key="PineChart2" Color="#C2410C" />
+                    <SolidColorBrush x:Key="PineChart3" Color="#1D4ED8" />
+                    <SolidColorBrush x:Key="PineChart4" Color="#6D28D9" />
+                    <SolidColorBrush x:Key="PineChart5" Color="#BE185D" />
                     <SolidColorBrush x:Key="PineSurfaceElevated" Color="#F7F2EC" />
                     <SolidColorBrush x:Key="PineScrim" Color="#66000000" />
 
@@ -54,12 +64,22 @@
                     <SolidColorBrush x:Key="PineButtonText" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="PineSidebar" Color="#161110" />
                     <SolidColorBrush x:Key="PineSidebarBorder" Color="#2E241E" />
-                    <SolidColorBrush x:Key="PineDanger" Color="#E54B5A" />
-                    <SolidColorBrush x:Key="PineDangerHover" Color="#D43A49" />
-                    <SolidColorBrush x:Key="PineError" Color="#E54B5A" />
+                    <SolidColorBrush x:Key="PineDanger" Color="#FB7185" />
+                    <SolidColorBrush x:Key="PineDangerHover" Color="#F43F5E" />
+                    <SolidColorBrush x:Key="PineError" Color="#FB7185" />
                     <SolidColorBrush x:Key="PineDangerContainer" Color="#3A1C1F" />
-                    <SolidColorBrush x:Key="PineWarning" Color="#F5A623" />
-                    <SolidColorBrush x:Key="PineSuccess" Color="#7ED321" />
+                    <SolidColorBrush x:Key="PineWarning" Color="#F59E0B" />
+                    <SolidColorBrush x:Key="PineWarningContainer" Color="#36250B" />
+                    <SolidColorBrush x:Key="PineSuccess" Color="#34D399" />
+                    <SolidColorBrush x:Key="PineSuccessContainer" Color="#102E22" />
+                    <SolidColorBrush x:Key="PineInfo" Color="#60A5FA" />
+                    <SolidColorBrush x:Key="PineInfoContainer" Color="#152847" />
+                    <SolidColorBrush x:Key="PineChartTrack" Color="#2D231E" />
+                    <SolidColorBrush x:Key="PineChart1" Color="#34D399" />
+                    <SolidColorBrush x:Key="PineChart2" Color="#FB923C" />
+                    <SolidColorBrush x:Key="PineChart3" Color="#60A5FA" />
+                    <SolidColorBrush x:Key="PineChart4" Color="#A78BFA" />
+                    <SolidColorBrush x:Key="PineChart5" Color="#F472B6" />
                     <SolidColorBrush x:Key="PineSurfaceElevated" Color="#241C18" />
                     <SolidColorBrush x:Key="PineScrim" Color="#99000000" />
 
@@ -317,6 +337,70 @@
         </Style>
         <Style Selector="TextBlock.pine-strength-success">
             <Setter Property="Foreground" Value="{DynamicResource PineSuccess}" />
+        </Style>
+
+        <!-- ═══ Semantic Budget & Goal Progress Bars ═══ -->
+        <Style Selector="ProgressBar.pine-bar">
+            <Setter Property="Background" Value="{DynamicResource PineChartTrack}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineSuccess}" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="ProgressBar.pine-bar.nearLimit:not(:indeterminate)">
+            <Setter Property="Foreground" Value="{DynamicResource PineWarning}" />
+        </Style>
+        <Style Selector="ProgressBar.pine-bar.overBudget:not(:indeterminate)">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+
+        <!-- ═══ Segmented Tab Controls (Planning Hub) ═══ -->
+        <Style Selector="Button.pine-segment">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PineTextMuted}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.pine-segment:pointerover">
+            <Setter Property="Background" Value="{DynamicResource PineSurfaceHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+        </Style>
+        <Style Selector="Button.pine-segment.active">
+            <Setter Property="Background" Value="{DynamicResource PineAccentGradient}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- ═══ Semantic Status Pills ═══ -->
+        <Style Selector="Border.pine-pill-success">
+            <Setter Property="Background" Value="{DynamicResource PineSuccessContainer}" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="8,3" />
+        </Style>
+        <Style Selector="Border.pine-pill-warning">
+            <Setter Property="Background" Value="{DynamicResource PineWarningContainer}" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="8,3" />
+        </Style>
+        <Style Selector="Border.pine-pill-danger">
+            <Setter Property="Background" Value="{DynamicResource PineDangerContainer}" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="8,3" />
+        </Style>
+        <Style Selector="Border.pine-pill-info">
+            <Setter Property="Background" Value="{DynamicResource PineInfoContainer}" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="8,3" />
         </Style>
 
         <!-- ═══ Smooth Transitions for Cards ═══ -->
