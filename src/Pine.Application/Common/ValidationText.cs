@@ -271,4 +271,31 @@ public static class ValidationText
 
     /// <summary>A transactions page size preference outside its allowed range (TD-119).</summary>
     public static UserFacingMessage PreferencePageSizeRange(int min, int max) => new("Validation.Preference.PageSizeRange", min, max);
+
+    /// <summary>A recurring income with no name.</summary>
+    public static UserFacingMessage RecurringIncomeNameRequired() => new("Validation.RecurringIncome.NameRequired");
+
+    /// <summary>A recurring income with non-positive amount.</summary>
+    public static UserFacingMessage RecurringIncomeAmountNotPositive() => new("Validation.RecurringIncome.AmountNotPositive");
+
+    /// <summary>A recurring income payday outside 1..31.</summary>
+    public static UserFacingMessage RecurringIncomeDayOutOfRange() => new("Validation.RecurringIncome.DayOutOfRange");
+
+    /// <summary>A recurring income that no longer exists.</summary>
+    public static UserFacingMessage RecurringIncomeNotFound() => new("Validation.RecurringIncome.NotFound");
+
+    /// <summary>A savings goal with no name.</summary>
+    public static UserFacingMessage SavingsGoalNameRequired() => new("Validation.SavingsGoal.NameRequired");
+
+    /// <summary>A savings goal target that is zero or negative.</summary>
+    public static UserFacingMessage SavingsGoalTargetNotPositive() => new("Validation.SavingsGoal.TargetNotPositive");
+
+    /// <summary>A savings goal monthly target that is negative.</summary>
+    public static UserFacingMessage SavingsGoalMonthlyNegative() => new("Validation.SavingsGoal.MonthlyNegative");
+
+    /// <summary>A savings goal contribution that is zero or negative.</summary>
+    public static UserFacingMessage SavingsGoalContributionNotPositive() => new("Validation.SavingsGoal.ContributionNotPositive");
+
+    /// <summary>A savings goal that no longer exists.</summary>
+    public static UserFacingMessage SavingsGoalNotFound() => new("Validation.SavingsGoal.NotFound");
 }

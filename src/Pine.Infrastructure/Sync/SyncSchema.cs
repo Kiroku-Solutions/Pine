@@ -40,6 +40,7 @@ internal sealed class SyncSchema
     internal static readonly (string Table, string Column, string PrincipalTable)[] UndeclaredReferences =
     [
         ("Transactions", "LinkedTransactionId", "Transactions"),
+        ("Budgets", "AccountId", "Accounts"),
     ];
 
     private readonly Dictionary<string, SyncTable> _byName;
@@ -131,7 +132,8 @@ internal sealed class SyncSchema
                 row.Text("LimitCurrency") ?? string.Empty,
                 Enum.Parse<BudgetPeriod>(row.Text("Period") ?? string.Empty),
                 ParseInstant(row.Text("StartDate")),
-                ParseInstant(row.Text("EndDate"))),
+                ParseInstant(row.Text("EndDate")),
+                row.GuidAt("AccountId")),
             _ => null,
         };
     }

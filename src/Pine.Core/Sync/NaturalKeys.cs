@@ -6,6 +6,7 @@ using Pine.Core.Attachments;
 using Pine.Core.Budgets;
 using Pine.Core.ExchangeRates;
 using Pine.Core.Importing;
+using Pine.Core.Planning;
 using Pine.Core.Rules;
 using Pine.Core.Settings;
 using Pine.Core.Transactions;
@@ -85,6 +86,8 @@ public static class NaturalKeys
         [typeof(Account)] = NaturalKeyKind.None,
         [typeof(Rule)] = NaturalKeyKind.None,
         [typeof(ImportProfile)] = NaturalKeyKind.None,
+        [typeof(RecurringIncome)] = NaturalKeyKind.None,
+        [typeof(SavingsGoal)] = NaturalKeyKind.None,
     };
 
     /// <summary>Every aggregate type that has a decision.</summary>
@@ -119,7 +122,7 @@ public static class NaturalKeys
         return aggregate switch
         {
             Setting setting => SettingKey(setting.Key),
-            Budget budget => BudgetKey(budget.Category, budget.Limit.Currency.Value, budget.Period, budget.StartDate, budget.EndDate),
+            Budget budget => BudgetKey(budget.Category, budget.Limit.Currency.Value, budget.Period, budget.StartDate, budget.EndDate, budget.AccountId),
             Attachment attachment => AttachmentKey(attachment.TransactionId, attachment.Sha256),
             ExchangeRate rate => ExchangeRateKey(rate.FromCurrency.Value, rate.ToCurrency.Value, rate.EffectiveDateUtc),
             Transaction transaction => TransactionKey(transaction.AccountId, transaction.ImportKey),
@@ -184,13 +187,26 @@ public static class NaturalKeys
     /// <param name="start">The explicit start, if any. Compared as an instant.</param>
     /// <param name="end">The explicit end, if any. Compared as an instant.</param>
     /// <returns>The key.</returns>
-    public static string BudgetKey(string category, string currency, BudgetPeriod period, DateTimeOffset? start, DateTimeOffset? end)
+    public static string BudgetKey(string category, string currency, BudgetPeriod period, DateTimeOffset? start, DateTimeOffset? end, Guid? accountId = null)
     {
         ArgumentNullException.ThrowIfNull(category);
         ArgumentNullException.ThrowIfNull(currency);
 
         static string Instant(DateTimeOffset? value) =>
             value?.UtcTicks.ToString(CultureInfo.InvariantCulture) ?? "-";
+
+        if (accountId is { } id && id != Guid.Empty)
+        {
+            // Distinct prefix prevents any category label ending in "|acct:<guid>" from colliding with an account-scoped budget.
+            return string.Join('|',
+                "budget-acct",
+                id.ToString("D", CultureInfo.InvariantCulture),
+                currency.Trim().ToUpperInvariant(),
+                period.ToString(),
+                Instant(start),
+                Instant(end),
+                category.Trim());
+        }
 
         return string.Join('|',
             "budget",

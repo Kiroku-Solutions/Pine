@@ -446,6 +446,8 @@ public static partial class VaultMerger
         "ExchangeRates" => "FromCurrency",
         "Attachments" => "FileName",
         "ImportProfiles" => "Name",
+        "RecurringIncomes" => "Name",
+        "SavingsGoals" => "Name",
         _ => "Id",
     });
 

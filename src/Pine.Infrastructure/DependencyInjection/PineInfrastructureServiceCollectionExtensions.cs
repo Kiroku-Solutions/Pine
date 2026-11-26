@@ -141,6 +141,8 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<IImportProfileRepository, SqliteImportProfileRepository>();
         services.AddScoped<IAttachmentRepository, SqliteAttachmentRepository>();
         services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
+        services.AddScoped<Pine.Core.Planning.IRecurringIncomeRepository, SqliteRecurringIncomeRepository>();
+        services.AddScoped<Pine.Core.Planning.ISavingsGoalRepository, SqliteSavingsGoalRepository>();
 
         // The conflicts a merge recorded, and their resolution (post-audit plan item 3.1c). Scoped with the context,
         // so a resolution runs inside the request's transaction.

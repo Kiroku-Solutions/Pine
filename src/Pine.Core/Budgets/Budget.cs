@@ -36,6 +36,12 @@ public class Budget
     public string Category { get; private set; }
     public Money Limit { get; private set; }
     public BudgetPeriod Period { get; private set; }
+
+    /// <summary>
+    /// Optional account scope. When set, spending against this budget is measured from expenses
+    /// on this account; when null, expenses across all accounts in the budget currency count.
+    /// </summary>
+    public Guid? AccountId { get; private set; }
     
     // For Custom periods, StartDate and EndDate define the exact bounds.
     // For Monthly, Weekly, etc., they can be null and the bounds are dynamically calculated based on the current date,
@@ -72,7 +78,7 @@ public class Budget
 
     private Budget() { Limit = null!; Category = null!; } // EF Core
 
-    private Budget(Guid id, string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate, DateTimeOffset? endDate)
+    private Budget(Guid id, string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate, DateTimeOffset? endDate, Guid? accountId = null)
     {
         Id = id;
 
@@ -89,6 +95,7 @@ public class Budget
         Category = category.Trim();
         Limit = limit ?? throw new ArgumentNullException(nameof(limit));
         Period = period;
+        AccountId = accountId == Guid.Empty ? null : accountId;
         
         if (period == BudgetPeriod.Custom && (!startDate.HasValue || !endDate.HasValue))
             throw new ArgumentException("Custom budgets must have a StartDate and EndDate.");
@@ -102,9 +109,9 @@ public class Budget
         EndDateUtc = endDate?.UtcDateTime;
     }
 
-    public static Budget Create(string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate = null, DateTimeOffset? endDate = null)
+    public static Budget Create(string category, Money limit, BudgetPeriod period, DateTimeOffset? startDate = null, DateTimeOffset? endDate = null, Guid? accountId = null)
     {
-        return new Budget(Guid.NewGuid(), category, limit, period, startDate, endDate);
+        return new Budget(Guid.NewGuid(), category, limit, period, startDate, endDate, accountId);
     }
 
     /// <summary>

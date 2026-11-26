@@ -89,6 +89,169 @@ namespace Pine.Infrastructure.Data.Migrations
                     b.ToTable("Accounts");
                 });
 
+            modelBuilder.Entity("Pine.Core.Planning.RecurringIncome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DayOfMonth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastPostedDateUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Amount", "Pine.Core.Planning.RecurringIncome.Amount#Money", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
+                                .HasColumnName("Amount_Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasColumnType("TEXT")
+                                .HasColumnName("Amount_Currency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("RecurringIncomes");
+                });
+
+            modelBuilder.Entity("Pine.Core.Planning.SavingsGoal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LinkedAccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RowClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowCreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RowDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RowLocalClock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RowUpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("TargetDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("TargetDateUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "CurrentAmount", "Pine.Core.Planning.SavingsGoal.CurrentAmount#Money", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
+                                .HasColumnName("CurrentAmount_Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasColumnType("TEXT")
+                                .HasColumnName("CurrentAmount_Currency");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "MonthlyTarget", "Pine.Core.Planning.SavingsGoal.MonthlyTarget#Money", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
+                                .HasColumnName("MonthlyTarget_Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasColumnType("TEXT")
+                                .HasColumnName("MonthlyTarget_Currency");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "TargetAmount", "Pine.Core.Planning.SavingsGoal.TargetAmount#Money", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<long>("Amount")
+                                .HasColumnType("INTEGER")
+                                .HasColumnName("TargetAmount_Amount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasColumnType("TEXT")
+                                .HasColumnName("TargetAmount_Currency");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LinkedAccountId");
+
+                    b.ToTable("SavingsGoals");
+                });
+
             modelBuilder.Entity("Pine.Core.Attachments.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -150,6 +313,9 @@ namespace Pine.Infrastructure.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AccountId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Category")
@@ -218,6 +384,8 @@ namespace Pine.Infrastructure.Data.Migrations
                         });
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
 
                     b.ToTable("Budgets");
                 });
@@ -721,6 +889,23 @@ namespace Pine.Infrastructure.Data.Migrations
                         .HasForeignKey("TransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Pine.Core.Planning.RecurringIncome", b =>
+                {
+                    b.HasOne("Pine.Core.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pine.Core.Planning.SavingsGoal", b =>
+                {
+                    b.HasOne("Pine.Core.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("LinkedAccountId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Pine.Core.Rules.Rule", b =>
