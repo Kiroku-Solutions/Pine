@@ -17,7 +17,7 @@
                     <SolidColorBrush x:Key="PineSurface" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="PineSurfaceHover" Color="#FFF8F2" />
                     <SolidColorBrush x:Key="PineText" Color="#2D231E" />
-                    <SolidColorBrush x:Key="PineTextMuted" Color="#827168" />
+                    <SolidColorBrush x:Key="PineTextMuted" Color="#6E5E56" />
                     <SolidColorBrush x:Key="PineBorder" Color="#EAE4DF" />
                     <SolidColorBrush x:Key="PineButtonText" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="PineSidebar" Color="#F5F0EB" />

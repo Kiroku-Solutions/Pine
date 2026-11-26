@@ -52,7 +52,10 @@ public sealed record AccountBalanceShareRow(
     string ShareText,
     string BudgetLeftText,
     bool HasBudgetLeft,
-    string ColorHex)
+    string ColorHex,
+    bool IsSubAccount = false,
+    string HierarchyBadgeText = "",
+    bool HasHierarchyBadge = false)
 {
     public IBrush AccentBrush => AccountChartPalette.BrushFor(ColorHex);
 }
@@ -75,52 +78,135 @@ public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRec
 
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var accounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
+        var scopeSnapshot = AccountScope;
+        var allAccounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
+        var scopeSet = scopeSnapshot is { Count: > 0 } ids ? new HashSet<Guid>(ids) : null;
+        var accounts = scopeSet is null
+            ? allAccounts
+            : allAccounts.Where(a => scopeSet.Contains(a.Id)).ToList();
 
         MonthlyPlanSummary? plan = null;
         try
         {
-            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(), cancellationToken);
+            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(scopeSnapshot), cancellationToken);
         }
-        catch (Exception)
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Optional enrichment: keep tile working when isolated tests only stub GetAccountsQuery.
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         var slicesByAccount = plan?.AccountShares?.ToDictionary(s => s.AccountId)
             ?? new Dictionary<Guid, AccountAllocationSlice>();
 
-        var currencyTotals = accounts
-            .Where(a => a.Balance.Amount > 0m)
-            .GroupBy(a => a.Balance.Currency.Value, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Sum(a => a.Balance.Amount), StringComparer.Ordinal);
+        var allAccountIds = allAccounts.Select(a => a.Id).ToHashSet();
+        var childrenByParent = allAccounts
+            .Where(a => a.ParentAccountId.HasValue && allAccountIds.Contains(a.ParentAccountId.Value))
+            .GroupBy(a => a.ParentAccountId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        bool IsTopLevel(Account account) =>
+            !account.ParentAccountId.HasValue || !allAccountIds.Contains(account.ParentAccountId.Value);
+
+        // In General view, roll sub-accounts into their parent so 50 spending pockets never drown the list.
+        // Orphaned sub-accounts (whose parent is absent) remain visible as top-level so totals stay honest.
+        var displayAccounts = scopeSet is null
+            ? accounts.Where(IsTopLevel).ToList()
+            : accounts
+                .OrderBy(a => IsTopLevel(a) ? 0 : 1)
+                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+        decimal EffectivePoolAmount(Account account)
+        {
+            if (!IsTopLevel(account))
+            {
+                return account.Balance.Amount;
+            }
+
+            var childSum = childrenByParent.TryGetValue(account.Id, out var kids)
+                ? kids.Sum(k => k.Balance.Amount)
+                : 0m;
+            return account.Balance.Amount + childSum;
+        }
+
+        if (scopeSet is null)
+        {
+            displayAccounts = displayAccounts
+                .OrderByDescending(EffectivePoolAmount)
+                .ToList();
+        }
+
+        var currencyTotals = displayAccounts
+            .Where(IsTopLevel)
+            .Select(a => (a.Balance.Currency.Value, Amount: EffectivePoolAmount(a)))
+            .Where(x => x.Amount > 0m)
+            .GroupBy(x => x.Value, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount), StringComparer.Ordinal);
 
         Accounts.Clear();
         AccountRows.Clear();
 
-        var ordered = accounts.OrderByDescending(a => a.Balance.Amount).ToList();
-        for (var i = 0; i < ordered.Count; i++)
+        for (var i = 0; i < displayAccounts.Count; i++)
         {
-            var account = ordered[i];
+            var account = displayAccounts[i];
             Accounts.Add(account);
 
-            var share = 0.0;
-            if (slicesByAccount.TryGetValue(account.Id, out var slice))
+            var isChild = !IsTopLevel(account);
+            var hasChildren = !isChild
+                && childrenByParent.TryGetValue(account.Id, out var children)
+                && children.Count > 0;
+            var displayedAmount = isChild ? account.Balance.Amount : EffectivePoolAmount(account);
+            var displayedMoney = Money.FromRounded(displayedAmount, account.Balance.Currency);
+
+            double share;
+            string shareText;
+            string badgeText = string.Empty;
+
+            if (isChild)
             {
-                share = slice.ShareOfTotalPercentage;
+                var spent = account.Balance.Amount < 0m ? Math.Abs(account.Balance.Amount) : 0m;
+                if (account.MonthlyAllocation is { } alloc && alloc > 0m)
+                {
+                    share = Math.Round((double)(spent / alloc) * 100.0, 1);
+                    var spentText = Money.FromRounded(spent, account.Balance.Currency).ToString();
+                    var allocText = Money.FromRounded(alloc, account.Balance.Currency).ToString();
+                    shareText = Localizer.Format("Dashboard.Accounts.SubAccountAllocation", spentText, allocText);
+                }
+                else
+                {
+                    share = 0.0;
+                    shareText = Localizer["Dashboard.Accounts.SubAccountSharedPool"];
+                }
+
+                badgeText = Localizer["Dashboard.Accounts.SubAccountBadge"];
             }
-            else if (account.Balance.Amount > 0m
-                && currencyTotals.TryGetValue(account.Balance.Currency.Value, out var total)
-                && total > 0m)
+            else
             {
-                share = Math.Round((double)(account.Balance.Amount / total) * 100.0, 1);
+                if (displayedAmount > 0m
+                    && currencyTotals.TryGetValue(account.Balance.Currency.Value, out var total)
+                    && total > 0m)
+                {
+                    share = Math.Round((double)(displayedAmount / total) * 100.0, 1);
+                }
+                else
+                {
+                    share = 0.0;
+                }
+
+                shareText = Localizer.Format("Dashboard.Accounts.ShareOfTotal", Math.Round(share));
+                if (hasChildren)
+                {
+                    badgeText = Localizer.Format("Dashboard.Accounts.SubAccountCount", childrenByParent[account.Id].Count);
+                }
             }
 
             var initial = string.IsNullOrWhiteSpace(account.Name)
                 ? "?"
                 : account.Name.Trim()[0].ToString().ToUpper(CultureInfo.CurrentCulture);
 
-            var shareText = Localizer.Format("Dashboard.Accounts.ShareOfTotal", Math.Round(share));
+            slicesByAccount.TryGetValue(account.Id, out var slice);
             var budgetLeftText = slice?.BudgetRemaining is { } rem
                 ? Localizer.Format("Dashboard.Accounts.BudgetLeft", rem.ToString())
                 : string.Empty;
@@ -129,13 +215,16 @@ public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRec
                 account,
                 account.Name,
                 initial,
-                account.Balance.ToAmountString(CultureInfo.CurrentCulture),
+                displayedMoney.ToAmountString(CultureInfo.CurrentCulture),
                 account.Balance.Currency.Value,
                 Math.Clamp(share, 0, 100),
                 shareText,
                 budgetLeftText,
                 !string.IsNullOrEmpty(budgetLeftText),
-                AccountChartPalette.ColorAt(i)));
+                AccountChartPalette.ColorAt(i),
+                account.IsSubAccount,
+                badgeText,
+                !string.IsNullOrEmpty(badgeText)));
         }
 
         MarkLoaded(Accounts.Count == 0);
@@ -203,8 +292,15 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
 
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var accounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
+        var scopeSnapshot = AccountScope;
+        var allAccounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken) ?? Array.Empty<Account>()).ToList();
+        var scopeSet = scopeSnapshot is { Count: > 0 } ids ? new HashSet<Guid>(ids) : null;
+        var accounts = scopeSet is null
+            ? allAccounts
+            : allAccounts.Where(a => scopeSet.Contains(a.Id)).ToList();
+
         var baseCode = await _mediator.Send(new GetBaseCurrencyQuery(), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         CurrencyCode.TryCreate(baseCode, out var baseCurrency);
 
         var totals = BalanceTotals.Compute(accounts, baseCurrency);
@@ -226,12 +322,61 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
             }
         }
 
-        var primaryCurrency = baseCurrency?.Value ?? (totals.AllTotals.Count > 0 ? totals.AllTotals[0].Currency.Value : null);
-        var segments = accounts
-            .Where(a => a.Balance.Amount > 0m && (primaryCurrency is null || string.Equals(a.Balance.Currency.Value, primaryCurrency, StringComparison.Ordinal)))
-            .OrderByDescending(a => a.Balance.Amount)
-            .Select((a, idx) => new ChartSegment((double)a.Balance.Amount, AccountChartPalette.ColorAt(idx), a.Name))
-            .ToList();
+        var primaryCurrency = totals.AllTotals.Count == 1
+            ? totals.AllTotals[0].Currency.Value
+            : baseCurrency?.Value ?? (totals.AllTotals.Count > 0 ? totals.AllTotals[0].Currency.Value : null);
+
+        var allAccountIds = allAccounts.Select(a => a.Id).ToHashSet();
+        var childrenByParent = allAccounts
+            .Where(a => a.ParentAccountId.HasValue && allAccountIds.Contains(a.ParentAccountId.Value))
+            .GroupBy(a => a.ParentAccountId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        bool IsTopLevel(Account account) =>
+            !account.ParentAccountId.HasValue || !allAccountIds.Contains(account.ParentAccountId.Value);
+
+        List<ChartSegment> segments;
+        if (scopeSet is null)
+        {
+            // General tab: roll sub-accounts into their parent pool (orphaned sub-accounts remain top-level).
+            segments = accounts
+                .Where(a => IsTopLevel(a) && (primaryCurrency is null || string.Equals(a.Balance.Currency.Value, primaryCurrency, StringComparison.Ordinal)))
+                .Select(a =>
+                {
+                    var pool = a.Balance.Amount + (childrenByParent.TryGetValue(a.Id, out var kids) ? kids.Sum(k => k.Balance.Amount) : 0m);
+                    return (Account: a, Pool: pool);
+                })
+                .Where(x => x.Pool > 0m)
+                .OrderByDescending(x => x.Pool)
+                .Select((x, idx) => new ChartSegment((double)x.Pool, AccountChartPalette.ColorAt(idx), x.Account.Name))
+                .ToList();
+        }
+        else
+        {
+            // Scoped tab: show remaining pool + sub-account spending slices (negative balances only; never double-count positive balances).
+            var scopedSegments = new List<ChartSegment>();
+            var parent = accounts.FirstOrDefault(IsTopLevel);
+            var kids = accounts.Where(a => !IsTopLevel(a)).ToList();
+            if (parent is not null)
+            {
+                var remainingPool = parent.Balance.Amount + kids.Sum(k => k.Balance.Amount);
+                if (remainingPool > 0m)
+                {
+                    scopedSegments.Add(new ChartSegment((double)remainingPool, AccountChartPalette.ColorAt(0), parent.Name));
+                }
+
+                for (var i = 0; i < kids.Count; i++)
+                {
+                    var spent = kids[i].Balance.Amount < 0m ? Math.Abs(kids[i].Balance.Amount) : 0m;
+                    if (spent > 0m)
+                    {
+                        scopedSegments.Add(new ChartSegment((double)spent, AccountChartPalette.ColorAt(i + 1), kids[i].Name));
+                    }
+                }
+            }
+
+            segments = scopedSegments;
+        }
 
         AccountDistributionSegments = segments;
         HasDistributionSegments = segments.Count > 0;
@@ -239,12 +384,14 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
         MonthlyPlanSummary? plan = null;
         try
         {
-            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(), cancellationToken);
+            plan = await _mediator.Send(new GetMonthlyPlanSummaryQuery(scopeSnapshot), cancellationToken);
         }
-        catch (Exception)
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Non-fatal when tests only stub GetAccountsQuery.
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (plan is { HasRecurringIncome: true, BaseCurrency: not null })
         {

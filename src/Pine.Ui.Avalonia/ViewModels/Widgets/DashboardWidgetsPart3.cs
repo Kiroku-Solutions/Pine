@@ -36,7 +36,7 @@ public partial class RecentTransactionsWidgetViewModel : DashboardWidgetViewMode
     /// </remarks>
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var pagedResult = await _mediator.Send(new GetTransactionsQuery(1, 10), cancellationToken);
+        var pagedResult = await _mediator.Send(new GetTransactionsQuery(1, 10, IncludeVoided: true, AccountIds: AccountScope), cancellationToken);
         Transactions.Clear();
         foreach (var tx in pagedResult.Items)
         {

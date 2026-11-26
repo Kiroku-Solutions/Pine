@@ -41,6 +41,7 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
     private readonly LocalizedMessageSlot _title;
     private readonly LocalizedMessageSlot _failure;
     private readonly System.Collections.Generic.List<LocalizedMessageSlot> _slots = new();
+    private CancellationTokenSource? _reloadCts;
     private bool _disposed;
 
     /// <summary>Creates a tile titled by <paramref name="titleKey"/>.</summary>
@@ -101,6 +102,43 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
     public bool HasFailed => !string.IsNullOrEmpty(FailureMessage);
 
     /// <summary>
+    /// Optional account filter pushed down by the dashboard's tab strip. Null means General (all accounts).
+    /// </summary>
+    public IReadOnlyCollection<Guid>? AccountScope { get; private set; }
+
+    /// <summary>Updates the account scope and optionally reloads the tile when the scope changes.</summary>
+    public void SetAccountScope(IReadOnlyCollection<Guid>? accountIds, bool reload = true)
+    {
+        var normalized = accountIds is { Count: > 0 } ? accountIds : null;
+        if (ScopesEqual(AccountScope, normalized))
+        {
+            return;
+        }
+
+        AccountScope = normalized;
+        if (reload)
+        {
+            Reload($"widget-scope-reload:{GetType().Name}");
+        }
+    }
+
+    private static bool ScopesEqual(IReadOnlyCollection<Guid>? a, IReadOnlyCollection<Guid>? b)
+    {
+        if (ReferenceEquals(a, b))
+        {
+            return true;
+        }
+
+        if (a is null || b is null || a.Count != b.Count)
+        {
+            return false;
+        }
+
+        var set = new HashSet<Guid>(a);
+        return set.SetEquals(b);
+    }
+
+    /// <summary>
     /// Reads whatever this tile shows. Called by the dashboard when the dashboard is initialised.
     /// </summary>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
@@ -108,15 +146,44 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
     public abstract Task InitializeAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Starts a re-read and routes its failure to this tile's own message (TD-35).
+    /// Starts a re-read, cancelling any older in-flight reload, and routes its failure to this tile's own message (TD-35).
     /// </summary>
     /// <param name="operation">A stable name for the log.</param>
-    protected void Reload(string operation) => ObservedTask.Run(
-        () => InitializeAsync(CancellationToken.None),
-        DiagnosticsLogger,
-        operation,
-        LoadFailed,
-        ReportFailure);
+    protected void Reload(string operation)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _reloadCts?.Cancel();
+        _reloadCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _reloadCts = cts;
+
+        ObservedTask.Run(
+            async () =>
+            {
+                try
+                {
+                    await InitializeAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Superseded by a newer reload or tile disposal.
+                }
+            },
+            DiagnosticsLogger,
+            operation,
+            LoadFailed,
+            messages =>
+            {
+                if (!_disposed && !cts.IsCancellationRequested)
+                {
+                    ReportFailure(messages);
+                }
+            });
+    }
 
     /// <summary>What a tile, or the dashboard around it, says when a read fails and nothing more specific can.</summary>
     internal static readonly UserFacingMessage LoadFailed = new("Dashboard.Tile.LoadFailed");
@@ -177,6 +244,9 @@ public abstract partial class DashboardWidgetViewModelBase : ObservableRecipient
         }
 
         _disposed = true;
+        _reloadCts?.Cancel();
+        _reloadCts?.Dispose();
+        _reloadCts = null;
         Localizer.LanguageChanged -= OnLocalizerLanguageChanged;
         foreach (var slot in _slots)
         {

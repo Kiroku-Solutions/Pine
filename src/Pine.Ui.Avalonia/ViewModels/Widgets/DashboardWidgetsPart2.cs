@@ -45,7 +45,7 @@ public partial class CashFlowWidgetViewModel : DashboardWidgetViewModelBase, IRe
 
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var flow = await _mediator.Send(new GetMonthlyCashFlowQuery(), cancellationToken);
+        var flow = await _mediator.Send(new GetMonthlyCashFlowQuery(AccountScope), cancellationToken);
 
         Rows.Clear();
         foreach (var currency in flow.ByCurrency)
@@ -115,7 +115,7 @@ public partial class BudgetWidgetViewModel : DashboardWidgetViewModelBase, IReci
 
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var progress = await _mediator.Send(new GetBudgetProgressQuery(), cancellationToken);
+        var progress = await _mediator.Send(new GetBudgetProgressQuery(AccountScope), cancellationToken);
 
         var ranked = progress
             .Select(row => BudgetProgressViewModel.From(row, Localizer))
@@ -193,7 +193,7 @@ public partial class SavingsGoalsWidgetViewModel : DashboardWidgetViewModelBase,
 
     public override async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var goals = await _mediator.Send(new GetSavingsGoalsQuery(), cancellationToken) ?? Array.Empty<SavingsGoalSummary>();
+        var goals = await _mediator.Send(new GetSavingsGoalsQuery(AccountScope), cancellationToken) ?? Array.Empty<SavingsGoalSummary>();
 
         var ordered = goals
             .Select(g => SavingsGoalRowViewModel.From(g, Localizer))

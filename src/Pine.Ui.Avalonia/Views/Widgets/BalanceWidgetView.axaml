@@ -26,9 +26,17 @@
                                     </Border>
 
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
-                                                   Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding ShareText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                        <WrapPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                                       Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                                            <Border Classes="pine-pill-info" VerticalAlignment="Center"
+                                                    IsVisible="{Binding HasHierarchyBadge}">
+                                                <TextBlock Text="{Binding HierarchyBadgeText}" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource PineInfo}" />
+                                            </Border>
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding ShareText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">

@@ -25,28 +25,135 @@
         <Style Selector="Border.voided Border.tx-avatar">
             <Setter Property="Opacity" Value="0.35" />
         </Style>
+
+        <!-- Default & semantic transaction type styling (Light & Dark WCAG AA tokens) -->
+        <Style Selector="Border.tx-avatar">
+            <Setter Property="Background" Value="{DynamicResource PineSurface}" />
+        </Style>
+        <Style Selector="Path.tx-icon">
+            <Setter Property="Stroke" Value="{DynamicResource PineText}" />
+        </Style>
+        <Style Selector="TextBlock.tx-amount">
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+        </Style>
+
+        <Style Selector="Border.tx-income Border.tx-avatar">
+            <Setter Property="Background" Value="{DynamicResource PineSuccessContainer}" />
+        </Style>
+        <Style Selector="Border.tx-income Path.tx-icon">
+            <Setter Property="Stroke" Value="{DynamicResource PineSuccess}" />
+        </Style>
+        <Style Selector="Border.tx-income TextBlock.tx-amount">
+            <Setter Property="Foreground" Value="{DynamicResource PineSuccess}" />
+        </Style>
+
+        <Style Selector="Border.tx-expense Border.tx-avatar">
+            <Setter Property="Background" Value="{DynamicResource PineDangerContainer}" />
+        </Style>
+        <Style Selector="Border.tx-expense Path.tx-icon">
+            <Setter Property="Stroke" Value="{DynamicResource PineDanger}" />
+        </Style>
+        <Style Selector="Border.tx-expense TextBlock.tx-amount">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+
+        <Style Selector="Border.tx-transfer Border.tx-avatar">
+            <Setter Property="Background" Value="{DynamicResource PineInfoContainer}" />
+        </Style>
+        <Style Selector="Border.tx-transfer Path.tx-icon">
+            <Setter Property="Stroke" Value="{DynamicResource PineInfo}" />
+        </Style>
+        <Style Selector="Border.tx-transfer TextBlock.tx-amount">
+            <Setter Property="Foreground" Value="{DynamicResource PineInfo}" />
+        </Style>
+
+        <Style Selector="Button.tx-filter-chip">
+            <Setter Property="Background" Value="{DynamicResource PineSurface}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PineBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.tx-filter-chip.active">
+            <Setter Property="Background" Value="{DynamicResource PinePrimary}" />
+            <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PinePrimary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
     </UserControl.Styles>
 
     <Grid x:Name="Root">
         <!-- Main Content Area -->
-        <Grid x:Name="MainGrid" RowDefinitions="Auto, *" Margin="40">
+        <Grid x:Name="MainGrid" RowDefinitions="Auto, Auto, *" Margin="40">
 
             <!-- Header -->
-            <Grid x:Name="HeaderGrid" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,40">
+            <Grid x:Name="HeaderGrid" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,24">
                 <StackPanel Grid.Column="0">
                     <TextBlock x:Name="HeaderTitle" Text="{loc:Tr Transactions.Header.Title}" FontSize="32" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" TextWrapping="Wrap" />
                     <TextBlock Text="{loc:Tr Transactions.Header.Subtitle}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
-                <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                     <!-- TD-71: voided rows are hidden by default; this brings them back. -->
                     <CheckBox Content="{loc:Tr Transactions.ShowVoided}" IsChecked="{Binding ShowVoided}" VerticalAlignment="Center" />
-                    <Button Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" MinHeight="44" Padding="15,10" CornerRadius="8" FontSize="14" />
+                    <Button Content="{loc:Tr Transactions.AddButton}" Command="{Binding ShowAddTransactionDialogCommand}" Classes="pine-accent" VerticalAlignment="Center" MinHeight="44" Padding="16,10" CornerRadius="10" FontSize="14" />
                 </StackPanel>
             </Grid>
 
+            <!-- Search & Filter Bar -->
+            <Border Grid.Row="1" Margin="0,0,0,14" Padding="14,12" CornerRadius="12"
+                    Background="{DynamicResource PineSurface}"
+                    BorderBrush="{DynamicResource PineBorder}"
+                    BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*, 10, Auto">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding SearchText, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Tr Transactions.Filter.SearchPlaceholder}"
+                                 AutomationProperties.Name="{loc:Tr Transactions.Filter.SearchPlaceholder}"
+                                 MinHeight="40" />
+                        <ComboBox Grid.Column="2"
+                                  ItemsSource="{Binding AccountFilterOptions}"
+                                  SelectedItem="{Binding SelectedAccountFilter}"
+                                  MinWidth="150" MaxWidth="220" MinHeight="40"
+                                  AutomationProperties.Name="{loc:Tr Transactions.Filter.AccountLabel}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TransactionAccountFilterOption">
+                                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Classes="tx-filter-chip" Classes.active="{Binding IsAllTypeSelected}"
+                                Content="{loc:Tr Transactions.Filter.TypeAll}"
+                                Command="{Binding SelectTypeFilterCommand}" CommandParameter="0" />
+                        <Button Classes="tx-filter-chip" Classes.active="{Binding IsExpenseTypeSelected}"
+                                Content="{loc:Tr Transactions.Filter.TypeExpense}"
+                                Command="{Binding SelectTypeFilterCommand}" CommandParameter="1" />
+                        <Button Classes="tx-filter-chip" Classes.active="{Binding IsIncomeTypeSelected}"
+                                Content="{loc:Tr Transactions.Filter.TypeIncome}"
+                                Command="{Binding SelectTypeFilterCommand}" CommandParameter="2" />
+                        <Button Classes="tx-filter-chip" Classes.active="{Binding IsTransferTypeSelected}"
+                                Content="{loc:Tr Transactions.Filter.TypeTransfer}"
+                                Command="{Binding SelectTypeFilterCommand}" CommandParameter="3" />
+                        <Button Classes="pine-outline"
+                                Content="{loc:Tr Transactions.Filter.Clear}"
+                                Command="{Binding ClearFiltersCommand}"
+                                IsVisible="{Binding HasActiveFilters}"
+                                MinHeight="36" Padding="10,6" CornerRadius="16" FontSize="12" Margin="4,0,0,6" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Transactions List -->
-            <Border x:Name="ListBorder" Grid.Row="1" Padding="20" CornerRadius="12"
+            <Border x:Name="ListBorder" Grid.Row="2" Padding="20" CornerRadius="12"
                     Background="{DynamicResource PineSurface}"
                     BorderBrush="{DynamicResource PineBorder}"
                     BorderThickness="1"
@@ -63,25 +170,49 @@
                                    Margin="0,0,0,12"
                                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+                        <!-- Empty State -->
+                        <StackPanel IsVisible="{Binding ShowEmptyState}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Margin="16,36" Spacing="8">
+                            <TextBlock Text="{loc:Tr Transactions.EmptyState.Title}"
+                                       FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PineText}"
+                                       HorizontalAlignment="Center" TextAlignment="Center" />
+                            <TextBlock Text="{loc:Tr Transactions.EmptyState.Hint}"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource PineTextMuted}"
+                                       HorizontalAlignment="Center" TextAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="360" />
+                        </StackPanel>
+
                         <ItemsControl ItemsSource="{Binding Transactions}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="core:Transaction">
-                                    <Border Classes="card" Classes.voided="{Binding IsVoided}" Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,10">
+                                    <Border Classes="card"
+                                            Classes.voided="{Binding IsVoided}"
+                                            Classes.tx-income="{Binding Type, Converter={x:Static conv:Converters.IsIncomeTransaction}}"
+                                            Classes.tx-expense="{Binding Type, Converter={x:Static conv:Converters.IsExpenseTransaction}}"
+                                            Classes.tx-transfer="{Binding Type, Converter={x:Static conv:Converters.IsTransferTransaction}}"
+                                            Background="{DynamicResource PineSurfaceElevated}"
+                                            BorderBrush="{DynamicResource PineBorder}"
+                                            BorderThickness="1" CornerRadius="12" Padding="14,12" Margin="0,0,0,10">
                                         <Grid RowDefinitions="Auto, Auto">
-                                            <!-- Row 0: Avatar + Payee/Meta + Bold Amount -->
+                                            <!-- Row 0: Semantic Icon Badge + Payee/Meta + Semantic Amount -->
                                             <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto">
-                                                <Border Grid.Column="0" Classes="tx-avatar" Width="40" Height="40" CornerRadius="20" Background="{DynamicResource PinePrimary}" Margin="0,0,12,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Type, StringFormat='{}{0:G}'}" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PineButtonText}" TextTrimming="CharacterEllipsis" />
+                                                <Border Grid.Column="0" Classes="tx-avatar" Width="42" Height="42" CornerRadius="12"
+                                                        Margin="0,0,12,0" VerticalAlignment="Center">
+                                                    <Path Classes="tx-icon" Width="20" Height="20" Stretch="Uniform"
+                                                          StrokeThickness="2.2" StrokeLineCap="Round" StrokeJoin="Round"
+                                                          Data="{Binding Type, Converter={x:Static conv:Converters.TransactionTypeIcon}}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
 
                                                 <!-- Details -->
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" Margin="0,0,8,0">
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="0,0,10,0">
                                                     <WrapPanel>
                                                         <TextBlock Classes="tx-primary" Text="{Binding Payee}" FontWeight="SemiBold" FontSize="15" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,6,0" />
 
-                                                        <!-- The badge carries the reason in its tooltip: the "why" is the
-                                                             thing a void is for, and hiding it behind another screen would
-                                                             make the audit trail unreadable in practice. -->
+                                                        <!-- The badge carries the reason in its tooltip -->
                                                         <Border IsVisible="{Binding IsVoided}"
                                                                 Background="{DynamicResource PineDangerContainer}"
                                                                 CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="0,0,6,0"
@@ -90,7 +221,7 @@
                                                                        Foreground="{DynamicResource PineDanger}" />
                                                         </Border>
 
-                                                        <!-- Zero-amount import marker: often a bank authorization the person may want to hide. -->
+                                                        <!-- Zero-amount import marker -->
                                                         <Border IsVisible="{Binding IsZeroAmountImport}"
                                                                 Background="{DynamicResource PineSurface}"
                                                                 BorderThickness="1" BorderBrush="{DynamicResource PineBorder}"
@@ -100,13 +231,49 @@
                                                                        Foreground="{DynamicResource PineTextMuted}" />
                                                         </Border>
                                                     </WrapPanel>
-                                                    <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
+
+                                                    <!-- Date + Account Pill + Category Pill -->
+                                                    <WrapPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Date, Converter={x:Static conv:Converters.ProseDate}}"
+                                                                   FontSize="12" Foreground="{DynamicResource PineTextMuted}"
+                                                                   VerticalAlignment="Center" Margin="0,0,8,2" />
+
+                                                        <Border CornerRadius="6" Padding="6,2" Margin="0,0,6,2"
+                                                                Background="{DynamicResource PineSurface}"
+                                                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1">
+                                                            <Border.IsVisible>
+                                                                <MultiBinding Converter="{x:Static conv:Converters.HasAccountName}">
+                                                                    <Binding Path="AccountId" />
+                                                                    <Binding Path="#Root.((vm:TransactionsViewModel)DataContext).AccountNames" />
+                                                                </MultiBinding>
+                                                            </Border.IsVisible>
+                                                            <TextBlock FontSize="11" Foreground="{DynamicResource PineTextMuted}">
+                                                                <TextBlock.Text>
+                                                                    <MultiBinding Converter="{x:Static conv:Converters.AccountNameLookup}">
+                                                                        <Binding Path="AccountId" />
+                                                                        <Binding Path="#Root.((vm:TransactionsViewModel)DataContext).AccountNames" />
+                                                                    </MultiBinding>
+                                                                </TextBlock.Text>
+                                                            </TextBlock>
+                                                        </Border>
+
+                                                        <Border CornerRadius="6" Padding="6,2" Margin="0,0,0,2"
+                                                                Background="{DynamicResource PineInfoContainer}"
+                                                                IsVisible="{Binding ., Converter={x:Static conv:Converters.HasTransactionPrimaryCategory}}">
+                                                            <TextBlock Text="{Binding ., Converter={x:Static conv:Converters.TransactionPrimaryCategory}}"
+                                                                       FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource PineInfo}" />
+                                                        </Border>
+                                                    </WrapPanel>
+
                                                     <TextBlock Text="{Binding Notes}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" TextTrimming="CharacterEllipsis"
                                                                IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                                 </StackPanel>
 
-                                                <!-- Amount -->
-                                                <TextBlock Grid.Column="2" Classes="tx-primary" Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{DynamicResource PineText}" />
+                                                <!-- Semantic Amount -->
+                                                <TextBlock Grid.Column="2" Classes="tx-primary tx-amount"
+                                                           Text="{Binding TotalAmount}" FontWeight="Bold" FontSize="15"
+                                                           VerticalAlignment="Center" HorizontalAlignment="Right" />
                                             </Grid>
 
                                             <!-- Row 1: Wrapping action buttons — never collides on narrow phones -->

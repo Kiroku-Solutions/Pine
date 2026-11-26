@@ -1,18 +1,46 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Pine.Application.Accounts.Queries;
+using Pine.Core.Accounts;
 using Pine.Ui.Avalonia.Composition;
 using Pine.Ui.Avalonia.Diagnostics;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
+using Pine.Ui.Avalonia.ViewModels.Messages;
 using Pine.Ui.Avalonia.ViewModels.Widgets;
 
 namespace Pine.Ui.Avalonia.ViewModels;
+
+/// <summary>One selectable tab in the dashboard account filter strip.</summary>
+public sealed partial class DashboardAccountTabItem : ObservableObject
+{
+    public DashboardAccountTabItem(Guid? accountId, string label, bool isGeneral, int subAccountCount = 0)
+    {
+        AccountId = accountId;
+        Label = label;
+        IsGeneral = isGeneral;
+        SubAccountCount = subAccountCount;
+    }
+
+    public Guid? AccountId { get; }
+    public string Label { get; }
+    public bool IsGeneral { get; }
+    public int SubAccountCount { get; }
+    public bool HasSubAccounts => SubAccountCount > 0;
+    public string SubCountBadge => SubAccountCount > 0 ? $"+{SubAccountCount}" : string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+}
 
 /// <summary>
 /// The dashboard: a greeting, three actions, and the tiles.
@@ -33,12 +61,17 @@ namespace Pine.Ui.Avalonia.ViewModels;
 /// other write path, and the tiles answer the broadcast.
 /// </para>
 /// </remarks>
-public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializable, IDisposable
+public partial class DashboardViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
     private readonly IMediator _mediator;
     private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _greeting;
     private readonly LocalizedMessageSlot _errorMessage;
+    private List<Account> _cachedAccounts = new();
+    private Guid? _selectedParentAccountId;
+    private Guid? _selectedSubAccountId;
+    private CancellationTokenSource? _tabsCts;
+    private bool _disposed;
 
     /// <summary>The shell this page is shown in; where the Scan Receipt button navigates (item 1.4).</summary>
     private readonly IShellNavigator _shell;
@@ -76,8 +109,26 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
 
-    /// <summary>The five tiles, in the order the grid shows them.</summary>
+    /// <summary>The tiles, in the order the grid shows them.</summary>
     public ObservableCollection<IDashboardWidgetViewModel> Widgets { get; } = new();
+
+    /// <summary>Top-level dashboard tabs: General plus each primary account.</summary>
+    public ObservableCollection<DashboardAccountTabItem> AccountTabs { get; } = new();
+
+    /// <summary>Optional sub-account filter chips shown when a parent account tab with sub-accounts is selected.</summary>
+    public ObservableCollection<DashboardAccountTabItem> SubAccountTabs { get; } = new();
+
+    [ObservableProperty]
+    public partial bool HasAccountTabs { get; private set; }
+
+    [ObservableProperty]
+    public partial bool HasSubAccountTabs { get; private set; }
+
+    [ObservableProperty]
+    public partial string ActiveScopeSubtitle { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool HasActiveScopeSubtitle { get; private set; }
 
     [ObservableProperty]
     public partial bool IsCreateAccountDialogVisible { get; set; }
@@ -129,6 +180,7 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         _greeting = new LocalizedMessageSlot(_localizer, text => Greeting = text ?? string.Empty);
         _greeting.Set("Dashboard.Header.Greeting");
         _errorMessage = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text ?? string.Empty);
+        _localizer.LanguageChanged += OnLanguageChanged;
         InitializeWidgets();
 
         // No Register call (TD-34) and no load (TD-35) here: activation follows IsActive, and
@@ -161,6 +213,8 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         {
             // Non-fatal: isolated tests or vaults without recurring incomes continue loading tiles.
         }
+
+        await RefreshAccountTabsAsync(reloadWidgets: false, cancellationToken);
 
         foreach (var widget in Widgets)
         {
@@ -199,6 +253,16 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
     /// </remarks>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _tabsCts?.Cancel();
+        _tabsCts?.Dispose();
+        _tabsCts = null;
+        _localizer.LanguageChanged -= OnLanguageChanged;
         _greeting.Dispose();
         _errorMessage.Dispose();
 
@@ -211,6 +275,215 @@ public partial class DashboardViewModel : ObservableRecipient, IAsyncInitializab
         }
 
         GC.SuppressFinalize(this);
+    }
+
+    public void Receive(DataChangedMessage message)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _tabsCts?.Cancel();
+        _tabsCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _tabsCts = cts;
+
+        ObservedTask.Run(
+            () => RefreshAccountTabsAsync(reloadWidgets: true, cts.Token),
+            _logger,
+            "dashboard-tabs-reload",
+            DashboardWidgetViewModelBase.LoadFailed,
+            _ => { });
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        RebuildTabCollections();
+        UpdateScopeSubtitle();
+    }
+
+    private async Task RefreshAccountTabsAsync(bool reloadWidgets, CancellationToken cancellationToken)
+    {
+        List<Account> loaded;
+        try
+        {
+            var accounts = await _mediator.Send(new GetAccountsQuery(), cancellationToken);
+            loaded = accounts?.ToList() ?? new List<Account>();
+        }
+        catch (Exception)
+        {
+            // Isolated widget tests that do not stub GetAccountsQuery still keep widgets working.
+            return;
+        }
+
+        if (_disposed || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _cachedAccounts = loaded;
+
+        if (_selectedParentAccountId.HasValue && _cachedAccounts.All(a => a.Id != _selectedParentAccountId.Value))
+        {
+            _selectedParentAccountId = null;
+            _selectedSubAccountId = null;
+        }
+
+        if (_selectedSubAccountId.HasValue && _cachedAccounts.All(a => a.Id != _selectedSubAccountId.Value))
+        {
+            _selectedSubAccountId = null;
+        }
+
+        RebuildTabCollections();
+        PropagateScopeToWidgets(reloadWidgets);
+    }
+
+    private void RebuildTabCollections()
+    {
+        var allIds = _cachedAccounts.Select(a => a.Id).ToHashSet();
+        var topLevel = _cachedAccounts
+            .Where(a => !a.ParentAccountId.HasValue || !allIds.Contains(a.ParentAccountId.Value))
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        var subCounts = _cachedAccounts
+            .Where(a => a.ParentAccountId.HasValue && allIds.Contains(a.ParentAccountId.Value))
+            .GroupBy(a => a.ParentAccountId!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        AccountTabs.Clear();
+        AccountTabs.Add(new DashboardAccountTabItem(null, _localizer["Dashboard.Tabs.General"], isGeneral: true)
+        {
+            IsSelected = _selectedParentAccountId is null,
+        });
+
+        foreach (var account in topLevel)
+        {
+            subCounts.TryGetValue(account.Id, out var count);
+            AccountTabs.Add(new DashboardAccountTabItem(account.Id, account.Name, isGeneral: false, count)
+            {
+                IsSelected = _selectedParentAccountId == account.Id,
+            });
+        }
+
+        HasAccountTabs = topLevel.Count > 0;
+
+        SubAccountTabs.Clear();
+        if (_selectedParentAccountId is { } parentId)
+        {
+            var children = _cachedAccounts
+                .Where(a => a.ParentAccountId == parentId)
+                .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (children.Count > 0)
+            {
+                SubAccountTabs.Add(new DashboardAccountTabItem(null, _localizer["Dashboard.Tabs.AllInAccount"], isGeneral: true)
+                {
+                    IsSelected = _selectedSubAccountId is null,
+                });
+
+                foreach (var child in children)
+                {
+                    SubAccountTabs.Add(new DashboardAccountTabItem(child.Id, child.Name, isGeneral: false)
+                    {
+                        IsSelected = _selectedSubAccountId == child.Id,
+                    });
+                }
+            }
+        }
+
+        HasSubAccountTabs = SubAccountTabs.Count > 0;
+        UpdateScopeSubtitle();
+    }
+
+    [RelayCommand]
+    private void SelectAccountTab(DashboardAccountTabItem? tab)
+    {
+        if (tab is null)
+        {
+            return;
+        }
+
+        _selectedParentAccountId = tab.AccountId;
+        _selectedSubAccountId = null;
+        RebuildTabCollections();
+        PropagateScopeToWidgets();
+    }
+
+    [RelayCommand]
+    private void SelectSubAccountTab(DashboardAccountTabItem? tab)
+    {
+        if (tab is null)
+        {
+            return;
+        }
+
+        _selectedSubAccountId = tab.AccountId;
+        RebuildTabCollections();
+        PropagateScopeToWidgets();
+    }
+
+    private void PropagateScopeToWidgets(bool reload = true)
+    {
+        var scope = ResolveActiveAccountScope();
+        foreach (var widget in Widgets)
+        {
+            if (widget is DashboardWidgetViewModelBase tile)
+            {
+                tile.SetAccountScope(scope, reload);
+            }
+        }
+    }
+
+    private IReadOnlyCollection<Guid>? ResolveActiveAccountScope()
+    {
+        if (_selectedSubAccountId is { } subId)
+        {
+            return new[] { subId };
+        }
+
+        if (_selectedParentAccountId is { } parentId)
+        {
+            var ids = new List<Guid> { parentId };
+            ids.AddRange(_cachedAccounts.Where(a => a.ParentAccountId == parentId).Select(a => a.Id));
+            return ids;
+        }
+
+        return null;
+    }
+
+    private void UpdateScopeSubtitle()
+    {
+        if (_selectedSubAccountId is { } subId
+            && _cachedAccounts.FirstOrDefault(a => a.Id == subId) is { } sub
+            && _selectedParentAccountId is { } pId
+            && _cachedAccounts.FirstOrDefault(a => a.Id == pId) is { } parent)
+        {
+            ActiveScopeSubtitle = _localizer.Format("Dashboard.Tabs.ViewingSubAccount", sub.Name, parent.Name);
+            HasActiveScopeSubtitle = true;
+            return;
+        }
+
+        if (_selectedParentAccountId is { } parentId
+            && _cachedAccounts.FirstOrDefault(a => a.Id == parentId) is { } selectedParent)
+        {
+            var childCount = _cachedAccounts.Count(a => a.ParentAccountId == parentId);
+            ActiveScopeSubtitle = childCount > 0
+                ? _localizer.Format("Dashboard.Tabs.ViewingAccountWithSubs", selectedParent.Name, childCount)
+                : _localizer.Format("Dashboard.Tabs.ViewingAccount", selectedParent.Name);
+            HasActiveScopeSubtitle = true;
+            return;
+        }
+
+        ActiveScopeSubtitle = string.Empty;
+        HasActiveScopeSubtitle = false;
     }
 
     /// <summary>
