@@ -29,6 +29,22 @@ public static class ValidationText
     /// <summary>An account named by a request that no longer exists.</summary>
     public static UserFacingMessage AccountNotFound() => new("Validation.AccountNotFound");
 
+    /// <summary>A parent account selected for a sub-account that no longer exists.</summary>
+    public static UserFacingMessage AccountParentNotFound() => new("Validation.Account.ParentNotFound");
+
+    /// <summary>An attempt to nest a sub-account inside another sub-account.</summary>
+    public static UserFacingMessage AccountParentCannotBeSubAccount() => new("Validation.Account.ParentCannotBeSubAccount");
+
+    /// <summary>A sub-account whose currency differs from its parent account's currency.</summary>
+    public static UserFacingMessage AccountSubAccountCurrencyMismatch(string subCurrency, string parentCurrency)
+        => new("Validation.Account.SubAccountCurrencyMismatch", subCurrency, parentCurrency);
+
+    /// <summary>A sub-account monthly allocation that is negative.</summary>
+    public static UserFacingMessage AccountMonthlyAllocationNegative() => new("Validation.Account.MonthlyAllocationNegative");
+
+    /// <summary>A sub-account created with a non-zero initial balance.</summary>
+    public static UserFacingMessage AccountSubAccountInitialBalanceNonZero() => new("Validation.Account.SubAccountInitialBalanceNonZero");
+
     /// <summary>A transaction named by a request that no longer exists.</summary>
     public static UserFacingMessage TransactionNotFound() => new("Validation.TransactionNotFound");
 

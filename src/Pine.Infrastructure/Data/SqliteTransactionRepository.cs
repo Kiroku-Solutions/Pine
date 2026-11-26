@@ -101,7 +101,17 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             .ToList();
     }
 
-    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default)
+    public Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default) =>
+        GetPagedAsync(page, pageSize, includeVoided, accountIds: null, typeFilter: null, searchText: null, cancellationToken);
+
+    public async Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(
+        int page,
+        int pageSize,
+        bool includeVoided,
+        IReadOnlyCollection<Guid>? accountIds,
+        TransactionType? typeFilter,
+        string? searchText,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbContext.Transactions.AsNoTracking();
         if (!includeVoided)
@@ -109,8 +119,29 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             query = query.Where(t => t.VoidedAt == null);
         }
 
+        if (accountIds is { Count: > 0 })
+        {
+            var idSet = accountIds.ToList();
+            query = query.Where(t => idSet.Contains(t.AccountId));
+        }
+
+        if (typeFilter.HasValue)
+        {
+            var targetType = typeFilter.Value;
+            query = query.Where(t => t.Type == targetType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var pattern = $"%{searchText.Trim()}%";
+            query = query.Where(t =>
+                EF.Functions.Like(t.Payee, pattern)
+                || (t.Notes != null && EF.Functions.Like(t.Notes, pattern))
+                || t.Splits.Any(s => s.Category != null && EF.Functions.Like(s.Category, pattern)));
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
-        
+
         var items = await query
             // DateUtc, not Date. Date carries the user's offset and this provider stores it as text
             // with that offset appended, so ordering it compares local wall clocks: a purchase at
@@ -120,7 +151,7 @@ public sealed class SqliteTransactionRepository : ITransactionRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
-            
+
         return new Pine.Core.Common.PagedResult<Transaction>(items.AsReadOnly(), totalCount, page, pageSize);
     }
 

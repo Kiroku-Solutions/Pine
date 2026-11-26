@@ -129,9 +129,16 @@ public sealed class PineDbContext : DbContext
                     c => c!.Value,
                     v => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(v));
 
+            // Optional parent hierarchy (shared-pool sub-accounts / pockets). Undeclared FK to avoid
+            // circular insert ordering during sync; SyncSchema tracks the reference explicitly.
+            e.Property(a => a.ParentAccountId);
+            e.HasIndex(a => a.ParentAccountId);
+            e.Property(a => a.MonthlyAllocation).HasConversion(new ScaledMoneyConverter());
+
             // Derived. No setter and no backing field, so EF must be told not to map them.
             e.Ignore(a => a.OpeningBalanceCurrencyMatchesAccount);
             e.Ignore(a => a.OpeningBalance);
+            e.Ignore(a => a.IsSubAccount);
         });
 
         modelBuilder.Entity<Transaction>(e =>

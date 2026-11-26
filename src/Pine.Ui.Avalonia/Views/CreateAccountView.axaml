@@ -51,8 +51,27 @@
                 </ComboBox>
             </StackPanel>
 
+            <StackPanel Spacing="5">
+                <TextBlock Text="{loc:Tr CreateAccount.Parent.Label}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                <ComboBox ItemsSource="{Binding ParentAccountOptions}"
+                          SelectedItem="{Binding SelectedParentAccount}"
+                          HorizontalAlignment="Stretch"
+                          IsEnabled="{Binding !IsBusy}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ParentAccountOption">
+                            <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{loc:Tr CreateAccount.Parent.SubAccountHint}"
+                           IsVisible="{Binding IsSubAccountSelected}"
+                           FontSize="12"
+                           Foreground="{DynamicResource PineInfo}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
             <Grid ColumnDefinitions="*, 10, *">
-                <StackPanel Grid.Column="0" Spacing="5" IsEnabled="{Binding !IsBusy}">
+                <StackPanel Grid.Column="0" Spacing="5" IsEnabled="{Binding CanEditCurrency}">
                     <TextBlock Text="{loc:Tr CreateAccount.Currency.Label}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <!-- TD-76: a searchable picker over every ISO 4217 code. Type a code or a name; Up/Down
                          move through the matches, Enter picks, Esc closes. The view model filters
@@ -76,9 +95,14 @@
                     </AutoCompleteBox>
                 </StackPanel>
                 
-                <StackPanel Grid.Column="2" Spacing="5">
+                <StackPanel Grid.Column="2" Spacing="5" IsVisible="{Binding !IsSubAccountSelected}">
                     <TextBlock Text="{loc:Tr CreateAccount.InitialBalance.Label}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
                     <NumericUpDown Value="{Binding InitialBalance}" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Spacing="5" IsVisible="{Binding IsSubAccountSelected}">
+                    <TextBlock Text="{loc:Tr CreateAccount.MonthlyAllocation.Label}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" />
+                    <NumericUpDown Value="{Binding MonthlyAllocation}" Minimum="0" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}" />
                 </StackPanel>
             </Grid>
             

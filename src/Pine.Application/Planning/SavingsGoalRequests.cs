@@ -27,7 +27,7 @@ public sealed record SavingsGoalSummary(
     Guid? LinkedAccountId,
     string? LinkedAccountName);
 
-public sealed record GetSavingsGoalsQuery() : IRequest<IReadOnlyList<SavingsGoalSummary>>;
+public sealed record GetSavingsGoalsQuery(IReadOnlyCollection<Guid>? AccountIds = null) : IRequest<IReadOnlyList<SavingsGoalSummary>>;
 
 public sealed class GetSavingsGoalsQueryHandler
     : IRequestHandler<GetSavingsGoalsQuery, IReadOnlyList<SavingsGoalSummary>>
@@ -46,6 +46,11 @@ public sealed class GetSavingsGoalsQueryHandler
         CancellationToken cancellationToken)
     {
         var goals = await _goals.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        if (request.AccountIds is { Count: > 0 } scopeIds)
+        {
+            var allowed = new HashSet<Guid>(scopeIds);
+            goals = goals.Where(g => g.LinkedAccountId.HasValue && allowed.Contains(g.LinkedAccountId.Value)).ToList();
+        }
         if (goals.Count == 0)
         {
             return Array.Empty<SavingsGoalSummary>();

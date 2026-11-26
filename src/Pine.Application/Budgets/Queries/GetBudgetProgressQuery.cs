@@ -67,8 +67,8 @@ public sealed record BudgetProgress(
     public Money? Remaining => Spent is null ? null : Limit - Spent;
 }
 
-/// <summary>Every budget, each with the spend measured against it.</summary>
-public sealed record GetBudgetProgressQuery() : IRequest<IReadOnlyList<BudgetProgress>>;
+/// <summary>Every budget, each with the spend measured against it (optionally filtered to specific accounts).</summary>
+public sealed record GetBudgetProgressQuery(IReadOnlyCollection<Guid>? AccountIds = null) : IRequest<IReadOnlyList<BudgetProgress>>;
 
 /// <summary>
 /// Measures each budget's spend from the ledger.
@@ -164,6 +164,11 @@ public sealed class GetBudgetProgressQueryHandler
         CancellationToken cancellationToken)
     {
         var budgets = (await _budgets.GetAllAsync(cancellationToken).ConfigureAwait(false)).ToList();
+        if (request.AccountIds is { Count: > 0 } scopeIds)
+        {
+            var allowed = new HashSet<Guid>(scopeIds);
+            budgets = budgets.Where(b => b.AccountId.HasValue && allowed.Contains(b.AccountId.Value)).ToList();
+        }
         if (budgets.Count == 0)
         {
             return Array.Empty<BudgetProgress>();

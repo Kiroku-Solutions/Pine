@@ -48,7 +48,7 @@ public sealed record MonthlyPlanSummary(
         : 0;
 }
 
-public sealed record GetMonthlyPlanSummaryQuery() : IRequest<MonthlyPlanSummary>;
+public sealed record GetMonthlyPlanSummaryQuery(IReadOnlyCollection<Guid>? AccountIds = null) : IRequest<MonthlyPlanSummary>;
 
 public sealed class GetMonthlyPlanSummaryQueryHandler
     : IRequestHandler<GetMonthlyPlanSummaryQuery, MonthlyPlanSummary>
@@ -77,11 +77,23 @@ public sealed class GetMonthlyPlanSummaryQueryHandler
         GetMonthlyPlanSummaryQuery request,
         CancellationToken cancellationToken)
     {
-        var accounts = (await _accounts.GetAllAsync(cancellationToken).ConfigureAwait(false)).ToList();
-        var baseCurrency = await BaseCurrency.ResolveAsync(_settings, _accounts, cancellationToken).ConfigureAwait(false);
-        var incomes = await _incomes.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var goals = await _goals.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var budgets = await _sender.Send(new GetBudgetProgressQuery(), cancellationToken).ConfigureAwait(false);
+        var allAccounts = (await _accounts.GetAllAsync(cancellationToken).ConfigureAwait(false)).ToList();
+        var scopeFilter = request.AccountIds is { Count: > 0 } scopeIds ? new HashSet<Guid>(scopeIds) : null;
+        var accounts = scopeFilter is null
+            ? allAccounts
+            : allAccounts.Where(a => scopeFilter.Contains(a.Id)).ToList();
+
+        var baseCurrency = scopeFilter is not null && accounts.Count > 0
+            ? accounts[0].Balance.Currency
+            : await BaseCurrency.ResolveAsync(_settings, _accounts, cancellationToken).ConfigureAwait(false);
+
+        var incomes = (await _incomes.GetAllAsync(cancellationToken).ConfigureAwait(false))
+            .Where(i => scopeFilter is null || scopeFilter.Contains(i.AccountId))
+            .ToList();
+        var goals = (await _goals.GetAllAsync(cancellationToken).ConfigureAwait(false))
+            .Where(g => scopeFilter is null || (g.LinkedAccountId.HasValue && scopeFilter.Contains(g.LinkedAccountId.Value)))
+            .ToList();
+        var budgets = await _sender.Send(new GetBudgetProgressQuery(request.AccountIds), cancellationToken).ConfigureAwait(false);
 
         if (baseCurrency is null)
         {

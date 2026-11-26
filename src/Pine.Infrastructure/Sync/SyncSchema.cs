@@ -41,6 +41,7 @@ internal sealed class SyncSchema
     [
         ("Transactions", "LinkedTransactionId", "Transactions"),
         ("Budgets", "AccountId", "Accounts"),
+        ("Accounts", "ParentAccountId", "Accounts"),
     ];
 
     private readonly Dictionary<string, SyncTable> _byName;

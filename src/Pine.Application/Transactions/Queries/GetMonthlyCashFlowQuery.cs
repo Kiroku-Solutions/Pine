@@ -32,8 +32,8 @@ public sealed record MonthlyCashFlow(
     public bool HasActivity => ByCurrency.Count > 0;
 }
 
-/// <summary>This month's income and spending, measured from the ledger.</summary>
-public sealed record GetMonthlyCashFlowQuery() : IRequest<MonthlyCashFlow>;
+/// <summary>This month's income and spending, measured from the ledger (optionally filtered to specific accounts).</summary>
+public sealed record GetMonthlyCashFlowQuery(IReadOnlyCollection<Guid>? AccountIds = null) : IRequest<MonthlyCashFlow>;
 
 /// <summary>
 /// Measures the current month's income and spending (post-audit plan item 1.3).
@@ -81,8 +81,13 @@ public sealed class GetMonthlyCashFlowQueryHandler : IRequestHandler<GetMonthlyC
     {
         var (start, end) = CurrentLocalMonth(_timeProvider);
 
+        var accountFilter = request.AccountIds is { Count: > 0 } ids
+            ? new HashSet<Guid>(ids)
+            : null;
+
         var inMonth = (await _transactions.GetAllAsync(cancellationToken).ConfigureAwait(false))
             .Where(transaction => !transaction.IsVoided)
+            .Where(transaction => accountFilter is null || accountFilter.Contains(transaction.AccountId))
             .Where(transaction => transaction.Type is TransactionType.Income or TransactionType.Expense)
             .Where(transaction => transaction.DateUtc >= start.UtcDateTime && transaction.DateUtc < end.UtcDateTime);
 
