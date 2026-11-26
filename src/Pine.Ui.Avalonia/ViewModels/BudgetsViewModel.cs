@@ -217,7 +217,7 @@ public sealed class RecurringIncomeRowViewModel : ObservableObject
     }
 }
 
-public sealed class SavingsGoalRowViewModel : ObservableObject
+public sealed partial class SavingsGoalRowViewModel : ObservableObject
 {
     public Guid Id { get; init; }
     public string Name { get; init; } = string.Empty;
@@ -234,6 +234,12 @@ public sealed class SavingsGoalRowViewModel : ObservableObject
     public bool IsCompleted { get; init; }
     public bool HasMonthlyTarget => QuickAddAmount > 0m;
     public string CenterPercentText => string.Create(CultureInfo.CurrentCulture, $"{Math.Round(ProgressPercentage):0}%");
+
+    [ObservableProperty]
+    public partial bool IsEnteringCustomAmount { get; set; }
+
+    [ObservableProperty]
+    public partial decimal? CustomContributeAmount { get; set; }
 
     public static SavingsGoalRowViewModel From(SavingsGoalSummary goal, ILocalizer localizer)
     {
@@ -887,6 +893,62 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         catch (Exception ex)
         {
             _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-contribute", GoalFailed));
+        }
+    }
+
+    [RelayCommand]
+    private void BeginCustomContributeGoal(SavingsGoalRowViewModel row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        _goalMessage.Clear();
+        row.CustomContributeAmount = null;
+        row.IsEnteringCustomAmount = !row.IsEnteringCustomAmount;
+    }
+
+    [RelayCommand]
+    private void CancelCustomContributeGoal(SavingsGoalRowViewModel row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        _goalMessage.Clear();
+        row.CustomContributeAmount = null;
+        row.IsEnteringCustomAmount = false;
+    }
+
+    [RelayCommand]
+    private async Task SubmitCustomContributeGoalAsync(SavingsGoalRowViewModel row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        var amount = row.CustomContributeAmount ?? 0m;
+        if (amount <= 0m)
+        {
+            _goalMessage.Set("Validation.SavingsGoal.ContributionNotPositive");
+            return;
+        }
+
+        _goalMessage.Clear();
+        try
+        {
+            await _mediator.Send(new ContributeSavingsGoalCommand(row.Id, amount));
+            row.IsEnteringCustomAmount = false;
+            row.CustomContributeAmount = null;
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-contribute-custom", GoalFailed));
         }
     }
 

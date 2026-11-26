@@ -516,15 +516,45 @@
 
                                         <WrapPanel Margin="0,4,0,0">
                                             <Button Content="{Binding QuickAddText}" Classes="pine-accent"
-                                                    Padding="12,6" FontSize="12" Margin="0,0,8,0"
+                                                    Padding="12,6" FontSize="12" Margin="0,0,8,6"
                                                     IsVisible="{Binding !IsCompleted}"
                                                     Command="{Binding #BudgetsRoot.((vm:BudgetsViewModel)DataContext).QuickContributeGoalCommand}"
                                                     CommandParameter="{Binding}"/>
+                                            <Button Content="{loc:Tr Planning.Goals.AddExtraButton}" Classes="pine-outline"
+                                                    Padding="12,6" FontSize="12" Margin="0,0,8,6"
+                                                    Command="{Binding #BudgetsRoot.((vm:BudgetsViewModel)DataContext).BeginCustomContributeGoalCommand}"
+                                                    CommandParameter="{Binding}"/>
                                             <Button Content="{loc:Tr Budgets.Action.Delete}" Classes="pine-outline"
-                                                    Padding="10,6" FontSize="12"
+                                                    Padding="10,6" FontSize="12" Margin="0,0,0,6"
                                                     Command="{Binding #BudgetsRoot.((vm:BudgetsViewModel)DataContext).DeleteGoalCommand}"
                                                     CommandParameter="{Binding Id}"/>
                                         </WrapPanel>
+
+                                        <!-- Inline extra-amount contribution editor -->
+                                        <Border IsVisible="{Binding IsEnteringCustomAmount}"
+                                                Background="{DynamicResource PineSurfaceElevated}"
+                                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                                                CornerRadius="10" Padding="10" Margin="0,4,0,0">
+                                            <StackPanel Spacing="8">
+                                                <NumericUpDown Value="{Binding CustomContributeAmount, Mode=TwoWay}"
+                                                               Minimum="0" Increment="10"
+                                                               FormatString="0.00"
+                                                               ShowButtonSpinner="False"
+                                                               PlaceholderText="{loc:Tr Planning.Goals.CustomAmountPlaceholder}"
+                                                               AutomationProperties.Name="{loc:Tr Planning.Goals.CustomAmountPlaceholder}"
+                                                               HorizontalAlignment="Stretch"/>
+                                                <Grid ColumnDefinitions="*, 8, *">
+                                                    <Button Grid.Column="0" Content="{loc:Tr Budgets.Create.Cancel}"
+                                                            Classes="pine-outline" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                            Command="{Binding #BudgetsRoot.((vm:BudgetsViewModel)DataContext).CancelCustomContributeGoalCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2" Content="{loc:Tr Planning.Goals.CustomConfirm}"
+                                                            Classes="pine-accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                            Command="{Binding #BudgetsRoot.((vm:BudgetsViewModel)DataContext).SubmitCustomContributeGoalCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Grid>
                             </Border>

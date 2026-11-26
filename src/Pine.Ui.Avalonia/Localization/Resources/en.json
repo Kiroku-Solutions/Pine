@@ -1002,5 +1002,8 @@
   "Planning.Goals.AccountLabel": "Source account",
   "Planning.Goals.AccountRequired": "Select an account to fund this savings goal.",
   "Dashboard.Deficit.Badge": "Deficit",
-  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} over {1}"
+  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} over {1}",
+  "Planning.Goals.AddExtraButton": "+ Extra amount",
+  "Planning.Goals.CustomAmountPlaceholder": "Extra amount to save...",
+  "Planning.Goals.CustomConfirm": "Add savings"
 }

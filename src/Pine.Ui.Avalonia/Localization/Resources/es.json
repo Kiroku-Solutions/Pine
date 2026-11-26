@@ -1002,5 +1002,8 @@
   "Planning.Goals.AccountLabel": "Cuenta de origen",
   "Planning.Goals.AccountRequired": "Selecciona una cuenta para financiar esta meta de ahorro.",
   "Dashboard.Deficit.Badge": "Déficit",
-  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} sobre {1}"
+  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} sobre {1}",
+  "Planning.Goals.AddExtraButton": "+ Otro monto",
+  "Planning.Goals.CustomAmountPlaceholder": "Monto extra a ahorrar...",
+  "Planning.Goals.CustomConfirm": "Aportar"
 }
