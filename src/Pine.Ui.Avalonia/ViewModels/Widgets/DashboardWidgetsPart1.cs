@@ -42,6 +42,8 @@ internal static class AccountChartPalette
         BrushCache.GetOrAdd(hex, static value => new ImmutableSolidColorBrush(Color.Parse(value)));
 }
 
+public sealed record TotalBalanceRow(Money Amount, string Text, bool IsNegative);
+
 public sealed record AccountBalanceShareRow(
     Account Account,
     string Name,
@@ -55,7 +57,9 @@ public sealed record AccountBalanceShareRow(
     string ColorHex,
     bool IsSubAccount = false,
     string HierarchyBadgeText = "",
-    bool HasHierarchyBadge = false)
+    bool HasHierarchyBadge = false,
+    bool IsDeficit = false,
+    bool ShowDeficitPill = false)
 {
     public IBrush AccentBrush => AccountChartPalette.BrushFor(ColorHex);
 }
@@ -164,20 +168,38 @@ public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRec
             string shareText;
             string badgeText = string.Empty;
 
+            bool isDeficit;
+            bool showDeficitPill;
+
             if (isChild)
             {
                 var spent = account.Balance.Amount < 0m ? Math.Abs(account.Balance.Amount) : 0m;
                 if (account.MonthlyAllocation is { } alloc && alloc > 0m)
                 {
                     share = Math.Round((double)(spent / alloc) * 100.0, 1);
-                    var spentText = Money.FromRounded(spent, account.Balance.Currency).ToString();
-                    var allocText = Money.FromRounded(alloc, account.Balance.Currency).ToString();
-                    shareText = Localizer.Format("Dashboard.Accounts.SubAccountAllocation", spentText, allocText);
+                    if (spent > alloc)
+                    {
+                        var overText = Money.FromRounded(spent - alloc, account.Balance.Currency).ToString();
+                        var allocText = Money.FromRounded(alloc, account.Balance.Currency).ToString();
+                        shareText = Localizer.Format("Dashboard.Accounts.SubAccountOverAllocated", overText, allocText);
+                        isDeficit = true;
+                        showDeficitPill = true;
+                    }
+                    else
+                    {
+                        var spentText = Money.FromRounded(spent, account.Balance.Currency).ToString();
+                        var allocText = Money.FromRounded(alloc, account.Balance.Currency).ToString();
+                        shareText = Localizer.Format("Dashboard.Accounts.SubAccountAllocation", spentText, allocText);
+                        isDeficit = false;
+                        showDeficitPill = false;
+                    }
                 }
                 else
                 {
                     share = 0.0;
                     shareText = Localizer["Dashboard.Accounts.SubAccountSharedPool"];
+                    isDeficit = displayedAmount < 0m;
+                    showDeficitPill = false;
                 }
 
                 badgeText = Localizer["Dashboard.Accounts.SubAccountBadge"];
@@ -200,6 +222,9 @@ public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRec
                 {
                     badgeText = Localizer.Format("Dashboard.Accounts.SubAccountCount", childrenByParent[account.Id].Count);
                 }
+
+                isDeficit = displayedAmount < 0m;
+                showDeficitPill = isDeficit;
             }
 
             var initial = string.IsNullOrWhiteSpace(account.Name)
@@ -221,10 +246,12 @@ public partial class BalanceWidgetViewModel : DashboardWidgetViewModelBase, IRec
                 shareText,
                 budgetLeftText,
                 !string.IsNullOrEmpty(budgetLeftText),
-                AccountChartPalette.ColorAt(i),
-                account.IsSubAccount,
+                isDeficit ? "#B91C1C" : AccountChartPalette.ColorAt(i),
+                isChild,
                 badgeText,
-                !string.IsNullOrEmpty(badgeText)));
+                !string.IsNullOrEmpty(badgeText),
+                isDeficit,
+                showDeficitPill));
         }
 
         MarkLoaded(Accounts.Count == 0);
@@ -261,10 +288,20 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
 
     public ObservableCollection<Money> Totals { get; } = new();
 
+    public ObservableCollection<TotalBalanceRow> TotalRows { get; } = new();
+
     [ObservableProperty]
     public partial Money? BaseCurrencyTotal { get; private set; }
 
+    [ObservableProperty]
+    public partial bool IsBaseCurrencyDeficit { get; private set; }
+
+    [ObservableProperty]
+    public partial bool HasAnyDeficit { get; private set; }
+
     public ObservableCollection<Money> OtherCurrencyTotals { get; } = new();
+
+    public ObservableCollection<TotalBalanceRow> OtherCurrencyRows { get; } = new();
 
     [ObservableProperty]
     public partial bool ShowsBaseSplit { get; private set; }
@@ -306,19 +343,26 @@ public partial class TotalBalanceWidgetViewModel : DashboardWidgetViewModelBase,
         var totals = BalanceTotals.Compute(accounts, baseCurrency);
 
         Totals.Clear();
+        TotalRows.Clear();
         foreach (var total in totals.AllTotals)
         {
             Totals.Add(total);
+            TotalRows.Add(new TotalBalanceRow(total, total.ToString(), total.Amount < 0m));
         }
 
         var split = totals.BaseTotal is not null && totals.OtherTotals.Count > 0;
         BaseCurrencyTotal = split ? totals.BaseTotal : null;
+        IsBaseCurrencyDeficit = BaseCurrencyTotal is { Amount: < 0m };
+        HasAnyDeficit = Totals.Any(t => t.Amount < 0m);
+
         OtherCurrencyTotals.Clear();
+        OtherCurrencyRows.Clear();
         if (split)
         {
             foreach (var other in totals.OtherTotals)
             {
                 OtherCurrencyTotals.Add(other);
+                OtherCurrencyRows.Add(new TotalBalanceRow(other, other.ToString(), other.Amount < 0m));
             }
         }
 

@@ -997,5 +997,10 @@
   "ScanReceipt.Tagging.TrainedStatus": "Local AI updated in background ({0} tagged receipt(s)).",
   "ScanReceipt.Tagging.TrainFailed": "The tagged values were applied, but background training could not save.",
   "ScanReceipt.LineItems.DescriptionPlaceholder": "Item description...",
-  "ScanReceipt.LineItems.EmptyHint": "No itemized lines yet. Tap Add Item if you want to break down this receipt."
+  "ScanReceipt.LineItems.EmptyHint": "No itemized lines yet. Tap Add Item if you want to break down this receipt.",
+  "Validation.Transaction.DateInFuture": "The transaction date cannot be in the future.",
+  "Planning.Goals.AccountLabel": "Source account",
+  "Planning.Goals.AccountRequired": "Select an account to fund this savings goal.",
+  "Dashboard.Deficit.Badge": "Deficit",
+  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} over {1}"
 }

@@ -153,7 +153,7 @@ public partial class BudgetProgressViewModel : ObservableObject
         if (IsExceeded)
         {
             var over = FormatMoneyWithCode(SpentAmount - LimitAmount);
-            RemainingStatusText = localizer.Format("Budgets.Progress.OverBy", over);
+            RemainingStatusText = $"-{over} · {localizer.Format("Budgets.Progress.OverBy", over)}";
         }
         else
         {
@@ -221,6 +221,8 @@ public sealed class SavingsGoalRowViewModel : ObservableObject
 {
     public Guid Id { get; init; }
     public string Name { get; init; } = string.Empty;
+    public string LinkedAccountName { get; init; } = string.Empty;
+    public bool HasLinkedAccount => !string.IsNullOrWhiteSpace(LinkedAccountName);
     public string SavedText { get; init; } = string.Empty;
     public string TargetText { get; init; } = string.Empty;
     public string RemainingText { get; init; } = string.Empty;
@@ -249,6 +251,7 @@ public sealed class SavingsGoalRowViewModel : ObservableObject
         {
             Id = goal.Id,
             Name = goal.Name,
+            LinkedAccountName = goal.LinkedAccountName ?? string.Empty,
             SavedText = goal.CurrentAmount.ToString(),
             TargetText = goal.TargetAmount.ToString(),
             RemainingText = goal.IsCompleted
@@ -460,6 +463,9 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
 
     [ObservableProperty]
     public partial decimal? NewGoalInitialAmount { get; set; }
+
+    [ObservableProperty]
+    public partial Account? SelectedGoalAccount { get; set; }
 
     [ObservableProperty]
     public partial string GoalMessage { get; set; } = string.Empty;
@@ -797,10 +803,18 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         }
 
         BaseCurrency = baseCurrency;
+        await RefreshAccountOptionsAsync();
+        if (AvailableAccounts.Count == 0)
+        {
+            _goalMessage.Set("Budgets.Create.NoAccounts");
+            return;
+        }
+
         NewGoalName = string.Empty;
         NewGoalMonthlyTarget = null;
         NewGoalTargetAmount = null;
         NewGoalInitialAmount = 0m;
+        SelectedGoalAccount = AvailableAccounts.FirstOrDefault();
         IsCreatingGoal = true;
     }
 
@@ -819,6 +833,12 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             return;
         }
 
+        if (SelectedGoalAccount is null)
+        {
+            _goalMessage.Set("Planning.Goals.AccountRequired");
+            return;
+        }
+
         IsSaving = true;
         _goalMessage.Clear();
 
@@ -831,7 +851,8 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
                 NewGoalName,
                 target,
                 monthly,
-                NewGoalInitialAmount ?? 0m));
+                NewGoalInitialAmount ?? 0m,
+                LinkedAccountId: SelectedGoalAccount.Id));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
         }
@@ -1062,7 +1083,8 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         PlanMonthlyIncomeText = Money.FromRounded(summary.MonthlyRecurringIncome, currency).ToString();
         PlanBudgetsAllocatedText = Money.FromRounded(summary.MonthlyBudgetsAllocated, currency).ToString();
         PlanSavingsAllocatedText = Money.FromRounded(summary.MonthlySavingsAllocated, currency).ToString();
-        PlanUnallocatedText = Money.FromRounded(Math.Max(0m, summary.UnallocatedMonthlyIncome), currency).ToString();
+        // Keep the real negative sign when over-allocated so a deficit is immediately visible.
+        PlanUnallocatedText = Money.FromRounded(summary.UnallocatedMonthlyIncome, currency).ToString();
 
         PlanOverAllocatedWarning = summary.IsOverAllocated
             ? _localizer.Format("Budgets.Plan.OverAllocated", Money.FromRounded(-summary.UnallocatedMonthlyIncome, currency).ToString())

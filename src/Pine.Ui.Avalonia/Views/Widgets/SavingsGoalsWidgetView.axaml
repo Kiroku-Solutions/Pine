@@ -44,8 +44,12 @@
                                         <TextBlock Text="{Binding TargetText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
                                     </StackPanel>
 
-                                    <TextBlock Text="{Binding MonthsLeftText}" FontSize="11" Foreground="{DynamicResource PineInfo}"
-                                               IsVisible="{Binding MonthsLeftText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <WrapPanel>
+                                        <TextBlock Text="{Binding LinkedAccountName}" FontSize="11" Foreground="{DynamicResource PineTextMuted}"
+                                                   IsVisible="{Binding HasLinkedAccount}" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding MonthsLeftText}" FontSize="11" Foreground="{DynamicResource PineInfo}"
+                                                   IsVisible="{Binding MonthsLeftText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    </WrapPanel>
                                 </StackPanel>
                             </Grid>
                         </Border>

@@ -90,7 +90,10 @@
                                     <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource PineChart3}" VerticalAlignment="Center"/>
                                     <TextBlock Text="{loc:Tr Budgets.Plan.Unallocated}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding PlanUnallocatedText}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}"/>
+                                <TextBlock Text="{Binding PlanUnallocatedText}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PineInfo}" IsVisible="{Binding !IsPlanOverAllocated}"/>
+                                <TextBlock Text="{Binding PlanUnallocatedText}" FontSize="14" FontWeight="Bold"
+                                           Foreground="{DynamicResource PineDanger}" IsVisible="{Binding IsPlanOverAllocated}"/>
                             </StackPanel>
                         </UniformGrid>
 
@@ -439,6 +442,19 @@
                         </Grid>
 
                         <StackPanel Spacing="5">
+                            <TextBlock Text="{loc:Tr Planning.Goals.AccountLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
+                            <ComboBox ItemsSource="{Binding AvailableAccounts}" SelectedItem="{Binding SelectedGoalAccount}"
+                                      HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"
+                                      AutomationProperties.Name="{loc:Tr Planning.Goals.AccountLabel}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="accounts:Account">
+                                        <TextBlock Text="{Binding Name}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="5">
                             <TextBlock Text="{loc:Tr Planning.Goals.InitialLabel}" FontSize="14" Foreground="{DynamicResource PineTextMuted}"/>
                             <NumericUpDown Value="{Binding NewGoalInitialAmount}" Minimum="0" FormatString="0.00" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsSaving}"/>
                         </StackPanel>
@@ -476,6 +492,10 @@
                                         <WrapPanel>
                                             <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource PineText}" Margin="0,0,8,0"/>
+                                            <Border Classes="pine-pill-info" IsVisible="{Binding HasLinkedAccount}" VerticalAlignment="Center" Margin="0,0,6,0">
+                                                <TextBlock Text="{Binding LinkedAccountName}" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource PineInfo}"/>
+                                            </Border>
                                             <Border Classes="pine-pill-success" IsVisible="{Binding HasMonthlyTarget}" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding MonthlyChipText}" FontSize="11" FontWeight="Bold"
                                                            Foreground="{DynamicResource PineSuccess}"/>

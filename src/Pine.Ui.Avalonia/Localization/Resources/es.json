@@ -997,5 +997,10 @@
   "ScanReceipt.Tagging.TrainedStatus": "Modelo local actualizado en segundo plano ({0} factura(s) etiquetada(s)).",
   "ScanReceipt.Tagging.TrainFailed": "Los valores se aplicaron, pero no se pudo guardar el entrenamiento en segundo plano.",
   "ScanReceipt.LineItems.DescriptionPlaceholder": "Descripción del artículo...",
-  "ScanReceipt.LineItems.EmptyHint": "Aún no hay artículos desglosados. Pulsa + Agregar artículo si deseas detallar este recibo."
+  "ScanReceipt.LineItems.EmptyHint": "Aún no hay artículos desglosados. Pulsa + Agregar artículo si deseas detallar este recibo.",
+  "Validation.Transaction.DateInFuture": "La fecha de la transacción no puede ser futura.",
+  "Planning.Goals.AccountLabel": "Cuenta de origen",
+  "Planning.Goals.AccountRequired": "Selecciona una cuenta para financiar esta meta de ahorro.",
+  "Dashboard.Deficit.Badge": "Déficit",
+  "Dashboard.Accounts.SubAccountOverAllocated": "-{0} sobre {1}"
 }

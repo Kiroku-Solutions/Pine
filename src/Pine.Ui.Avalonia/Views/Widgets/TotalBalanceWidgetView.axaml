@@ -7,26 +7,52 @@
              x:Class="Pine.Ui.Avalonia.Views.Widgets.TotalBalanceWidgetView"
              x:DataType="vm:TotalBalanceWidgetViewModel">
 
+    <UserControl.Styles>
+        <Style Selector="TextBlock.balance-total">
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+        </Style>
+        <Style Selector="TextBlock.balance-total.deficit">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto, *" Margin="10,0,10,10">
         <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
 
         <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding HasAccounts}">
-            <ItemsControl ItemsSource="{Binding Totals}" IsVisible="{Binding ShowsFlatTotals}">
+            <ItemsControl ItemsSource="{Binding TotalRows}" IsVisible="{Binding ShowsFlatTotals}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vo:Money">
-                        <TextBlock Text="{Binding}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                    <DataTemplate x:DataType="vm:TotalBalanceRow">
+                        <WrapPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Text}" FontSize="26" FontWeight="Bold"
+                                       Classes="balance-total" Classes.deficit="{Binding IsNegative}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Border Classes="pine-pill-danger" IsVisible="{Binding IsNegative}" VerticalAlignment="Center">
+                                <TextBlock Text="{loc:Tr Dashboard.Deficit.Badge}" FontSize="11" FontWeight="Bold"
+                                           Foreground="{DynamicResource PineDanger}" />
+                            </Border>
+                        </WrapPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
             <StackPanel Spacing="4" IsVisible="{Binding ShowsBaseSplit}">
-                <TextBlock Text="{Binding BaseCurrencyTotal}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                <WrapPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding BaseCurrencyTotal}" FontSize="26" FontWeight="Bold"
+                               Classes="balance-total" Classes.deficit="{Binding IsBaseCurrencyDeficit}"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Border Classes="pine-pill-danger" IsVisible="{Binding IsBaseCurrencyDeficit}" VerticalAlignment="Center">
+                        <TextBlock Text="{loc:Tr Dashboard.Deficit.Badge}" FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource PineDanger}" />
+                    </Border>
+                </WrapPanel>
                 <TextBlock Text="{loc:Tr Dashboard.TotalBalance.OtherCurrencies}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
-                <ItemsControl ItemsSource="{Binding OtherCurrencyTotals}">
+                <ItemsControl ItemsSource="{Binding OtherCurrencyRows}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vo:Money">
-                            <TextBlock Text="{Binding}" FontSize="16" Foreground="{DynamicResource PineText}" />
+                        <DataTemplate x:DataType="vm:TotalBalanceRow">
+                            <TextBlock Text="{Binding Text}" FontSize="16" FontWeight="SemiBold"
+                                       Classes="balance-total" Classes.deficit="{Binding IsNegative}" />
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

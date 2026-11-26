@@ -5,6 +5,22 @@
              x:Class="Pine.Ui.Avalonia.Views.Widgets.BalanceWidgetView"
              x:DataType="vm:BalanceWidgetViewModel">
 
+    <UserControl.Styles>
+        <Style Selector="TextBlock.acct-balance">
+            <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+        </Style>
+        <Style Selector="TextBlock.acct-balance.deficit">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+        </Style>
+        <Style Selector="TextBlock.acct-share">
+            <Setter Property="Foreground" Value="{DynamicResource PineTextMuted}" />
+        </Style>
+        <Style Selector="TextBlock.acct-share.deficit">
+            <Setter Property="Foreground" Value="{DynamicResource PineDanger}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto, *" Margin="10,0,10,10">
         <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
@@ -31,17 +47,25 @@
                                                        Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" Margin="0,0,6,0" />
                                             <Border Classes="pine-pill-info" VerticalAlignment="Center"
-                                                    IsVisible="{Binding HasHierarchyBadge}">
+                                                    IsVisible="{Binding HasHierarchyBadge}" Margin="0,0,6,0">
                                                 <TextBlock Text="{Binding HierarchyBadgeText}" FontSize="10" FontWeight="SemiBold"
                                                            Foreground="{DynamicResource PineInfo}" />
                                             </Border>
+                                            <Border Classes="pine-pill-danger" VerticalAlignment="Center"
+                                                    IsVisible="{Binding ShowDeficitPill}">
+                                                <TextBlock Text="{loc:Tr Dashboard.Deficit.Badge}" FontSize="10" FontWeight="Bold"
+                                                           Foreground="{DynamicResource PineDanger}" />
+                                            </Border>
                                         </WrapPanel>
-                                        <TextBlock Text="{Binding ShareText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ShareText}" FontSize="11"
+                                                   Classes="acct-share" Classes.deficit="{Binding IsDeficit}"
+                                                   TextWrapping="Wrap" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
                                         <TextBlock Text="{Binding BalanceText}" FontWeight="Bold" FontSize="14"
-                                                   Foreground="{DynamicResource PineText}" HorizontalAlignment="Right" />
+                                                   Classes="acct-balance" Classes.deficit="{Binding IsDeficit}"
+                                                   HorizontalAlignment="Right" />
                                         <TextBlock Text="{Binding CurrencyCode}" FontSize="11"
                                                    Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
                                     </StackPanel>
