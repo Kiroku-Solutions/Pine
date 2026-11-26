@@ -189,15 +189,10 @@ public sealed class GetBudgetProgressQueryHandler
             }
         }
 
-        var budgetsPerAccount = budgets
-            .Where(b => b.AccountId.HasValue)
-            .GroupBy(b => b.AccountId!.Value)
-            .ToDictionary(g => g.Key, g => g.Count());
-
         var now = _timeProvider.GetUtcNow();
 
         return budgets
-            .Select(budget => Measure(budget, spending, accountNames, budgetsPerAccount, now))
+            .Select(budget => Measure(budget, spending, accountNames, now))
             .ToList();
     }
 
@@ -205,7 +200,6 @@ public sealed class GetBudgetProgressQueryHandler
         Budget budget,
         List<Transaction> spending,
         Dictionary<Guid, string> accountNames,
-        Dictionary<Guid, int> budgetsPerAccount,
         DateTimeOffset now)
     {
         var window = budget.ResolveWindow(now, _timeProvider.LocalTimeZone);
@@ -262,19 +256,12 @@ public sealed class GetBudgetProgressQueryHandler
                 continue;
             }
 
-            var singleBudgetOnAccount = budget.AccountId is { } scopedId
-                && budgetsPerAccount.TryGetValue(scopedId, out var count)
-                && count == 1;
-
             foreach (var split in transaction.Splits)
             {
                 var splitCategory = split.Category?.Trim();
-                // Match uncategorized splits only when this is the sole budget scoped to that account,
-                // preventing double-counting when an account has multiple category budgets.
-                var matchesCategory = string.Equals(splitCategory, name, StringComparison.Ordinal)
-                    || (singleBudgetOnAccount && string.IsNullOrEmpty(splitCategory));
-
-                if (!matchesCategory)
+                // Strict category match: an uncategorized expense on a shared account (e.g. Cuenta Principal)
+                // must never silently count against a specific category budget (e.g. Medicina).
+                if (!string.Equals(splitCategory, name, StringComparison.Ordinal))
                 {
                     continue;
                 }

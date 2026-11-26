@@ -92,9 +92,37 @@ public class PlanningRequestsTests
         var row = progress.Should().ContainSingle().Subject;
         row.AccountId.Should().Be(educationAccount.Id);
         row.AccountName.Should().Be("Education");
-        row.Spent!.Amount.Should().Be(150m);
-        row.Remaining!.Amount.Should().Be(250m);
+        // Only the split explicitly categorized as "Education" on educationAccount counts;
+        // uncategorized receipts and other accounts must not leak into this budget.
+        row.Spent!.Amount.Should().Be(120m);
+        row.Remaining!.Amount.Should().Be(280m);
         row.IsExceeded.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AccountScopedBudget_DoesNotCountUncategorizedReceiptOnPrincipalAccount()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero));
+        var principal = Account.Create("Cuenta Principal", AccountType.Bank, new Money(1800m, Usd), clock);
+        var medicinaBudget = Budget.Create("Medicina", new Money(200m, Usd), BudgetPeriod.Monthly, accountId: principal.Id);
+
+        var unrelatedReceipt = Transaction.Create(principal.Id, clock.GetUtcNow(), "Ferreteria", new Money(-154.06m, Usd), TransactionType.Expense, clock);
+        unrelatedReceipt.AddSplit(new Money(-154.06m, Usd), "", "");
+
+        var budgets = Substitute.For<IBudgetRepository>();
+        var transactions = Substitute.For<ITransactionRepository>();
+        var accounts = Substitute.For<IAccountRepository>();
+
+        budgets.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { medicinaBudget });
+        transactions.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { unrelatedReceipt });
+        accounts.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { principal });
+
+        var handler = new GetBudgetProgressQueryHandler(budgets, transactions, clock, accounts: accounts);
+        var progress = await handler.Handle(new GetBudgetProgressQuery(), CancellationToken.None);
+
+        var row = progress.Should().ContainSingle().Subject;
+        row.Spent!.Amount.Should().Be(0m);
+        row.Remaining!.Amount.Should().Be(200m);
     }
 
     [Fact]
