@@ -5,8 +5,11 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Pine.Application.Planning;
+using Pine.Application.Transactions.Commands;
 using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
+using Pine.Core.Planning;
 using Pine.Core.Transactions;
 using Pine.Infrastructure.Data;
 using Xunit;
@@ -86,6 +89,95 @@ public sealed class AccountHierarchyMigrationTests : IDisposable
             var healthExpenses = await txRepo.GetPagedAsync(1, 20, includeVoided: false, null, TransactionType.Expense, "Salud");
             healthExpenses.TotalCount.Should().Be(1);
             healthExpenses.Items[0].Payee.Should().Be("Farmacia Fybeca");
+        }
+    }
+
+    [Fact]
+    public async Task EditScannedReceiptWithLineItems_AndLinkedGoalContributionDeficit_PersistCleanly()
+    {
+        var usd = new CurrencyCode("USD");
+        Guid accountId;
+        Guid receiptTxId;
+        Guid goalId;
+
+        await using (var setup = new PineDbContext(_dbPath, _key))
+        {
+            await setup.Database.MigrateAsync();
+
+            var account = Account.Create("Banco Pichincha", AccountType.Bank, new Money(100m, usd), TimeProvider.System);
+            accountId = account.Id;
+            setup.Accounts.Add(account);
+
+            var receipt = Transaction.Create(account.Id, DateTimeOffset.UtcNow.AddDays(-2), "East Repair Inc", new Money(-154.06m, usd), TransactionType.Expense, TimeProvider.System, "");
+            receipt.AddSplit(new Money(-154.06m, usd), "Medicina", "");
+            receipt.AddLineItem("Front Brake", 1m, new Money(-100m, usd), new Money(-100m, usd), LineItemKind.Product);
+            receipt.AddLineItem("New Blades", 2m, new Money(-15m, usd), new Money(-30m, usd), LineItemKind.Product);
+            receipt.AddLineItem("Labor", 3m, new Money(-5m, usd), new Money(-15m, usd), LineItemKind.Product);
+            receipt.AddLineItem("Sales Tax", 1m, new Money(-9.06m, usd), new Money(-9.06m, usd), LineItemKind.Tax);
+            receiptTxId = receipt.Id;
+            account.Withdraw(new Money(154.06m, usd), TimeProvider.System);
+            setup.Transactions.Add(receipt);
+
+            var goal = SavingsGoal.Create("Fondo Emergencia", new Money(500m, usd), new Money(40m, usd), linkedAccountId: account.Id, timeProvider: TimeProvider.System);
+            goalId = goal.Id;
+            setup.SavingsGoals.Add(goal);
+
+            await setup.SaveChangesAsync();
+        }
+
+        // 1. Edit both Date and Amount on the scanned receipt (previously threw LineItemSumFailure!)
+        await using (var editCtx = new PineDbContext(_dbPath, _key))
+        {
+            var txRepo = new SqliteTransactionRepository(editCtx);
+            var acctRepo = new SqliteAccountRepository(editCtx);
+            var handler = new UpdateTransactionCommandHandler(txRepo, acctRepo, TimeProvider.System);
+
+            var existing = await txRepo.GetByIdAsync(receiptTxId);
+            var splitId = existing!.Splits.Single().Id;
+            var newDate = DateTimeOffset.UtcNow.AddDays(-5);
+
+            await handler.Handle(
+                new UpdateTransactionCommand(
+                    receiptTxId,
+                    newDate,
+                    "East Repair Inc",
+                    -120.00m,
+                    "USD",
+                    "Updated receipt",
+                    [new UpdateTransactionSplitCommand(splitId, -120.00m, "Medicina", "Updated receipt")]),
+                default);
+
+            await editCtx.SaveChangesAsync();
+        }
+
+        // 2. Contribute $40 to the linked savings goal -> withdraws from Banco Pichincha (driving real deficit)
+        await using (var contribCtx = new PineDbContext(_dbPath, _key))
+        {
+            var goalsRepo = new SqliteSavingsGoalRepository(contribCtx);
+            var acctRepo = new SqliteAccountRepository(contribCtx);
+            var txRepo = new SqliteTransactionRepository(contribCtx);
+            var handler = new ContributeSavingsGoalCommandHandler(goalsRepo, acctRepo, txRepo, TimeProvider.System);
+
+            await handler.Handle(new ContributeSavingsGoalCommand(goalId, 40m), default);
+            await contribCtx.SaveChangesAsync();
+        }
+
+        await using (var verify = new PineDbContext(_dbPath, _key))
+        {
+            var updatedTx = await verify.Transactions.Include(t => t.Splits).SingleAsync(t => t.Id == receiptTxId);
+            updatedTx.TotalAmount.Amount.Should().Be(-120.00m);
+            updatedTx.LineItems.Sum(li => li.TotalPrice.Amount).Should().Be(-120.00m);
+
+            var acct = await verify.Accounts.SingleAsync(a => a.Id == accountId);
+            // 100 opening - 120 edited receipt - 40 savings contribution = -60.00 deficit
+            acct.Balance.Amount.Should().Be(-60.00m);
+
+            var goal = await verify.SavingsGoals.SingleAsync(g => g.Id == goalId);
+            goal.CurrentAmount.Amount.Should().Be(40m);
+
+            var allTxs = await verify.Transactions.AsNoTracking().Where(t => t.AccountId == accountId).ToListAsync();
+            allTxs.Should().HaveCount(2);
+            allTxs.Should().Contain(t => t.Payee == "Fondo Emergencia" && t.TotalAmount.Amount == -40m);
         }
     }
 }

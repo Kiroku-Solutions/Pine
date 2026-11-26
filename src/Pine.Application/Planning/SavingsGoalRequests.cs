@@ -10,6 +10,7 @@ using Pine.Core.Accounts;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Configuration;
 using Pine.Core.Planning;
+using Pine.Core.Transactions;
 
 namespace Pine.Application.Planning;
 
@@ -248,10 +249,20 @@ public sealed record ContributeSavingsGoalCommand(Guid GoalId, decimal Amount) :
 public sealed class ContributeSavingsGoalCommandHandler : IRequestHandler<ContributeSavingsGoalCommand>
 {
     private readonly ISavingsGoalRepository _goals;
+    private readonly IAccountRepository? _accounts;
+    private readonly ITransactionRepository? _transactions;
+    private readonly TimeProvider _timeProvider;
 
-    public ContributeSavingsGoalCommandHandler(ISavingsGoalRepository goals)
+    public ContributeSavingsGoalCommandHandler(
+        ISavingsGoalRepository goals,
+        IAccountRepository? accounts = null,
+        ITransactionRepository? transactions = null,
+        TimeProvider? timeProvider = null)
     {
         _goals = goals;
+        _accounts = accounts;
+        _transactions = transactions;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task Handle(ContributeSavingsGoalCommand request, CancellationToken cancellationToken)
@@ -262,8 +273,37 @@ public sealed class ContributeSavingsGoalCommandHandler : IRequestHandler<Contri
                 new ValidationError(nameof(ContributeSavingsGoalCommand.GoalId), "Savings goal not found.", ValidationText.SavingsGoalNotFound()),
             });
 
-        goal.Contribute(new Money(request.Amount, goal.TargetAmount.Currency));
+        var contribution = new Money(request.Amount, goal.TargetAmount.Currency);
+        goal.Contribute(contribution);
         await _goals.SaveAsync(goal, cancellationToken).ConfigureAwait(false);
+
+        // Deduct the contribution from the linked account via a real ledger transaction so balances
+        // and ledger reconciliation remain 100% consistent (allowing negative deficit if overspent).
+        if (goal.LinkedAccountId is { } linkedAccountId
+            && linkedAccountId != Guid.Empty
+            && _accounts is not null
+            && _transactions is not null)
+        {
+            var account = await _accounts.GetByIdAsync(linkedAccountId, cancellationToken).ConfigureAwait(false);
+            if (account is not null
+                && string.Equals(account.Balance.Currency.Value, contribution.Currency.Value, StringComparison.Ordinal))
+            {
+                var signedExpense = new Money(-contribution.Amount, account.Balance.Currency);
+                var tx = Transaction.Create(
+                    account.Id,
+                    _timeProvider.GetUtcNow(),
+                    goal.Name,
+                    signedExpense,
+                    TransactionType.Expense,
+                    _timeProvider,
+                    goal.Name);
+                tx.AddSplit(signedExpense, "Savings", goal.Name);
+
+                account.Withdraw(contribution, _timeProvider);
+                await _transactions.SaveAsync(tx, cancellationToken).ConfigureAwait(false);
+                await _accounts.SaveAsync(account, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 }
 

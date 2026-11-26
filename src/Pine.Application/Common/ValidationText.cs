@@ -51,6 +51,9 @@ public static class ValidationText
     /// <summary>A transaction whose amount is zero (TD-62).</summary>
     public static UserFacingMessage TransactionAmountZero() => new("Validation.Transaction.AmountZero");
 
+    /// <summary>A transaction whose date is in the future.</summary>
+    public static UserFacingMessage TransactionDateInFuture() => new("Validation.Transaction.DateInFuture");
+
     /// <summary>A rate entered for a pair whose two currencies are the same.</summary>
     public static UserFacingMessage ExchangeRateSameCurrency(string currency) => new("Validation.ExchangeRate.SameCurrency", currency);
 

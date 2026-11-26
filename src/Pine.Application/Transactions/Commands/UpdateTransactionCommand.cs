@@ -127,6 +127,53 @@ public sealed class UpdateTransactionCommandHandler : IRequestHandler<UpdateTran
         transaction.ReplaceSplits(request.Splits.Select(split =>
             new SplitDefinition(new Money(split.Amount, currency), split.Category, split.Notes ?? string.Empty, split.Id ?? Guid.Empty)));
 
+        // If the transaction carries receipt line items and the edit changed its total amount,
+        // keep the TD-19 line-item reconciliation invariant intact instead of throwing at SaveAsync.
+        if (transaction.LineItems.Count > 0 && !transaction.HasLineItemsPredatingKinds)
+        {
+            var flippedSign = (oldAmount.Amount < 0m && newAmount.Amount > 0m)
+                || (oldAmount.Amount > 0m && newAmount.Amount < 0m);
+
+            if (flippedSign)
+            {
+                transaction.ReplaceLineItems(Array.Empty<LineItemDefinition>());
+            }
+            else
+            {
+                var diff = transaction.LineItemDifference();
+                if (diff.Amount != 0m)
+                {
+                    var existing = transaction.LineItems.ToList();
+                    var adjustmentIndex = existing.FindLastIndex(li => li.Kind == LineItemKind.Unattributed);
+                    var updated = new List<LineItemDefinition>(existing.Count + 1);
+
+                    for (var i = 0; i < existing.Count; i++)
+                    {
+                        var li = existing[i];
+                        if (i == adjustmentIndex)
+                        {
+                            var adjustedTotal = li.TotalPrice + diff;
+                            if (adjustedTotal.Amount != 0m)
+                            {
+                                updated.Add(new LineItemDefinition(li.Description, 1m, adjustedTotal, adjustedTotal, LineItemKind.Unattributed, li.Id));
+                            }
+                        }
+                        else
+                        {
+                            updated.Add(new LineItemDefinition(li.Description, li.Quantity, li.UnitPrice, li.TotalPrice, li.Kind, li.Id));
+                        }
+                    }
+
+                    if (adjustmentIndex < 0)
+                    {
+                        updated.Add(new LineItemDefinition("Adjustment", 1m, diff, diff, LineItemKind.Unattributed));
+                    }
+
+                    transaction.ReplaceLineItems(updated);
+                }
+            }
+        }
+
         await _transactionRepository.SaveAsync(transaction, cancellationToken);
 
         ReverseBalanceEffect(account, oldAmount);
@@ -182,13 +229,16 @@ public sealed class UpdateTransactionCommandValidator : IRequestValidator<Update
 {
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly TimeProvider _timeProvider;
 
     public UpdateTransactionCommandValidator(
         ITransactionRepository transactionRepository,
-        IAccountRepository accountRepository)
+        IAccountRepository accountRepository,
+        TimeProvider? timeProvider = null)
     {
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<IReadOnlyList<ValidationError>> ValidateAsync(
@@ -243,6 +293,22 @@ public sealed class UpdateTransactionCommandValidator : IRequestValidator<Update
                 $"The account for transaction {transaction.Id} was not found.",
                 ValidationText.AccountNotFound()));
             return errors;
+        }
+
+        if (request.Amount == 0m)
+        {
+            errors.Add(new ValidationError(
+                nameof(UpdateTransactionCommand.Amount),
+                "Transaction amount cannot be zero.",
+                ValidationText.TransactionAmountZero()));
+        }
+
+        if (request.Date > _timeProvider.GetUtcNow().AddDays(1))
+        {
+            errors.Add(new ValidationError(
+                nameof(UpdateTransactionCommand.Date),
+                "Transaction date cannot be in the future.",
+                ValidationText.TransactionDateInFuture()));
         }
 
         if (!CurrencyCodeText.TryNormalise(request.Currency, out var normalised))
