@@ -24,17 +24,23 @@ public static partial class ReceiptBoxExtractor
         NormalizedRect box,
         IReadOnlyList<OcrWord>? words,
         int imageWidth,
-        int imageHeight)
+        int imageHeight,
+        string? customTagName = null)
     {
+        var boxId = Guid.NewGuid();
+        var cleanCustom = field == ReceiptTagField.Custom && !string.IsNullOrWhiteSpace(customTagName)
+            ? customTagName.Trim()
+            : null;
+
         if (words is null || words.Count == 0)
         {
-            return new ReceiptFieldBox(field, box, string.Empty);
+            return new ReceiptFieldBox(field, box, string.Empty, CustomTagName: cleanCustom, BoxId: boxId);
         }
 
         var (w, h) = ResolveDimensions(words, imageWidth, imageHeight);
         if (w <= 0 || h <= 0)
         {
-            return new ReceiptFieldBox(field, box, string.Empty);
+            return new ReceiptFieldBox(field, box, string.Empty, CustomTagName: cleanCustom, BoxId: boxId);
         }
 
         var normalizedWords = words
@@ -49,7 +55,7 @@ public static partial class ReceiptBoxExtractor
 
         if (normalizedWords.Count == 0)
         {
-            return new ReceiptFieldBox(field, box, string.Empty);
+            return new ReceiptFieldBox(field, box, string.Empty, CustomTagName: cleanCustom, BoxId: boxId);
         }
 
         var effectiveBox = box;
@@ -73,18 +79,9 @@ public static partial class ReceiptBoxExtractor
         else
         {
             inside = normalizedWords
-                .Where(item => OverlapFraction(item.Rect, box) >= 0.30 || ContainsCenter(box, item.Rect))
+                .Where(item => OverlapFraction(item.Rect, box) >= 0.25 || ContainsCenter(box, item.Rect))
                 .ToList();
         }
-
-        if (inside.Count == 0)
-        {
-            return new ReceiptFieldBox(field, effectiveBox, string.Empty);
-        }
-
-        // Sort top-to-bottom into rows (using half median word height), then left-to-right.
-        var ordered = OrderReadingOrder(inside);
-        var extractedText = string.Join(" ", ordered.Select(x => x.Word.Text.Trim())).Trim();
 
         // Find left anchor tokens on the same horizontal band immediately to the left of the box.
         var rowTolerance = Math.Max(effectiveBox.Height * 0.65, 0.025);
@@ -111,7 +108,47 @@ public static partial class ReceiptBoxExtractor
         var leftAnchorText = leftAnchors.Count > 0 ? string.Join(" ", leftAnchors) : null;
         var aboveAnchorText = aboveAnchors.Count > 0 ? string.Join(" ", aboveAnchors) : null;
 
-        return new ReceiptFieldBox(field, effectiveBox, extractedText, leftAnchorText, aboveAnchorText);
+        if (inside.Count == 0)
+        {
+            return new ReceiptFieldBox(field, effectiveBox, string.Empty, leftAnchorText, aboveAnchorText, cleanCustom, boxId);
+        }
+
+        // Sort top-to-bottom into rows (using half median word height), then left-to-right.
+        var ordered = OrderReadingOrder(inside);
+        var extractedText = string.Join(" ", ordered.Select(x => x.Word.Text.Trim())).Trim();
+
+        return new ReceiptFieldBox(field, effectiveBox, extractedText, leftAnchorText, aboveAnchorText, cleanCustom, boxId);
+    }
+
+    /// <summary>Parses a product description and optional trailing price from a tagged line-item box.</summary>
+    public static (string Description, decimal Quantity, decimal UnitPrice, decimal TotalPrice) ParseLineItem(
+        string? text,
+        DecimalSeparator separator = DecimalSeparator.Unknown)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return (string.Empty, 1m, 0m, 0m);
+        }
+
+        var trimmed = text.Trim();
+        var matches = AmountTokenRegex().Matches(trimmed);
+        if (matches.Count > 0)
+        {
+            var last = matches[^1];
+            var trailing = trimmed[(last.Index + last.Length)..].Trim();
+            // Reject quantities/dosages with unit suffixes like "400mg" or "1L"; allow only empty or currency symbol after the price.
+            var hasValidTrailing = trailing.Length == 0
+                || trailing is "$" or "€" or "£" or "¥" or "₹";
+
+            if (hasValidTrailing && TryParseNumberToken(last.Groups[1].Value, separator, out var price) && price > 0m)
+            {
+                var descPart = trimmed[..last.Index].Trim(' ', '-', ':', '$', '€', '£', '¥', '₹');
+                var description = string.IsNullOrWhiteSpace(descPart) ? trimmed : descPart;
+                return (description, 1m, price, price);
+            }
+        }
+
+        return (trimmed, 1m, 0m, 0m);
     }
 
     /// <summary>Parses a monetary amount from extracted box text using the receipt's decimal convention.</summary>

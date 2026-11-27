@@ -15,12 +15,31 @@
     <Style Selector="Button.tag-field-chip">
       <Setter Property="Background" Value="{DynamicResource PineSurfaceElevated}" />
       <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PineBorder}" />
       <Setter Property="BorderThickness" Value="1.5" />
       <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="MinHeight" Value="38" />
+      <Setter Property="MinHeight" Value="40" />
       <Setter Property="Padding" Value="12,6" />
-      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="Margin" Value="0,0,6,4" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-merchant">
+      <Setter Property="BorderBrush" Value="{DynamicResource PineSuccess}" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-total">
+      <Setter Property="BorderBrush" Value="{DynamicResource PineWarning}" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-date">
+      <Setter Property="BorderBrush" Value="{DynamicResource PineInfo}" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-tax">
+      <Setter Property="BorderBrush" Value="{DynamicResource PinePrimary}" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-lineitem">
+      <Setter Property="BorderBrush" Value="{DynamicResource PineSuccess}" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.tag-custom">
+      <Setter Property="BorderBrush" Value="{DynamicResource PineWarning}" />
     </Style>
     <Style Selector="Button.tag-field-chip.active">
       <Setter Property="Background" Value="{DynamicResource PinePrimary}" />
@@ -502,64 +521,141 @@
     <!-- Interactive Bounding-Box Tagging & Local Model Training Overlay -->
     <Grid IsVisible="{Binding IsEditingTags}" ZIndex="45" RowDefinitions="Auto,*,Auto"
           Background="{DynamicResource PineBackground}">
-      <StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="8">
-        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Instruction}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
-        <WrapPanel Orientation="Horizontal">
-          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Merchant}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Merchant"
-                  Classes="tag-field-chip" Classes.active="{Binding IsTagMerchantActive}"
-                  BorderBrush="{DynamicResource PineSuccess}" />
-          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Total}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Total"
-                  Classes="tag-field-chip" Classes.active="{Binding IsTagTotalActive}"
-                  BorderBrush="{DynamicResource PineWarning}" />
-          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Date}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Date"
-                  Classes="tag-field-chip" Classes.active="{Binding IsTagDateActive}"
-                  BorderBrush="{DynamicResource PineInfo}" />
-          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Tax}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Tax"
-                  Classes="tag-field-chip" Classes.active="{Binding IsTagTaxActive}"
-                  BorderBrush="{DynamicResource PinePrimary}" />
-        </WrapPanel>
+      <StackPanel Grid.Row="0" Margin="12,10,12,6" Spacing="6">
+        <Grid ColumnDefinitions="*, 8, Auto">
+          <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.Tagging.Title}" FontSize="18" FontWeight="SemiBold"
+                     Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2" Text="{Binding TagItemsSummaryPreview}"
+                     IsVisible="{Binding TagItemsSummaryPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PinePrimary}" VerticalAlignment="Center" />
+        </Grid>
 
-        <!-- Live extracted previews from drawn boxes -->
-        <WrapPanel Orientation="Horizontal" IsVisible="{Binding HasTaggedBoxes}">
-          <Border IsVisible="{Binding TagMerchantPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  Background="{DynamicResource PineSuccessContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
-            <TextBlock Text="{Binding TagMerchantPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
-          </Border>
-          <Border IsVisible="{Binding TagTotalPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  Background="{DynamicResource PineWarningContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
-            <TextBlock Text="{Binding TagTotalPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
-          </Border>
-          <Border IsVisible="{Binding TagDatePreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  Background="{DynamicResource PineInfoContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
-            <TextBlock Text="{Binding TagDatePreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}" />
-          </Border>
-          <Border IsVisible="{Binding TagTaxPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
-                  CornerRadius="6" Padding="8,4" Margin="0,0,0,4">
-            <TextBlock Text="{Binding TagTaxPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
-          </Border>
-        </WrapPanel>
+        <!-- Built-in + Custom Tag Chips -->
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <StackPanel Orientation="Horizontal" Spacing="0">
+            <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Merchant}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Merchant"
+                    Classes="tag-field-chip tag-merchant" Classes.active="{Binding IsTagMerchantActive}" />
+            <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Total}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Total"
+                    Classes="tag-field-chip tag-total" Classes.active="{Binding IsTagTotalActive}" />
+            <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Date}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Date"
+                    Classes="tag-field-chip tag-date" Classes.active="{Binding IsTagDateActive}" />
+            <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Tax}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Tax"
+                    Classes="tag-field-chip tag-tax" Classes.active="{Binding IsTagTaxActive}" />
+            <Button Content="{loc:Tr ScanReceipt.Tagging.Field.LineItem}" Command="{Binding SelectTagFieldCommand}" CommandParameter="LineItem"
+                    Classes="tag-field-chip tag-lineitem" Classes.active="{Binding IsTagLineItemActive}" />
+            <ItemsControl ItemsSource="{Binding CustomTags}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CustomTagChipViewModel">
+                  <Button Content="{Binding Name}"
+                          Command="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).SelectCustomTagCommand}"
+                          CommandParameter="{Binding Name}"
+                          Classes="tag-field-chip tag-custom" Classes.active="{Binding IsSelected}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Row A: Custom tag creator (full width on 360dp phones so input never crushes) -->
+        <Grid ColumnDefinitions="*, 6, Auto">
+          <TextBox Grid.Column="0"
+                   Text="{Binding NewCustomTagInput, Mode=TwoWay}"
+                   PlaceholderText="{loc:Tr ScanReceipt.Tagging.CustomTagPlaceholder}"
+                   AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.CustomTagPlaceholder}"
+                   MinHeight="40" FontSize="13" VerticalContentAlignment="Center" />
+          <Button Grid.Column="2"
+                  Content="{loc:Tr ScanReceipt.Tagging.AddCustomTag}"
+                  Command="{Binding AddCustomTagCommand}"
+                  Classes="pine-outline" MinHeight="40" Padding="12,6" CornerRadius="8" FontSize="13" FontWeight="SemiBold" />
+        </Grid>
+
+        <!-- Row B: Zoom & Pan toolbar (clean touch targets >= 40dp across all phone widths) -->
+        <Grid ColumnDefinitions="Auto, 6, Auto, 6, Auto, *, Auto">
+          <Button Grid.Column="0" Content="&#x2212;" Command="{Binding ZoomOutTagsCommand}"
+                  AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.ZoomOut}"
+                  Classes="pine-outline" MinWidth="40" MinHeight="40" Padding="0" CornerRadius="8" FontSize="18" FontWeight="Bold"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          <Button Grid.Column="2" Content="{Binding TagZoomPercentText}" Command="{Binding ResetTagZoomCommand}"
+                  AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.ResetZoom}"
+                  Classes="pine-outline" MinWidth="56" MinHeight="40" Padding="8,0" CornerRadius="8" FontSize="13" FontWeight="SemiBold"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          <Button Grid.Column="4" Content="+" Command="{Binding ZoomInTagsCommand}"
+                  AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.ZoomIn}"
+                  Classes="pine-outline" MinWidth="40" MinHeight="40" Padding="0" CornerRadius="8" FontSize="18" FontWeight="Bold"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          <Button Grid.Column="6" Content="{Binding TagModeButtonText}" Command="{Binding ToggleTagPanModeCommand}"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagPanMode}"
+                  Margin="0" MinHeight="40" Padding="14,6" CornerRadius="8" FontSize="13" />
+        </Grid>
       </StackPanel>
 
-      <controls:ReceiptTagOverlayControl Grid.Row="1" Margin="8"
-                                         Source="{Binding TagEditorImage}"
-                                         ActiveField="{Binding ActiveTagField}"
-                                         TaggedBoxes="{Binding TaggedBoxes}"
-                                         OcrWords="{Binding LastOcrWords}"
-                                         OcrImageWidth="{Binding LastOcrImageWidth}"
-                                         OcrImageHeight="{Binding LastOcrImageHeight}"
-                                         FieldLabels="{Binding TagFieldLabels}"
-                                         BoxDrawn="OnReceiptTagBoxDrawn" />
+      <Border Grid.Row="1" Margin="8,2" CornerRadius="10"
+              Background="{DynamicResource PineSurfaceElevated}"
+              BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+              ClipToBounds="True">
+        <controls:ReceiptTagOverlayControl Source="{Binding TagEditorImage}"
+                                           ActiveField="{Binding ActiveTagField}"
+                                           ActiveCustomTagName="{Binding ActiveCustomTagName}"
+                                           TaggedBoxes="{Binding TaggedBoxes}"
+                                           OcrWords="{Binding LastOcrWords}"
+                                           OcrImageWidth="{Binding LastOcrImageWidth}"
+                                           OcrImageHeight="{Binding LastOcrImageHeight}"
+                                           FieldLabels="{Binding TagFieldLabels}"
+                                           Zoom="{Binding TagZoom, Mode=TwoWay}"
+                                           IsPanMode="{Binding IsTagPanMode, Mode=TwoWay}"
+                                           SelectedBoxId="{Binding SelectedTaggedBoxId, Mode=TwoWay}"
+                                           BoxDrawn="OnReceiptTagBoxDrawn"
+                                           BoxSelected="OnReceiptTagBoxSelected" />
+      </Border>
 
-      <Grid Grid.Row="2" Margin="16,8,16,16" ColumnDefinitions="*,8,*,8,2*">
-        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Tagging.Clear}" Command="{Binding ClearTaggedBoxesCommand}"
-                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Tagging.Cancel}" Command="{Binding CancelTagEditorCommand}"
-                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-        <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Tagging.ApplyAndTrain}" Command="{Binding ApplyTagsAndTrainCommand}"
-                Classes="pine-accent" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-      </Grid>
+      <StackPanel Grid.Row="2" Margin="12,6,12,12" Spacing="8">
+        <!-- Editable text bar for the selected box (fixes missed OCR & non-Latin scripts like Hindi/Chinese) -->
+        <Border IsVisible="{Binding HasSelectedTaggedBox}"
+                Background="{DynamicResource PineSurface}"
+                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                CornerRadius="10" Padding="10,8">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+              <Border Grid.Column="0" Background="{DynamicResource PineInfoContainer}" CornerRadius="6" Padding="8,4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding SelectedBoxLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}" />
+              </Border>
+              <TextBlock Grid.Column="1" Margin="8,0"
+                         Text="{loc:Tr ScanReceipt.Tagging.ReadingRegion}"
+                         IsVisible="{Binding IsReadingRegion}"
+                         FontSize="12" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
+              <Button Grid.Column="2"
+                      Command="{Binding RemoveSelectedTaggedBoxCommand}"
+                      AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.RemoveBox}"
+                      Classes="pine-outline" Width="40" Height="40" Padding="0" CornerRadius="8"
+                      Content="&#x2715;" Foreground="{DynamicResource PineError}" FontWeight="Bold"
+                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            </Grid>
+            <TextBox Text="{Binding SelectedBoxText, Mode=TwoWay}"
+                     PlaceholderText="{loc:Tr ScanReceipt.Tagging.BoxTextPlaceholder}"
+                     AutomationProperties.Name="{loc:Tr ScanReceipt.Tagging.BoxTextPlaceholder}"
+                     MinHeight="40" VerticalContentAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock IsVisible="{Binding !HasSelectedTaggedBox}"
+                   Text="{loc:Tr ScanReceipt.Tagging.ZoomHint}"
+                   FontSize="12" Foreground="{DynamicResource PineTextMuted}"
+                   TextWrapping="Wrap" HorizontalAlignment="Center" />
+
+        <Grid ColumnDefinitions="Auto,6,Auto,6,*">
+          <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Tagging.Clear}" Command="{Binding ClearTaggedBoxesCommand}"
+                  Classes="pine-outline" MinHeight="44" Padding="12,0" HorizontalContentAlignment="Center" />
+          <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Tagging.Cancel}" Command="{Binding CancelTagEditorCommand}"
+                  Classes="pine-outline" MinHeight="44" Padding="12,0" HorizontalContentAlignment="Center" />
+          <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Tagging.ApplyAndTrain}" Command="{Binding ApplyTagsAndTrainCommand}"
+                  Classes="pine-accent" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        </Grid>
+      </StackPanel>
     </Grid>
 
     <!-- Reusable full-size receipt viewer (zoom + pan) -->

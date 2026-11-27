@@ -12,6 +12,8 @@ public enum ReceiptTagField
     Total = 1,
     Date = 2,
     Tax = 3,
+    LineItem = 4,
+    Custom = 5,
 }
 
 /// <summary>A normalized rectangle inside a receipt image (0..1 on both axes).</summary>
@@ -32,13 +34,20 @@ public sealed record NormalizedRect(double X, double Y, double Width, double Hei
     }
 }
 
-/// <summary>One user-tagged field box on a receipt together with its OCR text and nearby anchor words.</summary>
+/// <summary>One user-tagged field box on a receipt together with its OCR/manual text and nearby anchor words.</summary>
 public sealed record ReceiptFieldBox(
     ReceiptTagField Field,
     NormalizedRect Box,
     string ExtractedText,
     string? LeftAnchorText = null,
-    string? AboveAnchorText = null);
+    string? AboveAnchorText = null,
+    string? CustomTagName = null,
+    Guid? BoxId = null)
+{
+    public string EffectiveKey => Field == ReceiptTagField.Custom && !string.IsNullOrWhiteSpace(CustomTagName)
+        ? $"Custom:{CustomTagName.Trim()}"
+        : Field.ToString();
+}
 
 /// <summary>A single annotated receipt sample used to train the user's local receipt layout adapter.</summary>
 public sealed record ReceiptLayoutAnnotation(
@@ -51,11 +60,12 @@ public sealed record ReceiptLayoutAnnotation(
 public sealed record ReceiptTrainingStatus(
     int SampleCount,
     DateTimeOffset? LastTrainedAtUtc,
-    bool IsTraining);
+    bool IsTraining,
+    IReadOnlyList<string>? CustomTagNames = null);
 
 /// <summary>
 /// Per-vault on-device learner that adapts receipt field extraction to the user's local receipt layouts
-/// (e.g. Spanish/LatAm invoices, regional tax labels, store templates) from interactive bounding-box tags.
+/// (e.g. Spanish/LatAm, Indian GST, Chinese fapiao, store templates) from interactive bounding-box tags.
 /// </summary>
 public interface IReceiptFieldLearner
 {
@@ -77,6 +87,18 @@ public interface IReceiptFieldLearner
         ReceiptLayoutAnnotation annotation,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Returns the current training status for the active vault.</summary>
+    /// <summary>Returns the current training status and learned custom tag names for the active vault.</summary>
     ReceiptTrainingStatus GetStatus();
+}
+
+/// <summary>
+/// Crops a user-drawn normalized rectangle from the aligned receipt image and runs on-demand OCR
+/// at full resolution so faint or small lines missed by full-page detection can still be read.
+/// </summary>
+public interface IReceiptRegionReader
+{
+    Task<string> ReadRegionAsync(
+        byte[] alignedImageBytes,
+        NormalizedRect region,
+        CancellationToken cancellationToken = default);
 }

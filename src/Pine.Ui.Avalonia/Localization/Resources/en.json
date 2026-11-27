@@ -1003,7 +1003,18 @@
   "Planning.Goals.AccountRequired": "Select an account to fund this savings goal.",
   "Dashboard.Deficit.Badge": "Deficit",
   "Dashboard.Accounts.SubAccountOverAllocated": "-{0} over {1}",
-  "Planning.Goals.AddExtraButton": "+ Extra amount",
-  "Planning.Goals.CustomAmountPlaceholder": "Extra amount to save...",
-  "Planning.Goals.CustomConfirm": "Add savings"
+  "ScanReceipt.Tagging.Field.LineItem": "Product",
+  "ScanReceipt.Tagging.Field.Custom": "Custom",
+  "ScanReceipt.Tagging.CustomTagPlaceholder": "New tag (e.g. GST, RUC, Fapiao)...",
+  "ScanReceipt.Tagging.AddCustomTag": "+ Tag",
+  "ScanReceipt.Tagging.ZoomIn": "Zoom in",
+  "ScanReceipt.Tagging.ZoomOut": "Zoom out",
+  "ScanReceipt.Tagging.ResetZoom": "Reset zoom",
+  "ScanReceipt.Tagging.Mode.Draw": "Draw",
+  "ScanReceipt.Tagging.Mode.Pan": "Move",
+  "ScanReceipt.Tagging.ReadingRegion": "Re-reading zoomed area...",
+  "ScanReceipt.Tagging.BoxTextPlaceholder": "Detected text (edit or type if OCR missed it)...",
+  "ScanReceipt.Tagging.RemoveBox": "Remove box",
+  "ScanReceipt.Tagging.ZoomHint": "Pinch or use +/- to zoom, tap Move to pan, or drag a box to tag any field or product.",
+  "ScanReceipt.Tagging.ExtraBoxesCount": "+{0} item/tag"
 }

@@ -66,7 +66,12 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
         lock (_stateGate)
         {
             EnsureLoadedLocked();
-            return new ReceiptTrainingStatus(_model.Annotations.Count, _model.LastTrainedAtUtc, _pendingTrainJobs > 0);
+            var customTags = _model.CustomTagNames ?? [];
+            return new ReceiptTrainingStatus(
+                _model.Annotations.Count,
+                _model.LastTrainedAtUtc,
+                _pendingTrainJobs > 0,
+                customTags.ToList());
         }
     }
 
@@ -77,26 +82,52 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
     {
         ArgumentNullException.ThrowIfNull(annotation);
 
-        if (annotation.Boxes.Count == 0 || _disposed)
+        if (annotation.Boxes.Count == 0)
         {
             return Task.FromResult(GetStatus());
         }
 
         int count;
         DateTimeOffset? lastTrained;
-        var vaultPath = _vault.IsUnlocked ? _vault.DbPath : null;
+        List<string> customTags;
+        string? vaultPath;
+        CancellationToken disposeToken;
 
         lock (_stateGate)
         {
+            if (_disposed)
+            {
+                return Task.FromResult(new ReceiptTrainingStatus(
+                    _model.Annotations.Count,
+                    _model.LastTrainedAtUtc,
+                    IsTraining: false,
+                    (_model.CustomTagNames ?? []).ToList()));
+            }
+
             EnsureLoadedLocked();
-            var list = new List<ReceiptLayoutAnnotation>(_model.Annotations);
+            vaultPath = _loadedVaultPath;
+            disposeToken = _disposeCts.Token;
+
+            var list = _model.Annotations
+                .Where(a => a.Id != annotation.Id)
+                .ToList();
             list.Add(annotation);
             if (list.Count > MaxStoredAnnotations)
             {
                 list.RemoveRange(0, list.Count - MaxStoredAnnotations);
             }
 
-            _model = _model with { Annotations = list };
+            var tagSet = new HashSet<string>(_model.CustomTagNames ?? [], StringComparer.OrdinalIgnoreCase);
+            foreach (var box in annotation.Boxes)
+            {
+                if (box.Field == ReceiptTagField.Custom && !string.IsNullOrWhiteSpace(box.CustomTagName))
+                {
+                    tagSet.Add(box.CustomTagName.Trim());
+                }
+            }
+
+            customTags = tagSet.OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase).ToList();
+            _model = _model with { Annotations = list, CustomTagNames = customTags };
             _annotationVersion++;
             _pendingTrainJobs++;
             count = list.Count;
@@ -104,9 +135,9 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
         }
 
         // Low-resource background training bound to learner lifetime (never the caller's request token).
-        _ = Task.Run(() => TrainAndPersistAsync(vaultPath, _disposeCts.Token), CancellationToken.None);
+        _ = Task.Run(() => TrainAndPersistAsync(vaultPath, disposeToken), CancellationToken.None);
 
-        return Task.FromResult(new ReceiptTrainingStatus(count, lastTrained, IsTraining: true));
+        return Task.FromResult(new ReceiptTrainingStatus(count, lastTrained, IsTraining: true, customTags));
     }
 
     /// <summary>
@@ -225,6 +256,21 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
             }
         }
 
+        // 5. LineItems (only for a matched merchant template when baseline missed product rows)
+        var lineItems = baseline.LineItems;
+        if (lineItems is null or { Count: 0 } && matchedTemplate is not null)
+        {
+            var itemProto = ResolvePrototype(ReceiptTagField.LineItem, matchedTemplate, snapshot);
+            if (itemProto is not null)
+            {
+                var learnedItems = PredictLineItems(lines, itemProto, separator, total, tax);
+                if (learnedItems.Count > 0)
+                {
+                    lineItems = learnedItems;
+                }
+            }
+        }
+
         return baseline with
         {
             Merchant = merchant,
@@ -233,6 +279,7 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
             DateIsAmbiguous = dateAmbiguous,
             AlternativeDate = altDate,
             TaxAmount = tax,
+            LineItems = lineItems,
             Confidence = baseline.Confidence with
             {
                 Merchant = merchantConf,
@@ -254,6 +301,11 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
             long capturedVersion;
             lock (_stateGate)
             {
+                if (_disposed || !string.Equals(_loadedVaultPath, expectedVaultPath, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
                 annotations = new List<ReceiptLayoutAnnotation>(_model.Annotations);
                 capturedVersion = _annotationVersion;
             }
@@ -261,8 +313,14 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
             var trainedAt = _timeProvider.GetUtcNow();
             var trained = BuildTrainedModel(annotations, trainedAt);
 
+            bool shouldPersist;
             lock (_stateGate)
             {
+                if (_disposed || !string.Equals(_loadedVaultPath, expectedVaultPath, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
                 // Preserve any newer annotations added while training ran (even when capped at MaxStoredAnnotations).
                 if (_annotationVersion != capturedVersion)
                 {
@@ -270,14 +328,14 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
                 }
 
                 _model = trained;
+                shouldPersist = !string.IsNullOrEmpty(expectedVaultPath)
+                    && _vault.IsUnlocked
+                    && string.Equals(_vault.DbPath, expectedVaultPath, StringComparison.Ordinal);
             }
 
-            if (!_disposed
-                && !string.IsNullOrEmpty(expectedVaultPath)
-                && _vault.IsUnlocked
-                && string.Equals(_vault.DbPath, expectedVaultPath, StringComparison.Ordinal))
+            if (shouldPersist)
             {
-                PersistEncrypted(expectedVaultPath, trained);
+                PersistEncrypted(expectedVaultPath!, trained);
             }
         }
         catch (OperationCanceledException)
@@ -316,19 +374,19 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
         IReadOnlyList<ReceiptLayoutAnnotation> annotations,
         DateTimeOffset trainedAtUtc)
     {
-        var global = new Dictionary<string, FieldPrototype>(StringComparer.Ordinal);
-        foreach (var field in Enum.GetValues<ReceiptTagField>())
+        var global = new Dictionary<string, FieldPrototype>(StringComparer.OrdinalIgnoreCase);
+        var allBoxes = annotations.SelectMany(a => a.Boxes).ToList();
+        foreach (var group in allBoxes.GroupBy(b => b.EffectiveKey, StringComparer.OrdinalIgnoreCase))
         {
-            var boxes = annotations
-                .SelectMany(a => a.Boxes)
-                .Where(b => b.Field == field)
-                .ToList();
-
-            if (boxes.Count > 0)
-            {
-                global[field.ToString()] = BuildPrototype(boxes);
-            }
+            global[group.Key] = BuildPrototype(group.ToList());
         }
+
+        var customTagNames = allBoxes
+            .Where(b => b.Field == ReceiptTagField.Custom && !string.IsNullOrWhiteSpace(b.CustomTagName))
+            .Select(b => b.CustomTagName!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
 
         var merchantTemplates = new Dictionary<string, MerchantLayoutTemplate>(StringComparer.Ordinal);
         var byMerchant = annotations
@@ -337,14 +395,10 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
 
         foreach (var group in byMerchant)
         {
-            var fields = new Dictionary<string, FieldPrototype>(StringComparer.Ordinal);
-            foreach (var field in Enum.GetValues<ReceiptTagField>())
+            var fields = new Dictionary<string, FieldPrototype>(StringComparer.OrdinalIgnoreCase);
+            foreach (var boxGroup in group.SelectMany(a => a.Boxes).GroupBy(b => b.EffectiveKey, StringComparer.OrdinalIgnoreCase))
             {
-                var boxes = group.SelectMany(a => a.Boxes).Where(b => b.Field == field).ToList();
-                if (boxes.Count > 0)
-                {
-                    fields[field.ToString()] = BuildPrototype(boxes);
-                }
+                fields[boxGroup.Key] = BuildPrototype(boxGroup.ToList());
             }
 
             if (fields.Count > 0)
@@ -359,6 +413,7 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
             Version = 1,
             LastTrainedAtUtc = trainedAtUtc,
             Annotations = annotations.ToList(),
+            CustomTagNames = customTagNames,
             GlobalPrototypes = global,
             MerchantTemplates = merchantTemplates,
         };
@@ -588,6 +643,73 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
         return (best, (float)Math.Clamp(bestScore, 0.0, 0.99));
     }
 
+    private static readonly HashSet<string> NonLineItemTokens = new(StringComparer.Ordinal)
+    {
+        "TOTAL", "SUBTOTAL", "IVA", "IGV", "GST", "CGST", "SGST", "VAT", "TAX",
+        "CAMBIO", "CHANGE", "EFECTIVO", "CASH", "VISA", "MASTERCARD", "TARJETA", "CARD",
+        "PROPINA", "TIP", "DESCUENTO", "DISCOUNT", "FECHA", "DATE", "HORA", "TIME", "MESA",
+    };
+
+    private static List<ReceiptLineItem> PredictLineItems(
+        List<NormalizedLine> lines,
+        FieldPrototype proto,
+        DecimalSeparator separator,
+        decimal? total,
+        decimal? tax)
+    {
+        var halfBand = Math.Max(proto.StdY * 2.2, 0.14);
+        var minY = Math.Max(0.0, proto.MeanY - halfBand);
+        var maxY = Math.Min(1.0, proto.MeanY + halfBand);
+
+        var items = new List<ReceiptLineItem>();
+        foreach (var line in lines)
+        {
+            if (line.Rect.CenterY < minY || line.Rect.CenterY > maxY)
+            {
+                continue;
+            }
+
+            if (ReceiptDateParser.Parse(line.Text) is not null)
+            {
+                continue;
+            }
+
+            // Whole-token match so products like "ACEITE DE OLIVA" or "ACTIVA YOGURT" are never dropped.
+            var tokens = TokenizeSignificant(line.Text);
+            if (tokens.Any(NonLineItemTokens.Contains))
+            {
+                continue;
+            }
+
+            // Require price-like formatting (decimal separator or currency symbol) to avoid "Table 4" false positives.
+            if (!line.Text.Contains('.') && !line.Text.Contains(',')
+                && !line.Text.Any(c => c is '$' or '€' or '£' or '¥' or '₹'))
+            {
+                continue;
+            }
+
+            var (description, qty, unitPrice, totalPrice) = ReceiptBoxExtractor.ParseLineItem(line.Text, separator);
+            if (totalPrice <= 0m || string.IsNullOrWhiteSpace(description) || !description.Any(char.IsLetter))
+            {
+                continue;
+            }
+
+            if (total is > 0m && totalPrice > total.Value)
+            {
+                continue;
+            }
+
+            if (tax is > 0m && totalPrice == tax.Value && line.Text.Length < 12)
+            {
+                continue;
+            }
+
+            items.Add(new ReceiptLineItem(description, qty, unitPrice, totalPrice));
+        }
+
+        return items;
+    }
+
     private static double SpatialSimilarity(NormalizedRect candidate, FieldPrototype proto)
     {
         var dx = (candidate.CenterX - proto.MeanX) / Math.Max(proto.StdX * 1.8, 0.14);
@@ -751,6 +873,7 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
 
         _loadedVaultPath = currentVault;
         _model = new PersistedReceiptModel();
+        _annotationVersion++;
 
         if (string.IsNullOrEmpty(currentVault))
         {
@@ -821,12 +944,16 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
 
     public void Dispose()
     {
-        if (_disposed)
+        lock (_stateGate)
         {
-            return;
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
         }
 
-        _disposed = true;
         _disposeCts.Cancel();
         _disposeCts.Dispose();
         _trainLock.Dispose();
@@ -859,6 +986,7 @@ public sealed partial class LocalReceiptFieldLearner : IReceiptFieldLearner, IDi
         public int Version { get; init; } = 1;
         public DateTimeOffset? LastTrainedAtUtc { get; init; }
         public List<ReceiptLayoutAnnotation> Annotations { get; init; } = new();
+        public List<string> CustomTagNames { get; init; } = new();
         public Dictionary<string, FieldPrototype> GlobalPrototypes { get; init; } = new(StringComparer.Ordinal);
         public Dictionary<string, MerchantLayoutTemplate> MerchantTemplates { get; init; } = new(StringComparer.Ordinal);
     }

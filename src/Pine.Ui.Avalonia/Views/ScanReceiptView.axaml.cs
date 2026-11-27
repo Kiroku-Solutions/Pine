@@ -150,4 +150,12 @@ public partial class ScanReceiptView : UserControl
             vm.RecordDrawnBox(e.Field, e.Box);
         }
     }
+
+    private void OnReceiptTagBoxSelected(object? sender, Controls.ReceiptBoxSelectedEventArgs e)
+    {
+        if (DataContext is ScanReceiptViewModel vm)
+        {
+            vm.SelectTaggedBox(e.BoxId);
+        }
+    }
 }

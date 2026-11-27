@@ -138,6 +138,106 @@ public sealed class LocalReceiptFieldLearnerTests : IDisposable
         improved.TaxAmount.Should().Be(6.00m);
     }
 
+    [Fact]
+    public void ReceiptBoxExtractor_ParsesLineItemsAcrossCurrenciesAndPreservesAnchorsWhenOcrMissed()
+    {
+        var (descEs, qtyEs, unitEs, totalEs) = ReceiptBoxExtractor.ParseLineItem("Paracetamol 500mg $12,50", DecimalSeparator.Comma);
+        descEs.Should().Be("Paracetamol 500mg");
+        qtyEs.Should().Be(1m);
+        unitEs.Should().Be(12.50m);
+        totalEs.Should().Be(12.50m);
+
+        var (descIn, _, _, totalIn) = ReceiptBoxExtractor.ParseLineItem("Masala Chai ₹85.00", DecimalSeparator.Unknown);
+        descIn.Should().Be("Masala Chai");
+        totalIn.Should().Be(85.00m);
+
+        // Dosages/volumes with unit suffixes must NOT be misparsed as prices.
+        var (descMed, _, _, totalMed) = ReceiptBoxExtractor.ParseLineItem("Ibuprofeno 400mg", DecimalSeparator.Unknown);
+        descMed.Should().Be("Ibuprofeno 400mg");
+        totalMed.Should().Be(0m);
+
+        // Box drawn over a region with no OCR words still retains surrounding left anchor for spatial learning.
+        var words = new List<OcrWord>
+        {
+            Word("GSTIN:", 80, 300, 120, 28),
+        };
+        var missedBox = NormalizedRect.CreateClamped(0.25, 0.29, 0.65, 0.34);
+        var extracted = ReceiptBoxExtractor.Extract(ReceiptTagField.Custom, missedBox, words, 1000, 1000, "GST");
+
+        extracted.ExtractedText.Should().BeEmpty();
+        extracted.CustomTagName.Should().Be("GST");
+        extracted.EffectiveKey.Should().Be("Custom:GST");
+        extracted.LeftAnchorText.Should().Contain("GSTIN");
+        extracted.BoxId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task LocalReceiptFieldLearner_PersistsCustomTagsAndLearnsProductBand()
+    {
+        var vaultAccessor = new StubVaultAccessor(_vaultDir, _key);
+        var cipher = new AesGcmVaultFileCipher(vaultAccessor);
+
+        using var learner = new LocalReceiptFieldLearner(vaultAccessor, cipher);
+
+        var annotation = new ReceiptLayoutAnnotation(
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            "SHANGHAI BISTRO",
+            new[]
+            {
+                new ReceiptFieldBox(
+                    ReceiptTagField.Merchant,
+                    NormalizedRect.CreateClamped(0.10, 0.04, 0.70, 0.09),
+                    "SHANGHAI BISTRO"),
+                new ReceiptFieldBox(
+                    ReceiptTagField.LineItem,
+                    NormalizedRect.CreateClamped(0.08, 0.36, 0.92, 0.42),
+                    "Dumplings 18.00"),
+                new ReceiptFieldBox(
+                    ReceiptTagField.Custom,
+                    NormalizedRect.CreateClamped(0.45, 0.85, 0.90, 0.90),
+                    "FP-992014",
+                    LeftAnchorText: "FAPIAO",
+                    CustomTagName: "Fapiao"),
+                new ReceiptFieldBox(
+                    ReceiptTagField.Custom,
+                    NormalizedRect.CreateClamped(0.45, 0.14, 0.90, 0.19),
+                    "29ABCDE1234F1Z5",
+                    LeftAnchorText: "GSTIN",
+                    CustomTagName: "GST"),
+            });
+
+        await learner.RecordAnnotationAndTrainInBackgroundAsync(annotation);
+        await learner.TrainNowAsync();
+
+        using var reloaded = new LocalReceiptFieldLearner(vaultAccessor, cipher);
+        var status = reloaded.GetStatus();
+        status.CustomTagNames.Should().Contain("Fapiao").And.Contain("GST");
+
+        // Next receipt from same merchant has empty baseline line items — learner extracts products in taught band
+        var words = new List<OcrWord>
+        {
+            Word("SHANGHAI", 100, 45, 180, 30),
+            Word("BISTRO", 300, 45, 140, 30),
+            Word("Noodle", 90, 380, 140, 28),
+            Word("Soup", 240, 380, 100, 28),
+            Word("14.50", 760, 380, 110, 28),
+            Word("TOTAL", 90, 780, 120, 28),
+            Word("14.50", 760, 780, 110, 28),
+        };
+
+        var baseline = new ReceiptExtractionResult(
+            Merchant: "SHANGHAI BISTRO",
+            TotalAmount: 14.50m,
+            CurrencyCode: "USD",
+            Date: null,
+            Confidence: ReceiptConfidence.None);
+
+        var improved = reloaded.ApplyLearnedModel(baseline, words, 1000, 1000);
+        improved.LineItems.Should().NotBeNull();
+        improved.LineItems!.Should().ContainSingle(li => li.Description == "Noodle Soup" && li.TotalPrice == 14.50m);
+    }
+
     private static OcrWord Word(string text, float x, float y, float w, float h) =>
         new()
         {

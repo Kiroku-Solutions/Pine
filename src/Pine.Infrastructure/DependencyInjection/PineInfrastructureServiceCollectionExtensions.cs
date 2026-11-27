@@ -213,6 +213,8 @@ public static class PineInfrastructureServiceCollectionExtensions
 
         // Local per-vault receipt layout learner trained from interactive bounding-box tags.
         services.TryAddSingleton<IReceiptFieldLearner, Pine.Infrastructure.Ai.Extraction.LocalReceiptFieldLearner>();
+        services.TryAddSingleton<IReceiptRegionReader>(sp =>
+            new Pine.Infrastructure.Ai.Vision.SkiaReceiptRegionReader(sp.GetService<IOcrEngine>()));
 
         if (options.IncludeReceiptVision)
         {

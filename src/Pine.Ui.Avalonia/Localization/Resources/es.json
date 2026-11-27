@@ -1003,7 +1003,18 @@
   "Planning.Goals.AccountRequired": "Selecciona una cuenta para financiar esta meta de ahorro.",
   "Dashboard.Deficit.Badge": "Déficit",
   "Dashboard.Accounts.SubAccountOverAllocated": "-{0} sobre {1}",
-  "Planning.Goals.AddExtraButton": "+ Otro monto",
-  "Planning.Goals.CustomAmountPlaceholder": "Monto extra a ahorrar...",
-  "Planning.Goals.CustomConfirm": "Aportar"
+  "ScanReceipt.Tagging.Field.LineItem": "Producto",
+  "ScanReceipt.Tagging.Field.Custom": "Etiqueta",
+  "ScanReceipt.Tagging.CustomTagPlaceholder": "Nuevo tag (ej. GST, RUC, Fapiao)...",
+  "ScanReceipt.Tagging.AddCustomTag": "+ Tag",
+  "ScanReceipt.Tagging.ZoomIn": "Acercar",
+  "ScanReceipt.Tagging.ZoomOut": "Alejar",
+  "ScanReceipt.Tagging.ResetZoom": "Restablecer zoom",
+  "ScanReceipt.Tagging.Mode.Draw": "Dibujar",
+  "ScanReceipt.Tagging.Mode.Pan": "Mover",
+  "ScanReceipt.Tagging.ReadingRegion": "Releyendo zona con zoom...",
+  "ScanReceipt.Tagging.BoxTextPlaceholder": "Texto detectado (edita o escribe si el OCR no lo leyó)...",
+  "ScanReceipt.Tagging.RemoveBox": "Quitar caja",
+  "ScanReceipt.Tagging.ZoomHint": "Pellizca o usa +/- para zoom, pulsa Mover para desplazar o dibuja una caja sobre cualquier campo o producto.",
+  "ScanReceipt.Tagging.ExtraBoxesCount": "+{0} item/tag"
 }
