@@ -25,8 +25,8 @@
     <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
-    <!-- Phones are arm64; x64 is the emulator. Dropping armeabi-v7a/x86 shrinks the APK and the build. -->
-    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <!-- Phones are arm64 (~99% of physical devices). Pass -p:RuntimeIdentifiers="android-arm64;android-x64" when targeting x64 emulators. -->
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifiers)' == ''">android-arm64</RuntimeIdentifiers>
     <!-- A Debug APK must run when installed with plain `adb install` (no IDE fast-deployment session). -->
     <EmbedAssembliesIntoApk Condition="'$(Configuration)' == 'Debug'">true</EmbedAssembliesIntoApk>
   </PropertyGroup>
@@ -66,4 +66,21 @@
     <ProjectReference Include="..\Pine.Application\Pine.Application.csproj" />
     <ProjectReference Include="..\Pine.Core\Pine.Core.csproj" />
   </ItemGroup>
+
+  <!--
+    Android uses OnnxOcrEngine + SkiaReceiptDetector (no PaddleInference/OpenCV). Stripping the unused
+    desktop OCR models (Sdcb.PaddleOCR.Models.Local* ~131 MB) and OpenCvSharp assemblies from Android
+    packaging keeps the APK lean without modifying the shared net10.0 Pine.Infrastructure library.
+  -->
+  <Target Name="ExcludeUnusedDesktopAiFromAndroid"
+          BeforeTargets="_ResolveAssemblies;_ComputeFilesToPublishForRuntimeIdentifiers;_BuildApkEmbed">
+    <ItemGroup>
+      <_UnusedDesktopAi Include="@(ReferenceCopyLocalPaths)"
+                        Condition="$([System.String]::new('%(Filename)').StartsWith('Sdcb.Paddle', System.StringComparison.OrdinalIgnoreCase)) or $([System.String]::new('%(Filename)').StartsWith('OpenCvSharp', System.StringComparison.OrdinalIgnoreCase))" />
+      <ReferenceCopyLocalPaths Remove="@(_UnusedDesktopAi)" />
+      <_UnusedDesktopAiPublish Include="@(ResolvedFileToPublish)"
+                               Condition="$([System.String]::new('%(Filename)').StartsWith('Sdcb.Paddle', System.StringComparison.OrdinalIgnoreCase)) or $([System.String]::new('%(Filename)').StartsWith('OpenCvSharp', System.StringComparison.OrdinalIgnoreCase))" />
+      <ResolvedFileToPublish Remove="@(_UnusedDesktopAiPublish)" />
+    </ItemGroup>
+  </Target>
 </Project>

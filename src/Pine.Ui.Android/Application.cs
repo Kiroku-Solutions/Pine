@@ -88,19 +88,9 @@ namespace Pine.Ui.Android
                         await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg), System.Threading.CancellationToken.None);
                     }
 
-                    // Ensure bundled LayoutLMv3 asset extraction finished before warming up its ONNX session.
+                    // LayoutLMv3 (125 MB) is extracted to FilesDir above so it is ready, and loaded lazily on first scan
+                    // rather than pre-warming at app startup — keeping startup RAM low on 2-3 GB devices.
                     await layoutLmInstallTask.ConfigureAwait(false);
-                    if (serviceProvider.GetService(typeof(Pine.Core.Ai.IVisualFieldExtractor)) is Pine.Core.Ai.IVisualFieldExtractor layout)
-                    {
-                        await System.Threading.Tasks.Task.Delay(1000);
-                        Pine.Core.Ai.OcrWord Word(string text, float x, float y) => new()
-                        {
-                            Text = text,
-                            Confidence = 1f,
-                            BoundingBox = new Pine.Core.Ai.BoundingBox { X = x, Y = y, Width = 120, Height = 24 },
-                        };
-                        layout.ExtractFields([Word("SHOP", 40, 20), Word("TOTAL", 40, 300), Word("10.00", 400, 300)], jpeg);
-                    }
 
                     global::Android.Util.Log.Info("PineScan", "warm-up done");
                 }
