@@ -31,7 +31,8 @@ public record CreateBudgetCommand(
     decimal Amount,
     BudgetPeriod Period,
     DateTimeOffset? StartDate = null,
-    DateTimeOffset? EndDate = null) : IRequest<Guid>, ITransactionalRequest;
+    DateTimeOffset? EndDate = null,
+    Guid? AccountId = null) : IRequest<Guid>, ITransactionalRequest;
 
 public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, Guid>
 {
@@ -58,7 +59,7 @@ public class CreateBudgetCommandHandler : IRequestHandler<CreateBudgetCommand, G
         var currency = await BaseCurrency.ResolveAsync(_settings, _accounts, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The vault has no base currency, so a budget cannot be created.");
         var limit = new Money(request.Amount, currency);
-        var budget = Budget.Create(request.Category, limit, request.Period, request.StartDate, request.EndDate);
+        var budget = Budget.Create(request.Category, limit, request.Period, request.StartDate, request.EndDate, request.AccountId);
         
         await _budgetRepository.SaveAsync(budget, cancellationToken);
         
@@ -190,6 +191,25 @@ public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudge
                 ValidationText.BudgetDatesOutOfOrder()));
         }
 
+        if (request.AccountId is { } accountId && accountId != Guid.Empty)
+        {
+            var account = await _accounts.GetByIdAsync(accountId, cancellationToken).ConfigureAwait(false);
+            if (account is null)
+            {
+                errors.Add(new ValidationError(
+                    nameof(CreateBudgetCommand.AccountId),
+                    $"Account {accountId} was not found.",
+                    ValidationText.AccountNotFound()));
+            }
+            else if (currency is not null && account.Balance.Currency != currency)
+            {
+                errors.Add(new ValidationError(
+                    nameof(CreateBudgetCommand.AccountId),
+                    $"Budget currency {currency.Value} does not match account currency {account.Balance.Currency.Value}.",
+                    ValidationText.CurrencyMismatch(currency.Value, account.Balance.Currency.Value)));
+            }
+        }
+
         // Only worth asking once the request is otherwise valid: a duplicate of an invalid budget is
         // not the problem to report.
         if (errors.Count == 0 && currency is not null)
@@ -200,7 +220,7 @@ public sealed class CreateBudgetCommandValidator : IRequestValidator<CreateBudge
             // THE NATURAL KEY, NOT A SECOND COPY OF ITS RULE (TD-146). The tuple that stops one vault holding
             // two such budgets is the tuple a merge recognises one budget across two vaults by; written twice
             // they would drift, and a budget one rule calls new the other would call a duplicate.
-            var key = NaturalKeys.BudgetKey(category, currency.Value, request.Period, request.StartDate, request.EndDate);
+            var key = NaturalKeys.BudgetKey(category, currency.Value, request.Period, request.StartDate, request.EndDate, request.AccountId);
 
             if (existing.Any(b => string.Equals(NaturalKeys.For(b), key, StringComparison.Ordinal)))
             {

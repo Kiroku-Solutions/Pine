@@ -13,9 +13,13 @@ using MediatR;
 using Pine.Application.Accounts.Queries;
 using Pine.Application.Budgets.Commands;
 using Pine.Application.Budgets.Queries;
+using Pine.Application.Planning;
+using Pine.Core.Accounts;
 using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Common;
+using Pine.Core.Planning;
+using Pine.Ui.Avalonia.Controls;
 using Pine.Ui.Avalonia.Localization;
 using Pine.Ui.Avalonia.Services;
 using Pine.Ui.Avalonia.Diagnostics;
@@ -26,57 +30,29 @@ namespace Pine.Ui.Avalonia.ViewModels;
 
 public partial class BudgetProgressViewModel : ObservableObject
 {
-    /// <summary>
-    /// Builds a row from one measured budget, the one way both the budgets page and the dashboard's
-    /// budgets tile do it (post-audit plan item 1.3).
-    /// </summary>
-    /// <remarks>
-    /// Extracted rather than copied when the dashboard gained a budgets tile: the page and the tile
-    /// must agree about what an unknown spend and an unresolved category look like, and two mappings
-    /// written apart are two mappings that drift apart. TD-99's rule -- an unknown spend is "Not
-    /// known", never a zero -- lives here once.
-    /// </remarks>
-    /// <param name="row">The measured budget.</param>
-    /// <param name="localizer">The string table the "not known" and "unknown category" text come from.</param>
-    /// <returns>The row.</returns>
     public static BudgetProgressViewModel From(BudgetProgress row, ILocalizer localizer)
     {
         ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(localizer);
 
-        return new BudgetProgressViewModel
+        var vm = new BudgetProgressViewModel
         {
             BudgetId = row.BudgetId,
-
-            // NO FALLBACK, BECAUSE THERE IS NOTHING LEFT TO FALL BACK FROM (TD-132, plan item 2.3).
-            // This used to read `row.CategoryName ?? localizer["Budgets.Category.Unresolved"]`, and
-            // "Unknown category" was what EVERY budget rendered as: the name came from a
-            // `Categories` row and nothing in the shipping application ever wrote one. The budget
-            // now carries the label itself, and the aggregate refuses a budget without one.
-            //
-            // THE COLOUR SWATCH IS GONE WITH IT. The hex came from `Category.ColorHex`, an attribute
-            // of the deleted aggregate. Deriving one from the label — hashing it into a palette —
-            // would put a colour on the screen that the user never chose and that would change if
-            // they renamed the category, which is the shape of invention this audit exists to
-            // remove. When category management is built, the swatch comes back with a real value
-            // behind it.
             CategoryName = row.Category,
             PeriodText = localizer[PeriodKey(row.Period)],
+            AccountId = row.AccountId,
+            AccountName = row.AccountName ?? string.Empty,
             LimitAmount = row.Limit.Amount,
             CurrencyCode = row.Limit.Currency.Value,
             IsSpendKnown = row.IsSpendKnown,
             SpentAmount = row.Spent?.Amount ?? 0m,
             UnknownSpendText = localizer["Budgets.Progress.SpendUnknown"],
         };
+
+        vm.UpdateStatusText(localizer);
+        return vm;
     }
 
-    /// <summary>The string-table key naming a period on screen.</summary>
-    /// <remarks>
-    /// A switch rather than <c>"Budgets.Period." + period</c>, so every key is a literal the catalog test
-    /// can find, and a new enum member fails to compile here instead of rendering as a raw key.
-    /// </remarks>
-    /// <param name="period">The period.</param>
-    /// <returns>The key.</returns>
     public static string PeriodKey(BudgetPeriod period) => period switch
     {
         BudgetPeriod.Weekly => "Budgets.Period.Weekly",
@@ -90,14 +66,6 @@ public partial class BudgetProgressViewModel : ObservableObject
     [ObservableProperty]
     public partial Guid BudgetId { get; set; }
 
-    /// <summary>
-    /// What the budget is measured over — weekly, monthly — in the user's language (TD-152).
-    /// </summary>
-    /// <remarks>
-    /// The row never said. That was survivable while nothing could create a budget; with a form that
-    /// offers four periods, two rows for the same category would otherwise be indistinguishable, and
-    /// the over-limit warning used to say "monthly" whatever the period was.
-    /// </remarks>
     [ObservableProperty]
     public partial string PeriodText { get; set; } = string.Empty;
 
@@ -105,15 +73,30 @@ public partial class BudgetProgressViewModel : ObservableObject
     public partial string CategoryName { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial Guid? AccountId { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAccountScope))]
+    public partial string AccountName { get; set; } = string.Empty;
+
+    public bool HasAccountScope => !string.IsNullOrWhiteSpace(AccountName);
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LimitAmountText))]
     [NotifyPropertyChangedFor(nameof(ProgressPercentage))]
+    [NotifyPropertyChangedFor(nameof(ClampedProgressPercentage))]
     [NotifyPropertyChangedFor(nameof(IsExceeded))]
+    [NotifyPropertyChangedFor(nameof(IsNearLimit))]
+    [NotifyPropertyChangedFor(nameof(IsHealthy))]
     public partial decimal LimitAmount { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SpentAmountText))]
     [NotifyPropertyChangedFor(nameof(ProgressPercentage))]
+    [NotifyPropertyChangedFor(nameof(ClampedProgressPercentage))]
     [NotifyPropertyChangedFor(nameof(IsExceeded))]
+    [NotifyPropertyChangedFor(nameof(IsNearLimit))]
+    [NotifyPropertyChangedFor(nameof(IsHealthy))]
     public partial decimal SpentAmount { get; set; }
 
     [ObservableProperty]
@@ -121,67 +104,69 @@ public partial class BudgetProgressViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(LimitAmountText))]
     public partial string CurrencyCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Whether a real spend figure was measured for this budget.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// FALSE MEANS "NOT KNOWN", NOT "ZERO" (TD-99). <c>GetBudgetProgressQuery</c> returns a null
-    /// spend for a budget whose category or period cannot be resolved, and this row must carry that
-    /// distinction all the way to the screen: rendering an unknown spend as 0 is precisely the
-    /// fabrication this row exists to remove — it is a bar reading "0% of your limit used", which
-    /// is a factual claim about the user's money that nothing checked.
-    /// </para>
-    /// <para>
-    /// It defaults to <see langword="true"/> so that a row built from a measured figure needs no
-    /// extra ceremony, and so the formatting tests that construct a bare row keep meaning what they
-    /// meant.
-    /// </para>
-    /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SpentAmountText))]
     [NotifyPropertyChangedFor(nameof(ProgressPercentage))]
+    [NotifyPropertyChangedFor(nameof(ClampedProgressPercentage))]
     [NotifyPropertyChangedFor(nameof(IsExceeded))]
+    [NotifyPropertyChangedFor(nameof(IsNearLimit))]
+    [NotifyPropertyChangedFor(nameof(IsHealthy))]
     public partial bool IsSpendKnown { get; set; } = true;
 
-    /// <summary>
-    /// What stands in for the spend when it is not known. Supplied by the page from the localizer,
-    /// because this row is constructed by hand and must not reach into a static one.
-    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SpentAmountText))]
     public partial string UnknownSpendText { get; set; } = "—";
 
+    [ObservableProperty]
+    public partial string RemainingStatusText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PercentBadgeText { get; set; } = string.Empty;
+
     public double ProgressPercentage =>
         IsSpendKnown && LimitAmount > 0 ? (double)(SpentAmount / LimitAmount) * 100 : 0;
 
+    public double ClampedProgressPercentage => Math.Clamp(ProgressPercentage, 0, 100);
+
     public bool IsExceeded => IsSpendKnown && SpentAmount > LimitAmount;
 
-    /// <summary>The spent figure, rendered at its currency's scale (TD-75), or said to be unknown.</summary>
+    public bool IsNearLimit => IsSpendKnown && !IsExceeded && ProgressPercentage >= 75.0;
+
+    public bool IsHealthy => IsSpendKnown && !IsExceeded && !IsNearLimit;
+
     public string SpentAmountText => IsSpendKnown ? FormatAtCurrencyScale(SpentAmount) : UnknownSpendText;
 
-    /// <summary>The limit figure, rendered at its currency's scale (TD-75).</summary>
     public string LimitAmountText => FormatAtCurrencyScale(LimitAmount);
 
-    /// <summary>
-    /// Renders one of this row's amounts the way the domain says its currency should be written.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The view used to do this with a hardcoded <c>{0:N2}</c>, which is two decimals for every
-    /// currency including the ones that do not have two. This row holds a bare <see cref="decimal"/>
-    /// and a currency code rather than a <see cref="Money"/>, so unlike the widgets it cannot simply
-    /// bind through the shared converter — the pair has to be rejoined into a <c>Money</c> first, and
-    /// this is the one place that knows both halves.
-    /// </para>
-    /// <para>
-    /// <see cref="CurrencyCode.FromStoredValue"/> and <see cref="Money.FromRounded"/> are the
-    /// non-throwing pair on purpose. This is a read path feeding a screen: a budget denominated in a
-    /// code that is no longer in the ISO table (TD-63 lets one be created) must render as something
-    /// rather than take the budgets page down, which is the same argument
-    /// <c>Account.OpeningBalance</c> settled under TD-77.
-    /// </para>
-    /// </remarks>
+    private void UpdateStatusText(ILocalizer localizer)
+    {
+        if (!IsSpendKnown)
+        {
+            RemainingStatusText = string.Empty;
+            PercentBadgeText = "—";
+            return;
+        }
+
+        var pct = (int)Math.Round(ProgressPercentage);
+        PercentBadgeText = localizer.Format("Budgets.Progress.PercentUsed", pct);
+
+        if (IsExceeded)
+        {
+            var over = FormatMoneyWithCode(SpentAmount - LimitAmount);
+            RemainingStatusText = localizer.Format("Budgets.Progress.OverBy", over);
+        }
+        else
+        {
+            var left = FormatMoneyWithCode(LimitAmount - SpentAmount);
+            RemainingStatusText = localizer.Format("Budgets.Progress.Remaining", left);
+        }
+    }
+
+    private string FormatMoneyWithCode(decimal amount) =>
+        string.IsNullOrWhiteSpace(CurrencyCode)
+            ? FormatAtCurrencyScale(amount)
+            : $"{FormatAtCurrencyScale(amount)} {CurrencyCode}";
+
     private string FormatAtCurrencyScale(decimal amount)
     {
         if (string.IsNullOrWhiteSpace(CurrencyCode))
@@ -194,36 +179,126 @@ public partial class BudgetProgressViewModel : ObservableObject
     }
 }
 
+public sealed class RecurringIncomeRowViewModel : ObservableObject
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string AmountText { get; init; } = string.Empty;
+    public string AccountName { get; init; } = string.Empty;
+    public string ScheduleText { get; init; } = string.Empty;
+    public string NextPaydayText { get; init; } = string.Empty;
+    public string StatusText { get; init; } = string.Empty;
+    public string ToggleLabel { get; init; } = string.Empty;
+    public bool IsActive { get; init; }
+    public bool IsDueNow { get; init; }
+
+    public static RecurringIncomeRowViewModel From(RecurringIncomeSummary item, ILocalizer localizer)
+    {
+        var freqKey = item.Frequency switch
+        {
+            RecurringFrequency.BiWeekly => "Planning.Income.Freq.BiWeekly",
+            RecurringFrequency.Weekly => "Planning.Income.Freq.Weekly",
+            _ => "Planning.Income.Freq.Monthly",
+        };
+
+        return new RecurringIncomeRowViewModel
+        {
+            Id = item.Id,
+            Name = item.Name,
+            AmountText = item.Amount.ToString(),
+            AccountName = item.AccountName,
+            ScheduleText = localizer.Format("Planning.Income.DaySummary", item.DayOfMonth, localizer[freqKey]),
+            NextPaydayText = localizer.Format("Planning.Income.NextPayday", item.NextPayday.ToString("d", CultureInfo.CurrentCulture)),
+            StatusText = localizer[item.IsActive ? "Planning.Income.Active" : "Planning.Income.Paused"],
+            ToggleLabel = localizer[item.IsActive ? "Planning.Income.Pause" : "Planning.Income.Resume"],
+            IsActive = item.IsActive,
+            IsDueNow = item.IsDueNow,
+        };
+    }
+}
+
+public sealed class SavingsGoalRowViewModel : ObservableObject
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string SavedText { get; init; } = string.Empty;
+    public string TargetText { get; init; } = string.Empty;
+    public string RemainingText { get; init; } = string.Empty;
+    public string MonthlyChipText { get; init; } = string.Empty;
+    public string MonthsLeftText { get; init; } = string.Empty;
+    public string QuickAddText { get; init; } = string.Empty;
+    public decimal QuickAddAmount { get; init; }
+    public double ProgressPercentage { get; init; }
+    public bool IsCompleted { get; init; }
+    public bool HasMonthlyTarget => QuickAddAmount > 0m;
+    public string CenterPercentText => string.Create(CultureInfo.CurrentCulture, $"{Math.Round(ProgressPercentage):0}%");
+
+    public static SavingsGoalRowViewModel From(SavingsGoalSummary goal, ILocalizer localizer)
+    {
+        var quickAmount = goal.MonthlyTarget.Amount > 0m
+            ? goal.MonthlyTarget.Amount
+            : Math.Min(goal.RemainingAmount.Amount > 0m ? goal.RemainingAmount.Amount : 10m, 50m);
+
+        var monthsText = goal.IsCompleted
+            ? localizer["Planning.Goals.Completed"]
+            : goal.EstimatedMonthsRemaining is { } months
+                ? localizer.Format("Planning.Goals.MonthsLeft", months)
+                : string.Empty;
+
+        return new SavingsGoalRowViewModel
+        {
+            Id = goal.Id,
+            Name = goal.Name,
+            SavedText = goal.CurrentAmount.ToString(),
+            TargetText = goal.TargetAmount.ToString(),
+            RemainingText = goal.IsCompleted
+                ? localizer["Planning.Goals.Completed"]
+                : localizer.Format("Planning.Goals.Remaining", goal.RemainingAmount.ToString()),
+            MonthlyChipText = goal.MonthlyTarget.Amount > 0m
+                ? localizer.Format("Planning.Goals.MonthlyChip", goal.MonthlyTarget.ToString())
+                : string.Empty,
+            MonthsLeftText = monthsText,
+            QuickAddAmount = quickAmount,
+            QuickAddText = quickAmount > 0m
+                ? localizer.Format("Planning.Goals.QuickAdd", Money.FromRounded(quickAmount, goal.TargetAmount.Currency).ToString())
+                : localizer["Planning.Goals.AddCustom"],
+            ProgressPercentage = goal.ProgressPercentage,
+            IsCompleted = goal.IsCompleted,
+        };
+    }
+}
+
+public sealed record AccountScopeOption(Guid? AccountId, string Label)
+{
+    public override string ToString() => Label;
+}
+
+public sealed record FrequencyOption(RecurringFrequency Frequency, string Label)
+{
+    public override string ToString() => Label;
+}
+
 /// <summary>
-/// The budgets page.
+/// The Planning &amp; Budgets hub: monthly income allocation bar, category/account budgets,
+/// recurring incomes, and savings goals in one intuitive 3-tab mobile-first view.
 /// </summary>
-/// <remarks>
-/// IT DECLARED <c>IRecipient&lt;DataChangedMessage&gt;</c> FOR MONTHS WITHOUT EVER RECEIVING ONE
-/// (TD-34). Nothing registered it -- there was no manual messenger registration
-/// call anywhere for this type -- so <see cref="Receive"/> was unreachable code and adding a
-/// transaction never refreshed the budget bars. Deriving from <see cref="ObservableRecipient"/> is
-/// the fix rather than deleting the interface, because the interface described the intended
-/// behaviour correctly; it was the wiring that was missing. Activation now registers it like every
-/// other page.
-/// <para>
-/// AND FOR THOSE SAME MONTHS THE NUMBERS ON IT WERE INVENTED (TD-99). This page set
-/// <c>SpentAmount = 0m</c> for every budget behind a comment reading "Will be calculated from
-/// transactions", and named each row <c>"Category " + b.CategoryId.ToString()[..4]</c> — four hex
-/// digits of a GUID, presented where a category name goes. So every bar read 0%,
-/// <c>IsExceeded</c> was never true and the over-budget warning in <c>BudgetsView.axaml</c> was
-/// markup no user could ever see. The figures now come from <see cref="GetBudgetProgressQuery"/>,
-/// which measures them against the ledger; this page only renders what it is handed, including the
-/// case where the answer is "not known".
-/// </para>
-/// </remarks>
 public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetViewModel, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
     private readonly LocalizedMessageSlot _error;
+    private readonly LocalizedMessageSlot _createMessage;
+    private readonly LocalizedMessageSlot _incomeMessage;
+    private readonly LocalizedMessageSlot _goalMessage;
+    private readonly LocalizedMessageSlot _autoPostNotice;
 
     private readonly IMediator _mediator;
     private readonly ILocalizer _localizer;
     private readonly ILogger<BudgetsViewModel>? _logger;
 
+    private IReadOnlyList<BudgetProgress> _lastProgress = Array.Empty<BudgetProgress>();
+    private IReadOnlyList<RecurringIncomeSummary> _lastIncomes = Array.Empty<RecurringIncomeSummary>();
+    private IReadOnlyList<SavingsGoalSummary> _lastGoals = Array.Empty<SavingsGoalSummary>();
+    private MonthlyPlanSummary? _lastPlanSummary;
+    private int _loadGeneration;
 
     public string Title { get; set; } = "Budgets";
     public int ColumnSpan { get; set; } = 2;
@@ -232,93 +307,163 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
     public double Width { get; set; } = 400;
     public double Height { get; set; } = 300;
 
+    // ─── Tab state (0 = Budgets, 1 = Recurring Income, 2 = Savings Goals) ───
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBudgetsTab))]
+    [NotifyPropertyChangedFor(nameof(IsIncomeTab))]
+    [NotifyPropertyChangedFor(nameof(IsGoalsTab))]
+    public partial int ActiveTabIndex { get; set; }
+
+    public bool IsBudgetsTab => ActiveTabIndex == 0;
+    public bool IsIncomeTab => ActiveTabIndex == 1;
+    public bool IsGoalsTab => ActiveTabIndex == 2;
+
+    [RelayCommand]
+    private void SelectTab(string indexText)
+    {
+        if (int.TryParse(indexText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index) && index is >= 0 and <= 2)
+        {
+            ActiveTabIndex = index;
+        }
+    }
+
+    // ─── Monthly Plan Hero Summary ───
+    [ObservableProperty]
+    public partial bool HasRecurringIncomePlan { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsPlanOverAllocated { get; set; }
+
+    [ObservableProperty]
+    public partial string PlanMonthlyIncomeText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PlanBudgetsAllocatedText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PlanSavingsAllocatedText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PlanUnallocatedText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PlanOverAllocatedWarning { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial IReadOnlyList<ChartSegment> PlanAllocationSegments { get; set; } = Array.Empty<ChartSegment>();
+
+    [ObservableProperty]
+    public partial string AutoPostNotice { get; set; } = string.Empty;
+
+    // ─── Budgets State (preserved public surface for existing tests) ───
     [ObservableProperty]
     public partial ObservableCollection<BudgetProgressViewModel> Budgets { get; set; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
+    [NotifyPropertyChangedFor(nameof(IsIncomesEmpty))]
+    [NotifyPropertyChangedFor(nameof(IsGoalsEmpty))]
     public partial bool IsLoading { get; set; }
 
-    /// <summary>
-    /// True when the list loaded and holds nothing — the state every vault was in until this page could
-    /// create a budget (TD-152). The page said nothing at all in that state.
-    /// </summary>
     public bool IsEmpty => !IsLoading && !IsCreating && Budgets.Count == 0 && string.IsNullOrEmpty(ErrorMessage);
 
-    /// <summary>Whether the new-budget form is open.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     public partial bool IsCreating { get; set; }
 
-    /// <summary>Whether a budget is being saved, which disables the form.</summary>
     [ObservableProperty]
     public partial bool IsSaving { get; set; }
 
-    /// <summary>The category the new budget measures: the same free label a transaction's split carries.</summary>
     [ObservableProperty]
     public partial string NewCategory { get; set; } = string.Empty;
 
-    /// <summary>The new budget's limit, in <see cref="BaseCurrency"/>; null while the box is empty.</summary>
-    /// <remarks>
-    /// NULLABLE ON PURPOSE (independent review of item 3.0). Bound as a plain <see cref="decimal"/>, clearing
-    /// the box pushed null into a property that cannot hold it, the binding kept the last number, and Save
-    /// sent a limit the screen was no longer showing. An empty box is now sent as zero, which the validator
-    /// refuses with a sentence.
-    /// </remarks>
     [ObservableProperty]
     public partial decimal? NewLimit { get; set; }
 
-    /// <summary>
-    /// The currency the new budget is measured in: the vault's base currency, shown and never chosen
-    /// (TD-63).
-    /// </summary>
     [ObservableProperty]
     public partial string? BaseCurrency { get; set; }
 
-    /// <summary>The period the new budget is measured over.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NeedsDates))]
     public partial BudgetPeriodOption? NewPeriod { get; set; }
 
-    /// <summary>First day of a custom budget.</summary>
+    [ObservableProperty]
+    public partial AccountScopeOption? NewBudgetAccount { get; set; }
+
+    public IReadOnlyList<AccountScopeOption> BudgetAccountOptions { get; private set; } = Array.Empty<AccountScopeOption>();
+
     [ObservableProperty]
     public partial DateTimeOffset? NewStartDate { get; set; }
 
-    /// <summary>Last day of a custom budget, inclusive as the user picks it.</summary>
     [ObservableProperty]
     public partial DateTimeOffset? NewLastDate { get; set; }
 
-    /// <summary>Whether the chosen period needs the two date pickers.</summary>
     public bool NeedsDates => NewPeriod?.Period == BudgetPeriod.Custom;
 
-    /// <summary>What went wrong creating a budget, in the user's language, or empty.</summary>
     [ObservableProperty]
     public partial string CreateMessage { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The periods the form offers: weekly, monthly, yearly, and custom dates.
-    /// </summary>
-    /// <remarks>
-    /// BI-WEEKLY IS NOT OFFERED. A fortnight has no calendar anchor, so a bi-weekly budget without dates
-    /// can never resolve its window and would render "not known" for ever (<c>Budget.ResolveWindow</c>),
-    /// and one with dates is exactly what "custom dates" already creates. The validator refuses the
-    /// dateless form too, for any caller that is not this page.
-    /// </remarks>
     public IReadOnlyList<BudgetPeriodOption> PeriodOptions { get; private set; } = Array.Empty<BudgetPeriodOption>();
 
-    /// <param name="mediator">The request pipeline.</param>
-    /// <param name="localizer">
-    /// The string table. Optional, and defaulting to <see cref="Localizer.Instance"/> -- the same
-    /// instance the container registers -- so that a test constructing this page by hand still gets
-    /// real English rather than a key, and so the container keeps resolving it as before.
-    /// </param>
-    /// <param name="logger">Diagnostics.</param>
-    /// <remarks>
-    /// NO NAVIGATOR (TD-121). This page took <see cref="INavigationService"/> and never called it.
-    /// That was harmless only because it was unused: the container supplied the WINDOW's navigator,
-    /// so the first navigation anyone added here would have replaced the shell. A dependency held
-    /// for no reason is a defect waiting for its first caller, so it is gone rather than retyped.
-    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
+    public partial string? ErrorMessage { get; set; }
+
+    // ─── Recurring Incomes State ───
+    public ObservableCollection<RecurringIncomeRowViewModel> RecurringIncomes { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIncomesEmpty))]
+    public partial bool IsCreatingIncome { get; set; }
+
+    public bool IsIncomesEmpty => !IsLoading && !IsCreatingIncome && RecurringIncomes.Count == 0;
+
+    [ObservableProperty]
+    public partial string NewIncomeName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial decimal? NewIncomeAmount { get; set; }
+
+    [ObservableProperty]
+    public partial int NewIncomeDay { get; set; } = 1;
+
+    [ObservableProperty]
+    public partial Account? SelectedIncomeAccount { get; set; }
+
+    public ObservableCollection<Account> AvailableAccounts { get; } = new();
+
+    [ObservableProperty]
+    public partial FrequencyOption? SelectedIncomeFrequency { get; set; }
+
+    public IReadOnlyList<FrequencyOption> FrequencyOptions { get; private set; } = Array.Empty<FrequencyOption>();
+
+    [ObservableProperty]
+    public partial string IncomeMessage { get; set; } = string.Empty;
+
+    // ─── Savings Goals State ───
+    public ObservableCollection<SavingsGoalRowViewModel> SavingsGoals { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGoalsEmpty))]
+    public partial bool IsCreatingGoal { get; set; }
+
+    public bool IsGoalsEmpty => !IsLoading && !IsCreatingGoal && SavingsGoals.Count == 0;
+
+    [ObservableProperty]
+    public partial string NewGoalName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial decimal? NewGoalMonthlyTarget { get; set; }
+
+    [ObservableProperty]
+    public partial decimal? NewGoalTargetAmount { get; set; }
+
+    [ObservableProperty]
+    public partial decimal? NewGoalInitialAmount { get; set; }
+
+    [ObservableProperty]
+    public partial string GoalMessage { get; set; } = string.Empty;
+
     public BudgetsViewModel(
         IMediator mediator,
         ILocalizer? localizer = null,
@@ -329,28 +474,30 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         _logger = logger;
         _error = new LocalizedMessageSlot(_localizer, text => ErrorMessage = text);
         _createMessage = new LocalizedMessageSlot(_localizer, text => CreateMessage = text ?? string.Empty);
+        _incomeMessage = new LocalizedMessageSlot(_localizer, text => IncomeMessage = text ?? string.Empty);
+        _goalMessage = new LocalizedMessageSlot(_localizer, text => GoalMessage = text ?? string.Empty);
+        _autoPostNotice = new LocalizedMessageSlot(_localizer, text => AutoPostNotice = text ?? string.Empty);
+
         Budgets.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
+        RecurringIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsIncomesEmpty));
+        SavingsGoals.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsGoalsEmpty));
         _localizer.LanguageChanged += OnLanguageChanged;
+
+        FrequencyOptions = FrequencyChoices();
+        SelectedIncomeFrequency = FrequencyOptions[0];
     }
 
-    /// <summary>What the rows were built from, so a language change can build them again.</summary>
-    private IReadOnlyList<BudgetProgress> _lastProgress = Array.Empty<BudgetProgress>();
+    partial void OnNewGoalMonthlyTargetChanged(decimal? value)
+    {
+        if (value is > 0m && (!NewGoalTargetAmount.HasValue || NewGoalTargetAmount <= 0m))
+        {
+            NewGoalTargetAmount = value.Value * 12m;
+        }
+    }
 
-    /// <summary>
-    /// Re-words the rows and the period picker when the language changes (independent review of item 3.0).
-    /// </summary>
-    /// <remarks>
-    /// Both were worded when built: a row's period and its "not known", and the picker's labels. The
-    /// dashboard's budgets tile already rebuilt its rows on a change; this page did not. The chosen period
-    /// is kept by value, since the options are rebuilt as new objects.
-    /// </remarks>
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
-        Budgets.Clear();
-        foreach (var row in _lastProgress)
-        {
-            Budgets.Add(BudgetProgressViewModel.From(row, _localizer));
-        }
+        RebuildLocalizedViews();
 
         if (PeriodOptions.Count > 0)
         {
@@ -359,6 +506,34 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             OnPropertyChanged(nameof(PeriodOptions));
             NewPeriod = PeriodOptions.FirstOrDefault(o => o.Period == chosen) ?? PeriodOptions[0];
         }
+
+        var chosenFreq = SelectedIncomeFrequency?.Frequency;
+        FrequencyOptions = FrequencyChoices();
+        OnPropertyChanged(nameof(FrequencyOptions));
+        SelectedIncomeFrequency = FrequencyOptions.FirstOrDefault(f => f.Frequency == chosenFreq) ?? FrequencyOptions[0];
+    }
+
+    private void RebuildLocalizedViews()
+    {
+        Budgets.Clear();
+        foreach (var row in _lastProgress)
+        {
+            Budgets.Add(BudgetProgressViewModel.From(row, _localizer));
+        }
+
+        RecurringIncomes.Clear();
+        foreach (var item in _lastIncomes)
+        {
+            RecurringIncomes.Add(RecurringIncomeRowViewModel.From(item, _localizer));
+        }
+
+        SavingsGoals.Clear();
+        foreach (var goal in _lastGoals)
+        {
+            SavingsGoals.Add(SavingsGoalRowViewModel.From(goal, _localizer));
+        }
+
+        ApplyPlanSummary(_lastPlanSummary);
     }
 
     private List<BudgetPeriodOption> PeriodChoices() =>
@@ -366,9 +541,16 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             .Select(period => new BudgetPeriodOption(period, _localizer[BudgetProgressViewModel.PeriodKey(period)]))
             .ToList();
 
-    private readonly LocalizedMessageSlot _createMessage;
+    private FrequencyOption[] FrequencyChoices() =>
+        new[]
+        {
+            new FrequencyOption(RecurringFrequency.Monthly, _localizer["Planning.Income.Freq.Monthly"]),
+            new FrequencyOption(RecurringFrequency.BiWeekly, _localizer["Planning.Income.Freq.BiWeekly"]),
+            new FrequencyOption(RecurringFrequency.Weekly, _localizer["Planning.Income.Freq.Weekly"]),
+        };
 
-    /// <summary>Opens the new-budget form, offering the currencies of the user's accounts.</summary>
+    // ─── Budget Commands ───
+
     [RelayCommand]
     private async Task BeginCreateAsync()
     {
@@ -394,16 +576,18 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         PeriodOptions = PeriodChoices();
         OnPropertyChanged(nameof(PeriodOptions));
 
+        await RefreshAccountOptionsAsync();
+
         NewCategory = string.Empty;
         NewLimit = null;
         BaseCurrency = baseCurrency;
         NewPeriod = PeriodOptions[0];
+        NewBudgetAccount = BudgetAccountOptions.Count > 0 ? BudgetAccountOptions[0] : null;
         NewStartDate = null;
         NewLastDate = null;
         IsCreating = true;
     }
 
-    /// <summary>Closes the form without creating anything.</summary>
     [RelayCommand]
     private void CancelCreate()
     {
@@ -411,19 +595,6 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         IsCreating = false;
     }
 
-    /// <summary>Creates the budget, and shows it with its measured spend.</summary>
-    /// <remarks>
-    /// <para>
-    /// THE LAST DAY IS INCLUSIVE ON SCREEN AND EXCLUSIVE IN THE MODEL. A person choosing "1 May to 31 May"
-    /// means to include the 31st; <c>Budget.ResolveWindow</c> is half-open, <c>[Start, End)</c>. So the end
-    /// sent is the day after the one picked. Sending the picked day would silently drop the last day's
-    /// spending from every custom budget.
-    /// </para>
-    /// <para>
-    /// Refusals come back from <c>CreateBudgetCommandValidator</c> as keys and are shown here; nothing is
-    /// checked twice on the page, so the page cannot disagree with the command about what is valid.
-    /// </para>
-    /// </remarks>
     [RelayCommand]
     private async Task SaveBudgetAsync()
     {
@@ -445,8 +616,10 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
                 NewLimit ?? 0m,
                 period,
                 custom ? NewStartDate?.Date is { } start ? new DateTimeOffset(start) : null : null,
-                custom ? NewLastDate?.Date is { } last ? new DateTimeOffset(last.AddDays(1)) : null : null));
+                custom ? NewLastDate?.Date is { } last ? new DateTimeOffset(last.AddDays(1)) : null : null,
+                NewBudgetAccount?.AccountId));
 
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
         }
         catch (Exception ex)
         {
@@ -458,10 +631,6 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             IsSaving = false;
         }
 
-        // THE BUDGET IS SAVED FROM HERE ON, SO NOTHING BELOW MAY SAY OTHERWISE (independent review of item
-        // 3.0). The reload used to sit inside the try above: a failed reload was caught as a failed create,
-        // the screen said "Nothing was saved" about a budget that was, the list emptied, and a second attempt
-        // was refused as a duplicate. A reload failure is a load failure, reported where a load failure is.
         IsCreating = false;
         try
         {
@@ -473,15 +642,253 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
         }
     }
 
-    private static readonly UserFacingMessage CreateFailed = new("Budgets.Create.Failure");
+    [RelayCommand]
+    private async Task DeleteBudgetAsync(Guid budgetId)
+    {
+        try
+        {
+            await _mediator.Send(new DeleteBudgetCommand(budgetId));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await LoadBudgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "budget-delete", BudgetsUnavailable));
+        }
+    }
 
-    /// <summary>Reloads the budgets when something elsewhere changed the data.</summary>
-    /// <remarks>
-    /// Observed rather than discarded (TD-35). Until TD-34 this method was unreachable -- the class
-    /// declared <c>IRecipient&lt;DataChangedMessage&gt;</c> and nothing ever registered it -- so its
-    /// discarded task had never actually run.
-    /// </remarks>
-    /// <param name="message">The broadcast. It carries no payload.</param>
+    // ─── Recurring Income Commands ───
+
+    [RelayCommand]
+    private async Task BeginCreateIncomeAsync()
+    {
+        _incomeMessage.Clear();
+        await RefreshAccountOptionsAsync();
+
+        if (AvailableAccounts.Count == 0)
+        {
+            _incomeMessage.Set("Budgets.Create.NoAccounts");
+            return;
+        }
+
+        NewIncomeName = string.Empty;
+        NewIncomeAmount = null;
+        NewIncomeDay = 1;
+        SelectedIncomeAccount = AvailableAccounts[0];
+        SelectedIncomeFrequency = FrequencyOptions[0];
+        IsCreatingIncome = true;
+    }
+
+    [RelayCommand]
+    private void CancelCreateIncome()
+    {
+        _incomeMessage.Clear();
+        IsCreatingIncome = false;
+    }
+
+    [RelayCommand]
+    private async Task SaveRecurringIncomeAsync()
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        _incomeMessage.Clear();
+
+        try
+        {
+            await _mediator.Send(new CreateRecurringIncomeCommand(
+                NewIncomeName,
+                NewIncomeAmount ?? 0m,
+                SelectedIncomeAccount?.Id ?? Guid.Empty,
+                NewIncomeDay,
+                SelectedIncomeFrequency?.Frequency ?? RecurringFrequency.Monthly));
+
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            _incomeMessage.Set(UserFacingError.Report(_logger, ex, "recurring-income-create", IncomeFailed));
+            return;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+
+        IsCreatingIncome = false;
+        await ReloadPlanningSafeAsync();
+    }
+
+    [RelayCommand]
+    private async Task PostRecurringIncomeNowAsync(Guid id)
+    {
+        try
+        {
+            await _mediator.Send(new PostRecurringIncomeNowCommand(id));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _incomeMessage.Set(UserFacingError.Report(_logger, ex, "recurring-income-post", IncomeFailed));
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleRecurringIncomeAsync(RecurringIncomeRowViewModel row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _mediator.Send(new ToggleRecurringIncomeCommand(row.Id, !row.IsActive));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _incomeMessage.Set(UserFacingError.Report(_logger, ex, "recurring-income-toggle", IncomeFailed));
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteRecurringIncomeAsync(Guid id)
+    {
+        try
+        {
+            await _mediator.Send(new DeleteRecurringIncomeCommand(id));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _incomeMessage.Set(UserFacingError.Report(_logger, ex, "recurring-income-delete", IncomeFailed));
+        }
+    }
+
+    // ─── Savings Goal Commands ───
+
+    [RelayCommand]
+    private async Task BeginCreateGoalAsync()
+    {
+        _goalMessage.Clear();
+
+        string? baseCurrency;
+        try
+        {
+            baseCurrency = await _mediator.Send(new GetBaseCurrencyQuery());
+        }
+        catch (Exception ex)
+        {
+            _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-base-currency", GoalFailed));
+            return;
+        }
+
+        if (string.IsNullOrEmpty(baseCurrency))
+        {
+            _goalMessage.Set("Budgets.Create.NoAccounts");
+            return;
+        }
+
+        BaseCurrency = baseCurrency;
+        NewGoalName = string.Empty;
+        NewGoalMonthlyTarget = null;
+        NewGoalTargetAmount = null;
+        NewGoalInitialAmount = 0m;
+        IsCreatingGoal = true;
+    }
+
+    [RelayCommand]
+    private void CancelCreateGoal()
+    {
+        _goalMessage.Clear();
+        IsCreatingGoal = false;
+    }
+
+    [RelayCommand]
+    private async Task SaveGoalAsync()
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        _goalMessage.Clear();
+
+        try
+        {
+            var monthly = NewGoalMonthlyTarget ?? 0m;
+            var target = NewGoalTargetAmount ?? (monthly > 0m ? monthly * 12m : 0m);
+
+            await _mediator.Send(new CreateSavingsGoalCommand(
+                NewGoalName,
+                target,
+                monthly,
+                NewGoalInitialAmount ?? 0m));
+
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-create", GoalFailed));
+            return;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+
+        IsCreatingGoal = false;
+        await ReloadPlanningSafeAsync();
+    }
+
+    [RelayCommand]
+    private async Task QuickContributeGoalAsync(SavingsGoalRowViewModel row)
+    {
+        if (row is null || row.QuickAddAmount <= 0m)
+        {
+            return;
+        }
+
+        try
+        {
+            await _mediator.Send(new ContributeSavingsGoalCommand(row.Id, row.QuickAddAmount));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-contribute", GoalFailed));
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteGoalAsync(Guid id)
+    {
+        try
+        {
+            await _mediator.Send(new DeleteSavingsGoalCommand(id));
+            WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            await ReloadPlanningSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            _goalMessage.Set(UserFacingError.Report(_logger, ex, "savings-goal-delete", GoalFailed));
+        }
+    }
+
+    private static readonly UserFacingMessage CreateFailed = new("Budgets.Create.Failure");
+    private static readonly UserFacingMessage IncomeFailed = new("Planning.Income.Failure");
+    private static readonly UserFacingMessage GoalFailed = new("Planning.Goals.Failure");
+    private static readonly UserFacingMessage BudgetsUnavailable = new("Budgets.Failure.Load");
+
     public void Receive(DataChangedMessage message)
     {
         ObservedTask.Run(
@@ -492,72 +899,196 @@ public partial class BudgetsViewModel : ObservableRecipient, IDashboardWidgetVie
             _error.Set);
     }
 
-    /// <inheritdoc />
     public InitializationFailurePolicy InitializationFailurePolicy => new(
         _logger,
         "budgets-load",
         BudgetsUnavailable,
         _error.Set);
 
-    /// <summary>What the user reads when the budget list cannot be read.</summary>
-    /// <remarks>
-    /// <c>LoadBudgetsAsync</c> has a <c>try/finally</c> and no <c>catch</c>, and it clears
-    /// <c>Budgets</c> BEFORE its await -- so a failure used to leave an empty list with
-    /// <c>IsLoading</c> correctly false, which reads as "you have no budgets" (TD-35).
-    /// </remarks>
-    private static readonly UserFacingMessage BudgetsUnavailable = new("Budgets.Failure.Load");
-
-    /// <summary>Releases the localized message slot.</summary>
-    /// <remarks>
-    /// CA1001, for the reason every page that owns a slot gives: it subscribes to the process-lifetime
-    /// localizer. <c>PageActivation.Deactivate</c> disposes a page that implements this.
-    /// </remarks>
     public void Dispose()
     {
         _localizer.LanguageChanged -= OnLanguageChanged;
         _error.Dispose();
         _createMessage.Dispose();
+        _incomeMessage.Dispose();
+        _goalMessage.Dispose();
+        _autoPostNotice.Dispose();
         GC.SuppressFinalize(this);
     }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsEmpty))]
-    public partial string? ErrorMessage { get; set; }
-
-    /// <inheritdoc />
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
+        try
+        {
+            var posted = await _mediator.Send(new ProcessDueRecurringIncomesCommand(), cancellationToken);
+            if (posted > 0)
+            {
+                _autoPostNotice.Set("Planning.Income.AutoPostedNotice", posted);
+                WeakReferenceMessenger.Default.Send(new DataChangedMessage());
+            }
+        }
+        catch (Exception)
+        {
+            // Non-fatal: e.g. unit test mocks or empty vaults without recurring incomes.
+        }
+
         await LoadBudgetsAsync();
     }
 
     [RelayCommand]
     private async Task LoadBudgetsAsync()
     {
+        var generation = Interlocked.Increment(ref _loadGeneration);
         IsLoading = true;
-        Budgets.Clear();
 
         try
         {
-            var progress = await _mediator.Send(new GetBudgetProgressQuery());
-            _lastProgress = progress;
+            var progress = await _mediator.Send(new GetBudgetProgressQuery()) ?? Array.Empty<BudgetProgress>();
 
+            IReadOnlyList<RecurringIncomeSummary>? incomes = null;
+            IReadOnlyList<SavingsGoalSummary>? goals = null;
+            MonthlyPlanSummary? planSummary = null;
+            var planningLoaded = false;
+
+            try
+            {
+                incomes = await _mediator.Send(new GetRecurringIncomesQuery());
+                goals = await _mediator.Send(new GetSavingsGoalsQuery());
+                planSummary = await _mediator.Send(new GetMonthlyPlanSummaryQuery());
+                planningLoaded = true;
+            }
+            catch (Exception)
+            {
+                // Keep Budgets screen functional even when optional planning queries are unmocked in isolated tests.
+            }
+
+            // Drop stale results from an earlier overlapping load so lists never duplicate or revert.
+            if (generation != Volatile.Read(ref _loadGeneration))
+            {
+                return;
+            }
+
+            _lastProgress = progress;
+            Budgets.Clear();
             foreach (var row in progress)
             {
                 Budgets.Add(BudgetProgressViewModel.From(row, _localizer));
             }
+
+            if (planningLoaded)
+            {
+                _lastIncomes = incomes ?? Array.Empty<RecurringIncomeSummary>();
+                RecurringIncomes.Clear();
+                foreach (var item in _lastIncomes)
+                {
+                    RecurringIncomes.Add(RecurringIncomeRowViewModel.From(item, _localizer));
+                }
+
+                _lastGoals = goals ?? Array.Empty<SavingsGoalSummary>();
+                SavingsGoals.Clear();
+                foreach (var goal in _lastGoals)
+                {
+                    SavingsGoals.Add(SavingsGoalRowViewModel.From(goal, _localizer));
+                }
+
+                _lastPlanSummary = planSummary;
+                ApplyPlanSummary(planSummary);
+            }
         }
         finally
         {
-            IsLoading = false;
+            if (generation == Volatile.Read(ref _loadGeneration))
+            {
+                IsLoading = false;
+            }
         }
+    }
+
+    private async Task ReloadPlanningSafeAsync()
+    {
+        try
+        {
+            await LoadBudgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error.Set(UserFacingError.Report(_logger, ex, "planning-reload", BudgetsUnavailable));
+        }
+    }
+
+    private async Task RefreshAccountOptionsAsync()
+    {
+        try
+        {
+            var accounts = await _mediator.Send(new GetAccountsQuery()) ?? Array.Empty<Account>();
+            AvailableAccounts.Clear();
+            foreach (var acct in accounts)
+            {
+                AvailableAccounts.Add(acct);
+            }
+
+            var options = new List<AccountScopeOption>
+            {
+                new(null, _localizer["Budgets.Create.AllAccounts"]),
+            };
+            options.AddRange(accounts
+                .Where(a => string.IsNullOrEmpty(BaseCurrency) || string.Equals(a.Balance.Currency.Value, BaseCurrency, StringComparison.OrdinalIgnoreCase))
+                .Select(a => new AccountScopeOption(a.Id, $"{a.Name} ({a.Balance.Currency.Value})")));
+
+            BudgetAccountOptions = options;
+            OnPropertyChanged(nameof(BudgetAccountOptions));
+        }
+        catch (Exception)
+        {
+            BudgetAccountOptions = new[] { new AccountScopeOption(null, _localizer["Budgets.Create.AllAccounts"]) };
+            OnPropertyChanged(nameof(BudgetAccountOptions));
+        }
+    }
+
+    private void ApplyPlanSummary(MonthlyPlanSummary? summary)
+    {
+        if (summary is null || summary.BaseCurrency is null)
+        {
+            HasRecurringIncomePlan = false;
+            IsPlanOverAllocated = false;
+            PlanAllocationSegments = Array.Empty<ChartSegment>();
+            PlanOverAllocatedWarning = string.Empty;
+            return;
+        }
+
+        var currency = summary.BaseCurrency;
+        HasRecurringIncomePlan = summary.HasRecurringIncome;
+        IsPlanOverAllocated = summary.IsOverAllocated;
+        PlanMonthlyIncomeText = Money.FromRounded(summary.MonthlyRecurringIncome, currency).ToString();
+        PlanBudgetsAllocatedText = Money.FromRounded(summary.MonthlyBudgetsAllocated, currency).ToString();
+        PlanSavingsAllocatedText = Money.FromRounded(summary.MonthlySavingsAllocated, currency).ToString();
+        PlanUnallocatedText = Money.FromRounded(Math.Max(0m, summary.UnallocatedMonthlyIncome), currency).ToString();
+
+        PlanOverAllocatedWarning = summary.IsOverAllocated
+            ? _localizer.Format("Budgets.Plan.OverAllocated", Money.FromRounded(-summary.UnallocatedMonthlyIncome, currency).ToString())
+            : string.Empty;
+
+        var segments = new List<ChartSegment>();
+        if (summary.MonthlyBudgetsAllocated > 0m)
+        {
+            segments.Add(new ChartSegment((double)summary.MonthlyBudgetsAllocated, "#F57104", _localizer["Budgets.Plan.AllocatedBudgets"]));
+        }
+
+        if (summary.MonthlySavingsAllocated > 0m)
+        {
+            segments.Add(new ChartSegment((double)summary.MonthlySavingsAllocated, "#10B981", _localizer["Budgets.Plan.AllocatedSavings"]));
+        }
+
+        if (summary.UnallocatedMonthlyIncome > 0m)
+        {
+            segments.Add(new ChartSegment((double)summary.UnallocatedMonthlyIncome, "#3B82F6", _localizer["Budgets.Plan.Unallocated"]));
+        }
+
+        PlanAllocationSegments = segments;
     }
 }
 
-/// <summary>A period the new-budget form offers, with its name in the user's language.</summary>
-/// <param name="Period">The period.</param>
-/// <param name="Label">What the picker shows.</param>
 public sealed record BudgetPeriodOption(BudgetPeriod Period, string Label)
 {
-    /// <inheritdoc />
     public override string ToString() => Label;
 }

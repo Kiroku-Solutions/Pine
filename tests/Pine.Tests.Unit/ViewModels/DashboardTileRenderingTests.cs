@@ -149,6 +149,7 @@ public class DashboardTileRenderingTests
             (new CashFlowWidgetViewModel(mediator, localizer), new CashFlowWidgetView(), "Dashboard.CashFlow.Empty"),
             (new BudgetWidgetViewModel(mediator, localizer), new BudgetWidgetView(), "Dashboard.Budgets.Empty"),
             (new BalanceWidgetViewModel(mediator, localizer), new BalanceWidgetView(), "BalanceWidget.EmptyState"),
+            (new SavingsGoalsWidgetViewModel(mediator, localizer), new SavingsGoalsWidgetView(), "Dashboard.Goals.Empty"),
             (new RecentTransactionsWidgetViewModel(mediator, localizer), new RecentTransactionsWidgetView(), "RecentTransactionsWidget.EmptyState"),
         };
 
@@ -167,6 +168,7 @@ public class DashboardTileRenderingTests
         mediator.Send(Arg.Any<GetBudgetProgressQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("disk"));
         mediator.Send(Arg.Any<GetMonthlyCashFlowQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("disk"));
         mediator.Send(Arg.Any<GetTransactionsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("disk"));
+        mediator.Send(Arg.Any<Pine.Application.Planning.GetSavingsGoalsQuery>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("disk"));
 
         // Through the dashboard -- the real path, which starts each tile and routes its failure onto it.
         var dashboard = new DashboardViewModel(mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: localizer);
@@ -178,6 +180,7 @@ public class DashboardTileRenderingTests
             [typeof(CashFlowWidgetViewModel)] = (() => new CashFlowWidgetView(), "Dashboard.CashFlow.Empty"),
             [typeof(BudgetWidgetViewModel)] = (() => new BudgetWidgetView(), "Dashboard.Budgets.Empty"),
             [typeof(BalanceWidgetViewModel)] = (() => new BalanceWidgetView(), "BalanceWidget.EmptyState"),
+            [typeof(SavingsGoalsWidgetViewModel)] = (() => new SavingsGoalsWidgetView(), "Dashboard.Goals.Empty"),
             [typeof(RecentTransactionsWidgetViewModel)] = (() => new RecentTransactionsWidgetView(), "RecentTransactionsWidget.EmptyState"),
         };
 
@@ -255,5 +258,36 @@ public class DashboardTileRenderingTests
 
         VisibleText(new BudgetWidgetView(), tile).Should().Contain("No budgets yet.",
             "positive control, pinned in literal English: the empty state DOES appear once an empty read succeeds");
+    });
+
+    [Fact]
+    public Task TheSavingsGoalsTile_WithAGoal_ShowsNameAndMonthlyChip() => InEnglish(localizer =>
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.Send(Arg.Any<Pine.Application.Planning.GetSavingsGoalsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Pine.Application.Planning.SavingsGoalSummary>>(new[]
+            {
+                new Pine.Application.Planning.SavingsGoalSummary(
+                    Guid.NewGuid(),
+                    "Emergency Fund",
+                    new Money(480m, Usd),
+                    new Money(120m, Usd),
+                    new Money(40m, Usd),
+                    new Money(360m, Usd),
+                    25.0,
+                    false,
+                    9,
+                    null,
+                    null,
+                    null),
+            }));
+
+        var tile = new SavingsGoalsWidgetViewModel(mediator, localizer);
+        tile.InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+        var text = VisibleText(new SavingsGoalsWidgetView(), tile);
+        text.Should().Contain("Emergency Fund");
+        text.Should().Contain(t => t.Contains("40", StringComparison.Ordinal) && t.Contains("/mo", StringComparison.Ordinal));
+        text.Should().NotContain(localizer["Dashboard.Goals.Empty"]);
     });
 }

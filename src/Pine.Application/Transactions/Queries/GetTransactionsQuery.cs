@@ -25,7 +25,13 @@ namespace Pine.Application.Transactions.Queries;
 /// Whether voided rows are listed (TD-71). Defaults to true so the dashboard widgets, which have
 /// always seen every row, are unchanged; the transaction list passes its toggle.
 /// </param>
-public record GetTransactionsQuery(int Page, int PageSize, bool IncludeVoided = true) : IRequest<Pine.Core.Common.PagedResult<Transaction>>;
+public record GetTransactionsQuery(
+    int Page,
+    int PageSize,
+    bool IncludeVoided = true,
+    System.Collections.Generic.IReadOnlyCollection<System.Guid>? AccountIds = null,
+    TransactionType? TypeFilter = null,
+    string? SearchText = null) : IRequest<Pine.Core.Common.PagedResult<Transaction>>;
 
 public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery, Pine.Core.Common.PagedResult<Transaction>>
 {
@@ -38,6 +44,18 @@ public class GetTransactionsQueryHandler : IRequestHandler<GetTransactionsQuery,
 
     public async Task<Pine.Core.Common.PagedResult<Transaction>> Handle(GetTransactionsQuery request, CancellationToken cancellationToken)
     {
-        return await _transactionRepository.GetPagedAsync(request.Page, request.PageSize, request.IncludeVoided, cancellationToken);
+        if (request.AccountIds is null && request.TypeFilter is null && string.IsNullOrWhiteSpace(request.SearchText))
+        {
+            return await _transactionRepository.GetPagedAsync(request.Page, request.PageSize, request.IncludeVoided, cancellationToken);
+        }
+
+        return await _transactionRepository.GetPagedAsync(
+            request.Page,
+            request.PageSize,
+            request.IncludeVoided,
+            request.AccountIds,
+            request.TypeFilter,
+            request.SearchText,
+            cancellationToken);
     }
 }

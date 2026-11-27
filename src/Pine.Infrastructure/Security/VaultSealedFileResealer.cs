@@ -14,6 +14,7 @@ public sealed class VaultSealedFileResealer : IVaultSealedFileResealer
     [
         ("sync.key", VaultFilePurposes.SyncKey, false),
         (Path.Combine("ai", "categorizer.model"), VaultFilePurposes.CategorizerModel, true),
+        (Path.Combine("ai", "receipt-layout.model"), VaultFilePurposes.ReceiptLayoutModel, true),
     ];
 
     public void Reseal(string vaultDirectory, byte[] oldKey, byte[] newKey)

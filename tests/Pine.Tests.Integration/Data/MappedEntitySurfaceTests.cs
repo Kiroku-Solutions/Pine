@@ -65,6 +65,8 @@ public class MappedEntitySurfaceTests
         nameof(Pine.Core.Budgets.Budget),
         nameof(Pine.Core.ExchangeRates.ExchangeRate), // manually entered rates; read by the base-currency change and the Settings card
         nameof(Pine.Core.Importing.ImportProfile),
+        nameof(Pine.Core.Planning.RecurringIncome), // scheduled recurring income streams feeding monthly budget allocation and auto-posting
+        nameof(Pine.Core.Planning.SavingsGoal), // monthly savings targets and cumulative goal progress tracked in Planning & Dashboard
         nameof(Pine.Core.Rules.Rule),
         nameof(Pine.Core.Settings.Setting),
         nameof(Pine.Core.Transactions.Transaction),

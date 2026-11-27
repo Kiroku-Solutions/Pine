@@ -5,6 +5,7 @@ using Avalonia.Data.Core.Plugins;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Pine.Ui.Avalonia.Views;
 using System;
 
@@ -53,6 +54,29 @@ public partial class App : global::Avalonia.Application
             }
 
             singleView.MainView = mainView;
+
+            if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+            {
+                activatable.Deactivated += (_, args) =>
+                {
+                    if (args.Kind == ActivationKind.Background)
+                    {
+                        Services?.Main.OnAppBackgrounded();
+                    }
+                };
+
+                activatable.Activated += (_, args) =>
+                {
+                    if (args.Kind == ActivationKind.Background)
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            Services?.Main.OnAppResumed();
+                            mainView.RefreshVisualTree();
+                        }, DispatcherPriority.Render);
+                    }
+                };
+            }
         }
         else if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

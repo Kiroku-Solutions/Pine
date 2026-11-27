@@ -270,6 +270,16 @@
         "resolved": "2.7.0.1",
         "contentHash": "b1h41loXb9w3sgcXRBMtsMPkYI1bN/r+eKpKkFrsopEdUpUQXNRhr2GZ0SqNq9SbN7YzMacVTE4H1O6hBZqx0A=="
       },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "fgBOWEqbY012x7gMfJU4ezgz6dfhJb30Z6YdW35h85Zoe39+a8YNbAAwL29ihPfWoppg5AjvyKNzD1oCvlqWwA=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "3.119.4",
+        "contentHash": "XOpbx/4CReO2wYsq2s6rbvdauc6dntG4Zv499sHGTJ87bwZaFXszFkwql3+FIZMc8kUPeaj3Mx2ezIJmo8a1Kg=="
+      },
       "SQLitePCLRaw.core": {
         "type": "Transitive",
         "resolved": "2.1.12",
@@ -378,7 +388,8 @@
           "Sdcb.PaddleInference.runtime.win64.mkl": "[3.3.1.70, )",
           "Sdcb.PaddleOCR": "[3.3.1, )",
           "Sdcb.PaddleOCR.Models.Local": "[3.3.1, )",
-          "Sdcb.PaddleOCR.Models.LocalV5": "[3.3.1, )"
+          "Sdcb.PaddleOCR.Models.LocalV5": "[3.3.1, )",
+          "SkiaSharp": "[3.119.4, )"
         }
       },
       "CsvHelper": {
@@ -564,6 +575,16 @@
         "requested": "[3.3.1, )",
         "resolved": "3.3.1",
         "contentHash": "7bk+OJ/NJKQNrb88H4Gek2OI2LjRuUQF2YD+FsUfNhF9cqnuAnUsvCRJ4jFQxIdbNPiaHmDD9fZMBK/JB60NSg=="
+      },
+      "SkiaSharp": {
+        "type": "CentralTransitive",
+        "requested": "[3.119.4, )",
+        "resolved": "3.119.4",
+        "contentHash": "53NOSUZ1Us+91Sm0uCkIivh/k7jOowRErZT2sIWwPFN9mLUvdxnE6rS4sWo4255+Rd2MWUSF+j0NMZHD6Cke+Q==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "3.119.4",
+          "SkiaSharp.NativeAssets.macOS": "3.119.4"
+        }
       },
       "SQLitePCLRaw.bundle_e_sqlcipher": {
         "type": "CentralTransitive",

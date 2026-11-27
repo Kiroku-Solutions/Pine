@@ -8,6 +8,7 @@ using Pine.Infrastructure.Data.Converters;
 using Pine.Core.Transactions;
 using Pine.Core.Budgets;
 using Pine.Core.ExchangeRates;
+using Pine.Core.Planning;
 using Pine.Core.Settings;
 using Pine.Core.Importing;
 using System.Text.Json;
@@ -35,6 +36,8 @@ public sealed class PineDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
+    public DbSet<RecurringIncome> RecurringIncomes => Set<RecurringIncome>();
+    public DbSet<SavingsGoal> SavingsGoals => Set<SavingsGoal>();
 
     /// <summary>Deletions a merge will need to see (TD-145). Store bookkeeping, not user data.</summary>
     public DbSet<SyncTombstone> Tombstones => Set<SyncTombstone>();
@@ -126,9 +129,16 @@ public sealed class PineDbContext : DbContext
                     c => c!.Value,
                     v => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(v));
 
+            // Optional parent hierarchy (shared-pool sub-accounts / pockets). Undeclared FK to avoid
+            // circular insert ordering during sync; SyncSchema tracks the reference explicitly.
+            e.Property(a => a.ParentAccountId);
+            e.HasIndex(a => a.ParentAccountId);
+            e.Property(a => a.MonthlyAllocation).HasConversion(new ScaledMoneyConverter());
+
             // Derived. No setter and no backing field, so EF must be told not to map them.
             e.Ignore(a => a.OpeningBalanceCurrencyMatchesAccount);
             e.Ignore(a => a.OpeningBalance);
+            e.Ignore(a => a.IsSubAccount);
         });
 
         modelBuilder.Entity<Transaction>(e =>
@@ -322,6 +332,87 @@ public sealed class PineDbContext : DbContext
             e.Property(b => b.PreviousLimitCurrency);
             e.Property(b => b.LimitConversionRate).HasConversion(new ScaledRateConverter());
             e.Property(b => b.LimitConvertedAtUtc);
+
+            // Optional account scope: null measures expenses across all accounts; non-null scopes to one account.
+            e.Property(b => b.AccountId);
+            e.HasIndex(b => b.AccountId);
+        });
+
+        modelBuilder.Entity<RecurringIncome>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Name).IsRequired();
+            e.Property(r => r.Category).IsRequired();
+            e.Property(r => r.Frequency).HasConversion<string>();
+            e.Property(r => r.DayOfMonth).IsRequired();
+            e.Property(r => r.IsActive).IsRequired();
+            e.Property(r => r.LastPostedDateUtc);
+            e.Property(r => r.CreatedAtUtc).IsRequired();
+
+            e.ComplexProperty(r => r.Amount, amount =>
+            {
+                amount.Property(m => m.Amount).HasColumnName("Amount_Amount").HasConversion(new ScaledMoneyConverter());
+                amount.Property(m => m.Currency).HasColumnName("Amount_Currency")
+                    .HasConversion(
+                        c => c.Value,
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            });
+
+            e.HasOne<Account>()
+                .WithMany()
+                .HasForeignKey(r => r.AccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(r => r.AccountId);
+
+            e.Ignore(r => r.MonthlyEquivalentAmount);
+        });
+
+        modelBuilder.Entity<SavingsGoal>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Name).IsRequired();
+            e.Property(g => g.TargetDate);
+            e.Property(g => g.TargetDateUtc);
+            e.Property(g => g.LinkedAccountId);
+            e.Property(g => g.CreatedAtUtc).IsRequired();
+
+            e.ComplexProperty(g => g.TargetAmount, amount =>
+            {
+                amount.Property(m => m.Amount).HasColumnName("TargetAmount_Amount").HasConversion(new ScaledMoneyConverter());
+                amount.Property(m => m.Currency).HasColumnName("TargetAmount_Currency")
+                    .HasConversion(
+                        c => c.Value,
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            });
+
+            e.ComplexProperty(g => g.CurrentAmount, amount =>
+            {
+                amount.Property(m => m.Amount).HasColumnName("CurrentAmount_Amount").HasConversion(new ScaledMoneyConverter());
+                amount.Property(m => m.Currency).HasColumnName("CurrentAmount_Currency")
+                    .HasConversion(
+                        c => c.Value,
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            });
+
+            e.ComplexProperty(g => g.MonthlyTarget, amount =>
+            {
+                amount.Property(m => m.Amount).HasColumnName("MonthlyTarget_Amount").HasConversion(new ScaledMoneyConverter());
+                amount.Property(m => m.Currency).HasColumnName("MonthlyTarget_Currency")
+                    .HasConversion(
+                        c => c.Value,
+                        c => Pine.Core.Common.ValueObjects.CurrencyCode.FromStoredValue(c));
+            });
+
+            e.HasOne<Account>()
+                .WithMany()
+                .HasForeignKey(g => g.LinkedAccountId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(g => g.LinkedAccountId);
+
+            e.Ignore(g => g.ProgressPercentage);
+            e.Ignore(g => g.RemainingAmount);
+            e.Ignore(g => g.IsCompleted);
+            e.Ignore(g => g.EstimatedMonthsRemaining);
         });
 
         // A rate a person typed, in force from a UTC day. The pair and the day are the natural key, and the unique

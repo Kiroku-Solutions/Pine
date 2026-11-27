@@ -16,6 +16,20 @@ public sealed class Account : AggregateRoot
     public DateTimeOffset UpdatedAt { get; private set; }
 
     /// <summary>
+    /// Optional parent account identifier. When set, this account acts as a spending sub-account
+    /// (pocket) that shares the parent account's money pool without double-counting totals.
+    /// </summary>
+    public Guid? ParentAccountId { get; private set; }
+
+    /// <summary>
+    /// Optional target monthly allocation from the parent account's pool, in the account's currency.
+    /// </summary>
+    public decimal? MonthlyAllocation { get; private set; }
+
+    /// <summary>Whether this account is a sub-account linked to a parent account.</summary>
+    public bool IsSubAccount => ParentAccountId.HasValue;
+
+    /// <summary>
     /// The balance this account started from, or <see langword="null"/> for an account created before
     /// opening balances were recorded.
     /// </summary>
@@ -76,12 +90,21 @@ public sealed class Account : AggregateRoot
     private Account() { }
 #pragma warning restore CS8618
 
-    private Account(Guid id, string name, AccountType type, Money initialBalance, TimeProvider timeProvider)
+    private Account(
+        Guid id,
+        string name,
+        AccountType type,
+        Money initialBalance,
+        TimeProvider timeProvider,
+        Guid? parentAccountId,
+        decimal? monthlyAllocation)
         : base(id)
     {
         Name = name;
         Type = type;
         Balance = initialBalance;
+        ParentAccountId = parentAccountId;
+        MonthlyAllocation = monthlyAllocation;
         // Kept apart from Balance and never mutated again, so a ledger sum always has a fixed figure
         // to be measured against.
         OpeningBalanceAmount = initialBalance.Amount;
@@ -90,12 +113,28 @@ public sealed class Account : AggregateRoot
         UpdatedAt = CreatedAt;
     }
 
-    public static Account Create(string name, AccountType type, Money initialBalance, TimeProvider timeProvider)
+    public static Account Create(
+        string name,
+        AccountType type,
+        Money initialBalance,
+        TimeProvider timeProvider,
+        Guid? parentAccountId = null,
+        decimal? monthlyAllocation = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Account name cannot be empty", nameof(name));
-        
-        return new Account(Guid.NewGuid(), name, type, initialBalance, timeProvider);
+
+        if (monthlyAllocation.HasValue && monthlyAllocation.Value < 0m)
+            throw new ArgumentException("Monthly allocation cannot be negative.", nameof(monthlyAllocation));
+
+        var normalizedParent = parentAccountId is { } pid && pid != Guid.Empty ? pid : (Guid?)null;
+        if (normalizedParent.HasValue && initialBalance.Amount != 0m)
+            throw new ArgumentException("A shared-pool sub-account must start with a zero initial balance.", nameof(initialBalance));
+
+        if (monthlyAllocation.HasValue && Money.Round(monthlyAllocation.Value, initialBalance.Currency) != monthlyAllocation.Value)
+            throw new ArgumentException("Monthly allocation exceeds currency precision.", nameof(monthlyAllocation));
+
+        return new Account(Guid.NewGuid(), name, type, initialBalance, timeProvider, normalizedParent, monthlyAllocation);
     }
 
     public void Deposit(Money amount, TimeProvider timeProvider)

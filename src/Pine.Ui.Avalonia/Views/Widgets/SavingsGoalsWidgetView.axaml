@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
+             xmlns:pvm="using:Pine.Ui.Avalonia.ViewModels"
+             xmlns:controls="using:Pine.Ui.Avalonia.Controls"
+             xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
+             x:Class="Pine.Ui.Avalonia.Views.Widgets.SavingsGoalsWidgetView"
+             x:DataType="vm:SavingsGoalsWidgetViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto" Margin="10,0,10,10">
+        <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasGoals}">
+            <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="pvm:SavingsGoalRowViewModel">
+                        <Border Padding="10,8" Margin="0,0,0,8" CornerRadius="10"
+                                Background="{DynamicResource PineSurfaceElevated}"
+                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1">
+                            <Grid ColumnDefinitions="Auto, *" ColumnSpacing="12">
+                                <controls:RadialProgressRing Grid.Column="0" Width="48" Height="48"
+                                                             StrokeThickness="5"
+                                                             Percentage="{Binding ProgressPercentage}"
+                                                             CenterText="{Binding CenterPercentText}"
+                                                             RingBrush="{DynamicResource PineSuccess}"
+                                                             TrackBrush="{DynamicResource PineChartTrack}"
+                                                             TextBrush="{DynamicResource PineText}"
+                                                             VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{DynamicResource PineText}" TextTrimming="CharacterEllipsis" />
+                                        <Border Grid.Column="1" Classes="pine-pill-success" IsVisible="{Binding HasMonthlyTarget}">
+                                            <TextBlock Text="{Binding MonthlyChipText}" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource PineSuccess}" />
+                                        </Border>
+                                    </Grid>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{Binding SavedText}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
+                                        <TextBlock Text="{loc:Tr Budgets.Progress.Of}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                        <TextBlock Text="{Binding TargetText}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="{Binding MonthsLeftText}" FontSize="11" Foreground="{DynamicResource PineInfo}"
+                                               IsVisible="{Binding MonthsLeftText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="1" Text="{loc:Tr Dashboard.Goals.Empty}" IsVisible="{Binding IsEmpty}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center"
+                   FontSize="13" Foreground="{DynamicResource PineTextMuted}" />
+
+        <TextBlock Grid.Row="2" Text="{Binding MoreText}" IsVisible="{Binding MoreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11" Foreground="{DynamicResource PineTextMuted}" Margin="0,4,0,0" />
+    </Grid>
+</UserControl>

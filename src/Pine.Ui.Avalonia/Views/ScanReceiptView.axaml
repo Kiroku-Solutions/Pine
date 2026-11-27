@@ -11,6 +11,24 @@
              x:Class="Pine.Ui.Avalonia.Views.ScanReceiptView"
              x:DataType="vm:ScanReceiptViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="Button.tag-field-chip">
+      <Setter Property="Background" Value="{DynamicResource PineSurfaceElevated}" />
+      <Setter Property="Foreground" Value="{DynamicResource PineText}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="MinHeight" Value="38" />
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.tag-field-chip.active">
+      <Setter Property="Background" Value="{DynamicResource PinePrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource PineButtonText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PinePrimary}" />
+    </Style>
+  </UserControl.Styles>
+
   <Grid>
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
     <Border x:Name="Card" CornerRadius="12"
@@ -68,6 +86,24 @@
                     <Button Margin="5,0,0,0" Content="{loc:Tr ScanReceipt.RetakePhoto}" Command="{Binding RetakeCommand}" IsVisible="{Binding HasLiveScanner}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsBusy}" />
                 </UniformGrid>
+
+                <!-- Interactive bounding-box tagging & local model training -->
+                <Button Content="{loc:Tr ScanReceipt.Tagging.OpenButton}"
+                        Command="{Binding OpenTagEditorCommand}"
+                        IsVisible="{Binding ReceiptImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Classes="pine-outline"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        MinHeight="44" CornerRadius="10"
+                        IsEnabled="{Binding !IsBusy}" />
+
+                <Border IsVisible="{Binding TrainingBannerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        Background="{DynamicResource PineSuccessContainer}"
+                        CornerRadius="8" Padding="10,8">
+                    <TextBlock Text="{Binding TrainingBannerMessage}"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PineSuccess}"
+                               TextWrapping="Wrap" />
+                </Border>
 
                 <!-- Take the photo with the device camera (heads with a camera source and no live scanner page). -->
                 <Grid ColumnDefinitions="*, 10, *" IsVisible="{Binding HasCameraCapture}">
@@ -194,52 +230,123 @@
                             <TextBox Text="{Binding Category}" PlaceholderText="{loc:Tr ScanReceipt.Field.CategoryPlaceholder}" IsEnabled="{Binding !IsBusy}" />
                         </StackPanel>
 
-                        <!-- Line Items DataGrid -->
-                        <StackPanel Spacing="6">
+                        <!-- Line Items — Mobile-first directly editable cards (replaces cramped touch-unfriendly DataGrid) -->
+                        <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="*, Auto">
-                                <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.LineItems.Title}" FontSize="14" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
-                                <Button Grid.Column="1" Content="{loc:Tr ScanReceipt.LineItems.Add}" Command="{Binding AddLineItemCommand}" Padding="8,3" FontSize="12" IsEnabled="{Binding !IsBusy}" />
+                                <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.LineItems.Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{loc:Tr ScanReceipt.LineItems.Add}" Command="{Binding AddLineItemCommand}"
+                                        Classes="pine-outline" MinHeight="38" Padding="12,6" CornerRadius="8" FontSize="13" IsEnabled="{Binding !IsBusy}" />
                             </Grid>
 
-                            <DataGrid ItemsSource="{Binding LineItems}" AutoGenerateColumns="False"
-                                      IsReadOnly="False" SelectionMode="Single"
-                                      GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                                      CanUserSortColumns="False" CanUserResizeColumns="True"
-                                      MinHeight="80" MaxHeight="240">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnQty}" Binding="{Binding Quantity}" Width="50" />
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnPrice}" Binding="{Binding UnitPrice}" Width="70" />
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnItem}" Binding="{Binding Description}" Width="*" />
-                                    <!-- Read-only: a row changes kind through the reconciliation
-                                         panel below, which also fixes the amount, so editing the
-                                         label alone could only ever make the two disagree. -->
-                                    <!-- TD-150: a bare Binding over Kind rendered the enum's raw
-                                         member name ("Tax", "Product", ...) instead of a word. -->
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnKind}" Width="72" IsReadOnly="True">
-                                        <DataGridTextColumn.Binding>
-                                            <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
-                                                <Binding Path="Kind" />
-                                                <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
-                                            </MultiBinding>
-                                        </DataGridTextColumn.Binding>
-                                    </DataGridTextColumn>
-                                    <DataGridTextColumn Header="{loc:Tr ScanReceipt.LineItems.ColumnTotal}" Binding="{Binding TotalPrice}" Width="70" IsReadOnly="True" />
-                                    <DataGridTemplateColumn Width="40">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate x:DataType="vm:ReceiptLineItemViewModel">
-                                                <Button Command="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).RemoveLineItemCommand}"
-                                                        CommandParameter="{Binding}"
-                                                        Background="Transparent" Padding="2"
-                                                        ToolTip.Tip="{loc:Tr ScanReceipt.LineItems.RemoveTooltip}"
-                                                        AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.RemoveAutomationName}"
-                                                        Content="&#x2715;"
-                                                        Foreground="{DynamicResource PineError}" FontWeight="Bold"
-                                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                            <Border IsVisible="{Binding !HasLineItems}"
+                                    Background="{DynamicResource PineSurfaceElevated}"
+                                    BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                                    CornerRadius="10" Padding="12,10">
+                                <TextBlock Text="{loc:Tr ScanReceipt.LineItems.EmptyHint}"
+                                           FontSize="12" Foreground="{DynamicResource PineTextMuted}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding LineItems}" IsVisible="{Binding HasLineItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ReceiptLineItemViewModel">
+                                        <Border Background="{DynamicResource PineSurfaceElevated}"
+                                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                                                CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
+                                            <StackPanel Spacing="10">
+                                                <!-- Row 0: Full-width editable description + Kind pill + Remove -->
+                                                <Grid ColumnDefinitions="*, 8, Auto, 6, Auto">
+                                                    <TextBox Grid.Column="0"
+                                                             Text="{Binding Description, Mode=TwoWay}"
+                                                             PlaceholderText="{loc:Tr ScanReceipt.LineItems.DescriptionPlaceholder}"
+                                                             AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.ColumnItem}"
+                                                             MinHeight="40"
+                                                             VerticalContentAlignment="Center"
+                                                             IsEnabled="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).IsBusy, Converter={x:Static BoolConverters.Not}}" />
+
+                                                    <Border Grid.Column="2"
+                                                            Background="{DynamicResource PineInfoContainer}"
+                                                            CornerRadius="6" Padding="8,4"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding Converter="{x:Static conv:Converters.LineItemKindDisplay}">
+                                                                    <Binding Path="Kind" />
+                                                                    <Binding Path="CurrentCulture" Source="{x:Static loc:Localizer.Instance}" />
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+                                                    </Border>
+
+                                                    <Button Grid.Column="4"
+                                                            Command="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).RemoveLineItemCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Classes="pine-outline"
+                                                            Width="40" Height="40" Padding="0" CornerRadius="8"
+                                                            ToolTip.Tip="{loc:Tr ScanReceipt.LineItems.RemoveTooltip}"
+                                                            AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.RemoveAutomationName}"
+                                                            Content="&#x2715;"
+                                                            Foreground="{DynamicResource PineError}" FontWeight="Bold"
+                                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                            IsEnabled="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).IsBusy, Converter={x:Static BoolConverters.Not}}" />
+                                                </Grid>
+
+                                                <!-- Row 1a (Products / Deposits): Editable Qty + Unit Price + live Total -->
+                                                <Grid ColumnDefinitions="*, 8, 1.3*, 8, *" IsVisible="{Binding !IsAdjustment}">
+                                                    <StackPanel Grid.Column="0" Spacing="3">
+                                                        <TextBlock Text="{loc:Tr ScanReceipt.LineItems.ColumnQty}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                                        <NumericUpDown Value="{Binding Quantity, Mode=TwoWay}"
+                                                                       Minimum="0.0001" Increment="1"
+                                                                       FormatString="0.####"
+                                                                       ShowButtonSpinner="False"
+                                                                       MinHeight="40"
+                                                                       HorizontalAlignment="Stretch"
+                                                                       AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.ColumnQty}"
+                                                                       IsEnabled="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).IsBusy, Converter={x:Static BoolConverters.Not}}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="2" Spacing="3">
+                                                        <TextBlock Text="{loc:Tr ScanReceipt.LineItems.ColumnPrice}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                                                        <NumericUpDown Value="{Binding UnitPrice, Mode=TwoWay}"
+                                                                       Increment="1"
+                                                                       FormatString="0.00"
+                                                                       ShowButtonSpinner="False"
+                                                                       MinHeight="40"
+                                                                       HorizontalAlignment="Stretch"
+                                                                       AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.ColumnPrice}"
+                                                                       IsEnabled="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).IsBusy, Converter={x:Static BoolConverters.Not}}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="4" Spacing="3" VerticalAlignment="Stretch">
+                                                        <TextBlock Text="{loc:Tr ScanReceipt.LineItems.ColumnTotal}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" HorizontalAlignment="Right" />
+                                                        <Border Background="{DynamicResource PineSurface}"
+                                                                BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                                                                CornerRadius="6" Padding="8,0" MinHeight="40">
+                                                            <TextBlock Text="{Binding TotalPrice, StringFormat='{}{0:0.00}'}"
+                                                                       FontSize="14" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource PineText}"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Row 1b (Tax / Tip / Discount / Adjustments): Directly editable Total -->
+                                                <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding IsAdjustment}">
+                                                    <TextBlock Grid.Column="0" Text="{loc:Tr ScanReceipt.LineItems.ColumnTotal}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" VerticalAlignment="Center" />
+                                                    <NumericUpDown Grid.Column="1"
+                                                                   Value="{Binding TotalPrice, Mode=TwoWay}"
+                                                                   Increment="0.50"
+                                                                   FormatString="0.00"
+                                                                   ShowButtonSpinner="False"
+                                                                   MinWidth="130" MinHeight="40"
+                                                                   AutomationProperties.Name="{loc:Tr ScanReceipt.LineItems.ColumnTotal}"
+                                                                   IsEnabled="{Binding $parent[UserControl].((vm:ScanReceiptViewModel)DataContext).IsBusy, Converter={x:Static BoolConverters.Not}}" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
                             <!-- Reconciliation (TD-19). The line items must add up to the total
                                  exactly; on a real receipt they do not, because tax, tips,
@@ -391,6 +498,69 @@
         </StackPanel>
       </Border>
     </Border>
+
+    <!-- Interactive Bounding-Box Tagging & Local Model Training Overlay -->
+    <Grid IsVisible="{Binding IsEditingTags}" ZIndex="45" RowDefinitions="Auto,*,Auto"
+          Background="{DynamicResource PineBackground}">
+      <StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="8">
+        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Title}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+        <TextBlock Text="{loc:Tr ScanReceipt.Tagging.Instruction}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource PineTextMuted}" />
+        <WrapPanel Orientation="Horizontal">
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Merchant}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Merchant"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagMerchantActive}"
+                  BorderBrush="{DynamicResource PineSuccess}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Total}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Total"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagTotalActive}"
+                  BorderBrush="{DynamicResource PineWarning}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Date}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Date"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagDateActive}"
+                  BorderBrush="{DynamicResource PineInfo}" />
+          <Button Content="{loc:Tr ScanReceipt.Tagging.Field.Tax}" Command="{Binding SelectTagFieldCommand}" CommandParameter="Tax"
+                  Classes="tag-field-chip" Classes.active="{Binding IsTagTaxActive}"
+                  BorderBrush="{DynamicResource PinePrimary}" />
+        </WrapPanel>
+
+        <!-- Live extracted previews from drawn boxes -->
+        <WrapPanel Orientation="Horizontal" IsVisible="{Binding HasTaggedBoxes}">
+          <Border IsVisible="{Binding TagMerchantPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineSuccessContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagMerchantPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
+          </Border>
+          <Border IsVisible="{Binding TagTotalPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineWarningContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagTotalPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineWarning}" />
+          </Border>
+          <Border IsVisible="{Binding TagDatePreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineInfoContainer}" CornerRadius="6" Padding="8,4" Margin="0,0,6,4">
+            <TextBlock Text="{Binding TagDatePreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineInfo}" />
+          </Border>
+          <Border IsVisible="{Binding TagTaxPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  Background="{DynamicResource PineSurfaceElevated}" BorderBrush="{DynamicResource PineBorder}" BorderThickness="1"
+                  CornerRadius="6" Padding="8,4" Margin="0,0,0,4">
+            <TextBlock Text="{Binding TagTaxPreview}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+          </Border>
+        </WrapPanel>
+      </StackPanel>
+
+      <controls:ReceiptTagOverlayControl Grid.Row="1" Margin="8"
+                                         Source="{Binding TagEditorImage}"
+                                         ActiveField="{Binding ActiveTagField}"
+                                         TaggedBoxes="{Binding TaggedBoxes}"
+                                         OcrWords="{Binding LastOcrWords}"
+                                         OcrImageWidth="{Binding LastOcrImageWidth}"
+                                         OcrImageHeight="{Binding LastOcrImageHeight}"
+                                         FieldLabels="{Binding TagFieldLabels}"
+                                         BoxDrawn="OnReceiptTagBoxDrawn" />
+
+      <Grid Grid.Row="2" Margin="16,8,16,16" ColumnDefinitions="*,8,*,8,2*">
+        <Button Grid.Column="0" Content="{loc:Tr ScanReceipt.Tagging.Clear}" Command="{Binding ClearTaggedBoxesCommand}"
+                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        <Button Grid.Column="2" Content="{loc:Tr ScanReceipt.Tagging.Cancel}" Command="{Binding CancelTagEditorCommand}"
+                Classes="pine-outline" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        <Button Grid.Column="4" Content="{loc:Tr ScanReceipt.Tagging.ApplyAndTrain}" Command="{Binding ApplyTagsAndTrainCommand}"
+                Classes="pine-accent" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+      </Grid>
+    </Grid>
 
     <!-- Reusable full-size receipt viewer (zoom + pan) -->
     <controls:ImageLightbox Source="{Binding ReceiptImage}" IsOpen="{Binding IsImagePreviewOpen}" />

@@ -2,29 +2,26 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Pine.Ui.Avalonia.ViewModels.Widgets"
              xmlns:vo="using:Pine.Core.Common.ValueObjects"
+             xmlns:controls="using:Pine.Ui.Avalonia.Controls"
              xmlns:loc="clr-namespace:Pine.Ui.Avalonia.Localization"
              x:Class="Pine.Ui.Avalonia.Views.Widgets.TotalBalanceWidgetView"
              x:DataType="vm:TotalBalanceWidgetViewModel">
 
-    <!-- One figure per currency. Pine has no exchange rates, so a two-currency vault shows two
-         figures rather than one invented sum (see TotalBalanceWidgetViewModel). -->
     <Grid RowDefinitions="Auto, *" Margin="10,0,10,10">
         <TextBlock Grid.Row="0" Text="{Binding FailureMessage}" IsVisible="{Binding HasFailed}"
                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource PineDanger}" Margin="0,0,0,6" />
 
-        <StackPanel Grid.Row="1" Spacing="6" IsVisible="{Binding HasAccounts}">
+        <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding HasAccounts}">
             <ItemsControl ItemsSource="{Binding Totals}" IsVisible="{Binding ShowsFlatTotals}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vo:Money">
-                        <TextBlock Text="{Binding}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                        <TextBlock Text="{Binding}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Several currencies and a known base: the base figure is only the accounts already in the
-                 base currency; the others are listed apart, never converted or added in. -->
             <StackPanel Spacing="4" IsVisible="{Binding ShowsBaseSplit}">
-                <TextBlock Text="{Binding BaseCurrencyTotal}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource PineText}" />
+                <TextBlock Text="{Binding BaseCurrencyTotal}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource PineText}" />
                 <TextBlock Text="{loc:Tr Dashboard.TotalBalance.OtherCurrencies}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
                 <ItemsControl ItemsSource="{Binding OtherCurrencyTotals}">
                     <ItemsControl.ItemTemplate>
@@ -34,9 +31,21 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
+
+            <!-- Monthly Recurring Income Badge -->
+            <Border Classes="pine-pill-success" HorizontalAlignment="Left" IsVisible="{Binding HasMonthlyIncome}">
+                <TextBlock Text="{Binding MonthlyIncomeText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PineSuccess}" />
+            </Border>
+
+            <!-- Visual Share by Account Bar -->
+            <StackPanel Spacing="4" IsVisible="{Binding HasDistributionSegments}">
+                <TextBlock Text="{loc:Tr Dashboard.TotalBalance.Distribution}" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
+                <controls:SegmentedBarControl Height="10" BarCornerRadius="5"
+                                              TrackBrush="{DynamicResource PineChartTrack}"
+                                              Segments="{Binding AccountDistributionSegments}" />
+            </StackPanel>
+
             <TextBlock Text="{Binding AccountCountText}" FontSize="12" Foreground="{DynamicResource PineTextMuted}" />
-            <!-- Visible, not only a tooltip: a tooltip never reaches a keyboard or touch user, and this
-                 sentence is the whole difference between "total balance" and "net worth". -->
             <TextBlock Text="{loc:Tr Dashboard.TotalBalance.Caveat}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource PineTextMuted}" />
         </StackPanel>
 

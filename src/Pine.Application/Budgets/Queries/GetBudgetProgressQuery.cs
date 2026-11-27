@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Pine.Core.Accounts;
 using Pine.Core.Budgets;
 using Pine.Core.Common.ValueObjects;
 using Pine.Core.Transactions;
@@ -52,17 +53,22 @@ public sealed record BudgetProgress(
     DateTimeOffset? PeriodStart,
     DateTimeOffset? PeriodEnd,
     int UncountedSplitCount,
-    BudgetPeriod Period)
+    BudgetPeriod Period,
+    Guid? AccountId = null,
+    string? AccountName = null)
 {
     /// <summary>Whether a real spend figure was computed for this budget.</summary>
     public bool IsSpendKnown => Spent is not null;
 
     /// <summary>Whether the known spend is over the limit. Never true while the spend is unknown.</summary>
     public bool IsExceeded => Spent is not null && Spent.Amount > Limit.Amount;
+
+    /// <summary>Remaining budget allowance (negative when over budget), or null when spend is unknown.</summary>
+    public Money? Remaining => Spent is null ? null : Limit - Spent;
 }
 
-/// <summary>Every budget, each with the spend measured against it.</summary>
-public sealed record GetBudgetProgressQuery() : IRequest<IReadOnlyList<BudgetProgress>>;
+/// <summary>Every budget, each with the spend measured against it (optionally filtered to specific accounts).</summary>
+public sealed record GetBudgetProgressQuery(IReadOnlyCollection<Guid>? AccountIds = null) : IRequest<IReadOnlyList<BudgetProgress>>;
 
 /// <summary>
 /// Measures each budget's spend from the ledger.
@@ -137,17 +143,20 @@ public sealed class GetBudgetProgressQueryHandler
     private readonly ITransactionRepository _transactions;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<GetBudgetProgressQueryHandler>? _logger;
+    private readonly IAccountRepository? _accounts;
 
     public GetBudgetProgressQueryHandler(
         IBudgetRepository budgets,
         ITransactionRepository transactions,
         TimeProvider timeProvider,
-        ILogger<GetBudgetProgressQueryHandler>? logger = null)
+        ILogger<GetBudgetProgressQueryHandler>? logger = null,
+        IAccountRepository? accounts = null)
     {
         _budgets = budgets;
         _transactions = transactions;
         _timeProvider = timeProvider;
         _logger = logger;
+        _accounts = accounts;
     }
 
     public async Task<IReadOnlyList<BudgetProgress>> Handle(
@@ -155,6 +164,11 @@ public sealed class GetBudgetProgressQueryHandler
         CancellationToken cancellationToken)
     {
         var budgets = (await _budgets.GetAllAsync(cancellationToken).ConfigureAwait(false)).ToList();
+        if (request.AccountIds is { Count: > 0 } scopeIds)
+        {
+            var allowed = new HashSet<Guid>(scopeIds);
+            budgets = budgets.Where(b => b.AccountId.HasValue && allowed.Contains(b.AccountId.Value)).ToList();
+        }
         if (budgets.Count == 0)
         {
             return Array.Empty<BudgetProgress>();
@@ -165,19 +179,33 @@ public sealed class GetBudgetProgressQueryHandler
             .Where(transaction => !transaction.IsVoided && transaction.Type == TransactionType.Expense)
             .ToList();
 
+        var accountNames = new Dictionary<Guid, string>();
+        if (_accounts is not null && budgets.Any(b => b.AccountId.HasValue))
+        {
+            var allAccounts = await _accounts.GetAllAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var account in allAccounts)
+            {
+                accountNames[account.Id] = account.Name;
+            }
+        }
+
         var now = _timeProvider.GetUtcNow();
 
         return budgets
-            .Select(budget => Measure(budget, spending, now))
+            .Select(budget => Measure(budget, spending, accountNames, now))
             .ToList();
     }
 
     private BudgetProgress Measure(
         Budget budget,
-        IReadOnlyList<Transaction> spending,
+        List<Transaction> spending,
+        Dictionary<Guid, string> accountNames,
         DateTimeOffset now)
     {
         var window = budget.ResolveWindow(now, _timeProvider.LocalTimeZone);
+        var accountName = budget.AccountId is { } acctId && accountNames.TryGetValue(acctId, out var resolved)
+            ? resolved
+            : null;
 
         // EF materialises a budget without running its constructor, so the aggregate's "non-blank,
         // trimmed" rule holds for budgets CREATED in this process and not necessarily for rows read
@@ -205,7 +233,9 @@ public sealed class GetBudgetProgressQueryHandler
                 PeriodStart: window?.Start,
                 PeriodEnd: window?.End,
                 UncountedSplitCount: 0,
-                Period: budget.Period);
+                Period: budget.Period,
+                AccountId: budget.AccountId,
+                AccountName: accountName);
         }
 
         var (start, end) = window.Value;
@@ -221,9 +251,17 @@ public sealed class GetBudgetProgressQueryHandler
                 continue;
             }
 
+            if (budget.AccountId.HasValue && transaction.AccountId != budget.AccountId.Value)
+            {
+                continue;
+            }
+
             foreach (var split in transaction.Splits)
             {
-                if (!string.Equals(split.Category?.Trim(), name, StringComparison.Ordinal))
+                var splitCategory = split.Category?.Trim();
+                // Strict category match: an uncategorized expense on a shared account (e.g. Cuenta Principal)
+                // must never silently count against a specific category budget (e.g. Medicina).
+                if (!string.Equals(splitCategory, name, StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -259,6 +297,8 @@ public sealed class GetBudgetProgressQueryHandler
             start,
             end,
             uncounted,
-            budget.Period);
+            budget.Period,
+            budget.AccountId,
+            accountName);
     }
 }

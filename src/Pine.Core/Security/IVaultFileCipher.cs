@@ -79,4 +79,9 @@ public static class VaultFilePurposes
     /// sealed under, kept beside the vault only as this purpose's ciphertext.
     /// </summary>
     public const string SyncKey = "sync.key";
+
+    /// <summary>
+    /// The user's local receipt-layout field adaptation model trained from interactive bounding-box tags.
+    /// </summary>
+    public const string ReceiptLayoutModel = "ai.receipt.layout.model";
 }

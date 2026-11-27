@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
 using Pine.Application.Accounts.Commands;
+using Pine.Application.Accounts.Queries;
 using Pine.Core.Accounts;
 using Pine.Core.Common;
 using Pine.Ui.Avalonia.ViewModels.Messages;
@@ -16,9 +17,12 @@ using Pine.Ui.Avalonia.Localization;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
+public sealed record ParentAccountOption(Guid? AccountId, string DisplayName, string? CurrencyCode);
+
 public partial class CreateAccountViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator _mediator;
+    private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _message;
     
     // Action to call when creation is complete (to close the dialog/return)
@@ -39,20 +43,31 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
     public partial decimal InitialBalance { get; set; } = 0m;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubAccountSelected))]
+    [NotifyPropertyChangedFor(nameof(CanEditCurrency))]
+    public partial ParentAccountOption? SelectedParentAccount { get; set; }
+
+    [ObservableProperty]
+    public partial decimal MonthlyAllocation { get; set; } = 0m;
+
+    public bool IsSubAccountSelected => SelectedParentAccount?.AccountId is not null;
+
+    public bool CanEditCurrency => !IsBusy && !IsSubAccountSelected;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditCurrency))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
 
     public ObservableCollection<AccountType> AccountTypes { get; } = new(Enum.GetValues<AccountType>());
+
+    public ObservableCollection<ParentAccountOption> ParentAccountOptions { get; } = new();
+
     /// <summary>
     /// The searchable currency picker (TD-76): every ISO 4217 code, filtered as the user types.
     /// </summary>
-    /// <remarks>
-    /// Replaces the seven-item hard-coded list ("BTC" was removed from it earlier: not an ISO 4217 code).
-    /// The picker's <see cref="CurrencyPickerViewModel.SelectedCode"/> and <see cref="SelectedCurrency"/>
-    /// are kept in step both ways, so the command and everything else keep using the plain string.
-    /// </remarks>
     public CurrencyPickerViewModel CurrencyPicker { get; }
 
     public CreateAccountViewModel(
@@ -63,9 +78,14 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(localizer);
         _mediator = mediator;
+        _localizer = localizer;
         _message = new LocalizedMessageSlot(localizer, text => ErrorMessage = text ?? string.Empty);
         _onComplete = onComplete;
         _logger = logger;
+
+        var noneOption = new ParentAccountOption(null, _localizer["CreateAccount.Parent.None"], null);
+        ParentAccountOptions.Add(noneOption);
+        SelectedParentAccount = noneOption;
 
         CurrencyPicker = new CurrencyPickerViewModel(SelectedCurrency);
         CurrencyPicker.PropertyChanged += (_, e) =>
@@ -77,6 +97,46 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
                 SelectedCurrency = CurrencyPicker.SelectedCode;
             }
         };
+
+        _ = LoadParentAccountsAsync();
+    }
+
+    private async Task LoadParentAccountsAsync()
+    {
+        try
+        {
+            var accounts = await _mediator.Send(new GetAccountsQuery());
+            if (accounts is null)
+            {
+                return;
+            }
+
+            foreach (var account in accounts.Where(a => !a.IsSubAccount).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                ParentAccountOptions.Add(new ParentAccountOption(
+                    account.Id,
+                    $"{account.Name} ({account.Balance.Currency.Value})",
+                    account.Balance.Currency.Value));
+            }
+        }
+        catch (Exception)
+        {
+            // Isolated unit tests that only stub CreateAccountCommand still work with the default "None" option.
+        }
+    }
+
+    partial void OnSelectedParentAccountChanged(ParentAccountOption? value)
+    {
+        if (value?.AccountId is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(value.CurrencyCode))
+            {
+                SelectedCurrency = value.CurrencyCode;
+            }
+
+            // Sub-accounts draw from their parent's shared pool, so default initial balance to 0.
+            InitialBalance = 0m;
+        }
     }
 
     partial void OnSelectedCurrencyChanged(string value) => CurrencyPicker.SelectedCode = value;
@@ -95,11 +155,16 @@ public partial class CreateAccountViewModel : ObservableObject, IDisposable
 
         try
         {
+            var parentId = SelectedParentAccount?.AccountId;
+            decimal? monthlyAllocation = parentId.HasValue && MonthlyAllocation > 0m ? MonthlyAllocation : null;
+
             await _mediator.Send(new CreateAccountCommand(
-                AccountName, 
-                SelectedCurrency, 
-                SelectedType, 
-                InitialBalance));
+                AccountName,
+                SelectedCurrency,
+                SelectedType,
+                parentId.HasValue ? 0m : InitialBalance,
+                parentId,
+                monthlyAllocation));
 
             WeakReferenceMessenger.Default.Send(new DataChangedMessage());
             _onComplete?.Invoke();

@@ -2,7 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Avalonia.Data.Converters;
+using Avalonia.Media;
 using Pine.Core.Accounts;
 using Pine.Core.Ai;
 using Pine.Core.Common.ValueObjects;
@@ -278,5 +280,57 @@ public static class Converters
             values.Count > 0 && values[0] is LineItemKind kind
                 ? Localizer.Instance[$"LineItemKind.{kind}"]
                 : string.Empty;
+    }
+
+    public static readonly IValueConverter IsIncomeTransaction =
+        new FuncValueConverter<TransactionType, bool>(t => t == TransactionType.Income);
+
+    public static readonly IValueConverter IsExpenseTransaction =
+        new FuncValueConverter<TransactionType, bool>(t => t == TransactionType.Expense);
+
+    public static readonly IValueConverter IsTransferTransaction =
+        new FuncValueConverter<TransactionType, bool>(t => t == TransactionType.Transfer);
+
+    private static readonly Geometry IncomeIconGeometry = StreamGeometry.Parse("M12,19 L12,5 M6,11 L12,5 L18,11");
+    private static readonly Geometry ExpenseIconGeometry = StreamGeometry.Parse("M12,5 L12,19 M6,13 L12,19 L18,13");
+    private static readonly Geometry TransferIconGeometry = StreamGeometry.Parse("M4,9 L20,9 M15,4 L20,9 L15,14 M20,15 L4,15 M9,10 L4,15 L9,20");
+
+    public static readonly IValueConverter TransactionTypeIcon =
+        new FuncValueConverter<TransactionType, Geometry>(t => t switch
+        {
+            TransactionType.Income => IncomeIconGeometry,
+            TransactionType.Transfer => TransferIconGeometry,
+            _ => ExpenseIconGeometry,
+        });
+
+    public static readonly IValueConverter TransactionPrimaryCategory =
+        new FuncValueConverter<Transaction?, string>(t =>
+            t?.Splits.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Category))?.Category?.Trim() ?? string.Empty);
+
+    public static readonly IValueConverter HasTransactionPrimaryCategory =
+        new FuncValueConverter<Transaction?, bool>(t =>
+            t?.Splits.Any(s => !string.IsNullOrWhiteSpace(s.Category)) == true);
+
+    public static readonly IMultiValueConverter HasAccountName = new HasAccountNameConverter();
+
+    private sealed class HasAccountNameConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+            values.Count >= 2 && values[0] is Guid accountId && values[1] is IReadOnlyDictionary<Guid, string> map && map.ContainsKey(accountId);
+    }
+
+    public static readonly IMultiValueConverter AccountNameLookup = new AccountNameLookupConverter();
+
+    private sealed class AccountNameLookupConverter : IMultiValueConverter
+    {
+        public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (values.Count >= 2 && values[0] is Guid accountId && values[1] is IReadOnlyDictionary<Guid, string> map && map.TryGetValue(accountId, out var name))
+            {
+                return name;
+            }
+
+            return string.Empty;
+        }
     }
 }

@@ -56,6 +56,8 @@ public partial class DashboardTilesTests
         _mediator.Send(Arg.Any<GetTransactionsQuery>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new PagedResult<Pine.Core.Transactions.Transaction>(
                 Array.Empty<Pine.Core.Transactions.Transaction>(), 0, 1, 10)));
+        _mediator.Send(Arg.Any<Pine.Application.Planning.GetSavingsGoalsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<Pine.Application.Planning.SavingsGoalSummary>>(Array.Empty<Pine.Application.Planning.SavingsGoalSummary>()));
     }
 
     private DashboardViewModel Dashboard() => new(_mediator, Substitute.For<IViewModelFactory>(), Substitute.For<IShellNavigator>(), Windows, localizer: new Localizer());
@@ -76,7 +78,7 @@ public partial class DashboardTilesTests
         var tiles = dashboard.Widgets.OfType<DashboardWidgetViewModelBase>().ToList();
 
         tiles.Should().HaveCount(dashboard.Widgets.Count, "every tile derives from the shared base");
-        tiles.Should().HaveCount(5);
+        tiles.Should().HaveCount(6);
 
         foreach (var tile in tiles)
         {

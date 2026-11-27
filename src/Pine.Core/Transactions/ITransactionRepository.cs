@@ -15,6 +15,20 @@ public interface ITransactionRepository
     /// rows are excluded from both the page and the total count, so paging stays dense (TD-71).
     /// </summary>
     Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(int page, int pageSize, bool includeVoided, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Filtered page of transactions, newest first, optionally scoped by account IDs, transaction type,
+    /// and a case-insensitive search query on payee or notes.
+    /// </summary>
+    Task<Pine.Core.Common.PagedResult<Transaction>> GetPagedAsync(
+        int page,
+        int pageSize,
+        bool includeVoided,
+        IReadOnlyCollection<Guid>? accountIds,
+        TransactionType? typeFilter,
+        string? searchText,
+        CancellationToken cancellationToken = default) =>
+        GetPagedAsync(page, pageSize, includeVoided, cancellationToken);
     Task SaveAsync(Transaction transaction, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 

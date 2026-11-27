@@ -15,6 +15,13 @@ public partial class ShellView : UserControl
     public ShellView()
     {
         InitializeComponent();
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (OperatingSystem.IsAndroid() && this.FindControl<TransitioningContentControl>("ShellPageHost") is { } host)
+            {
+                host.PageTransition = null;
+            }
+        };
         SizeChanged += (_, e) => ApplyWidth(e.NewSize.Width);
         DataContextChanged += (_, _) => ApplyWidth(Bounds.Width);
     }

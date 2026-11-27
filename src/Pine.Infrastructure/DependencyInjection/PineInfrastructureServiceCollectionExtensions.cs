@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Pine.Core.Sync;
 using Pine.Infrastructure.Sync;
 using System.IO;
@@ -141,6 +141,8 @@ public static class PineInfrastructureServiceCollectionExtensions
         services.AddScoped<IImportProfileRepository, SqliteImportProfileRepository>();
         services.AddScoped<IAttachmentRepository, SqliteAttachmentRepository>();
         services.AddScoped<Pine.Core.Rules.IRuleRepository, SqliteRuleRepository>();
+        services.AddScoped<Pine.Core.Planning.IRecurringIncomeRepository, SqliteRecurringIncomeRepository>();
+        services.AddScoped<Pine.Core.Planning.ISavingsGoalRepository, SqliteSavingsGoalRepository>();
 
         // The conflicts a merge recorded, and their resolution (post-audit plan item 3.1c). Scoped with the context,
         // so a resolution runs inside the request's transaction.
@@ -208,6 +210,9 @@ public static class PineInfrastructureServiceCollectionExtensions
         // The categoriser, its model store and the file cipher that seals the model (TD-16). Both
         // providers below forward categorisation to the one instance this registers.
         services.AddPineCategorisation();
+
+        // Local per-vault receipt layout learner trained from interactive bounding-box tags.
+        services.TryAddSingleton<IReceiptFieldLearner, Pine.Infrastructure.Ai.Extraction.LocalReceiptFieldLearner>();
 
         if (options.IncludeReceiptVision)
         {

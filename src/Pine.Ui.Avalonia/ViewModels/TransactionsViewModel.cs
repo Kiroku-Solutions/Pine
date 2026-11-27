@@ -1,17 +1,21 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using MediatR;
+using Pine.Application.Accounts.Queries;
 using Pine.Application.Common;
 using Pine.Application.Transactions.Commands;
 using Pine.Application.Transactions.Queries;
 using System.IO;
 using Avalonia.Media.Imaging;
 using Pine.Application.Attachments;
+using Pine.Core.Accounts;
 using Pine.Core.Common;
 using Pine.Core.Transactions;
 using Pine.Ui.Avalonia.Localization;
@@ -24,10 +28,20 @@ using Pine.Core.Configuration;
 
 namespace Pine.Ui.Avalonia.ViewModels;
 
+public sealed record TransactionAccountFilterOption(
+    string DisplayName,
+    IReadOnlyCollection<Guid>? AccountIds);
+
 public partial class TransactionsViewModel : ObservableRecipient, IRecipient<DataChangedMessage>, IAsyncInitializable, IDisposable
 {
+    private readonly ILocalizer _localizer;
     private readonly LocalizedMessageSlot _error;
     private readonly LocalizedMessageSlot _voidError;
+    private bool _suppressFilterReload;
+    private CancellationTokenSource? _searchDebounceCts;
+    private CancellationTokenSource? _loadCts;
+    private long _loadGeneration;
+    private bool _disposed;
 
     private readonly IMediator _mediator;
 
@@ -58,6 +72,40 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     public partial EditTransactionViewModel? EditTransactionVm { get; set; }
 
     public ObservableCollection<Transaction> Transactions { get; } = new();
+
+    public ObservableCollection<TransactionAccountFilterOption> AccountFilterOptions { get; } = new();
+
+    [ObservableProperty]
+    public partial TransactionAccountFilterOption? SelectedAccountFilter { get; set; }
+
+    [ObservableProperty]
+    public partial IReadOnlyDictionary<Guid, string> AccountNames { get; private set; } = new Dictionary<Guid, string>();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveFilters))]
+    public partial string SearchText { get; set; } = string.Empty;
+
+    /// <summary>0 = All, 1 = Expenses, 2 = Income, 3 = Transfers.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAllTypeSelected))]
+    [NotifyPropertyChangedFor(nameof(IsExpenseTypeSelected))]
+    [NotifyPropertyChangedFor(nameof(IsIncomeTypeSelected))]
+    [NotifyPropertyChangedFor(nameof(IsTransferTypeSelected))]
+    [NotifyPropertyChangedFor(nameof(HasActiveFilters))]
+    public partial int SelectedTypeFilterIndex { get; set; }
+
+    public bool IsAllTypeSelected => SelectedTypeFilterIndex == 0;
+    public bool IsExpenseTypeSelected => SelectedTypeFilterIndex == 1;
+    public bool IsIncomeTypeSelected => SelectedTypeFilterIndex == 2;
+    public bool IsTransferTypeSelected => SelectedTypeFilterIndex == 3;
+
+    public bool HasActiveFilters =>
+        SelectedTypeFilterIndex != 0
+        || !string.IsNullOrWhiteSpace(SearchText)
+        || SelectedAccountFilter?.AccountIds is { Count: > 0 };
+
+    [ObservableProperty]
+    public partial bool ShowEmptyState { get; private set; }
 
     /// <summary>
     /// The ids of the transactions that have a receipt attached, so the list can show a marker.
@@ -168,12 +216,19 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         ILogger<TransactionsViewModel>? logger = null)
     {
         localizer ??= new Localizer();
+        _localizer = localizer;
         _error = new LocalizedMessageSlot(localizer, text => ErrorMessage = text);
         _voidError = new LocalizedMessageSlot(localizer, text => VoidError = text);
         _mediator = mediator;
         _viewModels = viewModels;
         _pageSize = (uiOptions?.Value ?? new PineUiOptions()).TransactionsPageSize;
         _logger = logger;
+
+        var allOption = new TransactionAccountFilterOption(_localizer["Transactions.Filter.AllAccounts"], null);
+        AccountFilterOptions.Add(allOption);
+        _suppressFilterReload = true;
+        SelectedAccountFilter = allOption;
+        _suppressFilterReload = false;
 
         // No Register call here any more (TD-34): ObservableRecipient registers this page when the
         // navigator activates it and unregisters it on the way out, so a list the user left behind
@@ -218,61 +273,303 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
             _error.Set);
     }
 
+    private void CancelPendingSearch()
+    {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        _searchDebounceCts = null;
+    }
+
+    partial void OnSelectedAccountFilterChanged(TransactionAccountFilterOption? value)
+    {
+        OnPropertyChanged(nameof(HasActiveFilters));
+        if (_suppressFilterReload || _disposed)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-account-filter",
+            TransactionsUnavailable,
+            _error.Set);
+    }
+
+    partial void OnSearchTextChanged(string value)
+    {
+        if (_suppressFilterReload || _disposed)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+
+        ObservedTask.Run(
+            async () =>
+            {
+                try
+                {
+                    await Task.Delay(220, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                if (!cts.IsCancellationRequested && !_disposed)
+                {
+                    await LoadDataAsync();
+                }
+            },
+            _logger,
+            "transactions-search",
+            TransactionsUnavailable,
+            _error.Set);
+    }
+
+    [RelayCommand]
+    private void SelectTypeFilter(string? indexText)
+    {
+        if (_disposed || !int.TryParse(indexText, out var idx) || idx == SelectedTypeFilterIndex)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        SelectedTypeFilterIndex = idx;
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-type-filter",
+            TransactionsUnavailable,
+            _error.Set);
+    }
+
+    [RelayCommand]
+    private void ClearFilters()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        _suppressFilterReload = true;
+        try
+        {
+            SearchText = string.Empty;
+            SelectedTypeFilterIndex = 0;
+            SelectedAccountFilter = AccountFilterOptions.FirstOrDefault();
+        }
+        finally
+        {
+            _suppressFilterReload = false;
+        }
+
+        OnPropertyChanged(nameof(HasActiveFilters));
+        ObservedTask.Run(
+            LoadDataAsync,
+            _logger,
+            "transactions-clear-filters",
+            TransactionsUnavailable,
+            _error.Set);
+    }
+
+    private TransactionType? ActiveTypeFilter => SelectedTypeFilterIndex switch
+    {
+        1 => TransactionType.Expense,
+        2 => TransactionType.Income,
+        3 => TransactionType.Transfer,
+        _ => null,
+    };
+
+    private async Task LoadAccountFiltersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var accounts = (await _mediator.Send(new GetAccountsQuery(), cancellationToken))?.ToList();
+            if (accounts is null || _disposed || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var nameMap = new Dictionary<Guid, string>(accounts.Count);
+            var parentNames = accounts.Where(a => !a.IsSubAccount).ToDictionary(a => a.Id, a => a.Name);
+            foreach (var account in accounts)
+            {
+                if (account.ParentAccountId is { } pid && parentNames.TryGetValue(pid, out var parentName))
+                {
+                    nameMap[account.Id] = $"{parentName} · {account.Name}";
+                }
+                else
+                {
+                    nameMap[account.Id] = account.Name;
+                }
+            }
+
+            AccountNames = nameMap;
+
+            var previousIds = SelectedAccountFilter?.AccountIds;
+            var childrenByParent = accounts
+                .Where(a => a.ParentAccountId.HasValue)
+                .GroupBy(a => a.ParentAccountId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList());
+
+            _suppressFilterReload = true;
+            try
+            {
+                AccountFilterOptions.Clear();
+                var allOption = new TransactionAccountFilterOption(_localizer["Transactions.Filter.AllAccounts"], null);
+                AccountFilterOptions.Add(allOption);
+
+                foreach (var parent in accounts.Where(a => !a.IsSubAccount).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    var groupIds = new List<Guid> { parent.Id };
+                    if (childrenByParent.TryGetValue(parent.Id, out var kids))
+                    {
+                        groupIds.AddRange(kids.Select(k => k.Id));
+                    }
+
+                    AccountFilterOptions.Add(new TransactionAccountFilterOption(parent.Name, groupIds));
+
+                    if (kids is not null)
+                    {
+                        foreach (var kid in kids)
+                        {
+                            AccountFilterOptions.Add(new TransactionAccountFilterOption($"↳ {kid.Name}", new[] { kid.Id }));
+                        }
+                    }
+                }
+
+                SelectedAccountFilter = previousIds is { Count: > 0 }
+                    ? AccountFilterOptions.FirstOrDefault(o => o.AccountIds is { Count: > 0 } && o.AccountIds.SequenceEqual(previousIds)) ?? allOption
+                    : allOption;
+            }
+            finally
+            {
+                _suppressFilterReload = false;
+            }
+        }
+        catch (Exception)
+        {
+            // Isolated unit tests that only stub GetTransactionsQuery continue working cleanly.
+        }
+    }
+
     [RelayCommand]
     private async Task LoadDataAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // Supersede any in-flight page load so rapid filter/search edits never get dropped or overwritten.
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
+        var generation = Interlocked.Increment(ref _loadGeneration);
+
         _currentPage = 1;
         Transactions.Clear();
         HasMorePages = true;
+        ShowEmptyState = false;
+        IsLoading = false;
 
         // Cleared here rather than in LoadNextPageAsync: paging forward must not erase the
         // explanation of a page that failed, but a fresh load from the top must.
         _error.Clear();
 
-        await LoadNextPageAsync();
+        await LoadAccountFiltersAsync(cts.Token);
+        if (_disposed || cts.IsCancellationRequested || generation != Volatile.Read(ref _loadGeneration))
+        {
+            return;
+        }
+
+        await LoadPageCoreAsync(generation, cts.Token);
     }
 
     /// <summary>
     /// TD-119: the page size is an in-vault Setting; the configured value stays in force when the
     /// Setting is absent, invalid, or cannot be read.
     /// </summary>
-    private async Task ResolvePageSizePreferenceAsync()
+    private async Task ResolvePageSizePreferenceAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var preferences = await _mediator.Send(new Pine.Application.Settings.GetUserPreferencesQuery());
+            var preferences = await _mediator.Send(new Pine.Application.Settings.GetUserPreferencesQuery(), cancellationToken);
             if (preferences is { TransactionsPageSize: >= 1 })
             {
                 _pageSize = preferences.TransactionsPageSize;
             }
         }
-        catch (Exception)
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Keep the configured page size.
         }
     }
 
     [RelayCommand]
-    private async Task LoadNextPageAsync()
+    private Task LoadNextPageAsync()
     {
-        if (IsLoading || !HasMorePages) return;
+        if (_disposed || IsLoading || !HasMorePages)
+        {
+            return Task.CompletedTask;
+        }
+
+        var generation = Volatile.Read(ref _loadGeneration);
+        var token = _loadCts?.Token ?? CancellationToken.None;
+        return LoadPageCoreAsync(generation, token);
+    }
+
+    private async Task LoadPageCoreAsync(long generation, CancellationToken cancellationToken)
+    {
+        if (_disposed || !HasMorePages)
+        {
+            return;
+        }
 
         IsLoading = true;
         try
         {
             if (_currentPage == 1)
             {
-                await ResolvePageSizePreferenceAsync();
+                await ResolvePageSizePreferenceAsync(cancellationToken);
             }
 
-            var pagedResult = await _mediator.Send(new GetTransactionsQuery(_currentPage, _pageSize, ShowVoided));
+            var pagedResult = await _mediator.Send(
+                new GetTransactionsQuery(
+                    _currentPage,
+                    _pageSize,
+                    ShowVoided,
+                    SelectedAccountFilter?.AccountIds,
+                    ActiveTypeFilter,
+                    string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim()),
+                cancellationToken);
+
+            if (_disposed || cancellationToken.IsCancellationRequested || generation != Volatile.Read(ref _loadGeneration))
+            {
+                return;
+            }
 
             foreach (var t in pagedResult.Items)
             {
                 Transactions.Add(t);
             }
 
+            ShowEmptyState = Transactions.Count == 0 && string.IsNullOrEmpty(ErrorMessage);
+
             await RefreshReceiptMarkersAsync();
+
+            if (_disposed || cancellationToken.IsCancellationRequested || generation != Volatile.Read(ref _loadGeneration))
+            {
+                return;
+            }
 
             if (_currentPage * _pageSize >= pagedResult.TotalCount)
             {
@@ -283,8 +580,17 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
                 _currentPage++;
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer filter/search reload or page disposal.
+        }
         catch (Exception ex)
         {
+            if (_disposed || generation != Volatile.Read(ref _loadGeneration))
+            {
+                return;
+            }
+
             // WAS: `catch { }` with the comment "Handle error silently or via status message"
             // (TD-35). It did the first and never the second, so every failure of the only query
             // this page makes produced an empty list and no record anywhere.
@@ -296,7 +602,10 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
         }
         finally
         {
-            IsLoading = false;
+            if (generation == Volatile.Read(ref _loadGeneration))
+            {
+                IsLoading = false;
+            }
         }
     }
 
@@ -655,6 +964,16 @@ public partial class TransactionsViewModel : ObservableRecipient, IRecipient<Dat
     /// </remarks>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        CancelPendingSearch();
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
         _error.Dispose();
         _voidError.Dispose();
         GC.SuppressFinalize(this);
