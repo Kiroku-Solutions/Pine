@@ -442,7 +442,10 @@ public sealed class SkiaReceiptDetector : IReceiptDetector, IReceiptEdgeService
         }
 
         var yoloTotal = clock.ElapsedMilliseconds;
-        if (quad is null)
+        // Only fall back to the classical Otsu quadrilateral finder when no YOLO model is loaded.
+        // When YOLO IS active, trusting its rejection prevents arbitrary square/rectangular objects
+        // (tables, screens, boxes, notebooks) from being misidentified as receipts.
+        if (quad is null && _yolo is null)
         {
             quad = FindQuad(upright);
             if (quad is not null)

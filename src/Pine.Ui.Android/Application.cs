@@ -14,36 +14,41 @@ namespace Pine.Ui.Android
         }
 
         /// <summary>
-        /// <c>&lt;app external files&gt;/layoutlm/model.onnx</c> (with <c>tokenizer.json</c> beside it), i.e.
-        /// <c>/sdcard/Android/data/org.pine.app/files/layoutlm/</c> -- writable by <c>adb push</c> and the system file
-        /// manager, readable by the app with no storage permission.
+        /// Checks for a user-supplied override at <c>&lt;app external files&gt;/layoutlm/model.onnx</c>
+        /// (<c>/sdcard/Android/data/org.pine.app/files/layoutlm/</c>), falling back to the LayoutLMv3
+        /// model bundled inside the APK when present.
         /// </summary>
-        private string? FindLayoutLmModel()
+        private (string? ModelPath, bool NeedsBundledInstall) ResolveLayoutLmModel()
         {
             var directory = GetExternalFilesDir(null)?.AbsolutePath;
-            if (directory is null)
+            if (directory is not null)
             {
-                return null;
+                var externalModel = System.IO.Path.Combine(directory, "layoutlm", "model.onnx");
+                var externalTokenizer = System.IO.Path.Combine(directory, "layoutlm", "tokenizer.json");
+                if (System.IO.File.Exists(externalModel) && System.IO.File.Exists(externalTokenizer))
+                {
+                    return (externalModel, false);
+                }
             }
 
-            var model = System.IO.Path.Combine(directory, "layoutlm", "model.onnx");
-            return System.IO.File.Exists(model) ? model : null;
+            if (OcrModelInstaller.HasBundledLayoutLm(this))
+            {
+                return (OcrModelInstaller.GetBundledLayoutLmTargetPath(this), true);
+            }
+
+            return (null, false);
         }
 
         protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
         {
-            // Build the container (TD-29). This head used to carry its own copy of ~25
-            // registrations; it was missing all four receipt/settings nav targets (TD-85) and the
-            // whole AI subsystem (TD-90), so importing a CSV threw at handler resolution. Both are
-            // now decided by PineHeadCapabilities.For(Android), in one table, next to the four
-            // other heads' rows.
-            //
-            // The Android row is OcrOnly (docs/65 phase C): the managed ONNX OCR engine, no OpenCV. The models
-            // come out of the APK into the files directory, and the LayoutLM model -- never bundled -- is picked
-            // up from the app's external files directory if the user copied one there. The OCR backend is Onnx by
-            // construction on this head (the composition root); the paths below yield to explicit configuration.
+            // Build the container (TD-29). The Android row is OcrOnly (docs/65 phase C): the managed ONNX OCR engine
+            // and YOLO receipt detector, plus the bundled LayoutLMv3 INT8 field extractor when present in APK assets.
             var ocrModels = OcrModelInstaller.Install(this);
-            var layoutLm = FindLayoutLmModel();
+            var (layoutLm, needsLayoutLmInstall) = ResolveLayoutLmModel();
+            // Unpack the 125 MB bundled LayoutLMv3 checkpoint off the UI thread so first launch never hits Android's ANR budget.
+            var layoutLmInstallTask = needsLayoutLmInstall
+                ? System.Threading.Tasks.Task.Run(() => OcrModelInstaller.InstallLayoutLm(this))
+                : System.Threading.Tasks.Task.FromResult<string?>(layoutLm);
             Pine.Infrastructure.Ai.ScanDiagnostics.Reported += line => global::Android.Util.Log.Info("PineScan", line);
 
             var serviceProvider = PineCompositionRoot.Build(PineHeadProfile.Android, options =>
@@ -83,8 +88,8 @@ namespace Pine.Ui.Android
                         await ocr.ExtractTextAsync(new System.IO.MemoryStream(jpeg), System.Threading.CancellationToken.None);
                     }
 
-                    // Then the LayoutLM model (session, tokenizer and one inference over a dummy page), last and unhurried: it is the biggest
-                    // (128 MB) and its first load cost 1.4 s of the first scan.
+                    // Ensure bundled LayoutLMv3 asset extraction finished before warming up its ONNX session.
+                    await layoutLmInstallTask.ConfigureAwait(false);
                     if (serviceProvider.GetService(typeof(Pine.Core.Ai.IVisualFieldExtractor)) is Pine.Core.Ai.IVisualFieldExtractor layout)
                     {
                         await System.Threading.Tasks.Task.Delay(1000);

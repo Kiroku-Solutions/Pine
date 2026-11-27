@@ -129,6 +129,33 @@ public sealed class YoloReceiptDetectorTests(Xunit.Abstractions.ITestOutputHelpe
         YoloPostProcessor.Accept([(200, 100), (600, 100), (600, 900), (200, 900)], 1000, 1000).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task When_yolo_is_loaded_a_plain_non_receipt_square_is_not_captured_by_classical_fallback()
+    {
+        using var yolo = YoloReceiptSegmenter.TryCreate(null);
+        if (yolo is null)
+        {
+            return; // YOLO asset absent (LFS stub)
+        }
+
+        // Plain bright square on a dark surface (e.g. a square box/tile/screen) — ReceiptQuadFinder would match it,
+        // but a YOLO-backed detector must NOT fall back to the classical blob finder when YOLO rejects it.
+        using var bitmap = new SKBitmap(800, 800, SKColorType.Bgra8888, SKAlphaType.Opaque);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(new SKColor(45, 45, 50));
+            using var paint = new SKPaint { Color = new SKColor(235, 235, 235) };
+            canvas.DrawRect(new SKRect(200, 200, 600, 600), paint);
+        }
+
+        using var image = SKImage.FromBitmap(bitmap);
+        var bytes = image.Encode(SKEncodedImageFormat.Jpeg, 92).ToArray();
+
+        using var detector = new SkiaReceiptDetector(yolo);
+        var probe = await detector.ProbeAsync(new MemoryStream(bytes));
+        probe.Quad.Should().BeNull("YOLO rejects a plain square and must not fall back to ReceiptQuadFinder");
+    }
+
     internal sealed class RequiresYoloParityFactAttribute : FactAttribute
     {
         public RequiresYoloParityFactAttribute()
